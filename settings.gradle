@@ -1,0 +1,23 @@
+rootProject.name = 'secure-lan-suite'
+
+include ':apps:desktop-client'
+
+include ':modules:common-model'
+include ':modules:common-net'
+include ':modules:crypto-core'
+include ':modules:chat-core'
+include ':modules:file-transfer-core'
+include ':modules:audio-core'
+include ':modules:webcam-core'
+include ':modules:stego-core'
+
+project(':apps:desktop-client').projectDir = file('apps/desktop-client')
+
+project(':modules:common-model').projectDir = file('modules/common-model')
+project(':modules:common-net').projectDir = file('modules/common-net')
+project(':modules:crypto-core').projectDir = file('modules/crypto-core')
+project(':modules:chat-core').projectDir = file('modules/chat-core')
+project(':modules:file-transfer-core').projectDir = file('modules/file-transfer-core')
+project(':modules:audio-core').projectDir = file('modules/audio-core')
+project(':modules:webcam-core').projectDir = file('modules/webcam-core')
+project(':modules:stego-core').projectDir = file('modules/stego-core')

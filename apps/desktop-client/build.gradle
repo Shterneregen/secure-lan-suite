@@ -1,0 +1,18 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':modules:common-model')
+    implementation project(':modules:common-net')
+    implementation project(':modules:crypto-core')
+    implementation project(':modules:chat-core')
+    implementation project(':modules:file-transfer-core')
+    implementation project(':modules:audio-core')
+    implementation project(':modules:webcam-core')
+    implementation project(':modules:stego-core')
+}
+
+application {
+    mainClass = 'com.shterneregen.securelan.desktop.Main'
+}
