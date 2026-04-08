@@ -1,7 +1,11 @@
 package com.shterneregen.securelan.desktop;
 
+import com.shterneregen.securelan.desktop.ui.ChatWindow;
+
+import javax.swing.SwingUtilities;
+
 public class Main {
     public static void main(String[] args) {
-        System.out.println("Secure LAN Suite desktop client started");
+        SwingUtilities.invokeLater(() -> new ChatWindow().setVisible(true));
     }
 }

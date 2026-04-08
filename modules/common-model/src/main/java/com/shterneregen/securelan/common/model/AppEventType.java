@@ -1,0 +1,15 @@
+package com.shterneregen.securelan.common.model;
+
+public enum AppEventType {
+    INFO,
+    WARNING,
+    ERROR,
+    PEER_CONNECTED,
+    PEER_DISCONNECTED,
+    CHAT_MESSAGE_SENT,
+    CHAT_MESSAGE_RECEIVED,
+    FILE_TRANSFER_STARTED,
+    FILE_TRANSFER_PROGRESS,
+    FILE_TRANSFER_COMPLETED,
+    FILE_TRANSFER_FAILED
+}

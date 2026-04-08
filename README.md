@@ -14,3 +14,15 @@ Multi-module Gradle skeleton for a secure LAN desktop application.
 
 ## App
 - desktop-client
+
+# Current MVP supports:
+- start local chat server
+- connect a client
+- send and receive chat messages
+- simple password-based handshake
+- nickname uniqueness on the server
+
+Run:
+```bash
+./gradlew :apps:desktop-client:run
+```
