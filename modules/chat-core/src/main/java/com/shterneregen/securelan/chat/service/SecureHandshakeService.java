@@ -1,12 +1,12 @@
 package com.shterneregen.securelan.chat.service;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import com.shterneregen.securelan.chat.protocol.handshake.HandshakeRequest;
+import com.shterneregen.securelan.chat.protocol.handshake.HandshakeResponse;
+import com.shterneregen.securelan.chat.transport.ChatSocketSession;
+
 import java.io.IOException;
 
 public interface SecureHandshakeService {
-    String performClientHandshake(BufferedReader reader, BufferedWriter writer, String nickname, String password) throws IOException;
-    HandshakeDecision performServerHandshake(BufferedReader reader, BufferedWriter writer, String expectedPassword, NicknameRegistryService registry) throws IOException;
-
-    record HandshakeDecision(boolean accepted, String nickname, String reason) {}
+    HandshakeResponse performClientHandshake(ChatSocketSession session, HandshakeRequest request) throws IOException;
+    HandshakeResponse performServerHandshake(ChatSocketSession session, String expectedPassword, NicknameRegistryService registry) throws IOException;
 }

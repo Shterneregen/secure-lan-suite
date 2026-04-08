@@ -1,6 +1,6 @@
 # Secure LAN Suite
 
-Multi-module Gradle skeleton for a secure LAN desktop application.
+Multi-module Gradle project for a secure LAN desktop application.
 
 ## Modules
 - common-model

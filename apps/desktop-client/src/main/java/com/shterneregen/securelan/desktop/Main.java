@@ -1,11 +1,9 @@
 package com.shterneregen.securelan.desktop;
 
-import com.shterneregen.securelan.desktop.ui.ChatWindow;
-
-import javax.swing.SwingUtilities;
+import javafx.application.Application;
 
 public class Main {
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new ChatWindow().setVisible(true));
+        Application.launch(ChatApplication.class, args);
     }
 }

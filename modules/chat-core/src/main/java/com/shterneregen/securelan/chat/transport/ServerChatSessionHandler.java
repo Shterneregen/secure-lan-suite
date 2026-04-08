@@ -1,35 +1,31 @@
-package com.shterneregen.securelan.chat.service.impl;
+package com.shterneregen.securelan.chat.transport;
 
 import com.shterneregen.securelan.chat.event.ChatErrorEvent;
 import com.shterneregen.securelan.chat.event.ChatUserLeftEvent;
 import com.shterneregen.securelan.chat.protocol.WireMessage;
 import com.shterneregen.securelan.chat.protocol.WireMessageType;
+import com.shterneregen.securelan.chat.service.ChatBroadcastService;
 import com.shterneregen.securelan.chat.service.ChatEventPublisher;
 import com.shterneregen.securelan.chat.service.NicknameRegistryService;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.net.Socket;
 
 public class ServerChatSessionHandler implements Runnable {
-    private final Socket socket;
+    private final ChatSocketSession session;
     private final String nickname;
-    private final BufferedReader reader;
-    private final InMemoryChatBroadcastService broadcastService;
+    private final ChatBroadcastService broadcastService;
     private final NicknameRegistryService nicknameRegistry;
     private final ChatEventPublisher eventPublisher;
 
     public ServerChatSessionHandler(
-            Socket socket,
+            ChatSocketSession session,
             String nickname,
-            BufferedReader reader,
-            InMemoryChatBroadcastService broadcastService,
+            ChatBroadcastService broadcastService,
             NicknameRegistryService nicknameRegistry,
             ChatEventPublisher eventPublisher
     ) {
-        this.socket = socket;
+        this.session = session;
         this.nickname = nickname;
-        this.reader = reader;
         this.broadcastService = broadcastService;
         this.nicknameRegistry = nicknameRegistry;
         this.eventPublisher = eventPublisher;
@@ -38,13 +34,12 @@ public class ServerChatSessionHandler implements Runnable {
     @Override
     public void run() {
         try {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                WireMessage message = WireMessage.deserialize(line);
+            WireMessage message;
+            while ((message = session.readMessage()) != null) {
                 if (message.type() == WireMessageType.DISCONNECT) {
                     break;
                 }
-                if (message.type() == WireMessageType.CHAT) {
+                if (message.type() == WireMessageType.CHAT && !message.payload().isBlank()) {
                     broadcastService.publishMessage(nickname, message.payload());
                 }
             }
@@ -61,7 +56,7 @@ public class ServerChatSessionHandler implements Runnable {
         broadcastService.publishUserLeft(nickname);
         eventPublisher.publish(new ChatUserLeftEvent(nickname));
         try {
-            socket.close();
+            session.close();
         } catch (IOException ignored) {
         }
     }
