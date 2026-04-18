@@ -31,9 +31,9 @@ Use it to:
 
 | Done | Area | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | Project setup | Create Gradle multi-module skeleton | root project | Java 21, Gradle multi-project, module registration |
-| [ ] | Project setup | Add `apps/desktop-client` | `apps/desktop-client` | Minimal runnable desktop app |
-| [ ] | Shared models | Create immutable records for peer/chat/file/event models | `modules/common-model` | Use records and enums |
+| [x] | Project setup | Create Gradle multi-module skeleton | root project | Java 21, Gradle multi-project, module registration |
+| [x] | Project setup | Add `apps/desktop-client` | `apps/desktop-client` | Minimal runnable desktop app |
+| [x] | Shared models | Create immutable records for peer/chat/file/event models | `modules/common-model` | Use records and enums |
 | [ ] | Shared networking | Add transport abstractions and utilities | `modules/common-net` | TCP/UDP contracts, serialization helpers |
 | [ ] | Standards | Establish package naming and module dependency rules | all modules | Prevent cyclic dependencies |
 
@@ -68,13 +68,13 @@ Source repository:
 
 | Done | Source Repo | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | java-lan-chat | Extract peer connection model and session concepts | `modules/chat-core` | Rebuild as reusable services |
-| [ ] | java-lan-chat | Extract message send/receive flow | `modules/chat-core` | Remove UI coupling |
-| [ ] | java-lan-chat | Extract LAN peer communication logic | `modules/chat-core` | Service-level API |
-| [ ] | java-lan-chat | Implement secure handshake integration using `crypto-core` | `modules/chat-core` | Avoid crypto duplication |
+| [x] | java-lan-chat | Extract peer connection model and session concepts | `modules/chat-core` | Rebuild as reusable services |
+| [x] | java-lan-chat | Extract message send/receive flow | `modules/chat-core` | Remove UI coupling |
+| [x] | java-lan-chat | Extract LAN peer communication logic | `modules/chat-core` | Service-level API |
+| [x] | java-lan-chat | Implement secure handshake integration using `crypto-core` | `modules/chat-core` | Avoid crypto duplication |
 | [ ] | java-lan-chat | Add peer discovery capability | `modules/chat-core` | Discovery should be modular |
-| [ ] | java-lan-chat | Add chat session management | `modules/chat-core` | State management in core |
-| [ ] | java-lan-chat | Add tests for message exchange and handshake | `modules/chat-core` | Prefer deterministic transport tests |
+| [x] | java-lan-chat | Add chat session management | `modules/chat-core` | State management in core |
+| [x] | java-lan-chat | Add tests for message exchange and handshake | `modules/chat-core` | Prefer deterministic transport tests |
 
 ---
 
@@ -149,14 +149,14 @@ Source repository:
 
 | Done | Milestone | Step | Target | Notes |
 |---|---|---|---|---|
-| [ ] | Desktop shell | Create JavaFX application shell | `apps/desktop-client` | Main window and navigation |
+| [x] | Desktop shell | Create JavaFX application shell | `apps/desktop-client` | Main window and navigation |
 | [ ] | Desktop shell | Add tab/panel structure | `apps/desktop-client` | Chat, Files, Security, Logs |
 | [ ] | MVP | Add peer list view | `apps/desktop-client` | Backed by `chat-core` |
-| [ ] | MVP | Add chat view | `apps/desktop-client` | Send/receive text messages |
+| [x] | MVP | Add chat view | `apps/desktop-client` | Send/receive text messages |
 | [ ] | MVP | Add file transfer view | `apps/desktop-client` | Send file and show progress |
 | [ ] | MVP | Add security/keys view | `apps/desktop-client` | Key generation/loading actions |
-| [ ] | MVP | Add event log view | `apps/desktop-client` | Use shared event models |
-| [ ] | MVP | Connect desktop UI to core modules | `apps/desktop-client` | Keep controllers thin |
+| [x] | MVP | Add event log view | `apps/desktop-client` | Use shared event models |
+| [x] | MVP | Connect desktop UI to core modules | `apps/desktop-client` | Keep controllers thin |
 | [ ] | MVP | Smoke-test MVP end-to-end | `apps/desktop-client` | Peer + chat + file transfer |
 
 ---
@@ -180,11 +180,11 @@ Source repository:
 
 | Done | Phase | Goal | Deliverable |
 |---|---|---|---|
-| [ ] | Phase 0 | Bootstrap the monorepo | Gradle modules, Java 21, initial structure |
+| [x] | Phase 0 | Bootstrap the monorepo | Gradle modules, Java 21, initial structure |
 | [ ] | Phase 1 | Shared foundation | `common-model` + `common-net` ready |
-| [ ] | Phase 2 | Cryptographic base | `crypto-core` migrated and tested |
+| [x] | Phase 2 | Cryptographic base | `crypto-core` migrated and tested |
 | [ ] | Phase 3 | Secure file transfer | `file-transfer-core` working |
-| [ ] | Phase 4 | LAN chat | `chat-core` working |
+| [x] | Phase 4 | LAN chat | `chat-core` working |
 | [ ] | Phase 5 | First usable product | Desktop MVP: peers, chat, files, keys, log |
 | [ ] | Phase 6 | Audio support | `audio-core` + basic UI integration |
 | [ ] | Phase 7 | Webcam/media support | `webcam-core` + basic UI integration |
@@ -197,12 +197,12 @@ Source repository:
 
 | Done | Order | Work Item | Why |
 |---|---|---|---|
-| [ ] | 1 | Finalize project structure | Prevent future architectural drift |
-| [ ] | 2 | Implement `common-model` | Shared DTO baseline |
+| [x] | 1 | Finalize project structure | Prevent future architectural drift |
+| [x] | 2 | Implement `common-model` | Shared DTO baseline |
 | [ ] | 3 | Implement `common-net` | Shared networking baseline |
-| [ ] | 4 | Migrate `crypto-core` | Security foundation for other modules |
+| [x] | 4 | Migrate `crypto-core` | Security foundation for other modules |
 | [ ] | 5 | Migrate `file-transfer-core` | First practical secure feature |
-| [ ] | 6 | Migrate `chat-core` | Core communication feature |
+| [x] | 6 | Migrate `chat-core` | Core communication feature |
 | [ ] | 7 | Build desktop MVP | First usable application |
 | [ ] | 8 | Migrate `audio-core` | Secondary communication channel |
 | [ ] | 9 | Migrate `webcam-core` | Media capabilities |
@@ -215,10 +215,10 @@ Source repository:
 
 | Done | Module | Definition of Done |
 |---|---|---|
-| [ ] | common-model | Shared records/enums exist, compile cleanly, reused by other modules |
+| [x] | common-model | Shared records/enums exist, compile cleanly, reused by other modules |
 | [ ] | common-net | Transport abstractions compile cleanly and are reused by feature modules |
-| [ ] | crypto-core | AES/RSA/hash/signature/key APIs extracted, tested, UI-free |
-| [ ] | chat-core | Message flow, handshake, peer/session logic extracted, tested, UI-free |
+| [x] | crypto-core | AES/RSA/hash/signature/key APIs extracted, tested, UI-free |
+| [x] | chat-core | Message flow, handshake, peer/session logic extracted, tested, UI-free |
 | [ ] | file-transfer-core | Send/receive/progress logic extracted, tested, UI-free |
 | [ ] | audio-core | Audio transport/services extracted behind clean APIs |
 | [ ] | webcam-core | Camera/media services extracted, native dependencies isolated |
