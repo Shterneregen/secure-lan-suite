@@ -5,6 +5,6 @@ public final class CryptoSupport {
     }
 
     public static boolean isCryptoEnabled() {
-        return false;
+        return true;
     }
 }
