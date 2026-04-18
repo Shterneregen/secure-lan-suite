@@ -17,4 +17,5 @@ dependencies {
     implementation project(':modules:common-net')
     implementation project(':modules:crypto-core')
     implementation project(':modules:chat-core')
+    implementation project(':modules:file-transfer-core')
 }

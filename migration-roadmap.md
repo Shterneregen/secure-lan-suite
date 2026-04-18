@@ -85,13 +85,13 @@ Source repository:
 
 | Done | Source Repo | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | java-file-transceiver | Extract file sender service | `modules/file-transfer-core` | Reusable sending API |
-| [ ] | java-file-transceiver | Extract file receiver service | `modules/file-transfer-core` | Reusable receiving API |
-| [ ] | java-file-transceiver | Add transfer progress reporting | `modules/file-transfer-core` | Use shared progress models |
-| [ ] | java-file-transceiver | Add secure transfer integration with `crypto-core` | `modules/file-transfer-core` | Encrypt/decrypt file content or metadata as needed |
+| [x] | java-file-transceiver | Extract file sender service | `modules/file-transfer-core` | Reusable sending API |
+| [x] | java-file-transceiver | Extract file receiver service | `modules/file-transfer-core` | Reusable receiving API |
+| [x] | java-file-transceiver | Add transfer progress reporting | `modules/file-transfer-core` | Use shared progress models |
+| [x] | java-file-transceiver | Add secure transfer integration with `crypto-core` | `modules/file-transfer-core` | Encrypt/decrypt file content or metadata as needed |
 | [ ] | java-file-transceiver | Extract SSL/TLS-related transport logic if useful | `modules/file-transfer-core` | Keep transport modular |
-| [ ] | java-file-transceiver | Remove command-line orchestration from migrated code | `modules/file-transfer-core` | Core only |
-| [ ] | java-file-transceiver | Add integration tests for file send/receive | `modules/file-transfer-core` | Include failure cases |
+| [x] | java-file-transceiver | Remove command-line orchestration from migrated code | `modules/file-transfer-core` | Core only |
+| [x] | java-file-transceiver | Add integration tests for file send/receive | `modules/file-transfer-core` | Include failure cases |
 
 ---
 
@@ -153,7 +153,7 @@ Source repository:
 | [ ] | Desktop shell | Add tab/panel structure | `apps/desktop-client` | Chat, Files, Security, Logs |
 | [ ] | MVP | Add peer list view | `apps/desktop-client` | Backed by `chat-core` |
 | [x] | MVP | Add chat view | `apps/desktop-client` | Send/receive text messages |
-| [ ] | MVP | Add file transfer view | `apps/desktop-client` | Send file and show progress |
+| [x] | MVP | Add file transfer view | `apps/desktop-client` | Send file and show progress |
 | [ ] | MVP | Add security/keys view | `apps/desktop-client` | Key generation/loading actions |
 | [x] | MVP | Add event log view | `apps/desktop-client` | Use shared event models |
 | [x] | MVP | Connect desktop UI to core modules | `apps/desktop-client` | Keep controllers thin |
@@ -183,7 +183,7 @@ Source repository:
 | [x] | Phase 0 | Bootstrap the monorepo | Gradle modules, Java 21, initial structure |
 | [ ] | Phase 1 | Shared foundation | `common-model` + `common-net` ready |
 | [x] | Phase 2 | Cryptographic base | `crypto-core` migrated and tested |
-| [ ] | Phase 3 | Secure file transfer | `file-transfer-core` working |
+| [x] | Phase 3 | Secure file transfer | `file-transfer-core` working |
 | [x] | Phase 4 | LAN chat | `chat-core` working |
 | [ ] | Phase 5 | First usable product | Desktop MVP: peers, chat, files, keys, log |
 | [ ] | Phase 6 | Audio support | `audio-core` + basic UI integration |
@@ -201,7 +201,7 @@ Source repository:
 | [x] | 2 | Implement `common-model` | Shared DTO baseline |
 | [ ] | 3 | Implement `common-net` | Shared networking baseline |
 | [x] | 4 | Migrate `crypto-core` | Security foundation for other modules |
-| [ ] | 5 | Migrate `file-transfer-core` | First practical secure feature |
+| [x] | 5 | Migrate `file-transfer-core` | First practical secure feature |
 | [x] | 6 | Migrate `chat-core` | Core communication feature |
 | [ ] | 7 | Build desktop MVP | First usable application |
 | [ ] | 8 | Migrate `audio-core` | Secondary communication channel |
@@ -219,7 +219,7 @@ Source repository:
 | [ ] | common-net | Transport abstractions compile cleanly and are reused by feature modules |
 | [x] | crypto-core | AES/RSA/hash/signature/key APIs extracted, tested, UI-free |
 | [x] | chat-core | Message flow, handshake, peer/session logic extracted, tested, UI-free |
-| [ ] | file-transfer-core | Send/receive/progress logic extracted, tested, UI-free |
+| [x] | file-transfer-core | Send/receive/progress logic extracted, tested, UI-free |
 | [ ] | audio-core | Audio transport/services extracted behind clean APIs |
 | [ ] | webcam-core | Camera/media services extracted, native dependencies isolated |
 | [ ] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free |
@@ -232,7 +232,7 @@ Source repository:
 | Done | Area | Step | Notes |
 |---|---|---|---|
 | [ ] | Testing | Add unit tests for all pure logic modules | Prefer deterministic tests |
-| [ ] | Testing | Add integration tests for chat and file transfer | Use test environments/mocks |
+| [x] | Testing | Add integration tests for chat and file transfer | Use test environments/mocks |
 | [ ] | Reliability | Add consistent exception model across modules | Avoid ad-hoc error handling |
 | [ ] | Logging | Add structured internal logging strategy | Keep UI logging separate from core logging |
 | [ ] | Packaging | Define runnable desktop packaging strategy | Distribution-ready app |
