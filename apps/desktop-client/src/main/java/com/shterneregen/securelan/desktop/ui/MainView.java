@@ -48,13 +48,19 @@ import java.io.File;
 import java.nio.file.Path;
 
 public class MainView {
-    private final TextField hostField = new TextField("127.0.0.1");
-    private final TextField portField = new TextField("5050");
+    private final TextField serverChatPortField = new TextField("5050");
+    private final TextField serverFilePortField = new TextField("5051");
+    private final TextField downloadsField = new TextField("downloads");
+
+    private final TextField clientHostField = new TextField("127.0.0.1");
+    private final TextField clientChatPortField = new TextField("5050");
+    private final TextField clientFilePortField = new TextField("5051");
     private final TextField nicknameField = new TextField("alice");
-    private final TextField passwordField = new TextField("chatpass");
+    private final TextField serverPasswordField = new TextField("chatpass");
+    private final TextField clientPasswordField = new TextField("chatpass");
     private final TextField recipientField = new TextField("peer");
     private final TextField fileField = new TextField();
-    private final TextField downloadsField = new TextField("downloads");
+
     private final TextArea logArea = new TextArea();
     private final TextField messageField = new TextField();
     private final Label statusLabel = new Label("Idle");
@@ -72,7 +78,22 @@ public class MainView {
         this.clientService = new DefaultChatClientService(chatPublisher);
         this.fileTransferServerService = new DefaultFileTransferServerService(fileTransferPublisher);
         this.fileTransferClientService = new DefaultFileTransferClientService(fileTransferPublisher);
+        syncPasswords();
         fileField.setEditable(false);
+    }
+
+
+    private void syncPasswords() {
+        serverPasswordField.textProperty().addListener((obs, oldValue, newValue) -> {
+            if (!clientPasswordField.getText().equals(newValue)) {
+                clientPasswordField.setText(newValue);
+            }
+        });
+        clientPasswordField.textProperty().addListener((obs, oldValue, newValue) -> {
+            if (!serverPasswordField.getText().equals(newValue)) {
+                serverPasswordField.setText(newValue);
+            }
+        });
     }
 
     public Parent createContent() {
@@ -91,44 +112,76 @@ public class MainView {
     }
 
     private VBox buildTopPanel() {
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.addRow(0, new Label("Host"), hostField, new Label("Port"), portField);
-        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("Password"), passwordField);
-        grid.addRow(2, new Label("Recipient"), recipientField, new Label("Downloads"), downloadsField);
-        GridPane.setHgrow(hostField, Priority.ALWAYS);
-        GridPane.setHgrow(nicknameField, Priority.ALWAYS);
-        GridPane.setHgrow(recipientField, Priority.ALWAYS);
-        GridPane.setHgrow(downloadsField, Priority.ALWAYS);
-
         Button startServerButton = new Button("Start Server");
         Button stopServerButton = new Button("Stop Server");
         Button connectButton = new Button("Connect");
         Button disconnectButton = new Button("Disconnect");
 
         startServerButton.setOnAction(event -> startServer());
-        stopServerButton.setOnAction(event -> {
-            serverService.stop();
-            fileTransferServerService.stop();
-            append("[ui] server stopped");
-        });
+        stopServerButton.setOnAction(event -> stopServer());
         connectButton.setOnAction(event -> connectClient());
         disconnectButton.setOnAction(event -> clientService.disconnect());
 
-        HBox buttons = new HBox(10, startServerButton, stopServerButton, connectButton, disconnectButton);
-        buttons.setAlignment(Pos.CENTER_LEFT);
+        HBox serverButtons = new HBox(10, startServerButton, stopServerButton);
+        serverButtons.setAlignment(Pos.CENTER_LEFT);
+
+        HBox clientButtons = new HBox(10, connectButton, disconnectButton);
+        clientButtons.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(10,
-                new Label("Connection"),
-                grid,
-                buttons,
+                new Label("Server"),
+                buildServerPanel(),
+                serverButtons,
+                new Separator(),
+                new Label("Client"),
+                buildClientPanel(),
+                clientButtons,
                 new Separator(),
                 statusLabel,
                 fileStatusLabel
         );
         box.setPadding(new Insets(0, 0, 12, 0));
         return box;
+    }
+
+    private GridPane buildServerPanel() {
+        GridPane grid = createFormGrid();
+        grid.addRow(0, new Label("Chat port"), serverChatPortField, new Label("File port"), serverFilePortField);
+        grid.addRow(1, new Label("Password"), serverPasswordField, new Label("Downloads"), downloadsField);
+        GridPane.setHgrow(serverChatPortField, Priority.ALWAYS);
+        GridPane.setHgrow(serverFilePortField, Priority.ALWAYS);
+        GridPane.setHgrow(serverPasswordField, Priority.ALWAYS);
+        GridPane.setHgrow(downloadsField, Priority.ALWAYS);
+        return grid;
+    }
+
+    private GridPane buildClientPanel() {
+        GridPane grid = createFormGrid();
+        grid.addRow(0, new Label("Remote host"), clientHostField, new Label("Chat port"), clientChatPortField);
+        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("File port"), clientFilePortField);
+        grid.addRow(2, new Label("Recipient peer"), recipientField, new Label("Password"), clientPasswordField);
+        GridPane.setHgrow(clientHostField, Priority.ALWAYS);
+        GridPane.setHgrow(clientChatPortField, Priority.ALWAYS);
+        GridPane.setHgrow(nicknameField, Priority.ALWAYS);
+        GridPane.setHgrow(clientFilePortField, Priority.ALWAYS);
+        GridPane.setHgrow(recipientField, Priority.ALWAYS);
+        GridPane.setHgrow(clientPasswordField, Priority.ALWAYS);
+        return grid;
+    }
+
+    private GridPane createFormGrid() {
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        return grid;
+    }
+
+    private void stopServer() {
+        serverService.stop();
+        fileTransferServerService.stop();
+        setStatus("Server stopped");
+        setFileStatus("File server stopped");
+        append("[ui] server stopped");
     }
 
     private VBox buildCenterPanel() {
@@ -169,14 +222,15 @@ public class MainView {
 
     private void startServer() {
         try {
-            int port = Integer.parseInt(portField.getText().trim());
+            int chatPort = Integer.parseInt(serverChatPortField.getText().trim());
+            int filePort = Integer.parseInt(serverFilePortField.getText().trim());
             Path downloadsPath = Path.of(downloadsField.getText().trim()).toAbsolutePath().normalize();
-            serverService.start(new ChatServerConfig(port, passwordField.getText()));
-            fileTransferServerService.start(new FileTransferServerConfig(fileTransferPort(port), downloadsPath, passwordField.getText()));
-            setStatus("Server running on chat port %d and file port %d".formatted(port, fileTransferPort(port)));
+            serverService.start(new ChatServerConfig(chatPort, serverPasswordField.getText()));
+            fileTransferServerService.start(new FileTransferServerConfig(filePort, downloadsPath, serverPasswordField.getText()));
+            setStatus("Server running on chat port %d and file port %d".formatted(chatPort, filePort));
             setFileStatus("Incoming files -> " + downloadsPath);
-            append("[ui] server started on port " + port);
-            append("[ui] file transfer server started on port " + fileTransferPort(port));
+            append("[ui] chat server started on port " + chatPort);
+            append("[ui] file transfer server started on port " + filePort);
         } catch (Exception ex) {
             showError(ex.getMessage());
         }
@@ -184,12 +238,12 @@ public class MainView {
 
     private void connectClient() {
         try {
-            int port = Integer.parseInt(portField.getText().trim());
+            int port = Integer.parseInt(clientChatPortField.getText().trim());
             boolean connected = clientService.connect(new ChatClientConnectRequest(
-                    hostField.getText().trim(),
+                    clientHostField.getText().trim(),
                     port,
                     nicknameField.getText().trim(),
-                    passwordField.getText()
+                    clientPasswordField.getText()
             ));
             if (!connected) {
                 append("[ui] connection failed");
@@ -226,22 +280,18 @@ public class MainView {
                 return;
             }
             Path file = Path.of(filePath);
-            int port = Integer.parseInt(portField.getText().trim());
+            int filePort = Integer.parseInt(clientFilePortField.getText().trim());
             fileTransferClientService.sendFile(new FileTransferClientRequest(
-                    hostField.getText().trim(),
-                    fileTransferPort(port),
+                    clientHostField.getText().trim(),
+                    filePort,
                     nicknameField.getText().trim(),
                     recipientField.getText().trim(),
-                    passwordField.getText(),
+                    clientPasswordField.getText(),
                     file
             ));
         } catch (Exception ex) {
             showError(ex.getMessage());
         }
-    }
-
-    private int fileTransferPort(int basePort) {
-        return basePort + 1;
     }
 
     private void handleChatEvent(ChatCoreEvent event) {
