@@ -34,13 +34,15 @@ import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Separator;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 
@@ -58,13 +60,18 @@ public class MainView {
     private final TextField nicknameField = new TextField("alice");
     private final TextField serverPasswordField = new TextField("chatpass");
     private final TextField clientPasswordField = new TextField("chatpass");
+    private final TextField fileHostField = new TextField("127.0.0.1");
+    private final TextField fileSenderField = new TextField("alice");
     private final TextField recipientField = new TextField("peer");
     private final TextField fileField = new TextField();
 
     private final TextArea logArea = new TextArea();
+    private final TextArea helpArea = new TextArea();
     private final TextField messageField = new TextField();
-    private final Label statusLabel = new Label("Idle");
-    private final Label fileStatusLabel = new Label("No file selected");
+
+    private final Label serverStatusValue = new Label("Stopped");
+    private final Label connectionStatusValue = new Label("Idle");
+    private final Label transferStatusValue = new Label("Idle");
 
     private final ChatServerService serverService;
     private final ChatClientService clientService;
@@ -79,9 +86,22 @@ public class MainView {
         this.fileTransferServerService = new DefaultFileTransferServerService(fileTransferPublisher);
         this.fileTransferClientService = new DefaultFileTransferClientService(fileTransferPublisher);
         syncPasswords();
-        fileField.setEditable(false);
+        syncSharedClientFields();
+        configureUiState();
     }
 
+    private void configureUiState() {
+        fileField.setEditable(false);
+        messageField.setPromptText("Type a message...");
+        logArea.setEditable(false);
+        logArea.setWrapText(true);
+        helpArea.setEditable(false);
+        helpArea.setWrapText(true);
+        helpArea.setText(buildHelpText());
+        styleStatusValue(serverStatusValue);
+        styleStatusValue(connectionStatusValue);
+        styleStatusValue(transferStatusValue);
+    }
 
     private void syncPasswords() {
         serverPasswordField.textProperty().addListener((obs, oldValue, newValue) -> {
@@ -96,12 +116,17 @@ public class MainView {
         });
     }
 
+
+    private void syncSharedClientFields() {
+        fileHostField.textProperty().bindBidirectional(clientHostField.textProperty());
+        fileSenderField.textProperty().bindBidirectional(nicknameField.textProperty());
+    }
+
     public Parent createContent() {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(12));
-        root.setTop(buildTopPanel());
-        root.setCenter(buildCenterPanel());
-        root.setBottom(buildBottomPanel());
+        root.setTop(buildStatusBar());
+        root.setCenter(buildMainTabs());
         return root;
     }
 
@@ -111,36 +136,120 @@ public class MainView {
         fileTransferServerService.stop();
     }
 
-    private VBox buildTopPanel() {
-        Button startServerButton = new Button("Start Server");
-        Button stopServerButton = new Button("Stop Server");
+    private HBox buildStatusBar() {
+        HBox bar = new HBox(20,
+                createStatusItem("Server", serverStatusValue),
+                createStatusItem("Connection", connectionStatusValue),
+                createStatusItem("File Transfer", transferStatusValue)
+        );
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setPadding(new Insets(0, 0, 12, 0));
+        bar.setStyle("-fx-background-color: #f4f4f4; -fx-background-radius: 8; -fx-padding: 10 12 10 12;");
+        return bar;
+    }
+
+    private HBox createStatusItem(String label, Label valueLabel) {
+        Label titleLabel = new Label(label + ":");
+        titleLabel.setStyle("-fx-font-weight: bold;");
+        HBox box = new HBox(6, titleLabel, valueLabel);
+        box.setAlignment(Pos.CENTER_LEFT);
+        return box;
+    }
+
+    private TabPane buildMainTabs() {
+        TabPane tabs = new TabPane();
+        tabs.getTabs().add(createChatTab());
+        tabs.getTabs().add(createFilesTab());
+        tabs.getTabs().add(createServerTab());
+        tabs.getTabs().add(createHelpTab());
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        return tabs;
+    }
+
+    private Tab createChatTab() {
         Button connectButton = new Button("Connect");
         Button disconnectButton = new Button("Disconnect");
-
-        startServerButton.setOnAction(event -> startServer());
-        stopServerButton.setOnAction(event -> stopServer());
         connectButton.setOnAction(event -> connectClient());
         disconnectButton.setOnAction(event -> clientService.disconnect());
 
-        HBox serverButtons = new HBox(10, startServerButton, stopServerButton);
-        serverButtons.setAlignment(Pos.CENTER_LEFT);
+        Button sendButton = new Button("Send");
+        sendButton.setOnAction(event -> sendMessage());
+        messageField.setOnAction(event -> sendMessage());
 
-        HBox clientButtons = new HBox(10, connectButton, disconnectButton);
-        clientButtons.setAlignment(Pos.CENTER_LEFT);
+        HBox messageRow = new HBox(10, messageField, sendButton);
+        HBox.setHgrow(messageField, Priority.ALWAYS);
 
-        VBox box = new VBox(10,
-                new Label("Server"),
-                buildServerPanel(),
-                serverButtons,
-                new Separator(),
-                new Label("Client"),
-                buildClientPanel(),
-                clientButtons,
-                new Separator(),
-                statusLabel,
-                fileStatusLabel
+        VBox content = new VBox(10,
+                createSection("Connection", buildClientConnectionPanel(), new HBox(10, connectButton, disconnectButton)),
+                createSection("Chat", buildLogPanel(), null),
+                createSection("Message", messageRow, null)
         );
-        box.setPadding(new Insets(0, 0, 12, 0));
+        content.setPadding(new Insets(10));
+        VBox.setVgrow(content.getChildren().get(1), Priority.ALWAYS);
+
+        Tab tab = new Tab("Chat");
+        tab.setContent(content);
+        return tab;
+    }
+
+    private Tab createFilesTab() {
+        Button chooseFileButton = new Button("Choose File");
+        Button sendFileButton = new Button("Send File");
+        chooseFileButton.setOnAction(event -> chooseFile());
+        sendFileButton.setOnAction(event -> sendFile());
+
+        HBox fileRow = new HBox(10, fileField, chooseFileButton, sendFileButton);
+        HBox.setHgrow(fileField, Priority.ALWAYS);
+
+        Label note = new Label("Files are sent to the remote host and remote file port shown below.");
+        note.setWrapText(true);
+
+        VBox content = new VBox(10,
+                createSection("Transfer Target", buildFileTransferPanel(), null),
+                createSection("Selected File", fileRow, null),
+                createSection("Notes", note, null)
+        );
+        content.setPadding(new Insets(10));
+
+        Tab tab = new Tab("File Transfer");
+        tab.setContent(content);
+        return tab;
+    }
+
+    private Tab createServerTab() {
+        Button startServerButton = new Button("Start Server");
+        Button stopServerButton = new Button("Stop Server");
+        startServerButton.setOnAction(event -> startServer());
+        stopServerButton.setOnAction(event -> stopServer());
+
+        VBox content = new VBox(10,
+                createSection("Local Server", buildServerPanel(), new HBox(10, startServerButton, stopServerButton)),
+                createSection("Downloads", new Label("Incoming files are stored in the configured downloads folder on this machine."), null)
+        );
+        content.setPadding(new Insets(10));
+
+        Tab tab = new Tab("Server");
+        tab.setContent(content);
+        return tab;
+    }
+
+    private Tab createHelpTab() {
+        VBox content = new VBox(10, helpArea);
+        content.setPadding(new Insets(10));
+        VBox.setVgrow(helpArea, Priority.ALWAYS);
+
+        Tab tab = new Tab("Help");
+        tab.setContent(content);
+        return tab;
+    }
+
+    private VBox createSection(String title, javafx.scene.Node content, javafx.scene.Node footer) {
+        VBox box = new VBox(8);
+        box.getChildren().add(new Label(title));
+        box.getChildren().add(content);
+        if (footer != null) {
+            box.getChildren().add(footer);
+        }
         return box;
     }
 
@@ -148,25 +257,31 @@ public class MainView {
         GridPane grid = createFormGrid();
         grid.addRow(0, new Label("Chat port"), serverChatPortField, new Label("File port"), serverFilePortField);
         grid.addRow(1, new Label("Password"), serverPasswordField, new Label("Downloads"), downloadsField);
-        GridPane.setHgrow(serverChatPortField, Priority.ALWAYS);
-        GridPane.setHgrow(serverFilePortField, Priority.ALWAYS);
-        GridPane.setHgrow(serverPasswordField, Priority.ALWAYS);
-        GridPane.setHgrow(downloadsField, Priority.ALWAYS);
+        growFields(serverChatPortField, serverFilePortField, serverPasswordField, downloadsField);
         return grid;
     }
 
-    private GridPane buildClientPanel() {
+    private GridPane buildClientConnectionPanel() {
         GridPane grid = createFormGrid();
         grid.addRow(0, new Label("Remote host"), clientHostField, new Label("Chat port"), clientChatPortField);
-        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("File port"), clientFilePortField);
-        grid.addRow(2, new Label("Recipient peer"), recipientField, new Label("Password"), clientPasswordField);
-        GridPane.setHgrow(clientHostField, Priority.ALWAYS);
-        GridPane.setHgrow(clientChatPortField, Priority.ALWAYS);
-        GridPane.setHgrow(nicknameField, Priority.ALWAYS);
-        GridPane.setHgrow(clientFilePortField, Priority.ALWAYS);
-        GridPane.setHgrow(recipientField, Priority.ALWAYS);
-        GridPane.setHgrow(clientPasswordField, Priority.ALWAYS);
+        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("Password"), clientPasswordField);
+        growFields(clientHostField, clientChatPortField, nicknameField, clientPasswordField);
         return grid;
+    }
+
+    private GridPane buildFileTransferPanel() {
+        GridPane grid = createFormGrid();
+        grid.addRow(0, new Label("Remote host"), fileHostField, new Label("File port"), clientFilePortField);
+        grid.addRow(1, new Label("Sender"), fileSenderField, new Label("Recipient peer"), recipientField);
+        growFields(fileHostField, clientFilePortField, fileSenderField, recipientField);
+        return grid;
+    }
+
+    private VBox buildLogPanel() {
+        VBox.setVgrow(logArea, Priority.ALWAYS);
+        VBox box = new VBox(logArea);
+        VBox.setVgrow(box, Priority.ALWAYS);
+        return box;
     }
 
     private GridPane createFormGrid() {
@@ -176,48 +291,18 @@ public class MainView {
         return grid;
     }
 
+    private void growFields(Region... fields) {
+        for (Region field : fields) {
+            GridPane.setHgrow(field, Priority.ALWAYS);
+        }
+    }
+
     private void stopServer() {
         serverService.stop();
         fileTransferServerService.stop();
-        setStatus("Server stopped");
-        setFileStatus("File server stopped");
+        setServerStatus("Stopped");
+        setTransferStatus("Server stopped");
         append("[ui] server stopped");
-    }
-
-    private VBox buildCenterPanel() {
-        logArea.setEditable(false);
-        logArea.setWrapText(true);
-        VBox.setVgrow(logArea, Priority.ALWAYS);
-        VBox box = new VBox(8, new Label("Event Log"), logArea);
-        VBox.setVgrow(box, Priority.ALWAYS);
-        return box;
-    }
-
-    private VBox buildBottomPanel() {
-        Button sendButton = new Button("Send");
-        sendButton.setOnAction(event -> sendMessage());
-        messageField.setPromptText("Type a message...");
-        messageField.setOnAction(event -> sendMessage());
-
-        Button chooseFileButton = new Button("Choose File");
-        Button sendFileButton = new Button("Send File");
-        chooseFileButton.setOnAction(event -> chooseFile());
-        sendFileButton.setOnAction(event -> sendFile());
-
-        HBox messageRow = new HBox(10, messageField, sendButton);
-        HBox.setHgrow(messageField, Priority.ALWAYS);
-        HBox fileRow = new HBox(10, fileField, chooseFileButton, sendFileButton);
-        HBox.setHgrow(fileField, Priority.ALWAYS);
-
-        VBox box = new VBox(8,
-                new Separator(),
-                new Label("Message"),
-                messageRow,
-                new Label("File Transfer"),
-                fileRow
-        );
-        box.setPadding(new Insets(12, 0, 0, 0));
-        return box;
     }
 
     private void startServer() {
@@ -227,8 +312,8 @@ public class MainView {
             Path downloadsPath = Path.of(downloadsField.getText().trim()).toAbsolutePath().normalize();
             serverService.start(new ChatServerConfig(chatPort, serverPasswordField.getText()));
             fileTransferServerService.start(new FileTransferServerConfig(filePort, downloadsPath, serverPasswordField.getText()));
-            setStatus("Server running on chat port %d and file port %d".formatted(chatPort, filePort));
-            setFileStatus("Incoming files -> " + downloadsPath);
+            setServerStatus("Running (%d / %d)".formatted(chatPort, filePort));
+            setTransferStatus("Waiting for transfers");
             append("[ui] chat server started on port " + chatPort);
             append("[ui] file transfer server started on port " + filePort);
         } catch (Exception ex) {
@@ -247,6 +332,7 @@ public class MainView {
             ));
             if (!connected) {
                 append("[ui] connection failed");
+                setConnectionStatus("Failed");
             }
         } catch (Exception ex) {
             showError(ex.getMessage());
@@ -268,7 +354,7 @@ public class MainView {
         File file = chooser.showOpenDialog(null);
         if (file != null) {
             fileField.setText(file.getAbsolutePath());
-            setFileStatus("Ready to send: " + file.getName());
+            setTransferStatus("Ready: " + file.getName());
         }
     }
 
@@ -282,9 +368,9 @@ public class MainView {
             Path file = Path.of(filePath);
             int filePort = Integer.parseInt(clientFilePortField.getText().trim());
             fileTransferClientService.sendFile(new FileTransferClientRequest(
-                    clientHostField.getText().trim(),
+                    fileHostField.getText().trim(),
                     filePort,
-                    nicknameField.getText().trim(),
+                    fileSenderField.getText().trim(),
                     recipientField.getText().trim(),
                     clientPasswordField.getText(),
                     file
@@ -297,15 +383,15 @@ public class MainView {
     private void handleChatEvent(ChatCoreEvent event) {
         Platform.runLater(() -> {
             if (event instanceof ChatConnectedEvent e) {
-                setStatus("Connected as " + e.nickname());
+                setConnectionStatus("Connected as " + e.nickname());
                 append("[connected] " + e.nickname() + " -> " + e.remoteAddress());
             } else if (event instanceof ChatDisconnectedEvent e) {
-                setStatus("Disconnected");
+                setConnectionStatus("Disconnected");
                 append("[disconnected] " + e.nickname() + " - " + e.reason());
             } else if (event instanceof ChatMessageReceivedEvent e) {
                 append(e.senderNickname() + ": " + e.text());
-            } else if (event instanceof ChatMessageSentEvent e) {
-                append("[sent] " + e.senderNickname() + ": " + e.text());
+            } else if (event instanceof ChatMessageSentEvent ignored) {
+                // The message will be shown once when it comes through the regular chat flow.
             } else if (event instanceof ChatUserJoinedEvent e) {
                 append("[join] " + e.nickname());
             } else if (event instanceof ChatUserLeftEvent e) {
@@ -320,16 +406,16 @@ public class MainView {
         Platform.runLater(() -> {
             if (event instanceof FileTransferStartedEvent e) {
                 append((e.outgoing() ? "[file-send] " : "[file-recv] ") + "started: " + e.fileName() + " (" + e.totalBytes() + " bytes)");
-                setFileStatus((e.outgoing() ? "Sending " : "Receiving ") + e.fileName());
+                setTransferStatus((e.outgoing() ? "Sending " : "Receiving ") + e.fileName());
             } else if (event instanceof FileTransferProgressEvent e) {
                 append((e.outgoing() ? "[file-send] " : "[file-recv] ") + e.progress().percent() + "% - " + e.progress().transferredBytes() + "/" + e.progress().totalBytes());
-                setFileStatus((e.outgoing() ? "Sending " : "Receiving ") + e.progress().percent() + "%");
+                setTransferStatus((e.outgoing() ? "Sending " : "Receiving ") + e.progress().percent() + "%");
             } else if (event instanceof FileTransferCompletedEvent e) {
                 append((e.outgoing() ? "[file-send] " : "[file-recv] ") + "completed: " + e.path());
-                setFileStatus("Completed: " + e.fileName());
+                setTransferStatus("Completed: " + e.fileName());
             } else if (event instanceof FileTransferFailedEvent e) {
                 append((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
-                setFileStatus("Transfer failed");
+                setTransferStatus("Transfer failed");
             }
         });
     }
@@ -339,12 +425,48 @@ public class MainView {
         logArea.positionCaret(logArea.getLength());
     }
 
-    private void setStatus(String value) {
-        statusLabel.setText(value);
+    private void setServerStatus(String value) {
+        serverStatusValue.setText(value);
     }
 
-    private void setFileStatus(String value) {
-        fileStatusLabel.setText(value);
+    private void setConnectionStatus(String value) {
+        connectionStatusValue.setText(value);
+    }
+
+    private void setTransferStatus(String value) {
+        transferStatusValue.setText(value);
+    }
+
+    private void styleStatusValue(Label label) {
+        label.setStyle("-fx-font-weight: bold; -fx-text-fill: #1f6feb;");
+    }
+
+    private String buildHelpText() {
+        return String.join(System.lineSeparator(),
+                "Secure LAN Suite overview",
+                "",
+                "Server tab",
+                "- Start Server launches the local chat server and the local file server on this machine.",
+                "- Chat port is used for chat messages and handshake.",
+                "- File port is used for file uploads.",
+                "- Downloads is the folder where incoming files are saved.",
+                "",
+                "Chat tab",
+                "- Remote host is the IP address or host name of the machine running the server.",
+                "- Connect joins the remote chat server with the nickname and password shown in the form.",
+                "- The event log shows chat activity, joins, leaves, transfer events, and errors.",
+                "",
+                "File Transfer tab",
+                "- Choose File selects the file to send.",
+                "- Recipient peer is the logical recipient name included in transfer metadata.",
+                "- The file is sent to the remote host and file port from the transfer form.",
+                "",
+                "Typical LAN scenario",
+                "1. Start the server on one computer.",
+                "2. On another computer, enter the server IP in Remote host.",
+                "3. Use the same password on both sides.",
+                "4. Connect in the Chat tab.",
+                "5. Send messages in Chat and files in File Transfer.");
     }
 
     private void showError(String message) {

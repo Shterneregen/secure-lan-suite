@@ -23,6 +23,8 @@ Multi-module Gradle project for a secure LAN desktop application.
 - send files from the JavaFX UI
 - receive files into a configurable downloads directory
 - view chat, transfer progress, and errors in the shared event log
+- use a tabbed JavaFX UI with Chat, File Transfer, Server, and Help tabs
+- monitor server, connection, and file transfer state from the top status bar
 
 ## File transfer notes
 - chat uses the configured port, for example `5050`
@@ -35,6 +37,5 @@ Multi-module Gradle project for a secure LAN desktop application.
 ```
 
 ## Current limitations
-- there is no peer discovery yet
-- the desktop client still uses a simple single-window layout instead of separate tabs/panels
+- peer discovery is not implemented yet
 - key management and advanced transfer controls are not exposed in the UI yet
