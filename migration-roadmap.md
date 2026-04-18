@@ -47,17 +47,17 @@ Source repositories:
 
 | Done | Source Repo | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | java-crypto | Extract AES encryption service | `modules/crypto-core` | Reusable service API |
-| [ ] | java-crypto | Extract RSA encryption/decryption service | `modules/crypto-core` | Reusable service API |
-| [ ] | java-crypto | Extract key pair generation utilities | `modules/crypto-core` | RSA/AES key generation helpers |
-| [ ] | java-crypto | Extract hashing utilities | `modules/crypto-core` | SHA-based helpers |
-| [ ] | java-crypto | Extract digital signature utilities | `modules/crypto-core` | Sign/verify operations |
-| [ ] | java-crypto | Extract keystore/truststore helpers | `modules/crypto-core` | Reusable keystore access |
-| [ ] | java-encryption-tool | Extract file encryption workflow | `modules/crypto-core` | Convert CLI flow into service logic |
-| [ ] | java-encryption-tool | Extract file decryption workflow | `modules/crypto-core` | Reusable service logic |
-| [ ] | java-encryption-tool | Extract password-based encryption flow | `modules/crypto-core` | Keep implementation reusable |
-| [ ] | java-encryption-tool | Remove old CLI orchestration from migrated code | `modules/crypto-core` | No legacy `main()` logic in core |
-| [ ] | java-crypto + java-encryption-tool | Add unit tests for core crypto flows | `modules/crypto-core` | Encryption/decryption/sign/verify tests |
+| [x] | java-crypto | Extract AES encryption service | `modules/crypto-core` | Reusable service API |
+| [x] | java-crypto | Extract RSA encryption/decryption service | `modules/crypto-core` | Reusable service API |
+| [x] | java-crypto | Extract key pair generation utilities | `modules/crypto-core` | RSA/AES key generation helpers |
+| [x] | java-crypto | Extract hashing utilities | `modules/crypto-core` | SHA-based helpers |
+| [x] | java-crypto | Extract digital signature utilities | `modules/crypto-core` | Sign/verify operations |
+| [x] | java-crypto | Extract keystore/truststore helpers | `modules/crypto-core` | Reusable keystore access |
+| [x] | java-encryption-tool | Extract file encryption workflow | `modules/crypto-core` | Convert CLI flow into service logic |
+| [x] | java-encryption-tool | Extract file decryption workflow | `modules/crypto-core` | Reusable service logic |
+| [x] | java-encryption-tool | Extract password-based encryption flow | `modules/crypto-core` | Keep implementation reusable |
+| [x] | java-encryption-tool | Remove old CLI orchestration from migrated code | `modules/crypto-core` | No legacy `main()` logic in core |
+| [x] | java-crypto + java-encryption-tool | Add unit tests for core crypto flows | `modules/crypto-core` | Encryption/decryption/sign/verify tests |
 
 ---
 
