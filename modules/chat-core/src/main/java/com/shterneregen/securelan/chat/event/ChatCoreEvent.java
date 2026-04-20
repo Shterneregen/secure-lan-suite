@@ -7,5 +7,6 @@ public sealed interface ChatCoreEvent permits
         ChatMessageSentEvent,
         ChatUserJoinedEvent,
         ChatUserLeftEvent,
-        ChatErrorEvent {
+        ChatErrorEvent,
+        ChatSignalReceivedEvent {
 }

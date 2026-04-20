@@ -3,9 +3,11 @@ package com.shterneregen.securelan.chat.transport;
 import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatErrorEvent;
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent;
+import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent;
 import com.shterneregen.securelan.chat.protocol.WireMessage;
 import com.shterneregen.securelan.chat.protocol.WireMessageType;
 import com.shterneregen.securelan.chat.service.ChatEventPublisher;
+import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,6 +32,8 @@ public class ClientReceiveLoop implements Runnable {
             while (connected.get() && (message = session.readMessage()) != null) {
                 if (message.type() == WireMessageType.CHAT || message.type() == WireMessageType.SYSTEM) {
                     eventPublisher.publish(new ChatMessageReceivedEvent(message.sender(), message.payload()));
+                } else if (message.type() == WireMessageType.SIGNAL) {
+                    eventPublisher.publish(new ChatSignalReceivedEvent(RtcSignalCodec.deserialize(message.payload())));
                 }
             }
         } catch (IOException e) {

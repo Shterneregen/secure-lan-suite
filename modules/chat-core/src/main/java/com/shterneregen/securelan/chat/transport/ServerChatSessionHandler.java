@@ -41,6 +41,8 @@ public class ServerChatSessionHandler implements Runnable {
                 }
                 if (message.type() == WireMessageType.CHAT && !message.payload().isBlank()) {
                     broadcastService.publishMessage(nickname, message.payload());
+                } else if (message.type() == WireMessageType.SIGNAL && !message.payload().isBlank()) {
+                    broadcastService.publishSignal(nickname, message.payload());
                 }
             }
         } catch (IOException e) {

@@ -7,6 +7,10 @@ plugins {
 
 application {
     mainClass = 'com.shterneregen.securelan.desktop.Main'
+    applicationDefaultJvmArgs = [
+            '--enable-native-access=javafx.graphics',
+            '--enable-native-access=ALL-UNNAMED'
+    ]
 }
 
 javafx {
@@ -20,6 +24,9 @@ dependencies {
     implementation project(':modules:crypto-core')
     implementation project(':modules:chat-core')
     implementation project(':modules:file-transfer-core')
+    implementation project(':modules:webcam-core')
+    implementation project(':modules:audio-core')
+    implementation project(':modules:webrtc-core')
 }
 
 def appName = 'SecureLanSuite'

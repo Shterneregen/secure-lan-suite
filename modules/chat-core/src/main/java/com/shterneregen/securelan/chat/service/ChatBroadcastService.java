@@ -8,4 +8,5 @@ public interface ChatBroadcastService {
     void publishUserJoined(String nickname);
     void publishUserLeft(String nickname);
     void publishMessage(String senderNickname, String text);
+    void publishSignal(String senderNickname, String payload);
 }

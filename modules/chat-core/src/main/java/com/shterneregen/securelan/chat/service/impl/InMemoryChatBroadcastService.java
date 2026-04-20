@@ -49,6 +49,11 @@ public class InMemoryChatBroadcastService implements ChatBroadcastService {
         broadcast(new WireMessage(WireMessageType.CHAT, senderNickname, text));
     }
 
+    @Override
+    public void publishSignal(String senderNickname, String payload) {
+        broadcast(new WireMessage(WireMessageType.SIGNAL, senderNickname, payload));
+    }
+
     private void broadcast(WireMessage message) {
         clients.forEach((nickname, session) -> {
             try {

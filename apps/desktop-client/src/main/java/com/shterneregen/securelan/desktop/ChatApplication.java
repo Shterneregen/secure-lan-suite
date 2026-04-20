@@ -8,10 +8,13 @@ import javafx.stage.Stage;
 import java.util.Objects;
 
 public class ChatApplication extends Application {
+    private MainView view;
+
     @Override
     public void start(Stage stage) {
-        MainView view = new MainView();
-        Scene scene = new Scene(view.createContent(), 980, 720);
+        view = new MainView();
+
+        Scene scene = new Scene(view.createContent(), 1360, 860);
         stage.setTitle("SecureLanSuite Chat");
         stage.getIcons().add(
                 new javafx.scene.image.Image(
@@ -22,6 +25,18 @@ public class ChatApplication extends Application {
         );
         stage.setScene(scene);
         stage.show();
-        stage.setOnCloseRequest(event -> view.shutdown());
+        stage.setOnCloseRequest(event -> shutdownView());
+    }
+
+    @Override
+    public void stop() {
+        shutdownView();
+    }
+
+    private void shutdownView() {
+        if (view != null) {
+            view.shutdown();
+            view = null;
+        }
     }
 }

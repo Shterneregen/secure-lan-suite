@@ -1,11 +1,15 @@
 package com.shterneregen.securelan.desktop.ui;
 
+import com.shterneregen.securelan.audio.service.AudioCallProfile;
+import com.shterneregen.securelan.audio.service.AudioProfileService;
+import com.shterneregen.securelan.audio.service.impl.DefaultAudioProfileService;
 import com.shterneregen.securelan.chat.event.ChatConnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatCoreEvent;
 import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatErrorEvent;
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent;
 import com.shterneregen.securelan.chat.event.ChatMessageSentEvent;
+import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent;
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent;
 import com.shterneregen.securelan.chat.event.ChatUserLeftEvent;
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest;
@@ -15,6 +19,8 @@ import com.shterneregen.securelan.chat.service.ChatServerConfig;
 import com.shterneregen.securelan.chat.service.ChatServerService;
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService;
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService;
+import com.shterneregen.securelan.common.model.rtc.RtcSessionMode;
+import com.shterneregen.securelan.common.model.rtc.RtcSessionState;
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent;
@@ -27,23 +33,49 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig;
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService;
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService;
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService;
+import com.shterneregen.securelan.webcam.service.VideoCallProfile;
+import com.shterneregen.securelan.webcam.service.VideoProfileService;
+import com.shterneregen.securelan.webcam.service.impl.DefaultVideoProfileService;
+import com.shterneregen.securelan.webrtc.event.RtcAudioLevelEvent;
+import com.shterneregen.securelan.webrtc.event.RtcDataMessageEvent;
+import com.shterneregen.securelan.webrtc.event.RtcEvent;
+import com.shterneregen.securelan.webrtc.event.RtcRuntimeWarningEvent;
+import com.shterneregen.securelan.webrtc.event.RtcStateChangedEvent;
+import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent;
+import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus;
+import com.shterneregen.securelan.webrtc.service.RtcSessionRequest;
+import com.shterneregen.securelan.webrtc.service.RtcSessionService;
+import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcSessionService;
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Separator;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelFormat;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
 
 import java.io.File;
@@ -55,7 +87,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainView {
     private final TextField serverChatPortField = new TextField("5050");
@@ -71,20 +105,71 @@ public class MainView {
     private final TextField fileHostField = new TextField("127.0.0.1");
     private final TextField fileSenderField = new TextField("alice");
     private final TextField recipientField = new TextField("peer");
-    private final TextField fileField = new TextField();
+    private final TextField rtcPeerField = new TextField("peer");
+    private final TextField rtcDataChannelField = new TextField("securelan-data");
+    private final TextField rtcMessageField = new TextField();
 
     private final TextArea logArea = new TextArea();
-    private final TextArea helpArea = new TextArea();
+    private final TextArea diagnosticsArea = new TextArea();
     private final TextField messageField = new TextField();
 
-    private final Label serverStatusValue = new Label("Stopped");
-    private final Label connectionStatusValue = new Label("Idle");
-    private final Label transferStatusValue = new Label("Idle");
+    private final Circle serverIndicator = new Circle(5, Color.web("#9aa4b2"));
+    private final Circle connectionIndicator = new Circle(5, Color.web("#9aa4b2"));
+    private final Circle peerIndicator = new Circle(5, Color.web("#9aa4b2"));
+    private final Circle voiceIndicator = new Circle(5, Color.web("#9aa4b2"));
+    private final Circle transferIndicator = new Circle(5, Color.web("#9aa4b2"));
+
+    private final Label serverStatusValue = new Label("Server stopped");
+    private final Label connectionStatusValue = new Label("Connection idle");
+    private final Label peerStatusValue = new Label("Peer not selected");
+    private final Label voiceStatusValue = new Label("Voice idle");
+    private final Label transferStatusValue = new Label("Transfers idle");
+
+    private final Label conversationTitleValue = new Label("Shared room activity");
+    private final Label conversationSubtitleValue = new Label("Select a peer on the left for voice and file actions.");
+    private final Label selectedPeerTitleValue = new Label("No peer selected");
+    private final Label selectedPeerMetaValue = new Label("Choose an online peer to send files or start voice.");
+    private final Label realtimeRuntimeValue = new Label("Checking runtime");
+    private final Label audioProfileValue = new Label();
+    private final Label videoProfileValue = new Label();
+    private final Label localAudioStatusValue = new Label("Idle");
+    private final Label remoteAudioStatusValue = new Label("Idle");
+    private final Label transferHintValue = new Label("No transfers yet");
+
+    private final ProgressBar localAudioLevelBar = new ProgressBar(0);
+    private final ProgressBar remoteAudioLevelBar = new ProgressBar(0);
+
+    private final ImageView localVideoView = new ImageView();
+    private final ImageView remoteVideoView = new ImageView();
+
+    private WritableImage localVideoImage;
+    private WritableImage remoteVideoImage;
+
+    private final ObservableList<PeerPresence> peerItems = FXCollections.observableArrayList();
+    private final ListView<PeerPresence> peerListView = new ListView<>(peerItems);
+    private final ObservableList<TransferEntry> transferItems = FXCollections.observableArrayList();
+    private final ListView<TransferEntry> transferListView = new ListView<>(transferItems);
+    private final Map<String, TransferEntry> transferEntries = new LinkedHashMap<>();
+
+    private final Button sendQuickActionButton = new Button("Send message");
+    private final Button sendFileQuickActionButton = new Button("Send file");
+    private final Button startVoiceQuickActionButton = new Button("Start voice");
+    private final Button hangUpQuickActionButton = new Button("Hang up");
+    private final Button startServerButton = new Button("Start server");
+    private final Button stopServerButton = new Button("Stop server");
+    private final Button connectButton = new Button("Connect");
+    private final Button disconnectButton = new Button("Disconnect");
+    private final Button sendMessageButton = new Button("Send");
+    private final Button startDataButton = new Button("Start data");
+    private final Button sendRtcMessageButton = new Button("Send RTC message");
 
     private final ChatServerService serverService;
     private final ChatClientService clientService;
     private final FileTransferServerService fileTransferServerService;
     private final FileTransferClientService fileTransferClientService;
+    private final RtcSessionService rtcSessionService;
+    private final AudioProfileService audioProfileService;
+    private final VideoProfileService videoProfileService;
 
     public MainView() {
         ChatEventPublisher chatPublisher = this::handleChatEvent;
@@ -93,40 +178,135 @@ public class MainView {
         this.clientService = new DefaultChatClientService(chatPublisher);
         this.fileTransferServerService = new DefaultFileTransferServerService(fileTransferPublisher);
         this.fileTransferClientService = new DefaultFileTransferClientService(fileTransferPublisher);
+        this.audioProfileService = new DefaultAudioProfileService();
+        this.videoProfileService = new DefaultVideoProfileService();
+        this.rtcSessionService = new DefaultRtcSessionService(this::handleRtcEvent, clientService::sendSignal);
         syncPasswords();
         syncSharedClientFields();
         configureUiState();
+        wireActions();
         publishLocalNetworkInfo();
+        publishRealtimeProfiles();
+        publishRealtimeRuntimeStatus();
+    }
+
+    public Parent createContent() {
+        BorderPane root = new BorderPane();
+        root.setPadding(new Insets(12));
+        root.setStyle("-fx-background-color: linear-gradient(to bottom, #f6f8fb, #eef2f7);");
+        root.setTop(new VBox(12, buildStatusBar(), buildConnectionWorkspaceHeader()));
+        root.setCenter(buildWorkspace());
+        return root;
+    }
+
+    public void shutdown() {
+        rtcSessionService.close();
+        clientService.disconnect();
+        serverService.stop();
+        fileTransferServerService.stop();
     }
 
     private void configureUiState() {
-        fileField.setEditable(false);
-        messageField.setPromptText("Type a message...");
+        fileFieldSetup();
+        messageField.setPromptText("Type a message for the shared chat...");
+        rtcMessageField.setPromptText("Optional RTCDataChannel message...");
         logArea.setEditable(false);
         logArea.setWrapText(true);
-        helpArea.setEditable(false);
-        helpArea.setWrapText(true);
-        helpArea.setText(buildHelpText());
-        styleStatusValue(serverStatusValue);
-        styleStatusValue(connectionStatusValue);
-        styleStatusValue(transferStatusValue);
+        diagnosticsArea.setEditable(false);
+        diagnosticsArea.setWrapText(true);
+        diagnosticsArea.setPrefRowCount(10);
+        diagnosticsArea.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 12;");
+        conversationTitleValue.setStyle("-fx-font-size: 18; -fx-font-weight: bold;");
+        conversationSubtitleValue.setStyle("-fx-text-fill: #5a6b85;");
+        selectedPeerTitleValue.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
+        selectedPeerMetaValue.setWrapText(true);
+        selectedPeerMetaValue.setStyle("-fx-text-fill: #5a6b85;");
+        styleStatusLabel(serverStatusValue);
+        styleStatusLabel(connectionStatusValue);
+        styleStatusLabel(peerStatusValue);
+        styleStatusLabel(voiceStatusValue);
+        styleStatusLabel(transferStatusValue);
+        realtimeRuntimeValue.setWrapText(true);
+        realtimeRuntimeValue.setStyle("-fx-text-fill: #1f6feb; -fx-font-weight: bold;");
+        audioProfileValue.setStyle("-fx-text-fill: #4f6b95;");
+        videoProfileValue.setStyle("-fx-text-fill: #4f6b95;");
+        transferHintValue.setWrapText(true);
+        transferHintValue.setStyle("-fx-text-fill: #5a6b85;");
+        configureAudioLevelBar(localAudioLevelBar);
+        configureAudioLevelBar(remoteAudioLevelBar);
+        configureMediaStatusLabel(localAudioStatusValue);
+        configureMediaStatusLabel(remoteAudioStatusValue);
+        configureVideoView(localVideoView);
+        configureVideoView(remoteVideoView);
+        peerListView.setPlaceholder(new Label("Peers will appear here when they join the chat."));
+        peerListView.setCellFactory(list -> new PeerCell());
+        transferListView.setPlaceholder(new Label("Transfers will appear here."));
+        transferListView.setCellFactory(list -> new TransferCell());
+        peerListView.getSelectionModel().selectedItemProperty().addListener((obs, oldPeer, newPeer) -> updateSelectedPeer(newPeer));
+        updateSelectedPeer(null);
+        updateQuickActionState();
+    }
+
+    private void wireActions() {
+        startServerButton.setOnAction(event -> startServer());
+        stopServerButton.setOnAction(event -> stopServer());
+        connectButton.setOnAction(event -> connectClient());
+        disconnectButton.setOnAction(event -> clientService.disconnect());
+        sendMessageButton.setOnAction(event -> sendMessage());
+        messageField.setOnAction(event -> sendMessage());
+        sendQuickActionButton.setOnAction(event -> {
+            if (messageField.getText().isBlank()) {
+                messageField.requestFocus();
+            } else {
+                sendMessage();
+            }
+        });
+        sendFileQuickActionButton.setOnAction(event -> chooseAndSendFileForSelectedPeer());
+        startVoiceQuickActionButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.AUDIO));
+        hangUpQuickActionButton.setOnAction(event -> rtcSessionService.closeCurrentSession());
+        startDataButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.DATA));
+        sendRtcMessageButton.setOnAction(event -> sendRtcMessage());
+        rtcMessageField.setOnAction(event -> sendRtcMessage());
+    }
+
+    private void fileFieldSetup() {
+        fileHostField.setEditable(false);
+        fileSenderField.setEditable(false);
+        recipientField.setEditable(false);
+        rtcPeerField.setEditable(false);
+    }
+
+    private void publishRealtimeProfiles() {
+        AudioCallProfile audioProfile = audioProfileService.defaultProfile();
+        VideoCallProfile videoProfile = videoProfileService.defaultProfile();
+        audioProfileValue.setText("Audio: %d Hz, %d ch, echo cancel=%s, noise suppression=%s"
+                .formatted(audioProfile.sampleRateHz(), audioProfile.channels(), audioProfile.echoCancellation(), audioProfile.noiseSuppression()));
+        videoProfileValue.setText("Video hidden in main UI. Default profile remains %dx%d @ %d FPS."
+                .formatted(videoProfile.width(), videoProfile.height(), videoProfile.framesPerSecond()));
+    }
+
+    private void publishRealtimeRuntimeStatus() {
+        RtcRuntimeStatus status = rtcSessionService.runtimeStatus();
+        refreshRealtimeRuntimeValue(status);
+        appendDiagnostics("[rtc] runtime: " + status.providerName() + " - " + status.message());
+        appendChat("[rtc] runtime: " + status.providerName() + " - " + status.message());
     }
 
     private void publishLocalNetworkInfo() {
         try {
             List<String> localIps = resolveLocalLanIps();
             if (localIps.isEmpty()) {
-                append("[info] local network IP is unavailable right now");
+                appendChat("[info] local network IP is unavailable right now");
                 return;
             }
 
             if (localIps.size() == 1) {
-                append("[info] local network IP: " + localIps.getFirst());
+                appendChat("[info] local network IP: " + localIps.getFirst());
             } else {
-                append("[info] local network IPs: " + String.join(", ", localIps));
+                appendChat("[info] local network IPs: " + String.join(", ", localIps));
             }
         } catch (SocketException ex) {
-            append("[info] failed to determine local network IP: " + ex.getMessage());
+            appendChat("[info] failed to determine local network IP: " + ex.getMessage());
         }
     }
 
@@ -175,178 +355,199 @@ public class MainView {
         });
     }
 
-
     private void syncSharedClientFields() {
         fileHostField.textProperty().bindBidirectional(clientHostField.textProperty());
         fileSenderField.textProperty().bindBidirectional(nicknameField.textProperty());
     }
 
-    public Parent createContent() {
-        BorderPane root = new BorderPane();
-        root.setPadding(new Insets(12));
-        root.setTop(buildStatusBar());
-        root.setCenter(buildMainTabs());
-        return root;
-    }
-
-    public void shutdown() {
-        clientService.disconnect();
-        serverService.stop();
-        fileTransferServerService.stop();
-    }
-
-    private HBox buildStatusBar() {
-        HBox bar = new HBox(20,
-                createStatusItem("Server", serverStatusValue),
-                createStatusItem("Connection", connectionStatusValue),
-                createStatusItem("File Transfer", transferStatusValue)
+    private Node buildStatusBar() {
+        HBox bar = new HBox(12,
+                createStatusChip(serverIndicator, serverStatusValue),
+                createStatusChip(connectionIndicator, connectionStatusValue),
+                createStatusChip(peerIndicator, peerStatusValue),
+                createStatusChip(voiceIndicator, voiceStatusValue),
+                createStatusChip(transferIndicator, transferStatusValue)
         );
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(0, 0, 12, 0));
-        bar.setStyle("-fx-background-color: #f4f4f4; -fx-background-radius: 8; -fx-padding: 10 12 10 12;");
+        bar.setStyle("-fx-background-color: white; -fx-background-radius: 14; -fx-border-color: #d7dfeb; -fx-border-radius: 14; -fx-padding: 12 14 12 14;");
         return bar;
     }
 
-    private HBox createStatusItem(String label, Label valueLabel) {
-        Label titleLabel = new Label(label + ":");
-        titleLabel.setStyle("-fx-font-weight: bold;");
-        HBox box = new HBox(6, titleLabel, valueLabel);
-        box.setAlignment(Pos.CENTER_LEFT);
+    private Node createStatusChip(Circle indicator, Label valueLabel) {
+        HBox chip = new HBox(8, indicator, valueLabel);
+        chip.setAlignment(Pos.CENTER_LEFT);
+        chip.setPadding(new Insets(6, 10, 6, 10));
+        chip.setStyle("-fx-background-color: #f6f8fb; -fx-background-radius: 999;");
+        return chip;
+    }
+
+    private Node buildConnectionWorkspaceHeader() {
+        HBox row = new HBox(12,
+                createCard("Local server", buildServerQuickPanel()),
+                createCard("Connection", buildClientConnectionQuickPanel())
+        );
+        HBox.setHgrow((Node) row.getChildren().get(0), Priority.ALWAYS);
+        HBox.setHgrow((Node) row.getChildren().get(1), Priority.ALWAYS);
+        return row;
+    }
+
+    private Node buildServerQuickPanel() {
+        GridPane grid = createCompactFormGrid();
+        grid.addRow(0, new Label("Chat"), serverChatPortField, new Label("File"), serverFilePortField);
+        grid.addRow(1, new Label("Password"), serverPasswordField, new Label("Downloads"), downloadsField);
+        HBox actions = new HBox(8, startServerButton, stopServerButton);
+        VBox box = new VBox(10, grid, actions);
+        growFields(serverChatPortField, serverFilePortField, serverPasswordField, downloadsField);
         return box;
     }
 
-    private TabPane buildMainTabs() {
-        TabPane tabs = new TabPane();
-        tabs.getTabs().add(createChatTab());
-        tabs.getTabs().add(createFilesTab());
-        tabs.getTabs().add(createServerTab());
-        tabs.getTabs().add(createHelpTab());
-        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-        return tabs;
+    private Node buildClientConnectionQuickPanel() {
+        GridPane grid = createCompactFormGrid();
+        grid.addRow(0, new Label("Host"), clientHostField, new Label("Port"), clientChatPortField);
+        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("Password"), clientPasswordField);
+        HBox actions = new HBox(8, connectButton, disconnectButton);
+        VBox box = new VBox(10, grid, actions);
+        growFields(clientHostField, clientChatPortField, nicknameField, clientPasswordField);
+        return box;
     }
 
-    private Tab createChatTab() {
-        Button connectButton = new Button("Connect");
-        Button disconnectButton = new Button("Disconnect");
-        connectButton.setOnAction(event -> connectClient());
-        disconnectButton.setOnAction(event -> clientService.disconnect());
+    private Node buildWorkspace() {
+        SplitPane splitPane = new SplitPane();
+        splitPane.getItems().addAll(buildPeersColumn(), buildConversationColumn(), buildActionsColumn());
+        splitPane.setDividerPositions(0.20, 0.72);
+        splitPane.setStyle("-fx-background-color: transparent;");
+        VBox.setVgrow(splitPane, Priority.ALWAYS);
+        return splitPane;
+    }
 
-        Button sendButton = new Button("Send");
-        sendButton.setOnAction(event -> sendMessage());
-        messageField.setOnAction(event -> sendMessage());
+    private Node buildPeersColumn() {
+        Label title = new Label("Contacts / Peers");
+        title.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
+        Label hint = new Label("Select an online peer to target voice calls and file transfers.");
+        hint.setWrapText(true);
+        hint.setStyle("-fx-text-fill: #5a6b85;");
 
-        HBox messageRow = new HBox(10, messageField, sendButton);
+        VBox.setVgrow(peerListView, Priority.ALWAYS);
+        VBox content = new VBox(10, title, hint, peerListView);
+        VBox.setVgrow(content, Priority.ALWAYS);
+        return createCard("Peers", content);
+    }
+
+    private Node buildConversationColumn() {
+        VBox.setVgrow(logArea, Priority.ALWAYS);
+        HBox messageRow = new HBox(10, messageField, sendMessageButton);
         HBox.setHgrow(messageField, Priority.ALWAYS);
 
         VBox content = new VBox(10,
-                createSection("Connection", buildClientConnectionPanel(), new HBox(10, connectButton, disconnectButton)),
-                createSection("Chat", buildLogPanel(), null),
-                createSection("Message", messageRow, null)
+                conversationTitleValue,
+                conversationSubtitleValue,
+                logArea,
+                messageRow
         );
-        content.setPadding(new Insets(10));
-        VBox.setVgrow(content.getChildren().get(1), Priority.ALWAYS);
-
-        Tab tab = new Tab("Chat");
-        tab.setContent(content);
-        return tab;
-    }
-
-    private Tab createFilesTab() {
-        Button chooseFileButton = new Button("Choose File");
-        Button sendFileButton = new Button("Send File");
-        chooseFileButton.setOnAction(event -> chooseFile());
-        sendFileButton.setOnAction(event -> sendFile());
-
-        HBox fileRow = new HBox(10, fileField, chooseFileButton, sendFileButton);
-        HBox.setHgrow(fileField, Priority.ALWAYS);
-
-        Label note = new Label("Files are sent to the remote host and remote file port shown below.");
-        note.setWrapText(true);
-
-        VBox content = new VBox(10,
-                createSection("Transfer Target", buildFileTransferPanel(), null),
-                createSection("Selected File", fileRow, null),
-                createSection("Notes", note, null)
-        );
-        content.setPadding(new Insets(10));
-
-        Tab tab = new Tab("File Transfer");
-        tab.setContent(content);
-        return tab;
-    }
-
-    private Tab createServerTab() {
-        Button startServerButton = new Button("Start Server");
-        Button stopServerButton = new Button("Stop Server");
-        startServerButton.setOnAction(event -> startServer());
-        stopServerButton.setOnAction(event -> stopServer());
-
-        VBox content = new VBox(10,
-                createSection("Local Server", buildServerPanel(), new HBox(10, startServerButton, stopServerButton)),
-                createSection("Downloads", new Label("Incoming files are stored in the configured downloads folder on this machine."), null)
-        );
-        content.setPadding(new Insets(10));
-
-        Tab tab = new Tab("Server");
-        tab.setContent(content);
-        return tab;
-    }
-
-    private Tab createHelpTab() {
-        VBox content = new VBox(10, helpArea);
-        content.setPadding(new Insets(10));
-        VBox.setVgrow(helpArea, Priority.ALWAYS);
-
-        Tab tab = new Tab("Help");
-        tab.setContent(content);
-        return tab;
-    }
-
-    private VBox createSection(String title, javafx.scene.Node content, javafx.scene.Node footer) {
-        VBox box = new VBox(8);
-        box.getChildren().add(new Label(title));
-        box.getChildren().add(content);
-        if (footer != null) {
-            box.getChildren().add(footer);
-        }
-        return box;
-    }
-
-    private GridPane buildServerPanel() {
-        GridPane grid = createFormGrid();
-        grid.addRow(0, new Label("Chat port"), serverChatPortField, new Label("File port"), serverFilePortField);
-        grid.addRow(1, new Label("Password"), serverPasswordField, new Label("Downloads"), downloadsField);
-        growFields(serverChatPortField, serverFilePortField, serverPasswordField, downloadsField);
-        return grid;
-    }
-
-    private GridPane buildClientConnectionPanel() {
-        GridPane grid = createFormGrid();
-        grid.addRow(0, new Label("Remote host"), clientHostField, new Label("Chat port"), clientChatPortField);
-        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("Password"), clientPasswordField);
-        growFields(clientHostField, clientChatPortField, nicknameField, clientPasswordField);
-        return grid;
-    }
-
-    private GridPane buildFileTransferPanel() {
-        GridPane grid = createFormGrid();
-        grid.addRow(0, new Label("Remote host"), fileHostField, new Label("File port"), clientFilePortField);
-        grid.addRow(1, new Label("Sender"), fileSenderField, new Label("Recipient peer"), recipientField);
-        growFields(fileHostField, clientFilePortField, fileSenderField, recipientField);
-        return grid;
-    }
-
-    private VBox buildLogPanel() {
         VBox.setVgrow(logArea, Priority.ALWAYS);
-        VBox box = new VBox(logArea);
-        VBox.setVgrow(box, Priority.ALWAYS);
+        return createCard("Chat", content);
+    }
+
+    private Node buildActionsColumn() {
+        sendQuickActionButton.setMaxWidth(Double.MAX_VALUE);
+        sendFileQuickActionButton.setMaxWidth(Double.MAX_VALUE);
+        startVoiceQuickActionButton.setMaxWidth(Double.MAX_VALUE);
+        hangUpQuickActionButton.setMaxWidth(Double.MAX_VALUE);
+        startDataButton.setMaxWidth(Double.MAX_VALUE);
+        sendRtcMessageButton.setMaxWidth(Double.MAX_VALUE);
+
+        VBox quickActions = new VBox(8,
+                sendQuickActionButton,
+                sendFileQuickActionButton,
+                startVoiceQuickActionButton,
+                hangUpQuickActionButton
+        );
+
+        VBox voiceBlock = new VBox(8,
+                createMetricBlock("Voice status", voiceStatusValue),
+                createMetricBlock("Local microphone", new VBox(6, localAudioLevelBar, localAudioStatusValue)),
+                createMetricBlock("Remote audio", new VBox(6, remoteAudioLevelBar, remoteAudioStatusValue))
+        );
+
+        VBox transfersBlock = new VBox(8, transferHintValue, transferListView);
+        VBox.setVgrow(transferListView, Priority.ALWAYS);
+
+        VBox advancedContent = new VBox(10,
+                new Label("Runtime"),
+                realtimeRuntimeValue,
+                audioProfileValue,
+                videoProfileValue,
+                new Separator(),
+                new Label("RTCDataChannel"),
+                new Label("Use this for experiments and diagnostics. Video controls are hidden from the main UI until the feature becomes stable."),
+                startDataButton,
+                rtcMessageField,
+                sendRtcMessageButton,
+                new Separator(),
+                new Label("Diagnostics"),
+                diagnosticsArea
+        );
+        VBox.setVgrow(diagnosticsArea, Priority.ALWAYS);
+
+        TitledPane advancedPane = new TitledPane("Advanced / Experimental", advancedContent);
+        advancedPane.setExpanded(false);
+        advancedPane.setAnimated(false);
+
+        Node quickActionsCard = createSectionCard("Quick actions", quickActions);
+        Node voiceCard = createSectionCard("Voice status", voiceBlock);
+        Node transfersCard = createSectionCard("Transfers", transfersBlock);
+
+        VBox content = new VBox(12,
+                selectedPeerTitleValue,
+                selectedPeerMetaValue,
+                quickActionsCard,
+                voiceCard,
+                transfersCard,
+                advancedPane
+        );
+        VBox.setVgrow(transfersCard, Priority.ALWAYS);
+        VBox.setVgrow(transferListView, Priority.ALWAYS);
+
+        ScrollPane scrollPane = new ScrollPane(content);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setStyle("-fx-background-color: transparent;");
+        return createCard("Actions", scrollPane);
+    }
+
+    private Node createMetricBlock(String title, Node content) {
+        VBox box = new VBox(6, new Label(title), content);
         return box;
     }
 
-    private GridPane createFormGrid() {
+    private Node createSectionCard(String title, Node content) {
+        VBox box = new VBox(8, sectionTitle(title), content);
+        box.setPadding(new Insets(12));
+        box.setStyle("-fx-background-color: #f7f9fc; -fx-background-radius: 12; -fx-border-color: #dfe6f1; -fx-border-radius: 12;");
+        return box;
+    }
+
+    private Label sectionTitle(String title) {
+        Label label = new Label(title);
+        label.setStyle("-fx-font-weight: bold;");
+        return label;
+    }
+
+    private Node createCard(String title, Node content) {
+        Label header = new Label(title);
+        header.setStyle("-fx-font-size: 13; -fx-font-weight: bold; -fx-text-fill: #2a3b55;");
+        VBox box = new VBox(10, header, content);
+        box.setPadding(new Insets(14));
+        box.setStyle("-fx-background-color: white; -fx-background-radius: 16; -fx-border-color: #d7dfeb; -fx-border-radius: 16;");
+        VBox.setVgrow(content, Priority.ALWAYS);
+        return box;
+    }
+
+    private GridPane createCompactFormGrid() {
         GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
+        grid.setHgap(8);
+        grid.setVgap(8);
         return grid;
     }
 
@@ -359,9 +560,9 @@ public class MainView {
     private void stopServer() {
         serverService.stop();
         fileTransferServerService.stop();
-        setServerStatus("Stopped");
-        setTransferStatus("Server stopped");
-        append("[ui] server stopped");
+        setServerStatus("Server stopped", Color.web("#9aa4b2"));
+        setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
+        appendChat("[ui] server stopped");
     }
 
     private void startServer() {
@@ -371,10 +572,10 @@ public class MainView {
             Path downloadsPath = Path.of(downloadsField.getText().trim()).toAbsolutePath().normalize();
             serverService.start(new ChatServerConfig(chatPort, serverPasswordField.getText()));
             fileTransferServerService.start(new FileTransferServerConfig(filePort, downloadsPath, serverPasswordField.getText()));
-            setServerStatus("Running (%d / %d)".formatted(chatPort, filePort));
-            setTransferStatus("Waiting for transfers");
-            append("[ui] chat server started on port " + chatPort);
-            append("[ui] file transfer server started on port " + filePort);
+            setServerStatus("Server running", Color.web("#1f9d55"));
+            setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
+            appendChat("[ui] chat server started on port " + chatPort);
+            appendChat("[ui] file transfer server started on port " + filePort);
         } catch (Exception ex) {
             showError(ex.getMessage());
         }
@@ -390,8 +591,8 @@ public class MainView {
                     clientPasswordField.getText()
             ));
             if (!connected) {
-                append("[ui] connection failed");
-                setConnectionStatus("Failed");
+                appendChat("[ui] connection failed");
+                setConnectionStatus("Connection failed", Color.web("#dc2626"));
             }
         } catch (Exception ex) {
             showError(ex.getMessage());
@@ -407,56 +608,105 @@ public class MainView {
         messageField.clear();
     }
 
-    private void chooseFile() {
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Choose file to send");
-        File file = chooser.showOpenDialog(null);
-        if (file != null) {
-            fileField.setText(file.getAbsolutePath());
-            setTransferStatus("Ready: " + file.getName());
+    private void chooseAndSendFileForSelectedPeer() {
+        PeerPresence peer = peerListView.getSelectionModel().getSelectedItem();
+        if (peer == null || !peer.online()) {
+            showError("Select an online peer first");
+            return;
         }
-    }
 
-    private void sendFile() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Choose file to send to " + peer.nickname());
+        File file = chooser.showOpenDialog(null);
+        if (file == null) {
+            return;
+        }
+
+        recipientField.setText(peer.nickname());
+        rtcPeerField.setText(peer.nickname());
+
         try {
-            String filePath = fileField.getText().trim();
-            if (filePath.isEmpty()) {
-                showError("Choose a file first");
-                return;
-            }
-            Path file = Path.of(filePath);
             int filePort = Integer.parseInt(clientFilePortField.getText().trim());
             fileTransferClientService.sendFile(new FileTransferClientRequest(
                     fileHostField.getText().trim(),
                     filePort,
                     fileSenderField.getText().trim(),
-                    recipientField.getText().trim(),
+                    peer.nickname(),
                     clientPasswordField.getText(),
-                    file
+                    file.toPath()
             ));
         } catch (Exception ex) {
             showError(ex.getMessage());
         }
     }
 
+    private void startRealtimeSession(RtcSessionMode mode) {
+        PeerPresence peer = peerListView.getSelectionModel().getSelectedItem();
+        if (peer == null || !peer.online()) {
+            showError("Select an online peer first");
+            return;
+        }
+
+        try {
+            recipientField.setText(peer.nickname());
+            rtcPeerField.setText(peer.nickname());
+            clearRealtimeMediaUi();
+            rtcSessionService.startSession(new RtcSessionRequest(
+                    nicknameField.getText().trim(),
+                    peer.nickname(),
+                    mode,
+                    rtcDataChannelField.getText().trim()
+            ));
+        } catch (Exception ex) {
+            showError(ex.getMessage());
+        }
+    }
+
+    private void sendRtcMessage() {
+        String payload = rtcMessageField.getText().trim();
+        if (payload.isEmpty()) {
+            return;
+        }
+        rtcSessionService.sendDataMessage(payload);
+        rtcMessageField.clear();
+    }
+
     private void handleChatEvent(ChatCoreEvent event) {
         Platform.runLater(() -> {
             if (event instanceof ChatConnectedEvent e) {
-                setConnectionStatus("Connected as " + e.nickname());
-                append("[connected] " + e.nickname() + " -> " + e.remoteAddress());
+                setConnectionStatus("Connected as " + e.nickname(), Color.web("#1f9d55"));
+                appendChat("[connected] " + e.nickname() + " -> " + e.remoteAddress());
+                peerItems.clear();
+                updateSelectedPeer(null);
             } else if (event instanceof ChatDisconnectedEvent e) {
-                setConnectionStatus("Disconnected");
-                append("[disconnected] " + e.nickname() + " - " + e.reason());
+                setConnectionStatus("Connection idle", Color.web("#9aa4b2"));
+                setPeerStatus("Peer not selected", Color.web("#9aa4b2"));
+                appendChat("[disconnected] " + e.nickname() + " - " + e.reason());
+                peerItems.clear();
+                updateSelectedPeer(null);
             } else if (event instanceof ChatMessageReceivedEvent e) {
-                append(e.senderNickname() + ": " + e.text());
+                upsertPeer(e.senderNickname(), true);
+                appendChat(e.senderNickname() + ": " + e.text());
             } else if (event instanceof ChatMessageSentEvent ignored) {
-                // The message will be shown once when it comes through the regular chat flow.
+                // message appears once via normal chat flow
             } else if (event instanceof ChatUserJoinedEvent e) {
-                append("[join] " + e.nickname());
+                if (!e.nickname().equalsIgnoreCase(nicknameField.getText().trim())) {
+                    PeerPresence peer = upsertPeer(e.nickname(), true);
+                    appendChat("[join] " + e.nickname());
+                    if (peerListView.getSelectionModel().getSelectedItem() == null) {
+                        peerListView.getSelectionModel().select(peer);
+                    }
+                }
             } else if (event instanceof ChatUserLeftEvent e) {
-                append("[left] " + e.nickname());
+                markPeerOffline(e.nickname());
+                appendChat("[left] " + e.nickname());
+            } else if (event instanceof ChatSignalReceivedEvent e) {
+                upsertPeer(e.signal().fromPeer(), true);
+                appendDiagnostics("[rtc-signal] " + e.signal().type() + " from " + e.signal().fromPeer() + " to " + e.signal().toPeer());
+                rtcSessionService.acceptInboundSignal(nicknameField.getText().trim(), e.signal());
             } else if (event instanceof ChatErrorEvent e) {
-                append("[error] " + e.message() + (e.cause() != null ? " -> " + e.cause().getMessage() : ""));
+                appendChat("[error] " + e.message() + (e.cause() != null ? " -> " + e.cause().getMessage() : ""));
+                appendDiagnostics("[error] " + e.message() + (e.cause() != null ? " -> " + e.cause().getMessage() : ""));
             }
         });
     }
@@ -464,68 +714,299 @@ public class MainView {
     private void handleFileTransferEvent(FileTransferEvent event) {
         Platform.runLater(() -> {
             if (event instanceof FileTransferStartedEvent e) {
-                append((e.outgoing() ? "[file-send] " : "[file-recv] ") + "started: " + e.fileName() + " (" + e.totalBytes() + " bytes)");
-                setTransferStatus((e.outgoing() ? "Sending " : "Receiving ") + e.fileName());
+                TransferEntry entry = new TransferEntry(e.transferId(), e.fileName(), e.outgoing() ? "Sending" : "Receiving", 0, e.totalBytes());
+                transferEntries.put(e.transferId(), entry);
+                refreshTransferEntries();
+                appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "started: " + e.fileName());
+                setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
             } else if (event instanceof FileTransferProgressEvent e) {
-                append((e.outgoing() ? "[file-send] " : "[file-recv] ") + e.progress().percent() + "% - " + e.progress().transferredBytes() + "/" + e.progress().totalBytes());
-                setTransferStatus((e.outgoing() ? "Sending " : "Receiving ") + e.progress().percent() + "%");
+                TransferEntry existing = transferEntries.get(e.transferId());
+                if (existing != null) {
+                    existing.status = e.outgoing() ? "Sending" : "Receiving";
+                    existing.percent = e.progress().percent();
+                    existing.totalBytes = e.progress().totalBytes();
+                    refreshTransferEntries();
+                }
+                setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
             } else if (event instanceof FileTransferCompletedEvent e) {
-                append((e.outgoing() ? "[file-send] " : "[file-recv] ") + "completed: " + e.path());
-                setTransferStatus("Completed: " + e.fileName());
+                TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Completed", 100, e.totalBytes()));
+                entry.status = "Completed";
+                entry.percent = 100;
+                entry.totalBytes = e.totalBytes();
+                refreshTransferEntries();
+                appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "completed: " + e.path());
+                setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#1f9d55"));
             } else if (event instanceof FileTransferFailedEvent e) {
-                append((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
-                setTransferStatus("Transfer failed");
+                TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Failed", 0, 0));
+                entry.status = "Failed";
+                refreshTransferEntries();
+                appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
+                setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#dc2626"));
             }
         });
     }
 
-    private void append(String line) {
+    private void handleRtcEvent(RtcEvent event) {
+        Platform.runLater(() -> {
+            if (event instanceof RtcStateChangedEvent e) {
+                appendChat("[rtc] " + e.mode() + " session " + e.state() + " with " + e.remotePeer() + " - " + e.message());
+                appendDiagnostics("[rtc] " + e.mode() + " session " + e.state() + " with " + e.remotePeer() + " - " + e.message());
+                refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
+                upsertPeer(e.remotePeer(), true);
+                updateVoiceStatusFromRtc(e);
+                if (e.state() == RtcSessionState.CLOSED
+                        || e.state() == RtcSessionState.FAILED
+                        || e.state() == RtcSessionState.UNAVAILABLE) {
+                    clearRealtimeMediaUi();
+                }
+            } else if (event instanceof RtcRuntimeWarningEvent e) {
+                appendDiagnostics("[rtc-warning] " + e.message());
+                refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
+            } else if (event instanceof RtcDataMessageEvent e) {
+                appendChat((e.outgoing() ? "[rtc-send] " : "[rtc-recv] ") + e.payload());
+                appendDiagnostics((e.outgoing() ? "[rtc-send] " : "[rtc-recv] ") + e.payload());
+            } else if (event instanceof RtcVideoFrameEvent e) {
+                updateVideoPreview(e);
+            } else if (event instanceof RtcAudioLevelEvent e) {
+                updateAudioLevel(e);
+            }
+        });
+    }
+
+    private void appendChat(String line) {
         logArea.appendText(line + System.lineSeparator());
         logArea.positionCaret(logArea.getLength());
     }
 
-    private void setServerStatus(String value) {
+    private void appendDiagnostics(String line) {
+        diagnosticsArea.appendText(line + System.lineSeparator());
+        diagnosticsArea.positionCaret(diagnosticsArea.getLength());
+    }
+
+    private void refreshRealtimeRuntimeValue(RtcRuntimeStatus status) {
+        if (status == null) {
+            realtimeRuntimeValue.setText("Unavailable");
+            return;
+        }
+        realtimeRuntimeValue.setText(status.available()
+                ? status.providerName() + " ready"
+                : "Unavailable — " + status.message());
+    }
+
+    private void updateVideoPreview(RtcVideoFrameEvent event) {
+        if (event.local()) {
+            localVideoImage = applyVideoFrame(localVideoView, localVideoImage, event);
+        } else {
+            remoteVideoImage = applyVideoFrame(remoteVideoView, remoteVideoImage, event);
+        }
+    }
+
+    private WritableImage applyVideoFrame(ImageView view, WritableImage target, RtcVideoFrameEvent event) {
+        if (target == null || (int) target.getWidth() != event.width() || (int) target.getHeight() != event.height()) {
+            target = new WritableImage(event.width(), event.height());
+        }
+        target.getPixelWriter().setPixels(
+                0,
+                0,
+                event.width(),
+                event.height(),
+                PixelFormat.getIntArgbInstance(),
+                event.argbPixels(),
+                0,
+                event.width()
+        );
+        view.setImage(target);
+        view.setRotate(event.rotation());
+        return target;
+    }
+
+    private void updateAudioLevel(RtcAudioLevelEvent event) {
+        ProgressBar bar = event.local() ? localAudioLevelBar : remoteAudioLevelBar;
+        Label label = event.local() ? localAudioStatusValue : remoteAudioStatusValue;
+        bar.setProgress(Math.max(0d, Math.min(1d, event.level())));
+        String peerInfo = event.local() ? "local microphone" : event.peer();
+        label.setText((event.active() ? "Active" : "Quiet") + " — " + peerInfo + " — " + Math.round(event.level() * 100) + "%");
+    }
+
+    private void clearRealtimeMediaUi() {
+        localVideoView.setImage(null);
+        remoteVideoView.setImage(null);
+        localVideoView.setRotate(0);
+        remoteVideoView.setRotate(0);
+        localVideoImage = null;
+        remoteVideoImage = null;
+        localAudioLevelBar.setProgress(0);
+        remoteAudioLevelBar.setProgress(0);
+        localAudioStatusValue.setText("Idle");
+        remoteAudioStatusValue.setText("Idle");
+    }
+
+    private void updateVoiceStatusFromRtc(RtcStateChangedEvent event) {
+        if (!event.mode().audioEnabled()) {
+            return;
+        }
+
+        String peer = event.remotePeer() == null || event.remotePeer().isBlank() ? "peer" : event.remotePeer();
+        if (event.state() == RtcSessionState.CONNECTED) {
+            setVoiceStatus("In call with " + peer, Color.web("#1f9d55"));
+        } else if (event.state() == RtcSessionState.CONNECTING || event.state() == RtcSessionState.NEGOTIATING) {
+            setVoiceStatus("Voice connecting", Color.web("#f59e0b"));
+        } else if (event.state() == RtcSessionState.CLOSING) {
+            setVoiceStatus("Voice closing", Color.web("#f59e0b"));
+        } else if (event.state() == RtcSessionState.CLOSED) {
+            setVoiceStatus("Voice idle", Color.web("#9aa4b2"));
+        } else if (event.state() == RtcSessionState.FAILED || event.state() == RtcSessionState.UNAVAILABLE) {
+            setVoiceStatus("Voice unavailable", Color.web("#dc2626"));
+        }
+    }
+
+    private void updateQuickActionState() {
+        PeerPresence selectedPeer = peerListView.getSelectionModel().getSelectedItem();
+        boolean hasOnlinePeer = selectedPeer != null && selectedPeer.online();
+        sendFileQuickActionButton.setDisable(!hasOnlinePeer);
+        startVoiceQuickActionButton.setDisable(!hasOnlinePeer);
+        sendQuickActionButton.setDisable(connectionStatusValue.getText().startsWith("Connection idle"));
+        startDataButton.setDisable(!hasOnlinePeer);
+        sendRtcMessageButton.setDisable(false);
+    }
+
+    private PeerPresence upsertPeer(String nickname, boolean online) {
+        if (nickname == null || nickname.isBlank() || nickname.equalsIgnoreCase(nicknameField.getText().trim())) {
+            return null;
+        }
+
+        for (PeerPresence item : peerItems) {
+            if (item.nickname().equalsIgnoreCase(nickname)) {
+                item.online = online;
+                peerListView.refresh();
+                sortPeers();
+                refreshSelectedPeerStatus();
+                return item;
+            }
+        }
+
+        PeerPresence created = new PeerPresence(nickname, online);
+        peerItems.add(created);
+        sortPeers();
+        refreshSelectedPeerStatus();
+        return created;
+    }
+
+    private void markPeerOffline(String nickname) {
+        if (nickname == null || nickname.isBlank()) {
+            return;
+        }
+        for (PeerPresence item : peerItems) {
+            if (item.nickname().equalsIgnoreCase(nickname)) {
+                item.online = false;
+                peerListView.refresh();
+                sortPeers();
+                refreshSelectedPeerStatus();
+                return;
+            }
+        }
+    }
+
+    private void sortPeers() {
+        FXCollections.sort(peerItems, Comparator
+                .comparing(PeerPresence::online).reversed()
+                .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER));
+    }
+
+    private void updateSelectedPeer(PeerPresence peer) {
+        if (peer == null) {
+            recipientField.setText("");
+            rtcPeerField.setText("");
+            conversationTitleValue.setText("Shared room activity");
+            conversationSubtitleValue.setText("Select a peer on the left for voice and file actions.");
+            selectedPeerTitleValue.setText("No peer selected");
+            selectedPeerMetaValue.setText("Choose an online peer to send files or start voice.");
+            setPeerStatus("Peer not selected", Color.web("#9aa4b2"));
+        } else {
+            recipientField.setText(peer.nickname());
+            rtcPeerField.setText(peer.nickname());
+            conversationTitleValue.setText("Shared room activity");
+            conversationSubtitleValue.setText("Actions on the right will target “" + peer.nickname() + "”. Text chat remains shared for now.");
+            selectedPeerTitleValue.setText(peer.nickname());
+            selectedPeerMetaValue.setText(peer.online()
+                    ? "Online — chat, file transfer, and voice are available."
+                    : "Offline — wait until this peer rejoins the chat.");
+            setPeerStatus(peer.online() ? "Peer " + peer.nickname() : "Peer offline", peer.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
+        }
+        updateQuickActionState();
+    }
+
+    private void refreshSelectedPeerStatus() {
+        updateSelectedPeer(peerListView.getSelectionModel().getSelectedItem());
+    }
+
+    private void refreshTransferEntries() {
+        transferItems.setAll(transferEntries.values());
+        long activeCount = transferEntries.values().stream().filter(TransferEntry::active).count();
+        if (activeCount == 0 && transferEntries.isEmpty()) {
+            transferHintValue.setText("No transfers yet");
+        } else if (activeCount == 0) {
+            transferHintValue.setText("No active transfers. Recent results remain visible below.");
+        } else {
+            transferHintValue.setText(activeCount + " active transfer" + (activeCount == 1 ? "" : "s"));
+        }
+    }
+
+    private String activeTransferSummary() {
+        long activeCount = transferEntries.values().stream().filter(TransferEntry::active).count();
+        if (activeCount == 0) {
+            return "Transfers idle";
+        }
+        return activeCount + " transfer" + (activeCount == 1 ? " active" : "s active");
+    }
+
+    private void setServerStatus(String value, Color color) {
         serverStatusValue.setText(value);
+        serverIndicator.setFill(color);
     }
 
-    private void setConnectionStatus(String value) {
+    private void setConnectionStatus(String value, Color color) {
         connectionStatusValue.setText(value);
+        connectionIndicator.setFill(color);
+        updateQuickActionState();
     }
 
-    private void setTransferStatus(String value) {
+    private void setPeerStatus(String value, Color color) {
+        peerStatusValue.setText(value);
+        peerIndicator.setFill(color);
+    }
+
+    private void setVoiceStatus(String value, Color color) {
+        voiceStatusValue.setText(value);
+        voiceIndicator.setFill(color);
+    }
+
+    private void setTransferStatus(String value, Color color) {
         transferStatusValue.setText(value);
+        transferIndicator.setFill(color);
     }
 
-    private void styleStatusValue(Label label) {
-        label.setStyle("-fx-font-weight: bold; -fx-text-fill: #1f6feb;");
+    private void styleStatusLabel(Label label) {
+        label.setStyle("-fx-font-weight: bold; -fx-text-fill: #223047;");
     }
 
-    private String buildHelpText() {
-        return String.join(System.lineSeparator(),
-                "Secure LAN Suite overview",
-                "",
-                "Server tab",
-                "- Start Server launches the local chat server and the local file server on this machine.",
-                "- Chat port is used for chat messages and handshake.",
-                "- File port is used for file uploads.",
-                "- Downloads is the folder where incoming files are saved.",
-                "",
-                "Chat tab",
-                "- Remote host is the IP address or host name of the machine running the server.",
-                "- Connect joins the remote chat server with the nickname and password shown in the form.",
-                "- The event log shows chat activity, joins, leaves, transfer events, and errors.",
-                "",
-                "File Transfer tab",
-                "- Choose File selects the file to send.",
-                "- Recipient peer is the logical recipient name included in transfer metadata.",
-                "- The file is sent to the remote host and file port from the transfer form.",
-                "",
-                "Typical LAN scenario",
-                "1. Start the server on one computer.",
-                "2. On another computer, enter the server IP in Remote host.",
-                "3. Use the same password on both sides.",
-                "4. Connect in the Chat tab.",
-                "5. Send messages in Chat and files in File Transfer.");
+    private void configureAudioLevelBar(ProgressBar bar) {
+        bar.setPrefWidth(260);
+        bar.setMaxWidth(Double.MAX_VALUE);
+        bar.setProgress(0);
+    }
+
+    private void configureMediaStatusLabel(Label label) {
+        label.setWrapText(true);
+        label.setStyle("-fx-text-fill: #4f6b95;");
+    }
+
+    private void configureVideoView(ImageView view) {
+        view.setPreserveRatio(true);
+        view.setFitWidth(320);
+        view.setFitHeight(200);
+        view.setSmooth(true);
+        view.setStyle("-fx-background-color: #10161f; -fx-border-color: #2f3b4f; -fx-border-radius: 8; -fx-background-radius: 8;");
     }
 
     private void showError(String message) {
@@ -534,5 +1015,93 @@ public class MainView {
         alert.setHeaderText("Operation failed");
         alert.setContentText(message);
         alert.showAndWait();
+    }
+
+    private static final class PeerPresence {
+        private final String nickname;
+        private boolean online;
+
+        private PeerPresence(String nickname, boolean online) {
+            this.nickname = nickname;
+            this.online = online;
+        }
+
+        public String nickname() {
+            return nickname;
+        }
+
+        public boolean online() {
+            return online;
+        }
+    }
+
+    private static final class TransferEntry {
+        private final String transferId;
+        private final String fileName;
+        private String status;
+        private int percent;
+        private long totalBytes;
+
+        private TransferEntry(String transferId, String fileName, String status, int percent, long totalBytes) {
+            this.transferId = transferId;
+            this.fileName = fileName;
+            this.status = status;
+            this.percent = percent;
+            this.totalBytes = totalBytes;
+        }
+
+        private boolean active() {
+            return "Sending".equals(status) || "Receiving".equals(status);
+        }
+    }
+
+    private static final class PeerCell extends ListCell<PeerPresence> {
+        @Override
+        protected void updateItem(PeerPresence item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setGraphic(null);
+                return;
+            }
+
+            Circle dot = new Circle(5, item.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
+            Label name = new Label(item.nickname());
+            name.setStyle("-fx-font-weight: bold;");
+            Label meta = new Label(item.online() ? "chat • voice • file" : "offline");
+            meta.setStyle("-fx-text-fill: #5a6b85; -fx-font-size: 11;");
+            VBox textBox = new VBox(2, name, meta);
+            HBox row = new HBox(8, dot, textBox);
+            row.setAlignment(Pos.CENTER_LEFT);
+            setGraphic(row);
+        }
+    }
+
+    private static final class TransferCell extends ListCell<TransferEntry> {
+        @Override
+        protected void updateItem(TransferEntry item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setGraphic(null);
+                return;
+            }
+
+            Label name = new Label(item.fileName);
+            name.setStyle("-fx-font-weight: bold;");
+            String metaText = item.status;
+            if (item.percent > 0 && item.percent < 100 && item.active()) {
+                metaText += " — " + item.percent + "%";
+            } else if (item.percent == 100 && "Completed".equals(item.status)) {
+                metaText += " — 100%";
+            }
+            if (item.totalBytes > 0) {
+                metaText += " — " + item.totalBytes + " bytes";
+            }
+            Label meta = new Label(metaText);
+            meta.setStyle("-fx-text-fill: #5a6b85; -fx-font-size: 11;");
+            VBox box = new VBox(2, name, meta);
+            setGraphic(box);
+        }
     }
 }

@@ -6,6 +6,7 @@ Secure LAN Suite is a multi-module Gradle project for a secure LAN desktop appli
 - Java 25 LTS
 - Gradle 9.1+ recommended
 - JavaFX 25.0.2
+- `webrtc-java` for realtime data/audio/video transport
 - `jpackage` for native packaging
 - WiX 5.0.2 for Windows EXE installers
 
@@ -20,26 +21,45 @@ Secure LAN Suite is a multi-module Gradle project for a secure LAN desktop appli
 - `modules/crypto-core`
 - `modules/chat-core`
 - `modules/file-transfer-core`
+- `modules/webrtc-core`
 - `modules/audio-core`
 - `modules/webcam-core`
 - `modules/stego-core`
 
-## Current MVP
+## Current product state
+
+### Working now
 - start a local secure chat server
 - connect a client with encrypted chat handshake
 - send and receive chat messages
 - start a secure file transfer server automatically with the chat server
-- send files from the JavaFX UI
+- send files from the desktop UI
 - receive files into a configurable downloads directory
-- view chat, transfer progress, and errors in the shared event log
-- use a tabbed JavaFX UI with Chat, File Transfer, Server, and Help tabs
-- monitor server, connection, and file transfer state from the top status bar
+- route WebRTC-style signaling through `chat-core` into `webrtc-core`
+- start `RTCDataChannel` sessions from the desktop UI
+- start voice sessions backed by native `webrtc-java`
+- monitor server, connection, peer, voice, and transfer state from the compact top status bar
+- use the redesigned messenger-style desktop layout:
+  - peer list on the left
+  - chat/activity feed in the center
+  - actions, voice status, transfers, and advanced tools on the right
+
+### Current UI layout
+The desktop client now uses a **messenger-style workspace** instead of the older tabbed layout.
+
+- **Top status bar** — compact colored indicators for server, connection, selected peer, voice state, and file transfers
+- **Left column** — peer list / contacts
+- **Center column** — chat, system events, file events, and realtime messages
+- **Right column** — quick actions, voice status, transfers, and advanced/experimental controls
+
+### Realtime status
+- `RTCDataChannel` is integrated and available from the desktop client
+- voice sessions are the primary supported realtime flow
+- video code paths still exist in `webrtc-core`, but video remains **experimental** and is hidden from the main UX until it becomes stable enough for normal use
 
 ## Screenshots
 
-### Main window
-
-<img src="docs/images/app-main.png" alt="Secure LAN Suite main window" width="900">
+The UI was recently redesigned into a messenger-style layout. Refresh the screenshot in `docs/images/` when you capture a new image of the current interface.
 
 ## Requirements
 - JDK 25 installed
@@ -86,8 +106,8 @@ Build a portable application image and ZIP archive:
 ./gradlew :apps:desktop-client:buildPortable
 ```
 
-Output:
-- `apps/desktop-client/build/distributions/SecureLanSuite-0.1.0-portable.zip`
+Example output:
+- `apps/desktop-client/build/distributions/SecureLanSuite-<version>-portable.zip`
 
 This task uses `jpackage --type app-image`, so it does not require WiX.
 
@@ -108,8 +128,8 @@ or directly:
 Output directory:
 - `apps/desktop-client/build/jpackage/`
 
-Expected output file:
-- `apps/desktop-client/build/jpackage/SecureLanSuite-0.1.0.exe`
+Example output file:
+- `apps/desktop-client/build/jpackage/SecureLanSuite-<version>.exe`
 
 Notes:
 - this task must be run on Windows
@@ -141,12 +161,21 @@ wix extension list --global
 wix --version
 ```
 
+## Realtime architecture
+- `chat-core` transports realtime signaling envelopes between peers
+- `webrtc-core` owns realtime session state, signaling integration, diagnostics, and runtime/provider integration
+- `webrtc-core` boots a native `webrtc-java` engine and reuses the secure chat path for SDP and ICE signaling
+- `audio-core` and `webcam-core` expose default media profiles and UI/runtime hints for realtime sessions
+- implementation notes: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
+
 ## File transfer notes
 - chat uses the configured port, for example `5050`
 - file transfer uses `chat port + 1`, for example `5051`
 - file transfer handshake uses `crypto-core` with ephemeral RSA key exchange and AES-GCM transport encryption
 
 ## Current limitations
-- peer discovery is not implemented yet
-- key management and advanced transfer controls are not exposed in the UI yet
+- true LAN peer discovery is not implemented yet
+- key management and advanced transfer controls are not fully exposed in the desktop UI yet
+- video is still experimental and is intentionally hidden from the main workflow
+- device selection still defaults to the first/default available audio and camera devices
 - EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers

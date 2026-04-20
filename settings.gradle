@@ -7,6 +7,7 @@ include ':modules:common-net'
 include ':modules:crypto-core'
 include ':modules:chat-core'
 include ':modules:file-transfer-core'
+include ':modules:webrtc-core'
 include ':modules:audio-core'
 include ':modules:webcam-core'
 include ':modules:stego-core'
@@ -18,6 +19,7 @@ project(':modules:common-net').projectDir = file('modules/common-net')
 project(':modules:crypto-core').projectDir = file('modules/crypto-core')
 project(':modules:chat-core').projectDir = file('modules/chat-core')
 project(':modules:file-transfer-core').projectDir = file('modules/file-transfer-core')
+project(':modules:webrtc-core').projectDir = file('modules/webrtc-core')
 project(':modules:audio-core').projectDir = file('modules/audio-core')
 project(':modules:webcam-core').projectDir = file('modules/webcam-core')
 project(':modules:stego-core').projectDir = file('modules/stego-core')

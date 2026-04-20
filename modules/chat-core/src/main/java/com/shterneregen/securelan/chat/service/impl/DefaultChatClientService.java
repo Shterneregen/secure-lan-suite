@@ -14,6 +14,8 @@ import com.shterneregen.securelan.chat.service.ChatEventPublisher;
 import com.shterneregen.securelan.chat.service.SecureHandshakeService;
 import com.shterneregen.securelan.chat.transport.ChatSocketSession;
 import com.shterneregen.securelan.chat.transport.ClientReceiveLoop;
+import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec;
+import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope;
 
 import java.io.IOException;
 import java.net.Socket;
@@ -91,6 +93,19 @@ public class DefaultChatClientService implements ChatClientService {
             eventPublisher.publish(new ChatMessageSentEvent(nickname, text));
         } catch (IOException e) {
             eventPublisher.publish(new ChatErrorEvent("Unable to send message", e));
+        }
+    }
+
+    @Override
+    public void sendSignal(RtcSignalEnvelope signal) {
+        if (!connected.get() || signal == null || session == null) {
+            return;
+        }
+        try {
+            RtcSignalEnvelope outboundSignal = signal.withSender(nickname == null ? signal.fromPeer() : nickname);
+            session.writeMessage(new WireMessage(WireMessageType.SIGNAL, outboundSignal.fromPeer(), RtcSignalCodec.serialize(outboundSignal)));
+        } catch (IOException e) {
+            eventPublisher.publish(new ChatErrorEvent("Unable to send realtime signal", e));
         }
     }
 
