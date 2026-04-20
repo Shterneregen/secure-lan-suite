@@ -1,21 +1,30 @@
 # Secure LAN Suite
 
-Multi-module Gradle project for a secure LAN desktop application.
+Secure LAN Suite is a multi-module Gradle project for a secure LAN desktop application built with JavaFX.
 
-## Modules
-- common-model
-- common-net
-- crypto-core
-- chat-core
-- file-transfer-core
-- audio-core
-- webcam-core
-- stego-core
+## Tech stack
+- Java 25 LTS
+- Gradle 9.1+ recommended
+- JavaFX 25.0.2
+- `jpackage` for native packaging
+- WiX 5.0.2 for Windows EXE installers
 
-## App
-- desktop-client
+## Project structure
 
-## Current MVP supports
+### Applications
+- `apps/desktop-client` — JavaFX desktop client
+
+### Modules
+- `modules/common-model`
+- `modules/common-net`
+- `modules/crypto-core`
+- `modules/chat-core`
+- `modules/file-transfer-core`
+- `modules/audio-core`
+- `modules/webcam-core`
+- `modules/stego-core`
+
+## Current MVP
 - start a local secure chat server
 - connect a client with encrypted chat handshake
 - send and receive chat messages
@@ -26,16 +35,112 @@ Multi-module Gradle project for a secure LAN desktop application.
 - use a tabbed JavaFX UI with Chat, File Transfer, Server, and Help tabs
 - monitor server, connection, and file transfer state from the top status bar
 
+## Requirements
+- JDK 25 installed
+- Gradle 9.1 or newer recommended for Java 25
+- Internet access on the first Gradle build so dependencies can be downloaded
+- Windows only: WiX 5.0.2 installed and available in `PATH` for EXE packaging
+- For WiX 5, the required extensions must also be installed:
+  - `WixToolset.UI.wixext`
+  - `WixToolset.Util.wixext`
+
+## Verify the environment
+
+```powershell
+java --version
+jpackage --version
+wix --version
+```
+
+`wix --version` is only required when you build the Windows EXE installer.
+
+## Build and run
+
+Build the whole project:
+
+```bash
+./gradlew clean build
+```
+
+Run the desktop client:
+
+```bash
+./gradlew :apps:desktop-client:run
+```
+
+## Packaging
+
+All packaging tasks live in `apps/desktop-client`.
+
+### Portable build
+
+Build a portable application image and ZIP archive:
+
+```bash
+./gradlew :apps:desktop-client:buildPortable
+```
+
+Output:
+- `apps/desktop-client/build/distributions/SecureLanSuite-0.1.0-portable.zip`
+
+This task uses `jpackage --type app-image`, so it does not require WiX.
+
+### Windows EXE installer
+
+Build the Windows EXE installer:
+
+```powershell
+.\gradlew.bat :apps:desktop-client:buildExe
+```
+
+or directly:
+
+```powershell
+.\gradlew.bat :apps:desktop-client:createExe
+```
+
+Output directory:
+- `apps/desktop-client/build/jpackage/`
+
+Expected output file:
+- `apps/desktop-client/build/jpackage/SecureLanSuite-0.1.0.exe`
+
+Notes:
+- this task must be run on Windows
+- `jpackage` must come from JDK 25
+- WiX 5.0.2 must be installed and available in `PATH`
+- WiX extensions `WixToolset.UI.wixext` and `WixToolset.Util.wixext` must be installed globally
+- WiX 7 is **not recommended** for this project because the working `jpackage` setup was verified with WiX 5.0.2
+
+### Inspect resolved packaging tools
+
+```bash
+./gradlew :apps:desktop-client:printPackagingEnvironment
+```
+
+This prints the resolved Java launcher, the `jpackage` executable used by the build, and whether WiX is visible in `PATH`.
+
+## Installing WiX on Windows
+
+Use the instructions in [`docs/wix-installation.md`](docs/wix-installation.md).
+
+Short version:
+
+```powershell
+dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org
+dotnet tool install --global wix --version 5.0.2
+wix extension add --global WixToolset.UI.wixext/5.0.2
+wix extension add --global WixToolset.Util.wixext/5.0.2
+wix extension list --global
+wix --version
+```
+
 ## File transfer notes
 - chat uses the configured port, for example `5050`
 - file transfer uses `chat port + 1`, for example `5051`
 - file transfer handshake uses `crypto-core` with ephemeral RSA key exchange and AES-GCM transport encryption
 
-## Run
-```bash
-./gradlew :apps:desktop-client:run
-```
-
 ## Current limitations
 - peer discovery is not implemented yet
 - key management and advanced transfer controls are not exposed in the UI yet
+- EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers

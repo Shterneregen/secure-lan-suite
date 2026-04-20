@@ -1,3 +1,5 @@
+import static java.io.File.pathSeparator
+
 plugins {
     id 'application'
     id 'org.openjfx.javafxplugin' version '0.1.0'
@@ -8,7 +10,7 @@ application {
 }
 
 javafx {
-    version = '21.0.2'
+    version = '25.0.2'
     modules = ['javafx.controls']
 }
 
@@ -18,4 +20,135 @@ dependencies {
     implementation project(':modules:crypto-core')
     implementation project(':modules:chat-core')
     implementation project(':modules:file-transfer-core')
+}
+
+def appName = 'SecureLanSuite'
+def rawProjectVersion = project.version.toString()
+def appVersion = rawProjectVersion.replaceAll(/-SNAPSHOT$/, '')
+def mainJarName = "${project.name}-${project.version}.jar"
+
+def packageInputDir = layout.buildDirectory.dir('package-input')
+def packageOutputDir = layout.buildDirectory.dir('packaging')
+def appImageDir = packageOutputDir.map { it.dir(appName) }
+
+tasks.named('jar') {
+    manifest {
+        attributes(
+                'Main-Class': application.mainClass.get()
+        )
+    }
+}
+
+tasks.register('prepareJpackageInput', Copy) {
+    dependsOn tasks.named('jar')
+
+    from(tasks.named('jar'))
+    from(configurations.runtimeClasspath)
+    into(packageInputDir)
+}
+
+tasks.register('createAppImage', Exec) {
+    dependsOn tasks.named('prepareJpackageInput')
+
+    doFirst {
+        def outDir = packageOutputDir.get().asFile
+
+        if (outDir.exists()) {
+            delete(outDir)
+        }
+        mkdir(outDir)
+
+        if (!appVersion || appVersion.isBlank()) {
+            throw new GradleException("Resolved appVersion is empty.")
+        }
+
+        def mainJarFile = new File(packageInputDir.get().asFile, mainJarName)
+        if (!mainJarFile.exists()) {
+            throw new GradleException("Main jar was not found: ${mainJarFile.absolutePath}")
+        }
+    }
+
+    commandLine(
+            'jpackage',
+            '--type', 'app-image',
+            '--name', appName,
+            '--app-version', appVersion,
+            '--input', packageInputDir.get().asFile.absolutePath,
+            '--main-jar', mainJarName,
+            '--main-class', application.mainClass.get(),
+            '--dest', packageOutputDir.get().asFile.absolutePath,
+            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath
+    )
+}
+
+tasks.register('portableDistZip', Zip) {
+    dependsOn tasks.named('createAppImage')
+
+    from(appImageDir)
+    destinationDirectory.set(layout.buildDirectory.dir('distributions'))
+    archiveFileName.set("${appName}-${appVersion}-portable.zip")
+}
+
+tasks.register('buildPortable') {
+    group = 'distribution'
+    description = 'Build portable ZIP distribution for the desktop client.'
+    dependsOn tasks.named('portableDistZip')
+}
+
+def isWindows = System.getProperty('os.name').toLowerCase().contains('win')
+
+def wixOnPath = {
+    def pathValue = System.getenv('PATH') ?: ''
+    def pathEntries = pathValue.split(pathSeparator)
+
+    def hasWix = pathEntries.any { new File(it, 'wix.exe').exists() }
+    def hasCandle = pathEntries.any { new File(it, 'candle.exe').exists() }
+    def hasLight = pathEntries.any { new File(it, 'light.exe').exists() }
+
+    return hasWix || (hasCandle && hasLight)
+}
+
+tasks.register('createExe', Exec) {
+    dependsOn tasks.named('prepareJpackageInput')
+
+    doFirst {
+        if (!isWindows) {
+            throw new GradleException('buildExe can only be run on Windows.')
+        }
+        if (!wixOnPath()) {
+            throw new GradleException('WiX Toolset was not found in PATH. Install WiX and make sure wix.exe or candle.exe/light.exe are available.')
+        }
+
+        def outDir = packageOutputDir.get().asFile
+        if (outDir.exists()) {
+            delete(outDir)
+        }
+        mkdir(outDir)
+
+        def mainJarFile = new File(packageInputDir.get().asFile, mainJarName)
+        if (!mainJarFile.exists()) {
+            throw new GradleException("Main jar was not found: ${mainJarFile.absolutePath}")
+        }
+    }
+
+    commandLine(
+            'jpackage',
+            '--type', 'exe',
+            '--name', appName,
+            '--app-version', appVersion,
+            '--input', packageInputDir.get().asFile.absolutePath,
+            '--main-jar', mainJarName,
+            '--main-class', application.mainClass.get(),
+            '--dest', packageOutputDir.get().asFile.absolutePath,
+            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath,
+            '--win-menu',
+            '--win-shortcut',
+            '--win-dir-chooser'
+    )
+}
+
+tasks.register('buildExe') {
+    group = 'distribution'
+    description = 'Build Windows EXE installer for the desktop client.'
+    dependsOn tasks.named('createExe')
 }
