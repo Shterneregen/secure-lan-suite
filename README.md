@@ -35,6 +35,12 @@ Secure LAN Suite is a multi-module Gradle project for a secure LAN desktop appli
 - use a tabbed JavaFX UI with Chat, File Transfer, Server, and Help tabs
 - monitor server, connection, and file transfer state from the top status bar
 
+## Screenshots
+
+### Main window
+
+<img src="docs/images/app-main.png" alt="Secure LAN Suite main window" width="900">
+
 ## Requirements
 - JDK 25 installed
 - Gradle 9.1 or newer recommended for Java 25

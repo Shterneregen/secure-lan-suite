@@ -47,7 +47,15 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 
 import java.io.File;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Enumeration;
+import java.util.List;
 
 public class MainView {
     private final TextField serverChatPortField = new TextField("5050");
@@ -88,6 +96,7 @@ public class MainView {
         syncPasswords();
         syncSharedClientFields();
         configureUiState();
+        publishLocalNetworkInfo();
     }
 
     private void configureUiState() {
@@ -101,6 +110,56 @@ public class MainView {
         styleStatusValue(serverStatusValue);
         styleStatusValue(connectionStatusValue);
         styleStatusValue(transferStatusValue);
+    }
+
+    private void publishLocalNetworkInfo() {
+        try {
+            List<String> localIps = resolveLocalLanIps();
+            if (localIps.isEmpty()) {
+                append("[info] local network IP is unavailable right now");
+                return;
+            }
+
+            if (localIps.size() == 1) {
+                append("[info] local network IP: " + localIps.getFirst());
+            } else {
+                append("[info] local network IPs: " + String.join(", ", localIps));
+            }
+        } catch (SocketException ex) {
+            append("[info] failed to determine local network IP: " + ex.getMessage());
+        }
+    }
+
+    private List<String> resolveLocalLanIps() throws SocketException {
+        List<String> siteLocalAddresses = new ArrayList<>();
+        List<String> otherNonLoopbackAddresses = new ArrayList<>();
+
+        Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+        while (networkInterfaces.hasMoreElements()) {
+            NetworkInterface networkInterface = networkInterfaces.nextElement();
+            if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.isVirtual()) {
+                continue;
+            }
+
+            Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
+            while (inetAddresses.hasMoreElements()) {
+                InetAddress inetAddress = inetAddresses.nextElement();
+                if (!(inetAddress instanceof Inet4Address) || inetAddress.isLoopbackAddress()) {
+                    continue;
+                }
+
+                String hostAddress = inetAddress.getHostAddress();
+                if (inetAddress.isSiteLocalAddress()) {
+                    siteLocalAddresses.add(hostAddress);
+                } else {
+                    otherNonLoopbackAddresses.add(hostAddress);
+                }
+            }
+        }
+
+        List<String> result = !siteLocalAddresses.isEmpty() ? siteLocalAddresses : otherNonLoopbackAddresses;
+        result.sort(Comparator.naturalOrder());
+        return result.stream().distinct().toList();
     }
 
     private void syncPasswords() {
