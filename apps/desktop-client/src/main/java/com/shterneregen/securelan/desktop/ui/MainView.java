@@ -65,6 +65,7 @@ import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
@@ -90,6 +91,7 @@ import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class MainView {
     private final TextField serverChatPortField = new TextField("5050");
@@ -123,12 +125,15 @@ public class MainView {
     private final Label connectionStatusValue = new Label("Connection idle");
     private final Label peerStatusValue = new Label("Peer not selected");
     private final Label voiceStatusValue = new Label("Voice idle");
+    private final Label voicePanelStatusValue = new Label("Voice idle");
     private final Label transferStatusValue = new Label("Transfers idle");
 
     private final Label conversationTitleValue = new Label("Shared room activity");
     private final Label conversationSubtitleValue = new Label("Select a peer on the left for voice and file actions.");
     private final Label selectedPeerTitleValue = new Label("No peer selected");
     private final Label selectedPeerMetaValue = new Label("Choose an online peer to send files or start voice.");
+    private final Label peersTitleValue = new Label("Contacts / Peers");
+    private final Label peersHintValue = new Label("Select an online peer to target voice calls and file transfers.");
     private final Label realtimeRuntimeValue = new Label("Checking runtime");
     private final Label audioProfileValue = new Label();
     private final Label videoProfileValue = new Label();
@@ -162,6 +167,9 @@ public class MainView {
     private final Button sendMessageButton = new Button("Send");
     private final Button startDataButton = new Button("Start data");
     private final Button sendRtcMessageButton = new Button("Send RTC message");
+    private final ToggleButton themeToggleButton = new ToggleButton("Dark theme");
+
+    private BorderPane root;
 
     private final ChatServerService serverService;
     private final ChatClientService clientService;
@@ -191,11 +199,12 @@ public class MainView {
     }
 
     public Parent createContent() {
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
+        root.getStyleClass().add("app-root");
         root.setPadding(new Insets(12));
-        root.setStyle("-fx-background-color: linear-gradient(to bottom, #f6f8fb, #eef2f7);");
         root.setTop(new VBox(12, buildStatusBar(), buildConnectionWorkspaceHeader()));
         root.setCenter(buildWorkspace());
+        applyTheme();
         return root;
     }
 
@@ -208,41 +217,54 @@ public class MainView {
 
     private void configureUiState() {
         fileFieldSetup();
+        themeToggleButton.setSelected(true);
+        themeToggleButton.setFocusTraversable(false);
+        themeToggleButton.getStyleClass().addAll("compact-toggle", "theme-toggle");
         messageField.setPromptText("Type a message for the shared chat...");
         rtcMessageField.setPromptText("Optional RTCDataChannel message...");
         logArea.setEditable(false);
         logArea.setWrapText(true);
+        logArea.getStyleClass().add("chat-log-area");
         diagnosticsArea.setEditable(false);
         diagnosticsArea.setWrapText(true);
         diagnosticsArea.setPrefRowCount(10);
-        diagnosticsArea.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 12;");
-        conversationTitleValue.setStyle("-fx-font-size: 18; -fx-font-weight: bold;");
-        conversationSubtitleValue.setStyle("-fx-text-fill: #5a6b85;");
-        selectedPeerTitleValue.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
+        diagnosticsArea.getStyleClass().addAll("chat-log-area", "mono-area");
+        conversationTitleValue.getStyleClass().add("page-title");
+        conversationSubtitleValue.getStyleClass().add("muted-label");
+        selectedPeerTitleValue.getStyleClass().add("section-heading");
         selectedPeerMetaValue.setWrapText(true);
-        selectedPeerMetaValue.setStyle("-fx-text-fill: #5a6b85;");
+        selectedPeerMetaValue.getStyleClass().add("muted-label");
+        peersTitleValue.getStyleClass().add("section-heading");
+        peersHintValue.setWrapText(true);
+        peersHintValue.getStyleClass().add("muted-label");
         styleStatusLabel(serverStatusValue);
         styleStatusLabel(connectionStatusValue);
         styleStatusLabel(peerStatusValue);
         styleStatusLabel(voiceStatusValue);
+        voicePanelStatusValue.setWrapText(true);
+        voicePanelStatusValue.getStyleClass().add("subtle-label");
         styleStatusLabel(transferStatusValue);
         realtimeRuntimeValue.setWrapText(true);
-        realtimeRuntimeValue.setStyle("-fx-text-fill: #1f6feb; -fx-font-weight: bold;");
-        audioProfileValue.setStyle("-fx-text-fill: #4f6b95;");
-        videoProfileValue.setStyle("-fx-text-fill: #4f6b95;");
+        realtimeRuntimeValue.getStyleClass().add("accent-label");
+        audioProfileValue.getStyleClass().add("subtle-label");
+        videoProfileValue.getStyleClass().add("subtle-label");
         transferHintValue.setWrapText(true);
-        transferHintValue.setStyle("-fx-text-fill: #5a6b85;");
+        transferHintValue.getStyleClass().add("muted-label");
         configureAudioLevelBar(localAudioLevelBar);
         configureAudioLevelBar(remoteAudioLevelBar);
         configureMediaStatusLabel(localAudioStatusValue);
         configureMediaStatusLabel(remoteAudioStatusValue);
         configureVideoView(localVideoView);
         configureVideoView(remoteVideoView);
-        peerListView.setPlaceholder(new Label("Peers will appear here when they join the chat."));
+        styleInteractiveControls();
+        peerListView.getStyleClass().add("content-list");
+        transferListView.getStyleClass().add("content-list");
+        peerListView.setPlaceholder(createMutedLabel("Peers will appear here when they join the chat."));
         peerListView.setCellFactory(list -> new PeerCell());
-        transferListView.setPlaceholder(new Label("Transfers will appear here."));
+        transferListView.setPlaceholder(createMutedLabel("Transfers will appear here."));
         transferListView.setCellFactory(list -> new TransferCell());
         peerListView.getSelectionModel().selectedItemProperty().addListener((obs, oldPeer, newPeer) -> updateSelectedPeer(newPeer));
+        themeToggleButton.selectedProperty().addListener((obs, oldValue, newValue) -> applyTheme());
         updateSelectedPeer(null);
         updateQuickActionState();
     }
@@ -361,15 +383,20 @@ public class MainView {
     }
 
     private Node buildStatusBar() {
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
         HBox bar = new HBox(12,
                 createStatusChip(serverIndicator, serverStatusValue),
                 createStatusChip(connectionIndicator, connectionStatusValue),
                 createStatusChip(peerIndicator, peerStatusValue),
                 createStatusChip(voiceIndicator, voiceStatusValue),
-                createStatusChip(transferIndicator, transferStatusValue)
+                createStatusChip(transferIndicator, transferStatusValue),
+                spacer,
+                themeToggleButton
         );
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setStyle("-fx-background-color: white; -fx-background-radius: 14; -fx-border-color: #d7dfeb; -fx-border-radius: 14; -fx-padding: 12 14 12 14;");
+        bar.getStyleClass().add("status-bar");
         return bar;
     }
 
@@ -377,7 +404,7 @@ public class MainView {
         HBox chip = new HBox(8, indicator, valueLabel);
         chip.setAlignment(Pos.CENTER_LEFT);
         chip.setPadding(new Insets(6, 10, 6, 10));
-        chip.setStyle("-fx-background-color: #f6f8fb; -fx-background-radius: 999;");
+        chip.getStyleClass().add("status-chip");
         return chip;
     }
 
@@ -415,20 +442,14 @@ public class MainView {
         SplitPane splitPane = new SplitPane();
         splitPane.getItems().addAll(buildPeersColumn(), buildConversationColumn(), buildActionsColumn());
         splitPane.setDividerPositions(0.20, 0.72);
-        splitPane.setStyle("-fx-background-color: transparent;");
+        splitPane.getStyleClass().add("workspace-split-pane");
         VBox.setVgrow(splitPane, Priority.ALWAYS);
         return splitPane;
     }
 
     private Node buildPeersColumn() {
-        Label title = new Label("Contacts / Peers");
-        title.setStyle("-fx-font-size: 16; -fx-font-weight: bold;");
-        Label hint = new Label("Select an online peer to target voice calls and file transfers.");
-        hint.setWrapText(true);
-        hint.setStyle("-fx-text-fill: #5a6b85;");
-
         VBox.setVgrow(peerListView, Priority.ALWAYS);
-        VBox content = new VBox(10, title, hint, peerListView);
+        VBox content = new VBox(10, peersTitleValue, peersHintValue, peerListView);
         VBox.setVgrow(content, Priority.ALWAYS);
         return createCard("Peers", content);
     }
@@ -464,7 +485,7 @@ public class MainView {
         );
 
         VBox voiceBlock = new VBox(8,
-                createMetricBlock("Voice status", voiceStatusValue),
+                createMetricBlock("Voice status", voicePanelStatusValue),
                 createMetricBlock("Local microphone", new VBox(6, localAudioLevelBar, localAudioStatusValue)),
                 createMetricBlock("Remote audio", new VBox(6, remoteAudioLevelBar, remoteAudioStatusValue))
         );
@@ -473,23 +494,24 @@ public class MainView {
         VBox.setVgrow(transferListView, Priority.ALWAYS);
 
         VBox advancedContent = new VBox(10,
-                new Label("Runtime"),
+                createSectionHeadingLabel("Runtime"),
                 realtimeRuntimeValue,
                 audioProfileValue,
                 videoProfileValue,
                 new Separator(),
-                new Label("RTCDataChannel"),
-                new Label("Use this for experiments and diagnostics. Video controls are hidden from the main UI until the feature becomes stable."),
+                createSectionHeadingLabel("RTCDataChannel"),
+                createMutedLabel("Use this for experiments and diagnostics. Video controls are hidden from the main UI until the feature becomes stable."),
                 startDataButton,
                 rtcMessageField,
                 sendRtcMessageButton,
                 new Separator(),
-                new Label("Diagnostics"),
+                createSectionHeadingLabel("Diagnostics"),
                 diagnosticsArea
         );
         VBox.setVgrow(diagnosticsArea, Priority.ALWAYS);
 
         TitledPane advancedPane = new TitledPane("Advanced / Experimental", advancedContent);
+        advancedPane.getStyleClass().add("advanced-pane");
         advancedPane.setExpanded(false);
         advancedPane.setAnimated(false);
 
@@ -509,39 +531,92 @@ public class MainView {
         VBox.setVgrow(transferListView, Priority.ALWAYS);
 
         ScrollPane scrollPane = new ScrollPane(content);
+        scrollPane.getStyleClass().add("actions-scroll-pane");
         scrollPane.setFitToWidth(true);
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scrollPane.setStyle("-fx-background-color: transparent;");
         return createCard("Actions", scrollPane);
     }
 
     private Node createMetricBlock(String title, Node content) {
-        VBox box = new VBox(6, new Label(title), content);
+        VBox box = new VBox(6, createMetricTitleLabel(title), content);
         return box;
     }
 
     private Node createSectionCard(String title, Node content) {
         VBox box = new VBox(8, sectionTitle(title), content);
         box.setPadding(new Insets(12));
-        box.setStyle("-fx-background-color: #f7f9fc; -fx-background-radius: 12; -fx-border-color: #dfe6f1; -fx-border-radius: 12;");
+        box.getStyleClass().add("section-card");
         return box;
     }
 
     private Label sectionTitle(String title) {
-        Label label = new Label(title);
-        label.setStyle("-fx-font-weight: bold;");
-        return label;
+        return createSectionHeadingLabel(title);
     }
 
     private Node createCard(String title, Node content) {
         Label header = new Label(title);
-        header.setStyle("-fx-font-size: 13; -fx-font-weight: bold; -fx-text-fill: #2a3b55;");
+        header.getStyleClass().add("card-title");
         VBox box = new VBox(10, header, content);
         box.setPadding(new Insets(14));
-        box.setStyle("-fx-background-color: white; -fx-background-radius: 16; -fx-border-color: #d7dfeb; -fx-border-radius: 16;");
+        box.getStyleClass().add("panel-card");
         VBox.setVgrow(content, Priority.ALWAYS);
         return box;
+    }
+
+
+    private Label createSectionHeadingLabel(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("section-title");
+        return label;
+    }
+
+    private Label createMetricTitleLabel(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("metric-title");
+        return label;
+    }
+
+    private Label createMutedLabel(String text) {
+        Label label = new Label(text);
+        label.setWrapText(true);
+        label.getStyleClass().add("muted-label");
+        return label;
+    }
+
+    private void styleInteractiveControls() {
+        applyButtonVariant(startServerButton, "primary-button");
+        applyButtonVariant(stopServerButton, "danger-button");
+        applyButtonVariant(connectButton, "primary-button");
+        applyButtonVariant(disconnectButton, "secondary-button");
+        applyButtonVariant(sendMessageButton, "primary-button");
+        applyButtonVariant(sendQuickActionButton, "primary-button");
+        applyButtonVariant(sendFileQuickActionButton, "secondary-button");
+        applyButtonVariant(startVoiceQuickActionButton, "primary-button");
+        applyButtonVariant(hangUpQuickActionButton, "danger-button");
+        applyButtonVariant(startDataButton, "secondary-button");
+        applyButtonVariant(sendRtcMessageButton, "secondary-button");
+    }
+
+    private void applyButtonVariant(Button button, String variantClass) {
+        button.getStyleClass().addAll("app-button", variantClass);
+        button.setMaxWidth(Double.MAX_VALUE);
+    }
+
+    private void applyTheme() {
+        if (root == null) {
+            return;
+        }
+        root.getStylesheets().setAll(
+                stylesheet("/styles/base.css"),
+                stylesheet(themeToggleButton.isSelected() ? "/styles/dark-theme.css" : "/styles/light-theme.css")
+        );
+        peerListView.refresh();
+        transferListView.refresh();
+    }
+
+    private String stylesheet(String path) {
+        return Objects.requireNonNull(getClass().getResource(path), "Missing stylesheet: " + path).toExternalForm();
     }
 
     private GridPane createCompactFormGrid() {
@@ -978,6 +1053,7 @@ public class MainView {
 
     private void setVoiceStatus(String value, Color color) {
         voiceStatusValue.setText(value);
+        voicePanelStatusValue.setText(value);
         voiceIndicator.setFill(color);
     }
 
@@ -987,7 +1063,7 @@ public class MainView {
     }
 
     private void styleStatusLabel(Label label) {
-        label.setStyle("-fx-font-weight: bold; -fx-text-fill: #223047;");
+        label.getStyleClass().add("status-value");
     }
 
     private void configureAudioLevelBar(ProgressBar bar) {
@@ -998,7 +1074,7 @@ public class MainView {
 
     private void configureMediaStatusLabel(Label label) {
         label.setWrapText(true);
-        label.setStyle("-fx-text-fill: #4f6b95;");
+        label.getStyleClass().add("subtle-label");
     }
 
     private void configureVideoView(ImageView view) {
@@ -1006,7 +1082,7 @@ public class MainView {
         view.setFitWidth(320);
         view.setFitHeight(200);
         view.setSmooth(true);
-        view.setStyle("-fx-background-color: #10161f; -fx-border-color: #2f3b4f; -fx-border-radius: 8; -fx-background-radius: 8;");
+        view.getStyleClass().add("video-preview");
     }
 
     private void showError(String message) {
@@ -1067,12 +1143,16 @@ public class MainView {
 
             Circle dot = new Circle(5, item.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
             Label name = new Label(item.nickname());
-            name.setStyle("-fx-font-weight: bold;");
+            name.getStyleClass().add("list-primary");
             Label meta = new Label(item.online() ? "chat • voice • file" : "offline");
-            meta.setStyle("-fx-text-fill: #5a6b85; -fx-font-size: 11;");
+            meta.getStyleClass().add("list-secondary");
             VBox textBox = new VBox(2, name, meta);
             HBox row = new HBox(8, dot, textBox);
+            row.getStyleClass().add("list-row");
             row.setAlignment(Pos.CENTER_LEFT);
+            if (!getStyleClass().contains("content-list-cell")) {
+                getStyleClass().add("content-list-cell");
+            }
             setGraphic(row);
         }
     }
@@ -1088,7 +1168,7 @@ public class MainView {
             }
 
             Label name = new Label(item.fileName);
-            name.setStyle("-fx-font-weight: bold;");
+            name.getStyleClass().add("list-primary");
             String metaText = item.status;
             if (item.percent > 0 && item.percent < 100 && item.active()) {
                 metaText += " — " + item.percent + "%";
@@ -1099,8 +1179,12 @@ public class MainView {
                 metaText += " — " + item.totalBytes + " bytes";
             }
             Label meta = new Label(metaText);
-            meta.setStyle("-fx-text-fill: #5a6b85; -fx-font-size: 11;");
+            meta.getStyleClass().add("list-secondary");
             VBox box = new VBox(2, name, meta);
+            box.getStyleClass().add("list-row");
+            if (!getStyleClass().contains("content-list-cell")) {
+                getStyleClass().add("content-list-cell");
+            }
             setGraphic(box);
         }
     }

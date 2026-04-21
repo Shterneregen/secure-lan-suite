@@ -59,7 +59,7 @@ The desktop client now uses a **messenger-style workspace** instead of the older
 
 ## Screenshots
 
-The UI was recently redesigned into a messenger-style layout. Refresh the screenshot in `docs/images/` when you capture a new image of the current interface.
+<img src="docs/images/app-main-0.2.0.png" alt="Secure LAN Suite main window" width="900">
 
 ## Requirements
 - JDK 25 installed
