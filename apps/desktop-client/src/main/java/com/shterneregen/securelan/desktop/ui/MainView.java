@@ -242,7 +242,7 @@ public class MainView {
         styleStatusLabel(peerStatusValue);
         styleStatusLabel(voiceStatusValue);
         voicePanelStatusValue.setWrapText(true);
-        voicePanelStatusValue.getStyleClass().add("subtle-label");
+        voicePanelStatusValue.getStyleClass().addAll("subtle-label", "status-value");
         styleStatusLabel(transferStatusValue);
         realtimeRuntimeValue.setWrapText(true);
         realtimeRuntimeValue.getStyleClass().add("accent-label");
@@ -485,7 +485,7 @@ public class MainView {
         );
 
         VBox voiceBlock = new VBox(8,
-                createMetricBlock("Voice status", voicePanelStatusValue),
+                voicePanelStatusValue,
                 createMetricBlock("Local microphone", new VBox(6, localAudioLevelBar, localAudioStatusValue)),
                 createMetricBlock("Remote audio", new VBox(6, remoteAudioLevelBar, remoteAudioStatusValue))
         );
