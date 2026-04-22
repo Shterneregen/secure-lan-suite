@@ -8,6 +8,8 @@ public enum WireMessageType {
     REJECTED,
     CHAT,
     SYSTEM,
+    USER_JOINED,
+    USER_LEFT,
     SIGNAL,
     DISCONNECT
 }

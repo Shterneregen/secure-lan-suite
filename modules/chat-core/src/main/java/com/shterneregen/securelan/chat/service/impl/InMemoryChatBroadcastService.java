@@ -29,9 +29,18 @@ public class InMemoryChatBroadcastService implements ChatBroadcastService {
     }
 
     @Override
+    public void syncPeers(ChatSocketSession session, String excludeNickname) {
+        clients.keySet().stream()
+                .filter(nickname -> excludeNickname == null || !nickname.equalsIgnoreCase(excludeNickname))
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .forEach(nickname -> writeQuietly(session, new WireMessage(WireMessageType.USER_JOINED, nickname, "")));
+    }
+
+    @Override
     public void publishUserJoined(String nickname) {
         String line = "[system] " + nickname + " joined the chat";
         historyService.append(line);
+        broadcast(new WireMessage(WireMessageType.USER_JOINED, nickname, ""));
         broadcast(new WireMessage(WireMessageType.SYSTEM, "system", line));
     }
 
@@ -39,6 +48,7 @@ public class InMemoryChatBroadcastService implements ChatBroadcastService {
     public void publishUserLeft(String nickname) {
         String line = "[system] " + nickname + " left the chat";
         historyService.append(line);
+        broadcast(new WireMessage(WireMessageType.USER_LEFT, nickname, ""));
         broadcast(new WireMessage(WireMessageType.SYSTEM, "system", line));
     }
 
@@ -55,11 +65,13 @@ public class InMemoryChatBroadcastService implements ChatBroadcastService {
     }
 
     private void broadcast(WireMessage message) {
-        clients.forEach((nickname, session) -> {
-            try {
-                session.writeMessage(message);
-            } catch (IOException ignored) {
-            }
-        });
+        clients.forEach((nickname, session) -> writeQuietly(session, message));
+    }
+
+    private void writeQuietly(ChatSocketSession session, WireMessage message) {
+        try {
+            session.writeMessage(message);
+        } catch (IOException ignored) {
+        }
     }
 }

@@ -81,6 +81,7 @@ public class DefaultChatServerService implements ChatServerService {
                     return;
                 }
                 String nickname = response.nickname();
+                broadcastService.syncPeers(session, nickname);
                 broadcastService.addClient(nickname, session);
                 broadcastService.publishUserJoined(nickname);
                 eventPublisher.publish(new ChatUserJoinedEvent(nickname));

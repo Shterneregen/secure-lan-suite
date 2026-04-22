@@ -4,6 +4,7 @@ import com.shterneregen.securelan.chat.event.ChatConnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatCoreEvent;
 import com.shterneregen.securelan.chat.event.ChatErrorEvent;
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent;
+import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent;
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest;
 import com.shterneregen.securelan.chat.service.ChatClientService;
 import com.shterneregen.securelan.chat.service.ChatEventPublisher;
@@ -64,6 +65,27 @@ class SecureChatIntegrationTest {
         assertTrue(await(events, e -> e instanceof ChatErrorEvent error && error.message().contains("Wrong session password"), 2_000));
     }
 
+    @Test
+    void peerPresenceShouldBeSyncedForExistingAndNewClients() throws Exception {
+        List<ChatCoreEvent> serverEvents = new CopyOnWriteArrayList<>();
+        List<ChatCoreEvent> aliceEvents = new CopyOnWriteArrayList<>();
+        List<ChatCoreEvent> bobEvents = new CopyOnWriteArrayList<>();
+
+        int port = freePort();
+        ChatServerService server = track(new DefaultChatServerService(serverEvents::add));
+        server.start(new ChatServerConfig(port, "chatpass"));
+
+        ChatClientService alice = track(new DefaultChatClientService(aliceEvents::add));
+        assertTrue(alice.connect(new ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")));
+        assertTrue(await(aliceEvents, e -> e instanceof ChatConnectedEvent, 2_000));
+
+        ChatClientService bob = track(new DefaultChatClientService(bobEvents::add));
+        assertTrue(bob.connect(new ChatClientConnectRequest("127.0.0.1", port, "bob", "chatpass")));
+        assertTrue(await(bobEvents, e -> e instanceof ChatConnectedEvent, 2_000));
+        assertTrue(await(bobEvents, e -> e instanceof ChatUserJoinedEvent joined && joined.nickname().equals("alice"), 2_000));
+        assertTrue(await(aliceEvents, e -> e instanceof ChatUserJoinedEvent joined && joined.nickname().equals("bob"), 2_000));
+    }
+
     private ChatServerService track(ChatServerService server) {
         servers.add(server);
         return server;
@@ -90,5 +112,4 @@ class SecureChatIntegrationTest {
             return socket.getLocalPort();
         }
     }
-
 }

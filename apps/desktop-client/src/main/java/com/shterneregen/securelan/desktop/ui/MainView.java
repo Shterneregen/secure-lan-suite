@@ -760,21 +760,26 @@ public class MainView {
                 peerItems.clear();
                 updateSelectedPeer(null);
             } else if (event instanceof ChatMessageReceivedEvent e) {
-                upsertPeer(e.senderNickname(), true);
+                if (!isSystemSender(e.senderNickname())) {
+                    upsertPeer(e.senderNickname(), true);
+                }
                 appendChat(e.senderNickname() + ": " + e.text());
             } else if (event instanceof ChatMessageSentEvent ignored) {
                 // message appears once via normal chat flow
             } else if (event instanceof ChatUserJoinedEvent e) {
                 if (!e.nickname().equalsIgnoreCase(nicknameField.getText().trim())) {
                     PeerPresence peer = upsertPeer(e.nickname(), true);
-                    appendChat("[join] " + e.nickname());
-                    if (peerListView.getSelectionModel().getSelectedItem() == null) {
-                        peerListView.getSelectionModel().select(peer);
+                    if (peer != null && peer.online()) {
+                        appendChat("[join] " + e.nickname());
+                        if (peerListView.getSelectionModel().getSelectedItem() == null) {
+                            peerListView.getSelectionModel().select(peer);
+                        }
                     }
                 }
             } else if (event instanceof ChatUserLeftEvent e) {
-                markPeerOffline(e.nickname());
-                appendChat("[left] " + e.nickname());
+                if (markPeerOffline(e.nickname())) {
+                    appendChat("[left] " + e.nickname());
+                }
             } else if (event instanceof ChatSignalReceivedEvent e) {
                 upsertPeer(e.signal().fromPeer(), true);
                 appendDiagnostics("[rtc-signal] " + e.signal().type() + " from " + e.signal().fromPeer() + " to " + e.signal().toPeer());
@@ -946,17 +951,21 @@ public class MainView {
     }
 
     private PeerPresence upsertPeer(String nickname, boolean online) {
-        if (nickname == null || nickname.isBlank() || nickname.equalsIgnoreCase(nicknameField.getText().trim())) {
+        if (nickname == null || nickname.isBlank() || isSystemSender(nickname) || nickname.equalsIgnoreCase(nicknameField.getText().trim())) {
             return null;
         }
 
         for (PeerPresence item : peerItems) {
             if (item.nickname().equalsIgnoreCase(nickname)) {
+                boolean changed = item.online != online;
                 item.online = online;
-                peerListView.refresh();
-                sortPeers();
-                refreshSelectedPeerStatus();
-                return item;
+                if (changed) {
+                    peerListView.refresh();
+                    sortPeers();
+                    refreshSelectedPeerStatus();
+                    return item;
+                }
+                return null;
             }
         }
 
@@ -967,19 +976,27 @@ public class MainView {
         return created;
     }
 
-    private void markPeerOffline(String nickname) {
-        if (nickname == null || nickname.isBlank()) {
-            return;
+    private boolean markPeerOffline(String nickname) {
+        if (nickname == null || nickname.isBlank() || isSystemSender(nickname)) {
+            return false;
         }
         for (PeerPresence item : peerItems) {
             if (item.nickname().equalsIgnoreCase(nickname)) {
+                boolean changed = item.online;
                 item.online = false;
-                peerListView.refresh();
-                sortPeers();
-                refreshSelectedPeerStatus();
-                return;
+                if (changed) {
+                    peerListView.refresh();
+                    sortPeers();
+                    refreshSelectedPeerStatus();
+                }
+                return changed;
             }
         }
+        return false;
+    }
+
+    private boolean isSystemSender(String nickname) {
+        return nickname != null && nickname.equalsIgnoreCase("system");
     }
 
     private void sortPeers() {
