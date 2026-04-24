@@ -113,3 +113,28 @@
 .text-area:disabled {
     -fx-opacity: 0.65;
 }
+
+
+.video-stage-card,
+.video-metric-chip,
+.video-stage-surface,
+.video-stage-surface-small,
+.video-stage-badge {
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+}
+
+.video-stage-badge {
+    -fx-padding: 6 10 6 10;
+}
+
+.video-stage-surface,
+.video-stage-surface-small {
+    -fx-padding: 8;
+}
+
+.video-stage-placeholder {
+    -fx-max-width: 220;
+    -fx-text-alignment: center;
+    -fx-alignment: center;
+}

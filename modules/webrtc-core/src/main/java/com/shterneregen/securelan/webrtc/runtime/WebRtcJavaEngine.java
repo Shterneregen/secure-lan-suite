@@ -31,6 +31,7 @@ import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.RTCSignalingState;
 import dev.onvoid.webrtc.SetSessionDescriptionObserver;
+import dev.onvoid.webrtc.media.FourCC;
 import dev.onvoid.webrtc.media.MediaDevices;
 import dev.onvoid.webrtc.media.MediaStream;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
@@ -44,7 +45,9 @@ import dev.onvoid.webrtc.media.video.I420Buffer;
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability;
 import dev.onvoid.webrtc.media.video.VideoDevice;
 import dev.onvoid.webrtc.media.video.VideoDeviceSource;
+import dev.onvoid.webrtc.media.video.VideoBufferConverter;
 import dev.onvoid.webrtc.media.video.VideoFrame;
+import dev.onvoid.webrtc.media.video.VideoFrameBuffer;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.onvoid.webrtc.media.video.VideoTrackSink;
 
@@ -65,7 +68,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
     private static final String STREAM_PREFIX = "securelan-stream-";
     private static final long VIDEO_PREVIEW_INTERVAL_NANOS = 100_000_000L;
     private static final long AUDIO_LEVEL_INTERVAL_NANOS = 120_000_000L;
-    private static final boolean VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.enabled", "true"));
+    private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
+    private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "false"));
 
     private final AudioDeviceModule audioDeviceModule;
     private final PeerConnectionFactory factory;
@@ -362,54 +366,21 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
     }
 
-    private static int clamp(int value) {
-        if (value < 0) {
-            return 0;
-        }
-        return Math.min(value, 255);
-    }
-
-    private static int[] convertToArgb(VideoFrame frame) {
-        I420Buffer buffer = frame.buffer.toI420();
+    private static byte[] convertToBgra(VideoFrame frame) {
+        I420Buffer i420 = frame.buffer.toI420();
         try {
-            int width = buffer.getWidth();
-            int height = buffer.getHeight();
-            int[] argb = new int[width * height];
+            int width = i420.getWidth();
+            int height = i420.getHeight();
+            byte[] bgra = new byte[width * height * 4];
 
-            ByteBuffer dataY = buffer.getDataY();
-            ByteBuffer dataU = buffer.getDataU();
-            ByteBuffer dataV = buffer.getDataV();
-            int strideY = buffer.getStrideY();
-            int strideU = buffer.getStrideU();
-            int strideV = buffer.getStrideV();
-
-            for (int y = 0; y < height; y++) {
-                int yRow = y * strideY;
-                int uvRow = (y / 2) * strideU;
-                int uvRowV = (y / 2) * strideV;
-                int dstRow = y * width;
-                for (int x = 0; x < width; x++) {
-                    int yValue = dataY.get(yRow + x) & 0xFF;
-                    int uValue = dataU.get(uvRow + (x / 2)) & 0xFF;
-                    int vValue = dataV.get(uvRowV + (x / 2)) & 0xFF;
-
-                    int c = yValue - 16;
-                    int d = uValue - 128;
-                    int e = vValue - 128;
-                    if (c < 0) {
-                        c = 0;
-                    }
-
-                    int red = clamp((298 * c + 409 * e + 128) >> 8);
-                    int green = clamp((298 * c - 100 * d - 208 * e + 128) >> 8);
-                    int blue = clamp((298 * c + 516 * d + 128) >> 8);
-
-                    argb[dstRow + x] = (0xFF << 24) | (red << 16) | (green << 8) | blue;
-                }
+            try {
+                VideoBufferConverter.convertFromI420(i420, bgra, FourCC.BGRA);
+                return bgra;
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to convert video frame to BGRA", e);
             }
-            return argb;
         } finally {
-            buffer.release();
+            i420.release();
         }
     }
 
@@ -454,9 +425,11 @@ public final class WebRtcJavaEngine implements RtcEngine {
                     diag(eventConsumer, (local ? "local" : "remote") + " video frames received=" + frameIndex + " latest=" + width + "x" + height + " rotation=" + rotation + " peer=" + peer);
                 }
 
-                if (!VIDEO_PREVIEW_ENABLED) {
+                boolean previewEnabled = local ? LOCAL_VIDEO_PREVIEW_ENABLED : REMOTE_VIDEO_PREVIEW_ENABLED;
+                if (!previewEnabled) {
                     if (previewDisabledLogged.compareAndSet(false, true)) {
-                        diag(eventConsumer, "video preview conversion disabled by -Dsecurelan.rtc.videoPreview.enabled=false");
+                        diag(eventConsumer, "video preview conversion disabled for " + (local ? "local" : "remote")
+                                + " stream (set -Dsecurelan.rtc.videoPreview." + (local ? "local" : "remote") + ".enabled=true to enable)");
                     }
                     return;
                 }
@@ -471,7 +444,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 }
 
                 try {
-                    int[] argbPixels = convertToArgb(frame);
+                    byte[] bgraPixels = convertToBgra(frame);
                     eventConsumer.accept(new RtcVideoFrameEvent(
                             sessionId,
                             peer,
@@ -479,7 +452,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
                             width,
                             height,
                             rotation,
-                            argbPixels
+                            bgraPixels
                     ));
                 } catch (Throwable error) {
                     if (previewConversionFailed.compareAndSet(false, true)) {
@@ -487,7 +460,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
                                 "Video preview conversion failed for " + (local ? "local" : "remote") + " stream of " + peer + ": " + error.getClass().getSimpleName() + ": " + error.getMessage()
                         );
                         consoleError("Video preview conversion failed for " + (local ? "local" : "remote") + " stream of " + peer, error);
-                        diag(eventConsumer, "preview conversion failure happened after frame " + frameIndex + "; try running with -Dsecurelan.rtc.videoPreview.enabled=false to isolate transport from UI conversion");
+                        diag(eventConsumer, "preview conversion failure happened after frame " + frameIndex + "; try toggling -Dsecurelan.rtc.videoPreview.local.enabled=false or -Dsecurelan.rtc.videoPreview.remote.enabled=false to isolate preview rendering from transport");
                     }
                 }
             } finally {
@@ -808,8 +781,10 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 diag(eventConsumer, "video source started for " + safeToString(camera));
 
                 videoTrack = factory.createVideoTrack("video-" + sessionId, videoSource);
-                localVideoSink = new PreviewVideoSink(sessionId, localPeer, mode, true, eventConsumer);
-                videoTrack.addSink(localVideoSink);
+                if (LOCAL_VIDEO_PREVIEW_ENABLED) {
+                    localVideoSink = new PreviewVideoSink(sessionId, localPeer, mode, true, eventConsumer);
+                    videoTrack.addSink(localVideoSink);
+                }
                 peerConnection.addTrack(videoTrack, List.of(streamId));
                 diag(eventConsumer, "local video track added for session=" + sessionId + " streamId=" + streamId);
             } catch (Throwable error) {
@@ -1138,8 +1113,10 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
             if (MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind()) && track instanceof VideoTrack remoteTrack) {
                 remoteVideoTrack = remoteTrack;
-                remoteVideoSink = new PreviewVideoSink(sessionId, remotePeer, mode, false, eventConsumer);
-                remoteTrack.addSink(remoteVideoSink);
+                if (REMOTE_VIDEO_PREVIEW_ENABLED) {
+                    remoteVideoSink = new PreviewVideoSink(sessionId, remotePeer, mode, false, eventConsumer);
+                    remoteTrack.addSink(remoteVideoSink);
+                }
                 publishState(RtcSessionState.CONNECTING, "Remote video track attached");
                 diag(eventConsumer, "remote video sink attached for session=" + sessionId + " peer=" + remotePeer);
             } else if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind()) && track instanceof AudioTrack remoteTrack) {

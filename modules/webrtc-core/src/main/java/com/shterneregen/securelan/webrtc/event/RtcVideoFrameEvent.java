@@ -7,6 +7,6 @@ public record RtcVideoFrameEvent(
         int width,
         int height,
         int rotation,
-        int[] argbPixels
+        byte[] bgraPixels
 ) implements RtcEvent {
 }
