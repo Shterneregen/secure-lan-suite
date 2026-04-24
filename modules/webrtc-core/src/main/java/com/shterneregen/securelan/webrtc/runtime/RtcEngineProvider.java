@@ -9,6 +9,17 @@ public final class RtcEngineProvider {
             return new WebRtcJavaEngine();
         } catch (Throwable error) {
             error.printStackTrace();
+            RtcFileLogger.error("Failed to initialize webrtc-java provider", error);
+            return new NoOpRtcEngine(buildFailureMessage(error));
+        }
+    }
+
+    public static RtcEngine createDefault(String preferredAudioCaptureDeviceId, String preferredVideoCaptureDeviceId) {
+        try {
+            return new WebRtcJavaEngine(preferredAudioCaptureDeviceId, preferredVideoCaptureDeviceId);
+        } catch (Throwable error) {
+            error.printStackTrace();
+            RtcFileLogger.error("Failed to initialize webrtc-java provider", error);
             return new NoOpRtcEngine(buildFailureMessage(error));
         }
     }

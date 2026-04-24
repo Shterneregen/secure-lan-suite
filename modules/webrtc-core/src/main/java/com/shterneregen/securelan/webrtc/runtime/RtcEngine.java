@@ -15,6 +15,8 @@ public interface RtcEngine extends AutoCloseable {
             String remotePeer,
             RtcSessionMode mode,
             String dataChannelLabel,
+            String audioCaptureDeviceId,
+            String videoCaptureDeviceId,
             Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             Consumer<RtcEvent> eventConsumer
     );

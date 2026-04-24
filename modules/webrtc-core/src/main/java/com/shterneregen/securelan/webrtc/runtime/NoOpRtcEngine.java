@@ -26,7 +26,7 @@ public class NoOpRtcEngine implements RtcEngine {
     }
 
     @Override
-    public void startSession(String sessionId, String localPeer, String remotePeer, com.shterneregen.securelan.common.model.rtc.RtcSessionMode mode, String dataChannelLabel, Consumer<RtcSignalEnvelope> outboundSignalConsumer, Consumer<RtcEvent> eventConsumer) {
+    public void startSession(String sessionId, String localPeer, String remotePeer, com.shterneregen.securelan.common.model.rtc.RtcSessionMode mode, String dataChannelLabel, String audioCaptureDeviceId, String videoCaptureDeviceId, Consumer<RtcSignalEnvelope> outboundSignalConsumer, Consumer<RtcEvent> eventConsumer) {
         eventConsumer.accept(new RtcRuntimeWarningEvent(message));
     }
 

@@ -4,11 +4,24 @@ import com.shterneregen.securelan.common.model.rtc.RtcSessionMode;
 
 import java.util.Objects;
 
-public record RtcSessionRequest(String localPeer, String remotePeer, RtcSessionMode mode, String dataChannelLabel) {
+public record RtcSessionRequest(
+        String localPeer,
+        String remotePeer,
+        RtcSessionMode mode,
+        String dataChannelLabel,
+        String audioCaptureDeviceId,
+        String videoCaptureDeviceId
+) {
     public RtcSessionRequest {
         Objects.requireNonNull(mode, "mode must not be null");
         localPeer = localPeer == null ? "" : localPeer.trim();
         remotePeer = remotePeer == null ? "" : remotePeer.trim();
         dataChannelLabel = dataChannelLabel == null || dataChannelLabel.isBlank() ? "securelan-data" : dataChannelLabel.trim();
+        audioCaptureDeviceId = audioCaptureDeviceId == null ? "" : audioCaptureDeviceId.trim();
+        videoCaptureDeviceId = videoCaptureDeviceId == null ? "" : videoCaptureDeviceId.trim();
+    }
+
+    public RtcSessionRequest(String localPeer, String remotePeer, RtcSessionMode mode, String dataChannelLabel) {
+        this(localPeer, remotePeer, mode, dataChannelLabel, "", "");
     }
 }

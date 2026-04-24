@@ -170,3 +170,26 @@
     -fx-background-radius: 0 0 12 12;
     -fx-border-radius: 0 0 12 12;
 }
+
+
+.video-stage-card {
+    -fx-background-color: #121b28;
+    -fx-border-color: #2a3950;
+}
+
+.video-metric-chip {
+    -fx-background-color: #182334;
+    -fx-border-color: #2a3950;
+}
+
+.video-stage-surface,
+.video-stage-surface-small {
+    -fx-background-color: #09111d;
+    -fx-border-color: #2a3950;
+}
+
+.video-stage-badge {
+    -fx-background-color: #1d4ed8;
+    -fx-border-color: #2563eb;
+    -fx-text-fill: #ffffff;
+}

@@ -43,8 +43,11 @@ import com.shterneregen.securelan.webrtc.event.RtcRuntimeWarningEvent;
 import com.shterneregen.securelan.webrtc.event.RtcStateChangedEvent;
 import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent;
 import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus;
+import com.shterneregen.securelan.webrtc.service.RtcMediaDevice;
+import com.shterneregen.securelan.webrtc.service.RtcMediaDeviceService;
 import com.shterneregen.securelan.webrtc.service.RtcSessionRequest;
 import com.shterneregen.securelan.webrtc.service.RtcSessionService;
+import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcMediaDeviceService;
 import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcSessionService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -55,6 +58,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -69,15 +73,18 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
+import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 
 import java.io.File;
 import java.net.Inet4Address;
@@ -92,8 +99,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MainView {
+    private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "false"));
+    private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
+
     private final TextField serverChatPortField = new TextField("5050");
     private final TextField serverFilePortField = new TextField("5051");
     private final TextField downloadsField = new TextField("downloads");
@@ -114,6 +125,8 @@ public class MainView {
     private final TextArea logArea = new TextArea();
     private final TextArea diagnosticsArea = new TextArea();
     private final TextField messageField = new TextField();
+    private final ComboBox<MediaDeviceChoice> microphoneChoiceBox = new ComboBox<>();
+    private final ComboBox<MediaDeviceChoice> cameraChoiceBox = new ComboBox<>();
 
     private final Circle serverIndicator = new Circle(5, Color.web("#9aa4b2"));
     private final Circle connectionIndicator = new Circle(5, Color.web("#9aa4b2"));
@@ -129,26 +142,46 @@ public class MainView {
     private final Label transferStatusValue = new Label("Transfers idle");
 
     private final Label conversationTitleValue = new Label("Shared room activity");
-    private final Label conversationSubtitleValue = new Label("Select a peer on the left for voice and file actions.");
+    private final Label conversationSubtitleValue = new Label("Select a peer on the left for voice, video, and file actions.");
     private final Label selectedPeerTitleValue = new Label("No peer selected");
-    private final Label selectedPeerMetaValue = new Label("Choose an online peer to send files or start voice.");
+    private final Label selectedPeerMetaValue = new Label("Choose an online peer to send files or start a voice/video session.");
     private final Label peersTitleValue = new Label("Contacts / Peers");
-    private final Label peersHintValue = new Label("Select an online peer to target voice calls and file transfers.");
+    private final Label peersHintValue = new Label("Select an online peer to target voice/video calls and file transfers.");
     private final Label realtimeRuntimeValue = new Label("Checking runtime");
     private final Label audioProfileValue = new Label();
     private final Label videoProfileValue = new Label();
     private final Label localAudioStatusValue = new Label("Idle");
     private final Label remoteAudioStatusValue = new Label("Idle");
+    private final Label microphoneTestStatusValue = new Label("Not tested");
+    private final Label cameraTestStatusValue = new Label("Not tested");
     private final Label transferHintValue = new Label("No transfers yet");
+    private final Label videoStageTitleValue = new Label("Video stage");
+    private final Label videoStageSubtitleValue = new Label("Start a video call to open the inline video stage.");
+    private final Label videoStageBadgeValue = new Label("Idle");
+    private final Label videoParticipantsValue = new Label("Waiting for participants");
+    private final Label videoMediaValue = new Label("Camera starts only when a video call begins");
+    private final Label videoPreviewValue = new Label();
+    private final Label remoteVideoCaptionValue = new Label("Remote stream");
+    private final Label localVideoCaptionValue = new Label("Self preview");
+    private final Label remoteVideoPlaceholderValue = new Label("Remote video will appear here when the call connects.");
+    private final Label localVideoPlaceholderValue = new Label();
 
     private final ProgressBar localAudioLevelBar = new ProgressBar(0);
     private final ProgressBar remoteAudioLevelBar = new ProgressBar(0);
 
     private final ImageView localVideoView = new ImageView();
     private final ImageView remoteVideoView = new ImageView();
+    private final VBox videoStageBox = new VBox(12);
 
     private WritableImage localVideoImage;
     private WritableImage remoteVideoImage;
+    private RtcMediaDeviceService.CameraPreviewSession cameraPreviewSession;
+    private Stage cameraPreviewStage;
+    private ImageView cameraPreviewView;
+    private Label cameraPreviewPlaceholderValue;
+    private Label cameraPreviewStatusValue;
+    private WritableImage cameraPreviewImage;
+    private final AtomicLong latestCameraPreviewGeneration = new AtomicLong(0);
 
     private final ObservableList<PeerPresence> peerItems = FXCollections.observableArrayList();
     private final ListView<PeerPresence> peerListView = new ListView<>(peerItems);
@@ -159,6 +192,7 @@ public class MainView {
     private final Button sendQuickActionButton = new Button("Send message");
     private final Button sendFileQuickActionButton = new Button("Send file");
     private final Button startVoiceQuickActionButton = new Button("Start voice");
+    private final Button startVideoQuickActionButton = new Button("Start video");
     private final Button hangUpQuickActionButton = new Button("Hang up");
     private final Button startServerButton = new Button("Start server");
     private final Button stopServerButton = new Button("Stop server");
@@ -167,6 +201,8 @@ public class MainView {
     private final Button sendMessageButton = new Button("Send");
     private final Button startDataButton = new Button("Start data");
     private final Button sendRtcMessageButton = new Button("Send RTC message");
+    private final Button testMicrophoneButton = new Button("Test mic");
+    private final Button testCameraButton = new Button("Test camera");
     private final ToggleButton themeToggleButton = new ToggleButton("Dark theme");
 
     private BorderPane root;
@@ -176,6 +212,7 @@ public class MainView {
     private final FileTransferServerService fileTransferServerService;
     private final FileTransferClientService fileTransferClientService;
     private final RtcSessionService rtcSessionService;
+    private final RtcMediaDeviceService rtcMediaDeviceService;
     private final AudioProfileService audioProfileService;
     private final VideoProfileService videoProfileService;
 
@@ -188,6 +225,7 @@ public class MainView {
         this.fileTransferClientService = new DefaultFileTransferClientService(fileTransferPublisher);
         this.audioProfileService = new DefaultAudioProfileService();
         this.videoProfileService = new DefaultVideoProfileService();
+        this.rtcMediaDeviceService = new DefaultRtcMediaDeviceService();
         this.rtcSessionService = new DefaultRtcSessionService(this::handleRtcEvent, clientService::sendSignal);
         syncPasswords();
         syncSharedClientFields();
@@ -195,6 +233,7 @@ public class MainView {
         wireActions();
         publishLocalNetworkInfo();
         publishRealtimeProfiles();
+        refreshMediaDeviceChoices();
         publishRealtimeRuntimeStatus();
     }
 
@@ -209,6 +248,8 @@ public class MainView {
     }
 
     public void shutdown() {
+        closeCameraPreview();
+        rtcMediaDeviceService.close();
         rtcSessionService.close();
         clientService.disconnect();
         serverService.stop();
@@ -250,13 +291,36 @@ public class MainView {
         videoProfileValue.getStyleClass().add("subtle-label");
         transferHintValue.setWrapText(true);
         transferHintValue.getStyleClass().add("muted-label");
+        videoStageTitleValue.getStyleClass().add("section-heading");
+        videoStageSubtitleValue.setWrapText(true);
+        videoStageSubtitleValue.getStyleClass().add("muted-label");
+        videoStageBadgeValue.getStyleClass().addAll("status-value", "video-stage-badge");
+        videoParticipantsValue.getStyleClass().add("status-value");
+        videoMediaValue.getStyleClass().add("status-value");
+        videoPreviewValue.getStyleClass().add("status-value");
+        remoteVideoCaptionValue.getStyleClass().add("metric-title");
+        localVideoCaptionValue.getStyleClass().add("metric-title");
+        remoteVideoPlaceholderValue.setWrapText(true);
+        remoteVideoPlaceholderValue.getStyleClass().addAll("muted-label", "video-stage-placeholder");
+        localVideoPlaceholderValue.setWrapText(true);
+        localVideoPlaceholderValue.getStyleClass().addAll("muted-label", "video-stage-placeholder");
+        videoPreviewValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED
+                ? "Self preview on • remote preview " + (REMOTE_VIDEO_PREVIEW_ENABLED ? "on" : "off")
+                : "Self preview off by default • remote preview " + (REMOTE_VIDEO_PREVIEW_ENABLED ? "on" : "off"));
+        localVideoPlaceholderValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED
+                ? "Self preview will appear here when your camera starts."
+                : "Self preview is off by default for stability. Your camera still sends video to the peer.");
         configureAudioLevelBar(localAudioLevelBar);
         configureAudioLevelBar(remoteAudioLevelBar);
         configureMediaStatusLabel(localAudioStatusValue);
         configureMediaStatusLabel(remoteAudioStatusValue);
+        configureMediaStatusLabel(microphoneTestStatusValue);
+        configureMediaStatusLabel(cameraTestStatusValue);
         configureVideoView(localVideoView);
         configureVideoView(remoteVideoView);
+        configureVideoStage();
         styleInteractiveControls();
+        configureMediaDeviceSelectors();
         peerListView.getStyleClass().add("content-list");
         transferListView.getStyleClass().add("content-list");
         peerListView.setPlaceholder(createMutedLabel("Peers will appear here when they join the chat."));
@@ -285,10 +349,13 @@ public class MainView {
         });
         sendFileQuickActionButton.setOnAction(event -> chooseAndSendFileForSelectedPeer());
         startVoiceQuickActionButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.AUDIO));
+        startVideoQuickActionButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.AUDIO_VIDEO));
         hangUpQuickActionButton.setOnAction(event -> rtcSessionService.closeCurrentSession());
         startDataButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.DATA));
         sendRtcMessageButton.setOnAction(event -> sendRtcMessage());
         rtcMessageField.setOnAction(event -> sendRtcMessage());
+        testMicrophoneButton.setOnAction(event -> testSelectedMicrophone());
+        testCameraButton.setOnAction(event -> testSelectedCamera());
     }
 
     private void fileFieldSetup() {
@@ -303,8 +370,185 @@ public class MainView {
         VideoCallProfile videoProfile = videoProfileService.defaultProfile();
         audioProfileValue.setText("Audio: %d Hz, %d ch, echo cancel=%s, noise suppression=%s"
                 .formatted(audioProfile.sampleRateHz(), audioProfile.channels(), audioProfile.echoCancellation(), audioProfile.noiseSuppression()));
-        videoProfileValue.setText("Video hidden in main UI. Default profile remains %dx%d @ %d FPS."
+        videoProfileValue.setText((LOCAL_VIDEO_PREVIEW_ENABLED
+                ? "Video stage enabled inline. "
+                : "Video stage enabled inline with self preview off by default. ")
+                + "Default profile %dx%d @ %d FPS."
                 .formatted(videoProfile.width(), videoProfile.height(), videoProfile.framesPerSecond()));
+    }
+
+    private void configureMediaDeviceSelectors() {
+        configureMediaDeviceChoiceBox(microphoneChoiceBox, "Default microphone");
+        configureMediaDeviceChoiceBox(cameraChoiceBox, "Default camera");
+    }
+
+    private void configureMediaDeviceChoiceBox(ComboBox<MediaDeviceChoice> choiceBox, String prompt) {
+        choiceBox.setMaxWidth(Double.MAX_VALUE);
+        choiceBox.setPromptText(prompt);
+        choiceBox.setButtonCell(new MediaDeviceChoiceCell());
+        choiceBox.setCellFactory(list -> new MediaDeviceChoiceCell());
+    }
+
+    private void refreshMediaDeviceChoices() {
+        refreshMediaDeviceChoiceBox(microphoneChoiceBox, rtcMediaDeviceService.audioCaptureDevices(), "System default microphone", "No microphones detected");
+        refreshMediaDeviceChoiceBox(cameraChoiceBox, rtcMediaDeviceService.videoCaptureDevices(), "System default camera", "No cameras detected");
+    }
+
+    private void refreshMediaDeviceChoiceBox(ComboBox<MediaDeviceChoice> choiceBox, List<RtcMediaDevice> devices, String defaultLabel, String emptyLabel) {
+        String selectedId = selectedDeviceId(choiceBox);
+        ObservableList<MediaDeviceChoice> choices = FXCollections.observableArrayList();
+        choices.add(MediaDeviceChoice.systemDefault(defaultLabel));
+        for (RtcMediaDevice device : devices) {
+            choices.add(MediaDeviceChoice.of(device));
+        }
+
+        choiceBox.setItems(choices);
+        MediaDeviceChoice selectedChoice = choices.stream()
+                .filter(choice -> choice.matches(selectedId))
+                .findFirst()
+                .orElseGet(() -> choices.isEmpty() ? null : choices.getFirst());
+        choiceBox.getSelectionModel().select(selectedChoice);
+        if (devices.isEmpty()) {
+            appendDiagnostics("[rtc] " + emptyLabel);
+        }
+    }
+
+    private String selectedDeviceId(ComboBox<MediaDeviceChoice> choiceBox) {
+        MediaDeviceChoice selected = choiceBox.getSelectionModel().getSelectedItem();
+        return selected == null ? "" : selected.deviceId();
+    }
+
+    private void testSelectedMicrophone() {
+        testMicrophoneButton.setDisable(true);
+        String deviceId = selectedDeviceId(microphoneChoiceBox);
+        appendDiagnostics("[rtc-test] microphone test started");
+        Thread thread = new Thread(() -> {
+            String result = rtcMediaDeviceService.testAudioCaptureDevice(deviceId);
+            Platform.runLater(() -> {
+                appendDiagnostics("[rtc-test] " + result);
+                microphoneTestStatusValue.setText(result);
+                testMicrophoneButton.setDisable(false);
+            });
+        }, "securelan-rtc-microphone-test");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void testSelectedCamera() {
+        testCameraButton.setDisable(true);
+        String deviceId = selectedDeviceId(cameraChoiceBox);
+        closeCameraPreview();
+        long previewGeneration = latestCameraPreviewGeneration.incrementAndGet();
+        openCameraPreviewWindow();
+        appendDiagnostics("[rtc-test] camera preview started");
+        Thread thread = new Thread(() -> {
+            RtcMediaDeviceService.CameraPreviewSession previewSession;
+            try {
+                previewSession = rtcMediaDeviceService.startVideoPreview(
+                        deviceId,
+                        frame -> Platform.runLater(() -> updateCameraPreview(previewGeneration, frame))
+                );
+            } catch (Throwable error) {
+                String result = "Camera preview failed: " + error.getClass().getSimpleName() + ": " + error.getMessage();
+                Platform.runLater(() -> {
+                    appendDiagnostics("[rtc-test] " + result);
+                    cameraTestStatusValue.setText(result);
+                    if (cameraPreviewStatusValue != null) {
+                        cameraPreviewStatusValue.setText(result);
+                    }
+                    testCameraButton.setDisable(false);
+                });
+                return;
+            }
+            Platform.runLater(() -> {
+                try {
+                    if (previewGeneration != latestCameraPreviewGeneration.get()) {
+                        closeCameraPreviewSessionQuietly(previewSession);
+                        return;
+                    }
+                    cameraPreviewSession = previewSession;
+                    String result = previewSession.statusMessage();
+                    appendDiagnostics("[rtc-test] " + result);
+                    cameraTestStatusValue.setText(result);
+                    if (cameraPreviewStatusValue != null) {
+                        cameraPreviewStatusValue.setText(result);
+                    }
+                } finally {
+                    testCameraButton.setDisable(false);
+                }
+            });
+        }, "securelan-rtc-camera-test");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void openCameraPreviewWindow() {
+        cameraPreviewImage = null;
+        cameraPreviewView = new ImageView();
+        configureVideoView(cameraPreviewView);
+        cameraPreviewView.setFitWidth(640);
+        cameraPreviewView.setFitHeight(480);
+        cameraPreviewPlaceholderValue = new Label("Starting camera preview…");
+        cameraPreviewPlaceholderValue.setWrapText(true);
+        cameraPreviewPlaceholderValue.getStyleClass().addAll("muted-label", "video-stage-placeholder");
+        cameraPreviewStatusValue = new Label("Starting camera preview…");
+        cameraPreviewStatusValue.setWrapText(true);
+        cameraPreviewStatusValue.getStyleClass().add("muted-label");
+        StackPane surface = createVideoSurface(cameraPreviewView, cameraPreviewPlaceholderValue, "video-stage-surface", 640, 480);
+        VBox content = new VBox(12, new Label("Camera preview"), cameraPreviewStatusValue, surface);
+        content.setPadding(new Insets(14));
+        content.getStyleClass().add("video-stage-card");
+
+        cameraPreviewStage = new Stage();
+        cameraPreviewStage.setTitle("SecureLanSuite — Camera preview");
+        Scene scene = new Scene(content, 700, 580);
+        scene.getStylesheets().setAll(
+                stylesheet("/styles/base.css"),
+                stylesheet(themeToggleButton.isSelected() ? "/styles/dark-theme.css" : "/styles/light-theme.css")
+        );
+        cameraPreviewStage.setScene(scene);
+        cameraPreviewStage.setOnCloseRequest(event -> closeCameraPreview());
+        cameraPreviewStage.show();
+    }
+
+    private void updateCameraPreview(long previewGeneration, RtcVideoFrameEvent event) {
+        if (previewGeneration != latestCameraPreviewGeneration.get() || cameraPreviewView == null) {
+            return;
+        }
+        cameraPreviewImage = applyVideoFrame(cameraPreviewView, cameraPreviewImage, event);
+        if (cameraPreviewPlaceholderValue != null) {
+            cameraPreviewPlaceholderValue.setVisible(false);
+            cameraPreviewPlaceholderValue.setManaged(false);
+        }
+        if (cameraPreviewStatusValue != null) {
+            cameraPreviewStatusValue.setText("Camera preview live • " + event.width() + "x" + event.height());
+        }
+    }
+
+    private void closeCameraPreview() {
+        latestCameraPreviewGeneration.incrementAndGet();
+        RtcMediaDeviceService.CameraPreviewSession session = cameraPreviewSession;
+        cameraPreviewSession = null;
+        if (session != null) {
+            closeCameraPreviewSessionQuietly(session);
+        }
+        Stage stage = cameraPreviewStage;
+        cameraPreviewStage = null;
+        if (stage != null) {
+            stage.close();
+        }
+        cameraPreviewView = null;
+        cameraPreviewPlaceholderValue = null;
+        cameraPreviewStatusValue = null;
+        cameraPreviewImage = null;
+    }
+
+    private void closeCameraPreviewSessionQuietly(RtcMediaDeviceService.CameraPreviewSession session) {
+        try {
+            session.close();
+        } catch (Throwable ignored) {
+            // Camera preview cleanup must not break window shutdown or test button recovery.
+        }
     }
 
     private void publishRealtimeRuntimeStatus() {
@@ -459,7 +703,8 @@ public class MainView {
         HBox messageRow = new HBox(10, messageField, sendMessageButton);
         HBox.setHgrow(messageField, Priority.ALWAYS);
 
-        VBox content = new VBox(10,
+        VBox content = new VBox(12,
+                videoStageBox,
                 conversationTitleValue,
                 conversationSubtitleValue,
                 logArea,
@@ -469,25 +714,98 @@ public class MainView {
         return createCard("Chat", content);
     }
 
+    private void configureVideoStage() {
+        videoStageBox.getStyleClass().add("video-stage-card");
+        videoStageBox.setPadding(new Insets(14));
+        videoStageBox.setVisible(false);
+        videoStageBox.setManaged(false);
+        remoteVideoView.setFitWidth(640);
+        remoteVideoView.setFitHeight(300);
+        localVideoView.setFitWidth(220);
+        localVideoView.setFitHeight(150);
+        videoStageBox.getChildren().setAll(buildVideoStageContent());
+    }
+
+    private Node buildVideoStageContent() {
+        Region headerSpacer = new Region();
+        HBox.setHgrow(headerSpacer, Priority.ALWAYS);
+
+        HBox header = new HBox(10,
+                new VBox(4, videoStageTitleValue, videoStageSubtitleValue),
+                headerSpacer,
+                videoStageBadgeValue
+        );
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        HBox metrics = new HBox(8,
+                createVideoMetricChip("Participants", videoParticipantsValue),
+                createVideoMetricChip("Media", videoMediaValue),
+                createVideoMetricChip("Preview", videoPreviewValue)
+        );
+
+        VBox remoteBox = new VBox(8,
+                remoteVideoCaptionValue,
+                createVideoSurface(remoteVideoView, remoteVideoPlaceholderValue, "video-stage-surface", 640, 300)
+        );
+        HBox.setHgrow(remoteBox, Priority.ALWAYS);
+        VBox.setVgrow((Node) remoteBox.getChildren().get(1), Priority.ALWAYS);
+
+        VBox localBox = new VBox(8,
+                localVideoCaptionValue,
+                createVideoSurface(localVideoView, localVideoPlaceholderValue, "video-stage-surface-small", 220, 150)
+        );
+        localBox.setAlignment(Pos.TOP_LEFT);
+
+        HBox stageBody = new HBox(12, remoteBox, localBox);
+        HBox.setHgrow(remoteBox, Priority.ALWAYS);
+
+        return new VBox(12, header, metrics, stageBody);
+    }
+
+    private Node createVideoMetricChip(String title, Label valueLabel) {
+        Label titleLabel = createMetricTitleLabel(title);
+        VBox box = new VBox(2, titleLabel, valueLabel);
+        box.getStyleClass().add("video-metric-chip");
+        box.setPadding(new Insets(8, 10, 8, 10));
+        return box;
+    }
+
+    private StackPane createVideoSurface(ImageView view, Label placeholder, String styleClass, double width, double height) {
+        StackPane stack = new StackPane(view, placeholder);
+        stack.setAlignment(Pos.CENTER);
+        stack.setMinHeight(height);
+        stack.setPrefHeight(height);
+        stack.setPrefWidth(width);
+        stack.setMaxWidth(Double.MAX_VALUE);
+        stack.getStyleClass().add(styleClass);
+        return stack;
+    }
+
     private Node buildActionsColumn() {
         sendQuickActionButton.setMaxWidth(Double.MAX_VALUE);
         sendFileQuickActionButton.setMaxWidth(Double.MAX_VALUE);
         startVoiceQuickActionButton.setMaxWidth(Double.MAX_VALUE);
+        startVideoQuickActionButton.setMaxWidth(Double.MAX_VALUE);
         hangUpQuickActionButton.setMaxWidth(Double.MAX_VALUE);
         startDataButton.setMaxWidth(Double.MAX_VALUE);
         sendRtcMessageButton.setMaxWidth(Double.MAX_VALUE);
+        testMicrophoneButton.setMaxWidth(Double.MAX_VALUE);
+        testCameraButton.setMaxWidth(Double.MAX_VALUE);
 
         VBox quickActions = new VBox(8,
                 sendQuickActionButton,
                 sendFileQuickActionButton,
                 startVoiceQuickActionButton,
+                startVideoQuickActionButton,
                 hangUpQuickActionButton
         );
 
         VBox voiceBlock = new VBox(8,
                 voicePanelStatusValue,
+                createMetricBlock("Microphone", new VBox(6, microphoneChoiceBox, testMicrophoneButton, microphoneTestStatusValue)),
                 createMetricBlock("Local microphone", new VBox(6, localAudioLevelBar, localAudioStatusValue)),
-                createMetricBlock("Remote audio", new VBox(6, remoteAudioLevelBar, remoteAudioStatusValue))
+                createMetricBlock("Remote audio", new VBox(6, remoteAudioLevelBar, remoteAudioStatusValue)),
+                createMetricBlock("Camera", new VBox(6, cameraChoiceBox, testCameraButton, cameraTestStatusValue))
         );
 
         VBox transfersBlock = new VBox(8, transferHintValue, transferListView);
@@ -500,7 +818,7 @@ public class MainView {
                 videoProfileValue,
                 new Separator(),
                 createSectionHeadingLabel("RTCDataChannel"),
-                createMutedLabel("Use this for experiments and diagnostics. Video controls are hidden from the main UI until the feature becomes stable."),
+                createMutedLabel("Use this for diagnostics and RTCDataChannel experiments. Video now opens as an inline stage in the chat column; self preview stays off by default for stability."),
                 startDataButton,
                 rtcMessageField,
                 sendRtcMessageButton,
@@ -593,9 +911,12 @@ public class MainView {
         applyButtonVariant(sendQuickActionButton, "primary-button");
         applyButtonVariant(sendFileQuickActionButton, "secondary-button");
         applyButtonVariant(startVoiceQuickActionButton, "primary-button");
+        applyButtonVariant(startVideoQuickActionButton, "secondary-button");
         applyButtonVariant(hangUpQuickActionButton, "danger-button");
         applyButtonVariant(startDataButton, "secondary-button");
         applyButtonVariant(sendRtcMessageButton, "secondary-button");
+        applyButtonVariant(testMicrophoneButton, "secondary-button");
+        applyButtonVariant(testCameraButton, "secondary-button");
     }
 
     private void applyButtonVariant(Button button, String variantClass) {
@@ -726,11 +1047,23 @@ public class MainView {
             recipientField.setText(peer.nickname());
             rtcPeerField.setText(peer.nickname());
             clearRealtimeMediaUi();
+            if (mode.videoEnabled()) {
+                showVideoStage(true);
+                videoStageTitleValue.setText(mode == RtcSessionMode.AUDIO_VIDEO
+                        ? "Video call with " + peer.nickname()
+                        : "Video stream with " + peer.nickname());
+                videoStageSubtitleValue.setText("Preparing camera and signaling for " + peer.nickname() + "…");
+                videoParticipantsValue.setText(nicknameField.getText().trim() + " • " + peer.nickname());
+                videoStageBadgeValue.setText("Preparing");
+                videoMediaValue.setText(mode == RtcSessionMode.AUDIO_VIDEO ? "Audio + camera" : "Camera only");
+            }
             rtcSessionService.startSession(new RtcSessionRequest(
                     nicknameField.getText().trim(),
                     peer.nickname(),
                     mode,
-                    rtcDataChannelField.getText().trim()
+                    rtcDataChannelField.getText().trim(),
+                    selectedDeviceId(microphoneChoiceBox),
+                    selectedDeviceId(cameraChoiceBox)
             ));
         } catch (Exception ex) {
             showError(ex.getMessage());
@@ -752,12 +1085,14 @@ public class MainView {
                 setConnectionStatus("Connected as " + e.nickname(), Color.web("#1f9d55"));
                 appendChat("[connected] " + e.nickname() + " -> " + e.remoteAddress());
                 peerItems.clear();
+                clearRealtimeMediaUi();
                 updateSelectedPeer(null);
             } else if (event instanceof ChatDisconnectedEvent e) {
                 setConnectionStatus("Connection idle", Color.web("#9aa4b2"));
                 setPeerStatus("Peer not selected", Color.web("#9aa4b2"));
                 appendChat("[disconnected] " + e.nickname() + " - " + e.reason());
                 peerItems.clear();
+                clearRealtimeMediaUi();
                 updateSelectedPeer(null);
             } else if (event instanceof ChatMessageReceivedEvent e) {
                 if (!isSystemSender(e.senderNickname())) {
@@ -834,6 +1169,8 @@ public class MainView {
                 refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
                 upsertPeer(e.remotePeer(), true);
                 updateVoiceStatusFromRtc(e);
+                updateVideoStageFromRtc(e);
+                updateQuickActionState();
                 if (e.state() == RtcSessionState.CLOSED
                         || e.state() == RtcSessionState.FAILED
                         || e.state() == RtcSessionState.UNAVAILABLE) {
@@ -842,6 +1179,9 @@ public class MainView {
             } else if (event instanceof RtcRuntimeWarningEvent e) {
                 appendDiagnostics("[rtc-warning] " + e.message());
                 refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
+                if (videoStageBox.isVisible() && (e.message().toLowerCase().contains("video") || e.message().toLowerCase().contains("camera"))) {
+                    videoStageSubtitleValue.setText(e.message());
+                }
             } else if (event instanceof RtcDataMessageEvent e) {
                 appendChat((e.outgoing() ? "[rtc-send] " : "[rtc-recv] ") + e.payload());
                 appendDiagnostics((e.outgoing() ? "[rtc-send] " : "[rtc-recv] ") + e.payload());
@@ -873,12 +1213,70 @@ public class MainView {
                 : "Unavailable — " + status.message());
     }
 
+    private void updateVideoStageFromRtc(RtcStateChangedEvent event) {
+        if (!event.mode().videoEnabled()) {
+            return;
+        }
+
+        showVideoStage(true);
+        String remotePeer = safePeerName(event.remotePeer());
+        videoStageTitleValue.setText(event.mode() == RtcSessionMode.AUDIO_VIDEO
+                ? "Video call with " + remotePeer
+                : "Video stream with " + remotePeer);
+        videoParticipantsValue.setText(nicknameField.getText().trim() + " • " + remotePeer);
+        videoMediaValue.setText(event.mode() == RtcSessionMode.AUDIO_VIDEO ? "Audio + camera" : "Camera only");
+        videoStageSubtitleValue.setText(event.message());
+
+        switch (event.state()) {
+            case NEGOTIATING -> videoStageBadgeValue.setText("Negotiating");
+            case CONNECTING -> videoStageBadgeValue.setText("Connecting");
+            case CONNECTED -> videoStageBadgeValue.setText("Live");
+            case CLOSING -> videoStageBadgeValue.setText("Closing");
+            case CLOSED -> {
+                videoStageBadgeValue.setText("Ended");
+                showVideoStage(false);
+            }
+            case FAILED, UNAVAILABLE -> {
+                videoStageBadgeValue.setText("Unavailable");
+                showVideoStage(false);
+            }
+        }
+
+        updateVideoCaptions();
+    }
+
     private void updateVideoPreview(RtcVideoFrameEvent event) {
+        if (!isActiveVideoFrame(event)) {
+            return;
+        }
         if (event.local()) {
             localVideoImage = applyVideoFrame(localVideoView, localVideoImage, event);
+            localVideoPlaceholderValue.setVisible(false);
+            localVideoPlaceholderValue.setManaged(false);
+            localVideoCaptionValue.setText("Self preview • " + event.width() + "x" + event.height());
         } else {
             remoteVideoImage = applyVideoFrame(remoteVideoView, remoteVideoImage, event);
+            remoteVideoPlaceholderValue.setVisible(false);
+            remoteVideoPlaceholderValue.setManaged(false);
+            remoteVideoCaptionValue.setText(safePeerName(event.peer()) + " • " + event.width() + "x" + event.height());
+            showVideoStage(true);
+            if (!"Live".equals(videoStageBadgeValue.getText())) {
+                videoStageBadgeValue.setText("Live");
+            }
         }
+    }
+
+    private boolean isActiveVideoFrame(RtcVideoFrameEvent event) {
+        if (event == null) {
+            return false;
+        }
+        return rtcSessionService.currentSession()
+                .filter(snapshot -> snapshot.sessionId().equals(event.sessionId()))
+                .filter(snapshot -> snapshot.mode().videoEnabled())
+                .filter(snapshot -> snapshot.state() != RtcSessionState.CLOSED
+                        && snapshot.state() != RtcSessionState.FAILED
+                        && snapshot.state() != RtcSessionState.UNAVAILABLE)
+                .isPresent();
     }
 
     private WritableImage applyVideoFrame(ImageView view, WritableImage target, RtcVideoFrameEvent event) {
@@ -890,14 +1288,36 @@ public class MainView {
                 0,
                 event.width(),
                 event.height(),
-                PixelFormat.getIntArgbInstance(),
-                event.argbPixels(),
+                PixelFormat.getByteBgraInstance(),
+                event.bgraPixels(),
                 0,
-                event.width()
+                event.width() * 4
         );
         view.setImage(target);
         view.setRotate(event.rotation());
         return target;
+    }
+
+    private void updateVideoCaptions() {
+        if (remoteVideoView.getImage() == null) {
+            remoteVideoCaptionValue.setText("Remote stream");
+            remoteVideoPlaceholderValue.setVisible(true);
+            remoteVideoPlaceholderValue.setManaged(true);
+        }
+        if (localVideoView.getImage() == null) {
+            localVideoCaptionValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED ? "Self preview" : "Self preview (off by default)");
+            localVideoPlaceholderValue.setVisible(true);
+            localVideoPlaceholderValue.setManaged(true);
+        }
+    }
+
+    private void showVideoStage(boolean visible) {
+        videoStageBox.setVisible(visible);
+        videoStageBox.setManaged(visible);
+    }
+
+    private String safePeerName(String peer) {
+        return peer == null || peer.isBlank() ? "peer" : peer;
     }
 
     private void updateAudioLevel(RtcAudioLevelEvent event) {
@@ -919,6 +1339,22 @@ public class MainView {
         remoteAudioLevelBar.setProgress(0);
         localAudioStatusValue.setText("Idle");
         remoteAudioStatusValue.setText("Idle");
+        videoStageBadgeValue.setText("Idle");
+        videoStageTitleValue.setText("Video stage");
+        videoStageSubtitleValue.setText("Start a video call to open the inline video stage.");
+        videoParticipantsValue.setText("Waiting for participants");
+        videoMediaValue.setText("Camera starts only when a video call begins");
+        remoteVideoCaptionValue.setText("Remote stream");
+        localVideoCaptionValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED ? "Self preview" : "Self preview (off by default)");
+        remoteVideoPlaceholderValue.setText("Remote video will appear here when the call connects.");
+        localVideoPlaceholderValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED
+                ? "Self preview will appear here when your camera starts."
+                : "Self preview is off by default for stability. Your camera still sends video to the peer.");
+        remoteVideoPlaceholderValue.setVisible(true);
+        remoteVideoPlaceholderValue.setManaged(true);
+        localVideoPlaceholderValue.setVisible(true);
+        localVideoPlaceholderValue.setManaged(true);
+        showVideoStage(false);
     }
 
     private void updateVoiceStatusFromRtc(RtcStateChangedEvent event) {
@@ -945,9 +1381,14 @@ public class MainView {
         boolean hasOnlinePeer = selectedPeer != null && selectedPeer.online();
         sendFileQuickActionButton.setDisable(!hasOnlinePeer);
         startVoiceQuickActionButton.setDisable(!hasOnlinePeer);
+        startVideoQuickActionButton.setDisable(!hasOnlinePeer);
         sendQuickActionButton.setDisable(connectionStatusValue.getText().startsWith("Connection idle"));
         startDataButton.setDisable(!hasOnlinePeer);
         sendRtcMessageButton.setDisable(false);
+        boolean canHangUp = rtcSessionService.currentSession()
+                .map(snapshot -> snapshot.state() != RtcSessionState.CLOSED && snapshot.state() != RtcSessionState.FAILED && snapshot.state() != RtcSessionState.UNAVAILABLE)
+                .orElse(false);
+        hangUpQuickActionButton.setDisable(!canHangUp);
     }
 
     private PeerPresence upsertPeer(String nickname, boolean online) {
@@ -1010,9 +1451,9 @@ public class MainView {
             recipientField.setText("");
             rtcPeerField.setText("");
             conversationTitleValue.setText("Shared room activity");
-            conversationSubtitleValue.setText("Select a peer on the left for voice and file actions.");
+            conversationSubtitleValue.setText("Select a peer on the left for voice, video, and file actions.");
             selectedPeerTitleValue.setText("No peer selected");
-            selectedPeerMetaValue.setText("Choose an online peer to send files or start voice.");
+            selectedPeerMetaValue.setText("Choose an online peer to send files or start a voice/video session.");
             setPeerStatus("Peer not selected", Color.web("#9aa4b2"));
         } else {
             recipientField.setText(peer.nickname());
@@ -1021,7 +1462,7 @@ public class MainView {
             conversationSubtitleValue.setText("Actions on the right will target “" + peer.nickname() + "”. Text chat remains shared for now.");
             selectedPeerTitleValue.setText(peer.nickname());
             selectedPeerMetaValue.setText(peer.online()
-                    ? "Online — chat, file transfer, and voice are available."
+                    ? "Online — chat, file transfer, voice, and video are available."
                     : "Offline — wait until this peer rejoins the chat.");
             setPeerStatus(peer.online() ? "Peer " + peer.nickname() : "Peer offline", peer.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
         }
@@ -1148,6 +1589,38 @@ public class MainView {
         }
     }
 
+    private record MediaDeviceChoice(String deviceId, String label, boolean systemDefault, boolean defaultDevice) {
+        private static MediaDeviceChoice systemDefault(String label) {
+            return new MediaDeviceChoice("", label, true, true);
+        }
+
+        private static MediaDeviceChoice of(RtcMediaDevice device) {
+            return new MediaDeviceChoice(device.id(), device.name(), false, device.defaultDevice());
+        }
+
+        private boolean matches(String selectedDeviceId) {
+            String normalized = selectedDeviceId == null ? "" : selectedDeviceId.trim();
+            return deviceId.equals(normalized);
+        }
+
+        @Override
+        public String toString() {
+            if (systemDefault) {
+                return label;
+            }
+            return defaultDevice ? label + " (default)" : label;
+        }
+    }
+
+    private static final class MediaDeviceChoiceCell extends ListCell<MediaDeviceChoice> {
+        @Override
+        protected void updateItem(MediaDeviceChoice item, boolean empty) {
+            super.updateItem(item, empty);
+            setText(empty || item == null ? null : item.toString());
+            setGraphic(null);
+        }
+    }
+
     private static final class PeerCell extends ListCell<PeerPresence> {
         @Override
         protected void updateItem(PeerPresence item, boolean empty) {
@@ -1161,7 +1634,7 @@ public class MainView {
             Circle dot = new Circle(5, item.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
             Label name = new Label(item.nickname());
             name.getStyleClass().add("list-primary");
-            Label meta = new Label(item.online() ? "chat • voice • file" : "offline");
+            Label meta = new Label(item.online() ? "chat • voice • video • file" : "offline");
             meta.getStyleClass().add("list-secondary");
             VBox textBox = new VBox(2, name, meta);
             HBox row = new HBox(8, dot, textBox);

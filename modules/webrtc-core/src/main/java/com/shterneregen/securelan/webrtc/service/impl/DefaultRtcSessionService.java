@@ -91,6 +91,8 @@ public class DefaultRtcSessionService implements RtcSessionService {
                     request.remotePeer(),
                     request.mode(),
                     request.dataChannelLabel(),
+                    request.audioCaptureDeviceId(),
+                    request.videoCaptureDeviceId(),
                     this::sendSignal,
                     this::forwardEvent
             );

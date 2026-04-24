@@ -22,7 +22,9 @@ This document describes the realtime layer built on top of the existing secure c
 
 ### Experimental flows
 - camera/video transport
-- local/remote preview event propagation
+- inline 1-to-1 video stage in the desktop client
+- remote preview event propagation through `VideoBufferConverter`
+- self preview disabled by default for stability, with an opt-in runtime flag
 - advanced runtime diagnostics for video capture and frame conversion
 
 Video-related controls are intentionally hidden from the main UX until the implementation is stable enough for normal use.
@@ -60,9 +62,9 @@ The current desktop UX is voice-first and chat-first.
 
 ### Advanced / Experimental section
 The right panel also contains a place for:
-- experimental video actions
 - provider/runtime details
 - diagnostics and debug status
+- notes about preview stability and runtime toggles
 
 ## Diagnostics
 
@@ -79,6 +81,7 @@ The runtime now exposes more diagnostics than the initial architecture draft:
 
 - device selection still uses the first/default device in most flows
 - video may still fail on some Windows/JDK/camera combinations
+- the current desktop UX is an inline 1-to-1 video stage rather than a multi-peer conference grid
 - the project currently prioritizes reliable text + file transfer + voice over a video-first experience
 - chunked large file transfer over `RTCDataChannel` has not been implemented yet
 - screen sharing is not implemented yet

@@ -9,7 +9,12 @@ import com.shterneregen.securelan.webrtc.event.RtcDataMessageEvent;
 import com.shterneregen.securelan.webrtc.event.RtcEvent;
 import com.shterneregen.securelan.webrtc.event.RtcRuntimeWarningEvent;
 import com.shterneregen.securelan.webrtc.event.RtcStateChangedEvent;
-import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent;
+import com.shterneregen.securelan.webrtc.runtime.video.PreviewVideoSink;
+import com.shterneregen.securelan.webrtc.runtime.video.RtcVideoDiagnostics;
+import com.shterneregen.securelan.webrtc.runtime.video.VideoCapabilitySelector;
+import com.shterneregen.securelan.webrtc.runtime.video.VideoCaptureSession;
+import com.shterneregen.securelan.webrtc.runtime.video.VideoFrameConverter;
+import com.shterneregen.securelan.webrtc.runtime.video.VideoPreviewPolicy;
 import dev.onvoid.webrtc.CreateSessionDescriptionObserver;
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.PeerConnectionObserver;
@@ -40,10 +45,6 @@ import dev.onvoid.webrtc.media.audio.AudioOptions;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.AudioTrackSink;
 import dev.onvoid.webrtc.media.audio.AudioTrackSource;
-import dev.onvoid.webrtc.media.video.I420Buffer;
-import dev.onvoid.webrtc.media.video.VideoCaptureCapability;
-import dev.onvoid.webrtc.media.video.VideoDevice;
-import dev.onvoid.webrtc.media.video.VideoDeviceSource;
 import dev.onvoid.webrtc.media.video.VideoFrame;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.onvoid.webrtc.media.video.VideoTrackSink;
@@ -63,18 +64,33 @@ public final class WebRtcJavaEngine implements RtcEngine {
     private static final String PROVIDER_NAME = "webrtc-java";
     private static final String DEFAULT_DATA_CHANNEL = "securelan-data";
     private static final String STREAM_PREFIX = "securelan-stream-";
-    private static final long VIDEO_PREVIEW_INTERVAL_NANOS = 100_000_000L;
     private static final long AUDIO_LEVEL_INTERVAL_NANOS = 120_000_000L;
-    private static final boolean VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.enabled", "true"));
 
     private final AudioDeviceModule audioDeviceModule;
     private final PeerConnectionFactory factory;
     private final ConcurrentMap<String, PeerSession> sessions = new ConcurrentHashMap<>();
     private final RtcRuntimeStatus status;
-    private final AtomicBoolean audioTransportStarted = new AtomicBoolean(false);
+    private final String preferredAudioCaptureDeviceId;
+    private final String preferredVideoCaptureDeviceId;
+    private final AtomicBoolean audioCaptureAvailable;
+    private final AtomicBoolean audioPlayoutAvailable;
+    private final AtomicBoolean audioRecordingStarted = new AtomicBoolean(false);
+    private final AtomicBoolean audioPlayoutStarted = new AtomicBoolean(false);
+    private final VideoPreviewPolicy videoPreviewPolicy = VideoPreviewPolicy.fromSystemProperties();
+    private final VideoFrameConverter videoFrameConverter = new VideoFrameConverter();
+    private final VideoCapabilitySelector videoCapabilitySelector = new VideoCapabilitySelector();
 
     public WebRtcJavaEngine() {
-        audioDeviceModule = initializeAudioDeviceModule();
+        this("", "");
+    }
+
+    public WebRtcJavaEngine(String preferredAudioCaptureDeviceId, String preferredVideoCaptureDeviceId) {
+        this.preferredAudioCaptureDeviceId = normalizeDeviceId(preferredAudioCaptureDeviceId);
+        this.preferredVideoCaptureDeviceId = normalizeDeviceId(preferredVideoCaptureDeviceId);
+        AudioInitialization initialization = initializeAudioDeviceModule(this.preferredAudioCaptureDeviceId);
+        audioDeviceModule = initialization.module();
+        audioCaptureAvailable = new AtomicBoolean(initialization.captureAvailable());
+        audioPlayoutAvailable = new AtomicBoolean(initialization.playoutAvailable());
         factory = new PeerConnectionFactory(audioDeviceModule);
         status = new RtcRuntimeStatus(PROVIDER_NAME, true, "Native WebRTC engine is ready");
     }
@@ -91,12 +107,14 @@ public final class WebRtcJavaEngine implements RtcEngine {
             String remotePeer,
             RtcSessionMode mode,
             String dataChannelLabel,
+            String audioCaptureDeviceId,
+            String videoCaptureDeviceId,
             Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             Consumer<RtcEvent> eventConsumer
     ) {
         Objects.requireNonNull(outboundSignalConsumer, "outboundSignalConsumer must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
-        PeerSession session = createSession(sessionId, localPeer, remotePeer, mode, dataChannelLabel, true, outboundSignalConsumer, eventConsumer);
+        PeerSession session = createSession(sessionId, localPeer, remotePeer, mode, dataChannelLabel, audioCaptureDeviceId, videoCaptureDeviceId, true, outboundSignalConsumer, eventConsumer);
         session.createOffer();
     }
 
@@ -175,6 +193,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             String remotePeer,
             RtcSessionMode mode,
             String dataChannelLabel,
+            String audioCaptureDeviceId,
+            String videoCaptureDeviceId,
             boolean initiator,
             Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             Consumer<RtcEvent> eventConsumer
@@ -189,6 +209,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 remotePeer,
                 mode == null ? RtcSessionMode.DATA : mode,
                 normalizeLabel(dataChannelLabel),
+                chooseDeviceId(audioCaptureDeviceId, preferredAudioCaptureDeviceId),
+                chooseDeviceId(videoCaptureDeviceId, preferredVideoCaptureDeviceId),
                 initiator,
                 outboundSignalConsumer,
                 eventConsumer
@@ -208,6 +230,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 signal.fromPeer(),
                 signal.mode(),
                 normalizeLabel(signal.dataChannelLabel()),
+                preferredAudioCaptureDeviceId,
+                preferredVideoCaptureDeviceId,
                 false,
                 outboundSignalConsumer,
                 eventConsumer
@@ -231,6 +255,15 @@ public final class WebRtcJavaEngine implements RtcEngine {
         return value == null || value.isBlank() ? DEFAULT_DATA_CHANNEL : value.trim();
     }
 
+    private static String normalizeDeviceId(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static String chooseDeviceId(String requestedDeviceId, String fallbackDeviceId) {
+        String normalized = normalizeDeviceId(requestedDeviceId);
+        return normalized.isBlank() ? normalizeDeviceId(fallbackDeviceId) : normalized;
+    }
+
     private static void consoleInfo(String message) {
         System.out.println("[rtc] " + message);
     }
@@ -244,10 +277,12 @@ public final class WebRtcJavaEngine implements RtcEngine {
         if (error != null) {
             error.printStackTrace(System.err);
         }
+        RtcFileLogger.error(message, error);
     }
 
     private static void warn(Consumer<RtcEvent> eventConsumer, String message) {
         consoleError(message);
+        RtcFileLogger.warn(message);
         eventConsumer.accept(new RtcRuntimeWarningEvent(message));
     }
 
@@ -264,67 +299,73 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
     }
 
-    private static String describeVideoCapability(VideoCaptureCapability capability) {
-        if (capability == null) {
-            return "<null>";
-        }
-        return capability.width + "x" + capability.height + "@" + capability.frameRate + "fps";
-    }
-
-    private static String summarizeCapabilities(List<VideoCaptureCapability> capabilities) {
-        if (capabilities == null || capabilities.isEmpty()) {
-            return "[]";
-        }
-
-        StringBuilder builder = new StringBuilder("[");
-        int limit = Math.min(capabilities.size(), 8);
-        for (int i = 0; i < limit; i++) {
-            if (i > 0) {
-                builder.append(", ");
-            }
-            builder.append(describeVideoCapability(capabilities.get(i)));
-        }
-        if (capabilities.size() > limit) {
-            builder.append(", ... total=").append(capabilities.size());
-        }
-        builder.append(']');
-        return builder.toString();
-    }
-
-    private static AudioDeviceModule initializeAudioDeviceModule() {
+    private static AudioInitialization initializeAudioDeviceModule(String preferredCaptureDeviceId) {
         AudioDeviceModule module = new AudioDeviceModule();
+        boolean captureAvailable = false;
+        boolean playoutAvailable = false;
         try {
-            AudioDevice defaultCapture = MediaDevices.getDefaultAudioCaptureDevice();
-            if (defaultCapture != null) {
-                module.setRecordingDevice(defaultCapture);
+            AudioDevice captureDevice = selectAudioCaptureDevice(preferredCaptureDeviceId);
+            if (captureDevice != null) {
+                module.setRecordingDevice(captureDevice);
+                captureAvailable = true;
             }
-        } catch (Throwable ignored) {
-            consoleError("Failed during RTC audio module initialization step", ignored);
+        } catch (Throwable error) {
+            consoleError("Failed during RTC audio capture device selection step", error);
         }
         try {
             AudioDevice defaultRender = MediaDevices.getDefaultAudioRenderDevice();
             if (defaultRender != null) {
                 module.setPlayoutDevice(defaultRender);
+                playoutAvailable = true;
             }
-        } catch (Throwable ignored) {
-            consoleError("Failed during RTC audio module initialization step", ignored);
+        } catch (Throwable error) {
+            consoleError("Failed during RTC audio playout device selection step", error);
         }
-        try {
-            module.initRecording();
-        } catch (Throwable ignored) {
-            consoleError("Failed to initialize audio recording module", ignored);
+        if (captureAvailable) {
+            try {
+                module.initRecording();
+            } catch (Throwable error) {
+                captureAvailable = false;
+                consoleError("Failed to initialize audio recording module", error);
+            }
         }
-        try {
-            module.initPlayout();
-        } catch (Throwable ignored) {
-            consoleError("Failed to initialize audio playout module", ignored);
+        if (playoutAvailable) {
+            try {
+                module.initPlayout();
+            } catch (Throwable error) {
+                playoutAvailable = false;
+                consoleError("Failed to initialize audio playout module", error);
+            }
         }
-        return module;
+        return new AudioInitialization(module, captureAvailable, playoutAvailable);
     }
 
-    private void ensureAudioTransportStarted(Consumer<RtcEvent> eventConsumer) {
-        if (!audioTransportStarted.compareAndSet(false, true)) {
-            return;
+    private static AudioDevice selectAudioCaptureDevice(String preferredCaptureDeviceId) {
+        String normalized = normalizeDeviceId(preferredCaptureDeviceId);
+        if (!normalized.isBlank()) {
+            try {
+                List<AudioDevice> devices = MediaDevices.getAudioCaptureDevices();
+                if (devices != null) {
+                    for (AudioDevice device : devices) {
+                        if (normalized.equals(device.getDescriptor())) {
+                            return device;
+                        }
+                    }
+                }
+            } catch (Throwable error) {
+                consoleError("Failed during preferred RTC audio capture device lookup", error);
+            }
+        }
+        return MediaDevices.getDefaultAudioCaptureDevice();
+    }
+
+    private boolean ensureAudioRecordingStarted(Consumer<RtcEvent> eventConsumer) {
+        if (!audioCaptureAvailable.get()) {
+            diag(eventConsumer, "audio recording skipped because no initialized capture device is available");
+            return false;
+        }
+        if (audioRecordingStarted.get()) {
+            return true;
         }
 
         try {
@@ -332,168 +373,49 @@ public final class WebRtcJavaEngine implements RtcEngine {
         } catch (Throwable error) {
             diag(eventConsumer, "unable to query default audio capture device: " + error.getMessage());
         }
+
+        try {
+            audioDeviceModule.startRecording();
+            audioRecordingStarted.set(true);
+            diag(eventConsumer, "audio recording started");
+            return true;
+        } catch (Throwable error) {
+            audioCaptureAvailable.set(false);
+            warn(eventConsumer, "Audio recording is unavailable; continuing without local microphone: " + error.getMessage());
+            consoleError("Failed to start audio recording", error);
+            return false;
+        }
+    }
+
+    private boolean ensureAudioPlayoutStarted(Consumer<RtcEvent> eventConsumer) {
+        if (!audioPlayoutAvailable.get()) {
+            diag(eventConsumer, "audio playout skipped because no initialized render device is available");
+            return false;
+        }
+        if (audioPlayoutStarted.get()) {
+            return true;
+        }
+
         try {
             diag(eventConsumer, "default audio render device: " + safeToString(MediaDevices.getDefaultAudioRenderDevice()));
         } catch (Throwable error) {
             diag(eventConsumer, "unable to query default audio render device: " + error.getMessage());
         }
 
-        boolean startedSomething = false;
-        try {
-            audioDeviceModule.startRecording();
-            startedSomething = true;
-            diag(eventConsumer, "audio recording started");
-        } catch (Throwable error) {
-            warn(eventConsumer, "Failed to start audio recording: " + error.getMessage());
-            consoleError("Failed to start audio recording", error);
-        }
         try {
             audioDeviceModule.startPlayout();
-            startedSomething = true;
+            audioPlayoutStarted.set(true);
             diag(eventConsumer, "audio playout started");
+            return true;
         } catch (Throwable error) {
-            warn(eventConsumer, "Failed to start audio playout: " + error.getMessage());
+            audioPlayoutAvailable.set(false);
+            warn(eventConsumer, "Audio playout is unavailable; continuing without speaker output: " + error.getMessage());
             consoleError("Failed to start audio playout", error);
-        }
-
-        if (!startedSomething) {
-            audioTransportStarted.set(false);
-            diag(eventConsumer, "audio transport failed to start any device");
+            return false;
         }
     }
 
-    private static int clamp(int value) {
-        if (value < 0) {
-            return 0;
-        }
-        return Math.min(value, 255);
-    }
-
-    private static int[] convertToArgb(VideoFrame frame) {
-        I420Buffer buffer = frame.buffer.toI420();
-        try {
-            int width = buffer.getWidth();
-            int height = buffer.getHeight();
-            int[] argb = new int[width * height];
-
-            ByteBuffer dataY = buffer.getDataY();
-            ByteBuffer dataU = buffer.getDataU();
-            ByteBuffer dataV = buffer.getDataV();
-            int strideY = buffer.getStrideY();
-            int strideU = buffer.getStrideU();
-            int strideV = buffer.getStrideV();
-
-            for (int y = 0; y < height; y++) {
-                int yRow = y * strideY;
-                int uvRow = (y / 2) * strideU;
-                int uvRowV = (y / 2) * strideV;
-                int dstRow = y * width;
-                for (int x = 0; x < width; x++) {
-                    int yValue = dataY.get(yRow + x) & 0xFF;
-                    int uValue = dataU.get(uvRow + (x / 2)) & 0xFF;
-                    int vValue = dataV.get(uvRowV + (x / 2)) & 0xFF;
-
-                    int c = yValue - 16;
-                    int d = uValue - 128;
-                    int e = vValue - 128;
-                    if (c < 0) {
-                        c = 0;
-                    }
-
-                    int red = clamp((298 * c + 409 * e + 128) >> 8);
-                    int green = clamp((298 * c - 100 * d - 208 * e + 128) >> 8);
-                    int blue = clamp((298 * c + 516 * d + 128) >> 8);
-
-                    argb[dstRow + x] = (0xFF << 24) | (red << 16) | (green << 8) | blue;
-                }
-            }
-            return argb;
-        } finally {
-            buffer.release();
-        }
-    }
-
-    private static final class PreviewVideoSink implements VideoTrackSink {
-        private final String sessionId;
-        private final String peer;
-        private final RtcSessionMode mode;
-        private final boolean local;
-        private final Consumer<RtcEvent> eventConsumer;
-        private final AtomicBoolean firstFrameLogged = new AtomicBoolean(false);
-        private final AtomicBoolean previewDisabledLogged = new AtomicBoolean(false);
-        private final AtomicBoolean previewConversionFailed = new AtomicBoolean(false);
-        private final AtomicLong frameCounter = new AtomicLong(0);
-        private final AtomicLong lastFramePublishedAt = new AtomicLong(0);
-
-        private PreviewVideoSink(String sessionId, String peer, RtcSessionMode mode, boolean local, Consumer<RtcEvent> eventConsumer) {
-            this.sessionId = sessionId;
-            this.peer = peer;
-            this.mode = mode;
-            this.local = local;
-            this.eventConsumer = eventConsumer;
-        }
-
-        @Override
-        public void onVideoFrame(VideoFrame frame) {
-            try {
-                int width = frame.buffer.getWidth();
-                int height = frame.buffer.getHeight();
-                int rotation = frame.rotation;
-
-                long frameIndex = frameCounter.incrementAndGet();
-                if (firstFrameLogged.compareAndSet(false, true)) {
-                    eventConsumer.accept(new RtcStateChangedEvent(
-                            sessionId,
-                            peer,
-                            mode,
-                            RtcSessionState.CONNECTED,
-                            local ? "Sending local video frames" : "Receiving remote video frames"
-                    ));
-                    diag(eventConsumer, (local ? "local" : "remote") + " video first frame " + width + "x" + height + " rotation=" + rotation + " peer=" + peer);
-                } else if (frameIndex % 60 == 0) {
-                    diag(eventConsumer, (local ? "local" : "remote") + " video frames received=" + frameIndex + " latest=" + width + "x" + height + " rotation=" + rotation + " peer=" + peer);
-                }
-
-                if (!VIDEO_PREVIEW_ENABLED) {
-                    if (previewDisabledLogged.compareAndSet(false, true)) {
-                        diag(eventConsumer, "video preview conversion disabled by -Dsecurelan.rtc.videoPreview.enabled=false");
-                    }
-                    return;
-                }
-
-                long now = System.nanoTime();
-                long last = lastFramePublishedAt.get();
-                if (last != 0 && now - last < VIDEO_PREVIEW_INTERVAL_NANOS) {
-                    return;
-                }
-                if (!lastFramePublishedAt.compareAndSet(last, now)) {
-                    return;
-                }
-
-                try {
-                    int[] argbPixels = convertToArgb(frame);
-                    eventConsumer.accept(new RtcVideoFrameEvent(
-                            sessionId,
-                            peer,
-                            local,
-                            width,
-                            height,
-                            rotation,
-                            argbPixels
-                    ));
-                } catch (Throwable error) {
-                    if (previewConversionFailed.compareAndSet(false, true)) {
-                        warn(eventConsumer,
-                                "Video preview conversion failed for " + (local ? "local" : "remote") + " stream of " + peer + ": " + error.getClass().getSimpleName() + ": " + error.getMessage()
-                        );
-                        consoleError("Video preview conversion failed for " + (local ? "local" : "remote") + " stream of " + peer, error);
-                        diag(eventConsumer, "preview conversion failure happened after frame " + frameIndex + "; try running with -Dsecurelan.rtc.videoPreview.enabled=false to isolate transport from UI conversion");
-                    }
-                }
-            } finally {
-                frame.release();
-            }
-        }
+    private record AudioInitialization(AudioDeviceModule module, boolean captureAvailable, boolean playoutAvailable) {
     }
 
     private static final class LevelAudioSink implements AudioTrackSink {
@@ -575,6 +497,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
         private final String remotePeer;
         private final RtcSessionMode mode;
         private final String dataChannelLabel;
+        private final String audioCaptureDeviceId;
+        private final String videoCaptureDeviceId;
         private final boolean initiator;
         private final Consumer<RtcSignalEnvelope> outboundSignalConsumer;
         private final Consumer<RtcEvent> eventConsumer;
@@ -584,7 +508,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         private AudioTrackSource audioSource;
         private AudioTrack audioTrack;
-        private VideoDeviceSource videoSource;
+        private VideoCaptureSession videoCaptureSession;
         private VideoTrack videoTrack;
         private RTCDataChannel dataChannel;
         private VideoTrack remoteVideoTrack;
@@ -600,6 +524,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 String remotePeer,
                 RtcSessionMode mode,
                 String dataChannelLabel,
+                String audioCaptureDeviceId,
+                String videoCaptureDeviceId,
                 boolean initiator,
                 Consumer<RtcSignalEnvelope> outboundSignalConsumer,
                 Consumer<RtcEvent> eventConsumer
@@ -609,6 +535,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             this.remotePeer = Objects.requireNonNullElse(remotePeer, "");
             this.mode = Objects.requireNonNull(mode, "mode must not be null");
             this.dataChannelLabel = normalizeLabel(dataChannelLabel);
+            this.audioCaptureDeviceId = normalizeDeviceId(audioCaptureDeviceId);
+            this.videoCaptureDeviceId = normalizeDeviceId(videoCaptureDeviceId);
             this.initiator = initiator;
             this.outboundSignalConsumer = outboundSignalConsumer;
             this.eventConsumer = eventConsumer;
@@ -743,6 +671,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         private void fail(String message, boolean notifyRemote) {
             consoleError(message);
+            RtcFileLogger.error(message);
             if (notifyRemote) {
                 safeSendSignal(RtcSignalEnvelope.error(sessionId, localPeer, remotePeer, mode, dataChannelLabel, message));
             }
@@ -753,7 +682,6 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         private void attachLocalMedia() {
             if (mode.audioEnabled()) {
-                ensureAudioTransportStarted(eventConsumer);
                 attachLocalAudio();
             }
             if (mode.videoEnabled()) {
@@ -762,6 +690,10 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void attachLocalAudio() {
+            if (!ensureAudioRecordingStarted(eventConsumer)) {
+                diag(eventConsumer, "local audio track was not added because microphone capture is unavailable for session=" + sessionId);
+                return;
+            }
             try {
                 AudioOptions options = new AudioOptions();
                 options.echoCancellation = true;
@@ -773,87 +705,40 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 audioTrack.addSink(localAudioSink);
                 peerConnection.addTrack(audioTrack, List.of(streamId));
                 diag(eventConsumer, "local audio track added for session=" + sessionId + " streamId=" + streamId);
+                if (!audioCaptureDeviceId.isBlank()) {
+                    diag(eventConsumer, "preferred audio capture device selected id=" + audioCaptureDeviceId);
+                }
             } catch (Throwable error) {
-                warn(eventConsumer, "Audio capture is unavailable: " + error.getMessage());
+                warn(eventConsumer, "Audio capture is unavailable; continuing without local microphone: " + error.getMessage());
                 consoleError("Audio capture is unavailable", error);
             }
         }
 
         private void attachLocalVideo() {
             try {
-                List<VideoDevice> cameras = MediaDevices.getVideoCaptureDevices();
-                if (cameras == null || cameras.isEmpty()) {
-                    warn(eventConsumer, "No camera devices were detected for realtime video.");
+                videoCaptureSession = VideoCaptureSession.start(
+                        factory,
+                        sessionId,
+                        videoCaptureDeviceId,
+                        new RtcVideoDiagnostics(eventConsumer),
+                        videoCapabilitySelector
+                );
+                if (videoCaptureSession == null) {
                     return;
                 }
 
-                diag(eventConsumer, "detected video devices count=" + cameras.size() + " first=" + safeToString(cameras.getFirst()));
-
-                VideoDevice camera = cameras.getFirst();
-                videoSource = new VideoDeviceSource();
-                videoSource.setVideoCaptureDevice(camera);
-
-                List<VideoCaptureCapability> capabilities = MediaDevices.getVideoCaptureCapabilities(camera);
-                diag(eventConsumer, "video capabilities for " + safeToString(camera) + " -> " + summarizeCapabilities(capabilities));
-
-                if (capabilities != null && !capabilities.isEmpty()) {
-                    VideoCaptureCapability selectedCapability = selectVideoCapability(capabilities);
-                    videoSource.setVideoCaptureCapability(selectedCapability);
-                    diag(eventConsumer, "selected video capability " + describeVideoCapability(selectedCapability) + " for " + safeToString(camera));
-                } else {
-                    diag(eventConsumer, "camera reported no explicit capabilities, using default capture settings for " + safeToString(camera));
+                videoTrack = videoCaptureSession.track();
+                if (videoPreviewPolicy.localPreviewEnabled()) {
+                    localVideoSink = createVideoSink(localPeer, true);
+                    videoTrack.addSink(localVideoSink);
                 }
-
-                videoSource.start();
-                diag(eventConsumer, "video source started for " + safeToString(camera));
-
-                videoTrack = factory.createVideoTrack("video-" + sessionId, videoSource);
-                localVideoSink = new PreviewVideoSink(sessionId, localPeer, mode, true, eventConsumer);
-                videoTrack.addSink(localVideoSink);
                 peerConnection.addTrack(videoTrack, List.of(streamId));
                 diag(eventConsumer, "local video track added for session=" + sessionId + " streamId=" + streamId);
             } catch (Throwable error) {
+                disposeVideo();
                 warn(eventConsumer, "Camera capture is unavailable: " + error.getClass().getSimpleName() + ": " + error.getMessage());
                 consoleError("Camera capture is unavailable", error);
             }
-        }
-
-        private VideoCaptureCapability selectVideoCapability(List<VideoCaptureCapability> capabilities) {
-            VideoCaptureCapability best480 = null;
-            VideoCaptureCapability best720 = null;
-            VideoCaptureCapability fallback = capabilities.getFirst();
-
-            for (VideoCaptureCapability capability : capabilities) {
-                if (capability == null) {
-                    continue;
-                }
-
-                int width = Math.max(capability.width, 0);
-                int height = Math.max(capability.height, 0);
-                int fps = Math.max(capability.frameRate, 0);
-                int area = width * height;
-
-                if (width <= 640 && height <= 480 && fps <= 30) {
-                    if (best480 == null || area > best480.width * best480.height || (area == best480.width * best480.height && fps > best480.frameRate)) {
-                        best480 = capability;
-                    }
-                    continue;
-                }
-
-                if (width <= 1280 && height <= 720 && fps <= 30) {
-                    if (best720 == null || area > best720.width * best720.height || (area == best720.width * best720.height && fps > best720.frameRate)) {
-                        best720 = capability;
-                    }
-                }
-            }
-
-            if (best480 != null) {
-                return best480;
-            }
-            if (best720 != null) {
-                return best720;
-            }
-            return fallback;
         }
 
         private void openDataChannel() {
@@ -979,39 +864,71 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void disposeVideo() {
-            if (remoteVideoTrack != null && remoteVideoSink != null) {
-                try {
-                    remoteVideoTrack.removeSink(remoteVideoSink);
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
-                }
-            }
-            if (videoTrack != null && localVideoSink != null) {
-                try {
-                    videoTrack.removeSink(localVideoSink);
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
-                }
-            }
+            detachVideoSink(remoteVideoTrack, remoteVideoSink);
+            detachVideoSink(videoTrack, localVideoSink);
             remoteVideoTrack = null;
-            if (videoTrack != null) {
-                videoTrack = null;
-            }
-            if (videoSource != null) {
+            videoTrack = null;
+            if (videoCaptureSession != null) {
                 try {
-                    videoSource.stop();
+                    videoCaptureSession.close();
                 } catch (Throwable ignored) {
                     consoleError("Failed while disposing RTC resource", ignored);
                 }
-                try {
-                    videoSource.dispose();
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
-                }
-                videoSource = null;
+                videoCaptureSession = null;
             }
             localVideoSink = null;
             remoteVideoSink = null;
+        }
+
+        private void detachVideoSink(VideoTrack track, VideoTrackSink sink) {
+            if (track != null && sink != null) {
+                try {
+                    track.removeSink(sink);
+                } catch (Throwable ignored) {
+                    consoleError("Failed while disposing RTC resource", ignored);
+                }
+            }
+            if (sink instanceof PreviewVideoSink previewVideoSink) {
+                previewVideoSink.close();
+            }
+        }
+
+        private PreviewVideoSink createVideoSink(String peer, boolean local) {
+            return new PreviewVideoSink(
+                    sessionId,
+                    peer,
+                    mode,
+                    local,
+                    eventConsumer,
+                    videoPreviewPolicy,
+                    videoFrameConverter,
+                    new RtcVideoDiagnostics(eventConsumer)
+            );
+        }
+
+        private void attachRemoteVideoTrack(VideoTrack remoteTrack) {
+            detachVideoSink(remoteVideoTrack, remoteVideoSink);
+            remoteVideoTrack = remoteTrack;
+
+            if (!videoPreviewPolicy.remotePreviewEnabled()) {
+                remoteVideoSink = null;
+                diag(eventConsumer, "remote video preview disabled for session=" + sessionId + " peer=" + remotePeer);
+                publishState(RtcSessionState.CONNECTING, "Remote video track attached");
+                return;
+            }
+
+            PreviewVideoSink sink = createVideoSink(remotePeer, false);
+            try {
+                remoteTrack.addSink(sink);
+                remoteVideoSink = sink;
+                diag(eventConsumer, "remote video sink attached for session=" + sessionId + " peer=" + remotePeer);
+            } catch (Throwable error) {
+                remoteVideoSink = null;
+                sink.close();
+                warn(eventConsumer, "Remote video preview is unavailable: " + error.getClass().getSimpleName() + ": " + error.getMessage());
+                consoleError("Remote video preview sink attach failed", error);
+            }
+            publishState(RtcSessionState.CONNECTING, "Remote video track attached");
         }
 
         private void disposeAudio() {
@@ -1137,18 +1054,19 @@ public final class WebRtcJavaEngine implements RtcEngine {
             diag(eventConsumer, "onTrack kind=" + track.getKind() + " class=" + track.getClass().getSimpleName() + " peer=" + remotePeer);
 
             if (MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind()) && track instanceof VideoTrack remoteTrack) {
-                remoteVideoTrack = remoteTrack;
-                remoteVideoSink = new PreviewVideoSink(sessionId, remotePeer, mode, false, eventConsumer);
-                remoteTrack.addSink(remoteVideoSink);
-                publishState(RtcSessionState.CONNECTING, "Remote video track attached");
-                diag(eventConsumer, "remote video sink attached for session=" + sessionId + " peer=" + remotePeer);
+                attachRemoteVideoTrack(remoteTrack);
             } else if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind()) && track instanceof AudioTrack remoteTrack) {
-                ensureAudioTransportStarted(eventConsumer);
                 remoteAudioTrack = remoteTrack;
-                remoteAudioSink = new LevelAudioSink(sessionId, remotePeer, mode, false, eventConsumer);
-                remoteTrack.addSink(remoteAudioSink);
-                publishState(RtcSessionState.CONNECTING, "Remote audio track attached");
-                diag(eventConsumer, "remote audio sink attached for session=" + sessionId + " peer=" + remotePeer);
+                if (ensureAudioPlayoutStarted(eventConsumer)) {
+                    remoteAudioSink = new LevelAudioSink(sessionId, remotePeer, mode, false, eventConsumer);
+                    remoteTrack.addSink(remoteAudioSink);
+                    publishState(RtcSessionState.CONNECTING, "Remote audio track attached");
+                    diag(eventConsumer, "remote audio sink attached for session=" + sessionId + " peer=" + remotePeer);
+                } else {
+                    remoteAudioSink = null;
+                    publishState(RtcSessionState.CONNECTING, "Remote audio track attached, but local speaker output is unavailable");
+                    diag(eventConsumer, "remote audio sink skipped because audio playout is unavailable for session=" + sessionId + " peer=" + remotePeer);
+                }
             }
         }
     }
