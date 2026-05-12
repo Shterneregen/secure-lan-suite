@@ -337,7 +337,7 @@ public class MainView {
         startServerButton.setOnAction(event -> startServer());
         stopServerButton.setOnAction(event -> stopServer());
         connectButton.setOnAction(event -> connectClient());
-        disconnectButton.setOnAction(event -> clientService.disconnect());
+        disconnectButton.setOnAction(event -> disconnectClient());
         sendMessageButton.setOnAction(event -> sendMessage());
         messageField.setOnAction(event -> sendMessage());
         sendQuickActionButton.setOnAction(event -> {
@@ -974,6 +974,8 @@ public class MainView {
             appendChat("[ui] file transfer server started on port " + filePort);
         } catch (Exception ex) {
             showError(ex.getMessage());
+        } finally {
+            updateQuickActionState();
         }
     }
 
@@ -992,7 +994,14 @@ public class MainView {
             }
         } catch (Exception ex) {
             showError(ex.getMessage());
+        } finally {
+            updateQuickActionState();
         }
+    }
+
+    private void disconnectClient() {
+        clientService.disconnect();
+        updateQuickActionState();
     }
 
     private void sendMessage() {
@@ -1379,16 +1388,27 @@ public class MainView {
     private void updateQuickActionState() {
         PeerPresence selectedPeer = peerListView.getSelectionModel().getSelectedItem();
         boolean hasOnlinePeer = selectedPeer != null && selectedPeer.online();
+        boolean localServerRunning = isLocalServerRunning();
+        boolean clientConnected = clientService.isConnected();
+
+        startServerButton.setDisable(localServerRunning);
+        stopServerButton.setDisable(!localServerRunning);
+        connectButton.setDisable(clientConnected);
+        disconnectButton.setDisable(!clientConnected);
         sendFileQuickActionButton.setDisable(!hasOnlinePeer);
         startVoiceQuickActionButton.setDisable(!hasOnlinePeer);
         startVideoQuickActionButton.setDisable(!hasOnlinePeer);
-        sendQuickActionButton.setDisable(connectionStatusValue.getText().startsWith("Connection idle"));
+        sendQuickActionButton.setDisable(!clientConnected);
         startDataButton.setDisable(!hasOnlinePeer);
         sendRtcMessageButton.setDisable(false);
         boolean canHangUp = rtcSessionService.currentSession()
                 .map(snapshot -> snapshot.state() != RtcSessionState.CLOSED && snapshot.state() != RtcSessionState.FAILED && snapshot.state() != RtcSessionState.UNAVAILABLE)
                 .orElse(false);
         hangUpQuickActionButton.setDisable(!canHangUp);
+    }
+
+    private boolean isLocalServerRunning() {
+        return serverService.isRunning() || fileTransferServerService.isRunning();
     }
 
     private PeerPresence upsertPeer(String nickname, boolean online) {
@@ -1496,6 +1516,7 @@ public class MainView {
     private void setServerStatus(String value, Color color) {
         serverStatusValue.setText(value);
         serverIndicator.setFill(color);
+        updateQuickActionState();
     }
 
     private void setConnectionStatus(String value, Color color) {
