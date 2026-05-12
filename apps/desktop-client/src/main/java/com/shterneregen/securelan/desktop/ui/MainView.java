@@ -110,17 +110,18 @@ import java.util.concurrent.atomic.AtomicLong;
 public class MainView {
     private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "false"));
     private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
+    private static final double TRANSFER_LIST_VISIBLE_ROWS = 3;
+    private static final double TRANSFER_LIST_ROW_HEIGHT = 48;
+    private static final Path DEFAULT_DOWNLOADS_PATH = Path.of("downloads").toAbsolutePath().normalize();
     private final RandomNicknameService randomNicknameService = new DefaultRandomNicknameService();
 
     private final TextField serverChatPortField = new TextField("5050");
     private final TextField serverFilePortField = new TextField("5051");
-    private final TextField downloadsField = new TextField("downloads");
 
     private final TextField clientHostField = new TextField("127.0.0.1");
     private final TextField clientChatPortField = new TextField("5050");
     private final TextField clientFilePortField = new TextField("5051");
     private final TextField nicknameField = new TextField(randomNicknameService.generate());
-    private final TextField serverPasswordField = new TextField("chatpass");
     private final TextField clientPasswordField = new TextField("chatpass");
     private final TextField fileHostField = new TextField("127.0.0.1");
     private final TextField fileSenderField = new TextField(nicknameField.getText());
@@ -205,14 +206,13 @@ public class MainView {
     private final ListView<TransferEntry> transferListView = new ListView<>(transferItems);
     private final Map<String, TransferEntry> transferEntries = new LinkedHashMap<>();
 
-    private final Button sendQuickActionButton = new Button("Send message");
-    private final Button sendFileQuickActionButton = new Button("Send file");
-    private final Button startVoiceQuickActionButton = new Button("Start voice");
-    private final Button startVideoQuickActionButton = new Button("Start video");
-    private final Button hangUpQuickActionButton = new Button("Hang up");
-    private final Button startServerButton = new Button("Start server");
-    private final Button stopServerButton = new Button("Stop server");
-    private final Button connectButton = new Button("Connect");
+    private final Button sendFileQuickActionButton = new Button("Attach");
+    private final Button startVoiceQuickActionButton = new Button("Voice call");
+    private final Button startVideoQuickActionButton = new Button("Video call");
+    private final Button hangUpQuickActionButton = new Button("End call");
+    private final Button startServerButton = new Button("Make discoverable");
+    private final Button stopServerButton = new Button("Stop hosting");
+    private final Button connectButton = new Button("Connect manually");
     private final Button disconnectButton = new Button("Disconnect");
     private final Button sendMessageButton = new Button("Send");
     private final Button startDataButton = new Button("Start data");
@@ -243,7 +243,6 @@ public class MainView {
         this.videoProfileService = new DefaultVideoProfileService();
         this.rtcMediaDeviceService = new DefaultRtcMediaDeviceService();
         this.rtcSessionService = new DefaultRtcSessionService(this::handleRtcEvent, clientService::sendSignal);
-        syncPasswords();
         syncSharedClientFields();
         configureUiState();
         wireActions();
@@ -256,8 +255,8 @@ public class MainView {
     public Parent createContent() {
         root = new BorderPane();
         root.getStyleClass().add("app-root");
-        root.setPadding(new Insets(12));
-        root.setTop(new VBox(12, buildStatusBar(), buildConnectionWorkspaceHeader()));
+        root.setPadding(new Insets(10));
+        root.setTop(new VBox(8, buildStatusBar(), buildConnectionWorkspaceHeader()));
         root.setCenter(buildWorkspace());
         applyTheme();
         return root;
@@ -340,6 +339,10 @@ public class MainView {
         configureMediaDeviceSelectors();
         peerListView.getStyleClass().add("content-list");
         transferListView.getStyleClass().add("content-list");
+        transferListView.setFixedCellSize(TRANSFER_LIST_ROW_HEIGHT);
+        transferListView.setPrefHeight(TRANSFER_LIST_ROW_HEIGHT * TRANSFER_LIST_VISIBLE_ROWS + 2);
+        transferListView.setMinHeight(Region.USE_PREF_SIZE);
+        transferListView.setMaxHeight(Region.USE_PREF_SIZE);
         peerListView.setPlaceholder(createMutedLabel("Peers will appear here when they join the chat."));
         peerListView.setCellFactory(list -> new PeerCell());
         transferListView.setPlaceholder(createMutedLabel("Transfers will appear here."));
@@ -357,13 +360,6 @@ public class MainView {
         disconnectButton.setOnAction(event -> disconnectClient());
         sendMessageButton.setOnAction(event -> sendMessage());
         messageField.setOnAction(event -> sendMessage());
-        sendQuickActionButton.setOnAction(event -> {
-            if (messageField.getText().isBlank()) {
-                messageField.requestFocus();
-            } else {
-                sendMessage();
-            }
-        });
         sendFileQuickActionButton.setOnAction(event -> chooseAndSendFileForSelectedPeer());
         startVoiceQuickActionButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.AUDIO));
         startVideoQuickActionButton.setOnAction(event -> startRealtimeSession(RtcSessionMode.AUDIO_VIDEO));
@@ -625,19 +621,6 @@ public class MainView {
         return result.stream().distinct().toList();
     }
 
-    private void syncPasswords() {
-        serverPasswordField.textProperty().addListener((obs, oldValue, newValue) -> {
-            if (!clientPasswordField.getText().equals(newValue)) {
-                clientPasswordField.setText(newValue);
-            }
-        });
-        clientPasswordField.textProperty().addListener((obs, oldValue, newValue) -> {
-            if (!serverPasswordField.getText().equals(newValue)) {
-                serverPasswordField.setText(newValue);
-            }
-        });
-    }
-
     private void syncSharedClientFields() {
         fileHostField.textProperty().bindBidirectional(clientHostField.textProperty());
         fileSenderField.textProperty().bindBidirectional(nicknameField.textProperty());
@@ -647,7 +630,7 @@ public class MainView {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox bar = new HBox(12,
+        HBox bar = new HBox(8,
                 createStatusChip(serverIndicator, serverStatusValue),
                 createStatusChip(connectionIndicator, connectionStatusValue),
                 createStatusChip(peerIndicator, peerStatusValue),
@@ -662,17 +645,17 @@ public class MainView {
     }
 
     private Node createStatusChip(Circle indicator, Label valueLabel) {
-        HBox chip = new HBox(8, indicator, valueLabel);
+        HBox chip = new HBox(6, indicator, valueLabel);
         chip.setAlignment(Pos.CENTER_LEFT);
-        chip.setPadding(new Insets(6, 10, 6, 10));
+        chip.setPadding(new Insets(4, 8, 4, 8));
         chip.getStyleClass().add("status-chip");
         return chip;
     }
 
     private Node buildConnectionWorkspaceHeader() {
-        HBox row = new HBox(12,
-                createCard("Local server", buildServerQuickPanel()),
-                createCard("Connection", buildClientConnectionQuickPanel())
+        HBox row = new HBox(8,
+                createCompactCard("My profile", buildServerQuickPanel()),
+                createCompactCard("Manual connection", buildClientConnectionQuickPanel())
         );
         HBox.setHgrow((Node) row.getChildren().get(0), Priority.ALWAYS);
         HBox.setHgrow((Node) row.getChildren().get(1), Priority.ALWAYS);
@@ -680,22 +663,42 @@ public class MainView {
     }
 
     private Node buildServerQuickPanel() {
-        GridPane grid = createCompactFormGrid();
-        grid.addRow(0, new Label("Chat"), serverChatPortField, new Label("File"), serverFilePortField);
-        grid.addRow(1, new Label("Password"), serverPasswordField, new Label("Downloads"), downloadsField);
+        Label summary = createMutedLabel("Set your name and shared room password. Then make this device discoverable on the LAN.");
+
+        GridPane mainGrid = createCompactFormGrid();
+        mainGrid.addRow(0, new Label("Your name"), nicknameField, new Label("Room password"), clientPasswordField);
+
+        GridPane advancedGrid = createCompactFormGrid();
+        advancedGrid.addRow(0, new Label("Chat port"), serverChatPortField, new Label("File port"), serverFilePortField);
+        VBox advancedContent = new VBox(6,
+                createMutedLabel("Change these only if another app already uses the default ports."),
+                advancedGrid
+        );
+        TitledPane advancedPane = createCollapsedAdvancedPane("Advanced network settings", advancedContent);
+
         HBox actions = new HBox(8, startServerButton, stopServerButton);
-        VBox box = new VBox(10, grid, actions);
-        growFields(serverChatPortField, serverFilePortField, serverPasswordField, downloadsField);
+        VBox box = new VBox(8, summary, mainGrid, actions, advancedPane);
+        growFields(nicknameField, clientPasswordField, serverChatPortField, serverFilePortField);
         return box;
     }
 
     private Node buildClientConnectionQuickPanel() {
-        GridPane grid = createCompactFormGrid();
-        grid.addRow(0, new Label("Host"), clientHostField, new Label("Port"), clientChatPortField);
-        grid.addRow(1, new Label("Nickname"), nicknameField, new Label("Password"), clientPasswordField);
+        Label summary = createMutedLabel("Fallback for rooms that were not discovered automatically. Usually you will select a discovered peer from the list.");
+
+        GridPane mainGrid = createCompactFormGrid();
+        mainGrid.addRow(0, new Label("Host address"), clientHostField);
+
+        GridPane advancedGrid = createCompactFormGrid();
+        advancedGrid.addRow(0, new Label("Chat port"), clientChatPortField, new Label("File port"), clientFilePortField);
+        VBox advancedContent = new VBox(6,
+                createMutedLabel("Use custom ports only when the host changed them in advanced settings."),
+                advancedGrid
+        );
+        TitledPane advancedPane = createCollapsedAdvancedPane("Advanced network settings", advancedContent);
+
         HBox actions = new HBox(8, connectButton, disconnectButton);
-        VBox box = new VBox(10, grid, actions);
-        growFields(clientHostField, clientChatPortField, nicknameField, clientPasswordField);
+        VBox box = new VBox(8, summary, mainGrid, actions, advancedPane);
+        growFields(clientHostField, nicknameField, clientPasswordField, clientChatPortField, clientFilePortField);
         return box;
     }
 
@@ -717,13 +720,19 @@ public class MainView {
 
     private Node buildConversationColumn() {
         VBox.setVgrow(logArea, Priority.ALWAYS);
-        HBox messageRow = new HBox(10, messageField, sendMessageButton);
+        HBox callActions = new HBox(8, startVoiceQuickActionButton, startVideoQuickActionButton, hangUpQuickActionButton);
+        callActions.setAlignment(Pos.CENTER_RIGHT);
+        VBox conversationHeading = new VBox(4, conversationTitleValue, conversationSubtitleValue);
+        HBox.setHgrow(conversationHeading, Priority.ALWAYS);
+        HBox conversationHeader = new HBox(10, conversationHeading, callActions);
+        conversationHeader.setAlignment(Pos.CENTER_LEFT);
+
+        HBox messageRow = new HBox(10, sendFileQuickActionButton, messageField, sendMessageButton);
         HBox.setHgrow(messageField, Priority.ALWAYS);
 
         VBox content = new VBox(12,
                 videoStageBox,
-                conversationTitleValue,
-                conversationSubtitleValue,
+                conversationHeader,
                 logArea,
                 messageRow
         );
@@ -799,23 +808,10 @@ public class MainView {
     }
 
     private Node buildActionsColumn() {
-        sendQuickActionButton.setMaxWidth(Double.MAX_VALUE);
-        sendFileQuickActionButton.setMaxWidth(Double.MAX_VALUE);
-        startVoiceQuickActionButton.setMaxWidth(Double.MAX_VALUE);
-        startVideoQuickActionButton.setMaxWidth(Double.MAX_VALUE);
-        hangUpQuickActionButton.setMaxWidth(Double.MAX_VALUE);
         startDataButton.setMaxWidth(Double.MAX_VALUE);
         sendRtcMessageButton.setMaxWidth(Double.MAX_VALUE);
         testMicrophoneButton.setMaxWidth(Double.MAX_VALUE);
         testCameraButton.setMaxWidth(Double.MAX_VALUE);
-
-        VBox quickActions = new VBox(8,
-                sendQuickActionButton,
-                sendFileQuickActionButton,
-                startVoiceQuickActionButton,
-                startVideoQuickActionButton,
-                hangUpQuickActionButton
-        );
 
         VBox voiceBlock = new VBox(8,
                 voicePanelStatusValue,
@@ -826,7 +822,6 @@ public class MainView {
         );
 
         VBox transfersBlock = new VBox(8, transferHintValue, transferListView);
-        VBox.setVgrow(transferListView, Priority.ALWAYS);
 
         VBox advancedContent = new VBox(10,
                 createSectionHeadingLabel("Runtime"),
@@ -845,25 +840,25 @@ public class MainView {
         );
         VBox.setVgrow(diagnosticsArea, Priority.ALWAYS);
 
+        TitledPane mediaPane = new TitledPane("Audio / Video devices", voiceBlock);
+        mediaPane.getStyleClass().add("advanced-pane");
+        mediaPane.setExpanded(false);
+        mediaPane.setAnimated(false);
+
         TitledPane advancedPane = new TitledPane("Advanced / Experimental", advancedContent);
         advancedPane.getStyleClass().add("advanced-pane");
         advancedPane.setExpanded(false);
         advancedPane.setAnimated(false);
 
-        Node quickActionsCard = createSectionCard("Quick actions", quickActions);
-        Node voiceCard = createSectionCard("Voice status", voiceBlock);
         Node transfersCard = createSectionCard("Transfers", transfersBlock);
 
         VBox content = new VBox(12,
                 selectedPeerTitleValue,
                 selectedPeerMetaValue,
-                quickActionsCard,
-                voiceCard,
                 transfersCard,
+                mediaPane,
                 advancedPane
         );
-        VBox.setVgrow(transfersCard, Priority.ALWAYS);
-        VBox.setVgrow(transferListView, Priority.ALWAYS);
 
         ScrollPane scrollPane = new ScrollPane(content);
         scrollPane.getStyleClass().add("actions-scroll-pane");
@@ -899,6 +894,15 @@ public class MainView {
         return box;
     }
 
+    private Node createCompactCard(String title, Node content) {
+        Label header = new Label(title);
+        header.getStyleClass().add("card-title");
+        VBox box = new VBox(6, header, content);
+        box.setPadding(new Insets(10, 12, 10, 12));
+        box.getStyleClass().addAll("panel-card", "compact-panel-card");
+        return box;
+    }
+
 
     private Label createSectionHeadingLabel(String text) {
         Label label = new Label(text);
@@ -919,17 +923,28 @@ public class MainView {
         return label;
     }
 
+    private TitledPane createCollapsedAdvancedPane(String title, Node content) {
+        TitledPane pane = new TitledPane(title, content);
+        pane.getStyleClass().add("advanced-pane");
+        pane.setExpanded(false);
+        pane.setAnimated(false);
+        return pane;
+    }
+
     private void styleInteractiveControls() {
         applyButtonVariant(startServerButton, "primary-button");
         applyButtonVariant(stopServerButton, "danger-button");
         applyButtonVariant(connectButton, "primary-button");
-        applyButtonVariant(disconnectButton, "secondary-button");
+        applyButtonVariant(disconnectButton, "danger-button");
         applyButtonVariant(sendMessageButton, "primary-button");
-        applyButtonVariant(sendQuickActionButton, "primary-button");
         applyButtonVariant(sendFileQuickActionButton, "secondary-button");
-        applyButtonVariant(startVoiceQuickActionButton, "primary-button");
+        applyButtonVariant(startVoiceQuickActionButton, "secondary-button");
         applyButtonVariant(startVideoQuickActionButton, "secondary-button");
         applyButtonVariant(hangUpQuickActionButton, "danger-button");
+        applyInlineButtonWidth(sendFileQuickActionButton);
+        applyInlineButtonWidth(startVoiceQuickActionButton);
+        applyInlineButtonWidth(startVideoQuickActionButton);
+        applyInlineButtonWidth(hangUpQuickActionButton);
         applyButtonVariant(startDataButton, "secondary-button");
         applyButtonVariant(sendRtcMessageButton, "secondary-button");
         applyButtonVariant(testMicrophoneButton, "secondary-button");
@@ -939,6 +954,11 @@ public class MainView {
     private void applyButtonVariant(Button button, String variantClass) {
         button.getStyleClass().addAll("app-button", variantClass);
         button.setMaxWidth(Double.MAX_VALUE);
+    }
+
+    private void applyInlineButtonWidth(Button button) {
+        button.setMaxWidth(Region.USE_PREF_SIZE);
+        button.setMinWidth(Region.USE_PREF_SIZE);
     }
 
     private void applyTheme() {
@@ -960,7 +980,7 @@ public class MainView {
     private GridPane createCompactFormGrid() {
         GridPane grid = new GridPane();
         grid.setHgap(8);
-        grid.setVgap(8);
+        grid.setVgap(5);
         return grid;
     }
 
@@ -982,9 +1002,8 @@ public class MainView {
         try {
             int chatPort = Integer.parseInt(serverChatPortField.getText().trim());
             int filePort = Integer.parseInt(serverFilePortField.getText().trim());
-            Path downloadsPath = Path.of(downloadsField.getText().trim()).toAbsolutePath().normalize();
-            serverService.start(new ChatServerConfig(chatPort, serverPasswordField.getText()));
-            fileTransferServerService.start(new FileTransferServerConfig(filePort, downloadsPath, serverPasswordField.getText()));
+            serverService.start(new ChatServerConfig(chatPort, clientPasswordField.getText()));
+            fileTransferServerService.start(new FileTransferServerConfig(filePort, DEFAULT_DOWNLOADS_PATH, clientPasswordField.getText()));
             setServerStatus("Server running", Color.web("#1f9d55"));
             setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
             appendChat("[ui] chat server started on port " + chatPort);
@@ -1488,7 +1507,6 @@ public class MainView {
         sendFileQuickActionButton.setDisable(!hasOnlinePeer);
         startVoiceQuickActionButton.setDisable(!hasOnlinePeer);
         startVideoQuickActionButton.setDisable(!hasOnlinePeer);
-        sendQuickActionButton.setDisable(!clientConnected);
         startDataButton.setDisable(!hasOnlinePeer);
         sendRtcMessageButton.setDisable(false);
         boolean canHangUp = rtcSessionService.currentSession()

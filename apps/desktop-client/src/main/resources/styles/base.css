@@ -40,7 +40,7 @@
 .status-bar {
     -fx-background-radius: 14;
     -fx-border-radius: 14;
-    -fx-padding: 12 14 12 14;
+    -fx-padding: 8 10 8 10;
 }
 
 .status-chip {
@@ -98,7 +98,7 @@
 .theme-toggle {
     -fx-background-radius: 12;
     -fx-border-radius: 12;
-    -fx-padding: 8 12 8 12;
+    -fx-padding: 7 11 7 11;
     -fx-font-weight: 700;
     -fx-cursor: hand;
 }
