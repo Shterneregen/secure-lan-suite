@@ -3,6 +3,11 @@ package com.shterneregen.securelan.desktop.ui;
 import com.shterneregen.securelan.audio.service.AudioCallProfile;
 import com.shterneregen.securelan.audio.service.AudioProfileService;
 import com.shterneregen.securelan.audio.service.impl.DefaultAudioProfileService;
+import com.shterneregen.securelan.chat.discovery.DiscoveredPeer;
+import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig;
+import com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener;
+import com.shterneregen.securelan.chat.discovery.PeerDiscoveryService;
+import com.shterneregen.securelan.chat.discovery.impl.UdpBroadcastPeerDiscoveryService;
 import com.shterneregen.securelan.chat.event.ChatConnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatCoreEvent;
 import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent;
@@ -19,6 +24,7 @@ import com.shterneregen.securelan.chat.service.ChatServerConfig;
 import com.shterneregen.securelan.chat.service.ChatServerService;
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService;
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService;
+import com.shterneregen.securelan.common.net.NetworkConstants;
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode;
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState;
 import com.shterneregen.securelan.desktop.service.DefaultRandomNicknameService;
@@ -94,6 +100,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
@@ -102,6 +109,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -113,14 +121,15 @@ public class MainView {
     private static final double TRANSFER_LIST_VISIBLE_ROWS = 3;
     private static final double TRANSFER_LIST_ROW_HEIGHT = 48;
     private static final Path DEFAULT_DOWNLOADS_PATH = Path.of("downloads").toAbsolutePath().normalize();
+    private static final String LOCAL_PEER_ID = UUID.randomUUID().toString();
     private final RandomNicknameService randomNicknameService = new DefaultRandomNicknameService();
 
-    private final TextField serverChatPortField = new TextField("5050");
-    private final TextField serverFilePortField = new TextField("5051");
+    private final TextField serverChatPortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_CHAT_PORT));
+    private final TextField serverFilePortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT));
 
     private final TextField clientHostField = new TextField("127.0.0.1");
-    private final TextField clientChatPortField = new TextField("5050");
-    private final TextField clientFilePortField = new TextField("5051");
+    private final TextField clientChatPortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_CHAT_PORT));
+    private final TextField clientFilePortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT));
     private final TextField nicknameField = new TextField(randomNicknameService.generate());
     private final TextField clientPasswordField = new TextField("chatpass");
     private final TextField fileHostField = new TextField("127.0.0.1");
@@ -212,7 +221,7 @@ public class MainView {
     private final Button hangUpQuickActionButton = new Button("End call");
     private final Button startServerButton = new Button("Make discoverable");
     private final Button stopServerButton = new Button("Stop hosting");
-    private final Button connectButton = new Button("Connect manually");
+    private final Button connectButton = new Button("Connect");
     private final Button disconnectButton = new Button("Disconnect");
     private final Button sendMessageButton = new Button("Send");
     private final Button startDataButton = new Button("Start data");
@@ -229,6 +238,7 @@ public class MainView {
     private final FileTransferClientService fileTransferClientService;
     private final RtcSessionService rtcSessionService;
     private final RtcMediaDeviceService rtcMediaDeviceService;
+    private final PeerDiscoveryService peerDiscoveryService;
     private final AudioProfileService audioProfileService;
     private final VideoProfileService videoProfileService;
 
@@ -242,6 +252,7 @@ public class MainView {
         this.audioProfileService = new DefaultAudioProfileService();
         this.videoProfileService = new DefaultVideoProfileService();
         this.rtcMediaDeviceService = new DefaultRtcMediaDeviceService();
+        this.peerDiscoveryService = new UdpBroadcastPeerDiscoveryService();
         this.rtcSessionService = new DefaultRtcSessionService(this::handleRtcEvent, clientService::sendSignal);
         syncSharedClientFields();
         configureUiState();
@@ -250,6 +261,7 @@ public class MainView {
         publishRealtimeProfiles();
         refreshMediaDeviceChoices();
         publishRealtimeRuntimeStatus();
+        startPeerDiscoveryListener();
     }
 
     public Parent createContent() {
@@ -267,6 +279,7 @@ public class MainView {
         closeCameraPreview();
         rtcMediaDeviceService.close();
         rtcSessionService.close();
+        peerDiscoveryService.stop();
         clientService.disconnect();
         serverService.stop();
         fileTransferServerService.stop();
@@ -292,6 +305,7 @@ public class MainView {
         selectedPeerMetaValue.setWrapText(true);
         selectedPeerMetaValue.getStyleClass().add("muted-label");
         peersTitleValue.getStyleClass().add("section-heading");
+        peersHintValue.setText("Discovered LAN peers appear here. Select one to connect, send files, or start a call.");
         peersHintValue.setWrapText(true);
         peersHintValue.getStyleClass().add("muted-label");
         styleStatusLabel(serverStatusValue);
@@ -993,9 +1007,53 @@ public class MainView {
     private void stopServer() {
         serverService.stop();
         fileTransferServerService.stop();
+        startPeerDiscoveryListener();
         setServerStatus("Server stopped", Color.web("#9aa4b2"));
         setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
         appendChat("[ui] server stopped");
+    }
+
+    private void startPeerDiscoveryListener() {
+        startPeerDiscovery(PeerDiscoveryConfig.listenOnly(LOCAL_PEER_ID, nicknameField.getText().trim()), false);
+    }
+
+    private void startPeerDiscovery(int chatPort, int filePort) {
+        startPeerDiscovery(PeerDiscoveryConfig.defaults(
+                LOCAL_PEER_ID,
+                nicknameField.getText().trim(),
+                chatPort,
+                filePort
+        ), true);
+    }
+
+    private void startPeerDiscovery(PeerDiscoveryConfig discoveryConfig, boolean hosting) {
+        peerDiscoveryService.start(discoveryConfig, new PeerDiscoveryListener() {
+            @Override
+            public void onPeerDiscovered(DiscoveredPeer peer) {
+                Platform.runLater(() -> handlePeerDiscovered(peer));
+            }
+
+            @Override
+            public void onPeerExpired(DiscoveredPeer peer) {
+                Platform.runLater(() -> handlePeerExpired(peer));
+            }
+
+            @Override
+            public void onDiscoveryError(String message, Throwable cause) {
+                Platform.runLater(() -> {
+                    appendDiagnostics("[discovery-error] " + message + (cause != null ? " -> " + cause.getMessage() : ""));
+                    if (!peerDiscoveryService.isRunning()) {
+                        appendChat("[discovery] " + message);
+                    }
+                });
+            }
+        });
+        if (peerDiscoveryService.isRunning()) {
+            appendChat(hosting
+                    ? "[discovery] broadcasting as " + discoveryConfig.nickname() + " on UDP " + discoveryConfig.discoveryPort()
+                    : "[discovery] listening on UDP " + discoveryConfig.discoveryPort());
+            peersHintValue.setText("Looking for SecureLanSuite peers on this LAN. Select a discovered peer to connect, send files, or start a call.");
+        }
     }
 
     private void startServer() {
@@ -1004,6 +1062,8 @@ public class MainView {
             int filePort = Integer.parseInt(serverFilePortField.getText().trim());
             serverService.start(new ChatServerConfig(chatPort, clientPasswordField.getText()));
             fileTransferServerService.start(new FileTransferServerConfig(filePort, DEFAULT_DOWNLOADS_PATH, clientPasswordField.getText()));
+            startPeerDiscovery(chatPort, filePort);
+            connectToLocalHostedChat(chatPort, filePort);
             setServerStatus("Server running", Color.web("#1f9d55"));
             setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
             appendChat("[ui] chat server started on port " + chatPort);
@@ -1015,8 +1075,36 @@ public class MainView {
         }
     }
 
+    private void connectToLocalHostedChat(int chatPort, int filePort) {
+        clientHostField.setText("127.0.0.1");
+        fileHostField.setText("127.0.0.1");
+        clientChatPortField.setText(Integer.toString(chatPort));
+        clientFilePortField.setText(Integer.toString(filePort));
+        if (clientService.isConnected()) {
+            return;
+        }
+        boolean connected = clientService.connect(new ChatClientConnectRequest(
+                "127.0.0.1",
+                chatPort,
+                nicknameField.getText().trim(),
+                clientPasswordField.getText()
+        ));
+        if (!connected) {
+            appendChat("[ui] local hosting connection failed");
+            setConnectionStatus("Local connection failed", Color.web("#dc2626"));
+        } else {
+            appendChat("[ui] joined local hosted room");
+        }
+    }
+
     private void connectClient() {
         try {
+            PeerPresence selectedPeer = peerListView.getSelectionModel().getSelectedItem();
+            if (selectedPeer != null && selectedPeer.discovered()) {
+                clientHostField.setText(selectedPeer.host());
+                clientChatPortField.setText(Integer.toString(selectedPeer.chatPort()));
+                clientFilePortField.setText(Integer.toString(selectedPeer.filePort()));
+            }
             int port = Integer.parseInt(clientChatPortField.getText().trim());
             boolean connected = clientService.connect(new ChatClientConnectRequest(
                     clientHostField.getText().trim(),
@@ -1065,6 +1153,10 @@ public class MainView {
 
         recipientField.setText(peer.nickname());
         rtcPeerField.setText(peer.nickname());
+        if (peer.discovered()) {
+            fileHostField.setText(peer.host());
+            clientFilePortField.setText(Integer.toString(peer.filePort()));
+        }
 
         try {
             int filePort = Integer.parseInt(clientFilePortField.getText().trim());
@@ -1519,15 +1611,50 @@ public class MainView {
         return serverService.isRunning() || fileTransferServerService.isRunning();
     }
 
+    private void handlePeerDiscovered(DiscoveredPeer discoveredPeer) {
+        PeerPresence peer = upsertDiscoveredPeer(discoveredPeer);
+        if (peer == null) {
+            return;
+        }
+        appendDiagnostics("[discovery] " + discoveredPeer.nickname() + " at " + discoveredPeer.host() + ":" + discoveredPeer.chatPort());
+        if (peerListView.getSelectionModel().getSelectedItem() == null) {
+            peerListView.getSelectionModel().select(peer);
+        }
+    }
+
+    private void handlePeerExpired(DiscoveredPeer discoveredPeer) {
+        if (markPeerOffline(discoveredPeer.nickname())) {
+            appendDiagnostics("[discovery] expired " + discoveredPeer.nickname() + " at " + discoveredPeer.host());
+        }
+    }
+
+    private PeerPresence upsertDiscoveredPeer(DiscoveredPeer discoveredPeer) {
+        if (discoveredPeer == null) {
+            return null;
+        }
+        return upsertPeer(
+                discoveredPeer.nickname(),
+                true,
+                discoveredPeer.peerId(),
+                discoveredPeer.host(),
+                discoveredPeer.chatPort(),
+                discoveredPeer.filePort(),
+                discoveredPeer.lastSeen()
+        );
+    }
+
     private PeerPresence upsertPeer(String nickname, boolean online) {
+        return upsertPeer(nickname, online, null, null, 0, 0, null);
+    }
+
+    private PeerPresence upsertPeer(String nickname, boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen) {
         if (nickname == null || nickname.isBlank() || isSystemSender(nickname) || nickname.equalsIgnoreCase(nicknameField.getText().trim())) {
             return null;
         }
 
         for (PeerPresence item : peerItems) {
-            if (item.nickname().equalsIgnoreCase(nickname)) {
-                boolean changed = item.online != online;
-                item.online = online;
+            if (samePeer(item, nickname, peerId)) {
+                boolean changed = item.apply(online, peerId, host, chatPort, filePort, lastSeen);
                 if (changed) {
                     peerListView.refresh();
                     sortPeers();
@@ -1538,11 +1665,18 @@ public class MainView {
             }
         }
 
-        PeerPresence created = new PeerPresence(nickname, online);
+        PeerPresence created = new PeerPresence(nickname, online, peerId, host, chatPort, filePort, lastSeen);
         peerItems.add(created);
         sortPeers();
         refreshSelectedPeerStatus();
         return created;
+    }
+
+    private boolean samePeer(PeerPresence peer, String nickname, String peerId) {
+        if (peerId != null && !peerId.isBlank() && peer.peerId() != null && !peer.peerId().isBlank()) {
+            return peer.peerId().equals(peerId);
+        }
+        return peer.nickname().equalsIgnoreCase(nickname);
     }
 
     private boolean markPeerOffline(String nickname) {
@@ -1586,12 +1720,20 @@ public class MainView {
         } else {
             recipientField.setText(peer.nickname());
             rtcPeerField.setText(peer.nickname());
+            if (peer.discovered()) {
+                clientHostField.setText(peer.host());
+                fileHostField.setText(peer.host());
+                clientChatPortField.setText(Integer.toString(peer.chatPort()));
+                clientFilePortField.setText(Integer.toString(peer.filePort()));
+            }
             conversationTitleValue.setText("Shared room activity");
             conversationSubtitleValue.setText("Actions on the right will target “" + peer.nickname() + "”. Text chat remains shared for now.");
             selectedPeerTitleValue.setText(peer.nickname());
             selectedPeerMetaValue.setText(peer.online()
-                    ? "Online — chat, file transfer, voice, and video are available."
-                    : "Offline — wait until this peer rejoins the chat.");
+                    ? peer.discovered()
+                    ? "Online via LAN discovery — " + peer.host() + ":" + peer.chatPort() + " chat, " + peer.filePort() + " file."
+                    : "Online — chat, file transfer, voice, and video are available."
+                    : "Offline — wait until this peer rejoins the chat or discovery refreshes.");
             setPeerStatus(peer.online() ? "Peer " + peer.nickname() : "Peer offline", peer.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
         }
         updateQuickActionState();
@@ -1688,10 +1830,46 @@ public class MainView {
     private static final class PeerPresence {
         private final String nickname;
         private boolean online;
+        private String peerId;
+        private String host;
+        private int chatPort;
+        private int filePort;
+        private Instant lastSeen;
 
-        private PeerPresence(String nickname, boolean online) {
+        private PeerPresence(String nickname, boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen) {
             this.nickname = nickname;
             this.online = online;
+            this.peerId = peerId;
+            this.host = host;
+            this.chatPort = chatPort;
+            this.filePort = filePort;
+            this.lastSeen = lastSeen;
+        }
+
+        private boolean apply(boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen) {
+            boolean changed = this.online != online;
+            this.online = online;
+            if (peerId != null && !peerId.isBlank() && !Objects.equals(this.peerId, peerId)) {
+                this.peerId = peerId;
+                changed = true;
+            }
+            if (host != null && !host.isBlank() && !Objects.equals(this.host, host)) {
+                this.host = host;
+                changed = true;
+            }
+            if (chatPort > 0 && this.chatPort != chatPort) {
+                this.chatPort = chatPort;
+                changed = true;
+            }
+            if (filePort > 0 && this.filePort != filePort) {
+                this.filePort = filePort;
+                changed = true;
+            }
+            if (lastSeen != null && !Objects.equals(this.lastSeen, lastSeen)) {
+                this.lastSeen = lastSeen;
+                changed = true;
+            }
+            return changed;
         }
 
         public String nickname() {
@@ -1700,6 +1878,30 @@ public class MainView {
 
         public boolean online() {
             return online;
+        }
+
+        public String peerId() {
+            return peerId;
+        }
+
+        public String host() {
+            return host;
+        }
+
+        public int chatPort() {
+            return chatPort;
+        }
+
+        public int filePort() {
+            return filePort;
+        }
+
+        public Instant lastSeen() {
+            return lastSeen;
+        }
+
+        public boolean discovered() {
+            return host != null && !host.isBlank() && chatPort > 0 && filePort > 0;
         }
     }
 
@@ -1755,6 +1957,16 @@ public class MainView {
         }
     }
 
+    private static String peerMeta(PeerPresence item) {
+        if (!item.online()) {
+            return item.discovered() ? "offline • " + item.host() : "offline";
+        }
+        if (item.discovered()) {
+            return "discovered • " + item.host() + ":" + item.chatPort() + " • file " + item.filePort();
+        }
+        return "chat • voice • video • file";
+    }
+
     private static final class PeerCell extends ListCell<PeerPresence> {
         @Override
         protected void updateItem(PeerPresence item, boolean empty) {
@@ -1768,7 +1980,7 @@ public class MainView {
             Circle dot = new Circle(5, item.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
             Label name = new Label(item.nickname());
             name.getStyleClass().add("list-primary");
-            Label meta = new Label(item.online() ? "chat • voice • video • file" : "offline");
+            Label meta = new Label(peerMeta(item));
             meta.getStyleClass().add("list-secondary");
             VBox textBox = new VBox(2, name, meta);
             HBox row = new HBox(8, dot, textBox);
