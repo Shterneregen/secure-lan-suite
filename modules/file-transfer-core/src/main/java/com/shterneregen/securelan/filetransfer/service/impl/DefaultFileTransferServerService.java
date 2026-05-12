@@ -23,16 +23,18 @@ import java.nio.file.StandardOpenOption;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DefaultFileTransferServerService implements FileTransferServerService {
     private final FileTransferEventPublisher eventPublisher;
     private final SecureFileTransferHandshake handshake;
+    private final Object lifecycleLock = new Object();
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     private volatile ServerSocket serverSocket;
     private volatile FileTransferServerConfig config;
+    private volatile ExecutorService executor;
 
     public DefaultFileTransferServerService(FileTransferEventPublisher eventPublisher) {
         this(eventPublisher, CryptoServices.createDefault());
@@ -45,39 +47,66 @@ public class DefaultFileTransferServerService implements FileTransferServerServi
 
     @Override
     public void start(FileTransferServerConfig config) {
-        if (running.get()) {
-            return;
-        }
-        try {
-            Files.createDirectories(config.storageDirectory());
-            this.serverSocket = new ServerSocket(config.port());
-            this.config = config;
-            running.set(true);
-            executor.submit(this::acceptLoop);
-        } catch (IOException e) {
-            throw new IllegalStateException("Unable to start file transfer server", e);
+        Objects.requireNonNull(config, "config");
+        synchronized (lifecycleLock) {
+            if (running.get()) {
+                return;
+            }
+            ServerSocket createdSocket = null;
+            ExecutorService createdExecutor = null;
+            try {
+                Files.createDirectories(config.storageDirectory());
+                createdSocket = new ServerSocket(config.port());
+                createdExecutor = Executors.newCachedThreadPool();
+                this.serverSocket = createdSocket;
+                this.config = config;
+                this.executor = createdExecutor;
+                running.set(true);
+                ServerSocket activeSocket = createdSocket;
+                ExecutorService activeExecutor = createdExecutor;
+                FileTransferServerConfig activeConfig = config;
+                activeExecutor.submit(() -> acceptLoop(activeSocket, activeExecutor, activeConfig));
+            } catch (IOException | RuntimeException e) {
+                cleanupFailedStart(createdSocket, createdExecutor);
+                throw new IllegalStateException("Unable to start file transfer server", e);
+            }
         }
     }
 
-    private void acceptLoop() {
-        while (running.get()) {
+    private void acceptLoop(ServerSocket activeSocket, ExecutorService activeExecutor, FileTransferServerConfig activeConfig) {
+        while (isActive(activeSocket, activeExecutor)) {
             try {
-                Socket socket = serverSocket.accept();
-                executor.submit(() -> handleClient(socket));
+                Socket socket = activeSocket.accept();
+                try {
+                    activeExecutor.submit(() -> handleClient(socket, activeConfig));
+                } catch (RejectedExecutionException e) {
+                    closeQuietly(socket);
+                    if (isActive(activeSocket, activeExecutor)) {
+                        eventPublisher.publish(new FileTransferFailedEvent("server", "", "Unable to handle file transfer client", e, false));
+                    }
+                }
             } catch (IOException e) {
-                if (running.get()) {
+                if (isActive(activeSocket, activeExecutor)) {
                     eventPublisher.publish(new FileTransferFailedEvent("server", "", "Unable to accept file transfer client", e, false));
                 }
             }
         }
     }
 
-    private void handleClient(Socket socket) {
+    private boolean isActive(ServerSocket activeSocket, ExecutorService activeExecutor) {
+        return running.get()
+                && serverSocket == activeSocket
+                && executor == activeExecutor
+                && !activeSocket.isClosed()
+                && !activeExecutor.isShutdown();
+    }
+
+    private void handleClient(Socket socket, FileTransferServerConfig activeConfig) {
         try (socket; FileTransferSession session = new FileTransferSession(socket)) {
-            FileTransferMetadata metadata = handshake.performServerHandshake(session, config.sessionPassword());
+            FileTransferMetadata metadata = handshake.performServerHandshake(session, activeConfig.sessionPassword());
             eventPublisher.publish(new FileTransferStartedEvent(metadata.transferId(), metadata.fileName(), metadata.fileSize(), false));
 
-            Path target = createUniqueTargetPath(metadata.fileName());
+            Path target = createUniqueTargetPath(metadata.fileName(), activeConfig);
             long transferred = 0;
             try (OutputStream outputStream = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                 while (true) {
@@ -101,9 +130,10 @@ public class DefaultFileTransferServerService implements FileTransferServerServi
         }
     }
 
-    private Path createUniqueTargetPath(String fileName) throws IOException {
-        Path candidate = config.storageDirectory().resolve(fileName).normalize();
-        if (!candidate.startsWith(config.storageDirectory().normalize())) {
+    private Path createUniqueTargetPath(String fileName, FileTransferServerConfig activeConfig) throws IOException {
+        Path storageDirectory = activeConfig.storageDirectory().normalize();
+        Path candidate = storageDirectory.resolve(fileName).normalize();
+        if (!candidate.startsWith(storageDirectory)) {
             throw new IOException("Invalid target file path");
         }
         if (!Files.exists(candidate)) {
@@ -118,7 +148,7 @@ public class DefaultFileTransferServerService implements FileTransferServerServi
         }
         int index = 1;
         while (true) {
-            Path alternative = config.storageDirectory().resolve(baseName + "-" + index + extension).normalize();
+            Path alternative = storageDirectory.resolve(baseName + "-" + index + extension).normalize();
             if (!Files.exists(alternative)) {
                 return alternative;
             }
@@ -128,18 +158,51 @@ public class DefaultFileTransferServerService implements FileTransferServerServi
 
     @Override
     public void stop() {
-        running.set(false);
-        try {
-            if (serverSocket != null) {
-                serverSocket.close();
+        synchronized (lifecycleLock) {
+            running.set(false);
+            closeQuietly(serverSocket);
+            if (executor != null) {
+                executor.shutdownNow();
             }
-        } catch (IOException ignored) {
+            serverSocket = null;
+            config = null;
+            executor = null;
         }
-        executor.shutdownNow();
     }
 
     @Override
     public boolean isRunning() {
         return running.get();
+    }
+
+    private void cleanupFailedStart(ServerSocket socket, ExecutorService executor) {
+        running.set(false);
+        closeQuietly(socket);
+        if (executor != null) {
+            executor.shutdownNow();
+        }
+        serverSocket = null;
+        config = null;
+        this.executor = null;
+    }
+
+    private static void closeQuietly(ServerSocket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static void closeQuietly(Socket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+        }
     }
 }

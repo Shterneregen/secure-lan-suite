@@ -7,12 +7,15 @@ import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferC
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,12 +34,13 @@ class FileTransferIntegrationTest {
         FileTransferEventPublisher clientPublisher = event -> clientEvents.add(event.getClass().getSimpleName());
 
         DefaultFileTransferServerService server = new DefaultFileTransferServerService(serverPublisher);
-        server.start(new FileTransferServerConfig(6061, inbox, "files-pass"));
+        int port = findAvailablePort();
+        server.start(new FileTransferServerConfig(port, inbox, "files-pass"));
         try {
             DefaultFileTransferClientService client = new DefaultFileTransferClientService(clientPublisher);
             String transferId = client.sendFile(new FileTransferClientRequest(
                     "127.0.0.1",
-                    6061,
+                    port,
                     "alice",
                     "bob",
                     "files-pass",
@@ -54,6 +58,36 @@ class FileTransferIntegrationTest {
             assertTrue(clientEvents.contains("FileTransferCompletedEvent"));
         } finally {
             server.stop();
+        }
+    }
+
+    @Test
+    void shouldRestartServerAfterStop() throws Exception {
+        Path tempDir = Files.createTempDirectory("file-transfer-restart");
+        Path inbox = tempDir.resolve("inbox");
+        Files.createDirectories(inbox);
+        FileTransferEventPublisher serverPublisher = event -> {
+        };
+
+        DefaultFileTransferServerService server = new DefaultFileTransferServerService(serverPublisher);
+        int port = findAvailablePort();
+        try {
+            server.start(new FileTransferServerConfig(port, inbox, "files-pass"));
+            assertTrue(server.isRunning());
+
+            server.stop();
+            assertFalse(server.isRunning());
+
+            assertDoesNotThrow(() -> server.start(new FileTransferServerConfig(port, inbox, "files-pass")));
+            assertTrue(server.isRunning());
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static int findAvailablePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
         }
     }
 }
