@@ -97,8 +97,12 @@ import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class MainView {
@@ -182,6 +186,15 @@ public class MainView {
     private Label cameraPreviewStatusValue;
     private WritableImage cameraPreviewImage;
     private final AtomicLong latestCameraPreviewGeneration = new AtomicLong(0);
+    private final AtomicLong fileTransferThreadSequence = new AtomicLong(0);
+    private final ExecutorService fileTransferExecutor = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "securelan-file-transfer-client-" + fileTransferThreadSequence.incrementAndGet());
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final Object transferProgressLock = new Object();
+    private final Map<String, FileTransferProgressEvent> pendingTransferProgressEvents = new LinkedHashMap<>();
+    private final AtomicBoolean transferProgressUiUpdateScheduled = new AtomicBoolean(false);
 
     private final ObservableList<PeerPresence> peerItems = FXCollections.observableArrayList();
     private final ListView<PeerPresence> peerListView = new ListView<>(peerItems);
@@ -248,6 +261,7 @@ public class MainView {
     }
 
     public void shutdown() {
+        fileTransferExecutor.shutdownNow();
         closeCameraPreview();
         rtcMediaDeviceService.close();
         rtcSessionService.close();
@@ -1032,17 +1046,42 @@ public class MainView {
 
         try {
             int filePort = Integer.parseInt(clientFilePortField.getText().trim());
-            fileTransferClientService.sendFile(new FileTransferClientRequest(
+            FileTransferClientRequest request = new FileTransferClientRequest(
                     fileHostField.getText().trim(),
                     filePort,
                     fileSenderField.getText().trim(),
                     peer.nickname(),
                     clientPasswordField.getText(),
                     file.toPath()
-            ));
+            );
+            sendFileAsync(request);
         } catch (Exception ex) {
             showError(ex.getMessage());
         }
+    }
+
+    private void sendFileAsync(FileTransferClientRequest request) {
+        setTransferStatus("Preparing file transfer", Color.web("#f59e0b"));
+        try {
+            fileTransferExecutor.execute(() -> {
+                try {
+                    fileTransferClientService.sendFile(request);
+                } catch (Exception ex) {
+                    Platform.runLater(() -> showError(fileTransferErrorMessage(ex)));
+                }
+            });
+        } catch (RuntimeException ex) {
+            showError(fileTransferErrorMessage(ex));
+        }
+    }
+
+    private String fileTransferErrorMessage(Throwable error) {
+        Throwable candidate = error.getCause() != null ? error.getCause() : error;
+        String message = candidate.getMessage();
+        if (message == null || message.isBlank()) {
+            return candidate.getClass().getSimpleName();
+        }
+        return message;
     }
 
     private void startRealtimeSession(RtcSessionMode mode) {
@@ -1136,38 +1175,86 @@ public class MainView {
     }
 
     private void handleFileTransferEvent(FileTransferEvent event) {
-        Platform.runLater(() -> {
-            if (event instanceof FileTransferStartedEvent e) {
-                TransferEntry entry = new TransferEntry(e.transferId(), e.fileName(), e.outgoing() ? "Sending" : "Receiving", 0, e.totalBytes());
-                transferEntries.put(e.transferId(), entry);
-                refreshTransferEntries();
-                appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "started: " + e.fileName());
-                setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
-            } else if (event instanceof FileTransferProgressEvent e) {
-                TransferEntry existing = transferEntries.get(e.transferId());
-                if (existing != null) {
-                    existing.status = e.outgoing() ? "Sending" : "Receiving";
-                    existing.percent = e.progress().percent();
-                    existing.totalBytes = e.progress().totalBytes();
-                    refreshTransferEntries();
-                }
-                setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
-            } else if (event instanceof FileTransferCompletedEvent e) {
-                TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Completed", 100, e.totalBytes()));
-                entry.status = "Completed";
-                entry.percent = 100;
-                entry.totalBytes = e.totalBytes();
-                refreshTransferEntries();
-                appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "completed: " + e.path());
-                setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#1f9d55"));
-            } else if (event instanceof FileTransferFailedEvent e) {
-                TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Failed", 0, 0));
-                entry.status = "Failed";
-                refreshTransferEntries();
-                appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
-                setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#dc2626"));
+        if (event instanceof FileTransferProgressEvent progressEvent) {
+            queueTransferProgress(progressEvent);
+            return;
+        }
+        if (event instanceof FileTransferCompletedEvent || event instanceof FileTransferFailedEvent) {
+            clearPendingTransferProgress(event.transferId());
+        }
+        Platform.runLater(() -> applyFileTransferEvent(event));
+    }
+
+    private void queueTransferProgress(FileTransferProgressEvent event) {
+        synchronized (transferProgressLock) {
+            pendingTransferProgressEvents.put(event.transferId(), event);
+        }
+        scheduleTransferProgressUiDrain();
+    }
+
+    private void clearPendingTransferProgress(String transferId) {
+        synchronized (transferProgressLock) {
+            pendingTransferProgressEvents.remove(transferId);
+        }
+    }
+
+    private void scheduleTransferProgressUiDrain() {
+        if (transferProgressUiUpdateScheduled.compareAndSet(false, true)) {
+            Platform.runLater(this::drainTransferProgressEvents);
+        }
+    }
+
+    private void drainTransferProgressEvents() {
+        Map<String, FileTransferProgressEvent> snapshot;
+        synchronized (transferProgressLock) {
+            snapshot = new LinkedHashMap<>(pendingTransferProgressEvents);
+            pendingTransferProgressEvents.clear();
+        }
+        try {
+            snapshot.values().forEach(this::applyFileTransferEvent);
+        } finally {
+            transferProgressUiUpdateScheduled.set(false);
+            boolean hasMoreProgress;
+            synchronized (transferProgressLock) {
+                hasMoreProgress = !pendingTransferProgressEvents.isEmpty();
             }
-        });
+            if (hasMoreProgress) {
+                scheduleTransferProgressUiDrain();
+            }
+        }
+    }
+
+    private void applyFileTransferEvent(FileTransferEvent event) {
+        if (event instanceof FileTransferStartedEvent e) {
+            TransferEntry entry = new TransferEntry(e.transferId(), e.fileName(), e.outgoing() ? "Sending" : "Receiving", 0, e.totalBytes());
+            transferEntries.put(e.transferId(), entry);
+            refreshTransferEntries();
+            appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "started: " + e.fileName());
+            setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
+        } else if (event instanceof FileTransferProgressEvent e) {
+            TransferEntry existing = transferEntries.get(e.transferId());
+            if (existing != null && existing.active()) {
+                existing.status = e.outgoing() ? "Sending" : "Receiving";
+                existing.percent = e.progress().percent();
+                existing.totalBytes = e.progress().totalBytes();
+                refreshTransferEntries();
+            }
+            setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
+        } else if (event instanceof FileTransferCompletedEvent e) {
+            TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Completed", 100, e.totalBytes()));
+            entry.status = "Completed";
+            entry.percent = 100;
+            entry.totalBytes = e.totalBytes();
+            refreshTransferEntries();
+            appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "completed: " + e.path());
+            setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#1f9d55"));
+        } else if (event instanceof FileTransferFailedEvent e) {
+            TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Failed", 0, 0));
+            entry.status = "Failed";
+            refreshTransferEntries();
+            appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
+            setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#dc2626"));
+        }
     }
 
     private void handleRtcEvent(RtcEvent event) {
@@ -1564,6 +1651,11 @@ public class MainView {
         view.getStyleClass().add("video-preview");
     }
 
+    private static String formatMegabytes(long bytes) {
+        double megabytes = bytes / (1024.0 * 1024.0);
+        return String.format(Locale.ROOT, "%.2f MB", megabytes);
+    }
+
     private void showError(String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("Error");
@@ -1687,7 +1779,7 @@ public class MainView {
                 metaText += " — 100%";
             }
             if (item.totalBytes > 0) {
-                metaText += " — " + item.totalBytes + " bytes";
+                metaText += " — " + formatMegabytes(item.totalBytes);
             }
             Label meta = new Label(metaText);
             meta.getStyleClass().add("list-secondary");
