@@ -21,6 +21,8 @@ import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService;
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService;
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode;
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState;
+import com.shterneregen.securelan.desktop.service.DefaultRandomNicknameService;
+import com.shterneregen.securelan.desktop.service.RandomNicknameService;
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent;
@@ -108,6 +110,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class MainView {
     private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "false"));
     private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
+    private final RandomNicknameService randomNicknameService = new DefaultRandomNicknameService();
 
     private final TextField serverChatPortField = new TextField("5050");
     private final TextField serverFilePortField = new TextField("5051");
@@ -116,11 +119,11 @@ public class MainView {
     private final TextField clientHostField = new TextField("127.0.0.1");
     private final TextField clientChatPortField = new TextField("5050");
     private final TextField clientFilePortField = new TextField("5051");
-    private final TextField nicknameField = new TextField("alice");
+    private final TextField nicknameField = new TextField(randomNicknameService.generate());
     private final TextField serverPasswordField = new TextField("chatpass");
     private final TextField clientPasswordField = new TextField("chatpass");
     private final TextField fileHostField = new TextField("127.0.0.1");
-    private final TextField fileSenderField = new TextField("alice");
+    private final TextField fileSenderField = new TextField(nicknameField.getText());
     private final TextField recipientField = new TextField("peer");
     private final TextField rtcPeerField = new TextField("peer");
     private final TextField rtcDataChannelField = new TextField("securelan-data");
