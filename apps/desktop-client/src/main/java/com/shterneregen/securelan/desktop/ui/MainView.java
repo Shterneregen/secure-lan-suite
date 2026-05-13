@@ -1508,7 +1508,6 @@ public class MainView {
     private void handleRtcEvent(RtcEvent event) {
         Platform.runLater(() -> {
             if (event instanceof RtcStateChangedEvent e) {
-                appendChat("[rtc] " + e.mode() + " session " + e.state() + " with " + e.remotePeer() + " - " + e.message());
                 appendDiagnostics("[rtc] " + e.mode() + " session " + e.state() + " with " + e.remotePeer() + " - " + e.message());
                 refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
                 upsertPeer(e.remotePeer(), true);
