@@ -121,7 +121,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class MainView {
-    private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "false"));
+    private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "true"));
     private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
     private static final double TRANSFER_LIST_VISIBLE_ROWS = 3;
     private static final double TRANSFER_LIST_ROW_HEIGHT = 48;
@@ -313,7 +313,7 @@ public class MainView {
         selectedPeerMetaValue.setWrapText(true);
         selectedPeerMetaValue.getStyleClass().add("muted-label");
         peersTitleValue.getStyleClass().add("section-heading");
-        peersHintValue.setText("Discovered LAN peers appear here. Select one to connect, send files, or start a call.");
+        peersHintValue.setText("Discovered LAN peers appear here. Select one to connect before sending files or starting a call.");
         peersHintValue.setWrapText(true);
         peersHintValue.getStyleClass().add("muted-label");
         styleStatusLabel(serverStatusValue);
@@ -344,10 +344,10 @@ public class MainView {
         localVideoPlaceholderValue.getStyleClass().addAll("muted-label", "video-stage-placeholder");
         videoPreviewValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED
                 ? "Self preview on • remote preview " + (REMOTE_VIDEO_PREVIEW_ENABLED ? "on" : "off")
-                : "Self preview off by default • remote preview " + (REMOTE_VIDEO_PREVIEW_ENABLED ? "on" : "off"));
+                : "Self preview disabled • remote preview " + (REMOTE_VIDEO_PREVIEW_ENABLED ? "on" : "off"));
         localVideoPlaceholderValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED
                 ? "Self preview will appear here when your camera starts."
-                : "Self preview is off by default for stability. Your camera still sends video to the peer.");
+                : "Self preview is disabled by configuration. Your camera still sends video to the peer.");
         configureAudioLevelBar(localAudioLevelBar);
         configureAudioLevelBar(remoteAudioLevelBar);
         configureMediaStatusLabel(localAudioStatusValue);
@@ -409,8 +409,8 @@ public class MainView {
         audioProfileValue.setText("Audio: %d Hz, %d ch, echo cancel=%s, noise suppression=%s"
                 .formatted(audioProfile.sampleRateHz(), audioProfile.channels(), audioProfile.echoCancellation(), audioProfile.noiseSuppression()));
         videoProfileValue.setText((LOCAL_VIDEO_PREVIEW_ENABLED
-                ? "Video stage enabled inline. "
-                : "Video stage enabled inline with self preview off by default. ")
+                ? "Video stage enabled inline with self preview. "
+                : "Video stage enabled inline with self preview disabled by configuration. ")
                 + "Default profile %dx%d @ %d FPS."
                 .formatted(videoProfile.width(), videoProfile.height(), videoProfile.framesPerSecond()));
     }
@@ -860,7 +860,7 @@ public class MainView {
                 videoProfileValue,
                 new Separator(),
                 createSectionHeadingLabel("RTCDataChannel"),
-                createMutedLabel("Use this for diagnostics and RTCDataChannel experiments. Video now opens as an inline stage in the chat column; self preview stays off by default for stability."),
+                createMutedLabel("Use this for diagnostics and RTCDataChannel experiments. Video now opens as an inline stage in the chat column with self preview enabled by default."),
                 startDataButton,
                 rtcMessageField,
                 sendRtcMessageButton,
@@ -1078,7 +1078,7 @@ public class MainView {
             appendChat(hosting
                     ? discoveryStartedMessage(discoveryConfig)
                     : "[discovery] listening on UDP " + discoveryConfig.discoveryPort());
-            peersHintValue.setText("Looking for SecureLanSuite peers on this LAN. Select a discovered peer to connect, send files, or start a call.");
+            peersHintValue.setText("Looking for SecureLanSuite peers on this LAN. Select a discovered peer and connect before sending files or starting a call.");
         }
     }
 
@@ -1335,6 +1335,10 @@ public class MainView {
         PeerPresence peer = peerListView.getSelectionModel().getSelectedItem();
         if (peer == null || !peer.online()) {
             showError("Select an online peer first");
+            return;
+        }
+        if (!clientService.isConnected()) {
+            showError("Connect to chat before starting voice or video calls");
             return;
         }
 
@@ -1647,7 +1651,7 @@ public class MainView {
             remoteVideoPlaceholderValue.setManaged(true);
         }
         if (localVideoView.getImage() == null) {
-            localVideoCaptionValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED ? "Self preview" : "Self preview (off by default)");
+            localVideoCaptionValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED ? "Self preview" : "Self preview (disabled)");
             localVideoPlaceholderValue.setVisible(true);
             localVideoPlaceholderValue.setManaged(true);
         }
@@ -1687,11 +1691,11 @@ public class MainView {
         videoParticipantsValue.setText("Waiting for participants");
         videoMediaValue.setText("Camera starts only when a video call begins");
         remoteVideoCaptionValue.setText("Remote stream");
-        localVideoCaptionValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED ? "Self preview" : "Self preview (off by default)");
+        localVideoCaptionValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED ? "Self preview" : "Self preview (disabled)");
         remoteVideoPlaceholderValue.setText("Remote video will appear here when the call connects.");
         localVideoPlaceholderValue.setText(LOCAL_VIDEO_PREVIEW_ENABLED
                 ? "Self preview will appear here when your camera starts."
-                : "Self preview is off by default for stability. Your camera still sends video to the peer.");
+                : "Self preview is disabled by configuration. Your camera still sends video to the peer.");
         remoteVideoPlaceholderValue.setVisible(true);
         remoteVideoPlaceholderValue.setManaged(true);
         localVideoPlaceholderValue.setVisible(true);
@@ -1721,6 +1725,7 @@ public class MainView {
     private void updateQuickActionState() {
         PeerPresence selectedPeer = peerListView.getSelectionModel().getSelectedItem();
         boolean hasFileCapableOnlinePeer = selectedPeer != null && selectedPeer.online() && selectedPeer.discovered();
+        boolean hasCallableOnlinePeer = selectedPeer != null && selectedPeer.online();
         boolean localServerRunning = isLocalServerRunning();
         boolean clientConnected = clientService.isConnected();
 
@@ -1729,9 +1734,9 @@ public class MainView {
         connectButton.setDisable(clientConnected);
         disconnectButton.setDisable(!clientConnected);
         sendFileQuickActionButton.setDisable(!clientConnected || !hasFileCapableOnlinePeer);
-        startVoiceQuickActionButton.setDisable(selectedPeer == null || !selectedPeer.online());
-        startVideoQuickActionButton.setDisable(selectedPeer == null || !selectedPeer.online());
-        startDataButton.setDisable(selectedPeer == null || !selectedPeer.online());
+        startVoiceQuickActionButton.setDisable(!clientConnected || !hasCallableOnlinePeer);
+        startVideoQuickActionButton.setDisable(!clientConnected || !hasCallableOnlinePeer);
+        startDataButton.setDisable(!clientConnected || !hasCallableOnlinePeer);
         sendRtcMessageButton.setDisable(false);
         boolean canHangUp = rtcSessionService.currentSession()
                 .map(snapshot -> snapshot.state() != RtcSessionState.CLOSED && snapshot.state() != RtcSessionState.FAILED && snapshot.state() != RtcSessionState.UNAVAILABLE)
@@ -1856,9 +1861,9 @@ public class MainView {
             recipientField.setText("");
             rtcPeerField.setText("");
             conversationTitleValue.setText("Shared room activity");
-            conversationSubtitleValue.setText("Select a peer on the left for voice, video, and file actions.");
+            conversationSubtitleValue.setText("Connect to chat, then select a peer on the left for voice, video, and file actions.");
             selectedPeerTitleValue.setText("No peer selected");
-            selectedPeerMetaValue.setText("Choose an online peer to send files or start a voice/video session.");
+            selectedPeerMetaValue.setText("Choose an online chat peer to send files or start a voice/video session.");
             setPeerStatus("Peer not selected", Color.web("#9aa4b2"));
         } else {
             recipientField.setText(peer.nickname());
@@ -1873,9 +1878,13 @@ public class MainView {
             conversationSubtitleValue.setText("Actions on the right will target “" + peer.nickname() + "”. Text chat remains shared for now.");
             selectedPeerTitleValue.setText(peer.nickname());
             selectedPeerMetaValue.setText(peer.online()
+                    ? clientService.isConnected()
                     ? peer.discovered()
-                    ? "Online via LAN discovery — " + peer.host() + ":" + peer.chatPort() + " chat, " + peer.filePort() + " file."
-                    : "Online — chat, file transfer, voice, and video are available."
+                    ? "Online via chat and LAN discovery — " + peer.host() + ":" + peer.chatPort() + " chat, " + peer.filePort() + " file."
+                    : "Online in chat — voice and video are available."
+                    : peer.discovered()
+                    ? "Discovered via LAN — connect to chat before sending files or starting calls."
+                    : "Online candidate — connect to chat before starting voice or video."
                     : "Offline — wait until this peer rejoins the chat or discovery refreshes.");
             setPeerStatus(peer.online() ? "Peer " + peer.nickname() : "Peer offline", peer.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
         }
