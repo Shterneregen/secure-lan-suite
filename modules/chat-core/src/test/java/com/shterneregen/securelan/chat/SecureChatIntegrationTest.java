@@ -2,6 +2,7 @@ package com.shterneregen.securelan.chat;
 
 import com.shterneregen.securelan.chat.event.ChatConnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatCoreEvent;
+import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent;
 import com.shterneregen.securelan.chat.event.ChatErrorEvent;
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent;
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent;
@@ -84,6 +85,36 @@ class SecureChatIntegrationTest {
         assertTrue(await(bobEvents, e -> e instanceof ChatConnectedEvent, 2_000));
         assertTrue(await(bobEvents, e -> e instanceof ChatUserJoinedEvent joined && joined.nickname().equals("alice"), 2_000));
         assertTrue(await(aliceEvents, e -> e instanceof ChatUserJoinedEvent joined && joined.nickname().equals("bob"), 2_000));
+    }
+
+    @Test
+    void stopShouldDisconnectClientsAndPreventFurtherChat() throws Exception {
+        List<ChatCoreEvent> aliceEvents = new CopyOnWriteArrayList<>();
+        List<ChatCoreEvent> bobEvents = new CopyOnWriteArrayList<>();
+
+        int port = freePort();
+        ChatServerService server = track(new DefaultChatServerService(event -> {
+        }));
+        server.start(new ChatServerConfig(port, "chatpass"));
+
+        ChatClientService alice = track(new DefaultChatClientService(aliceEvents::add));
+        assertTrue(alice.connect(new ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")));
+        assertTrue(await(aliceEvents, e -> e instanceof ChatConnectedEvent, 2_000));
+
+        ChatClientService bob = track(new DefaultChatClientService(bobEvents::add));
+        assertTrue(bob.connect(new ChatClientConnectRequest("127.0.0.1", port, "bob", "chatpass")));
+        assertTrue(await(bobEvents, e -> e instanceof ChatConnectedEvent, 2_000));
+
+        server.stop();
+
+        assertFalse(server.isRunning());
+        assertTrue(await(aliceEvents, e -> e instanceof ChatDisconnectedEvent, 2_000));
+        assertTrue(await(bobEvents, e -> e instanceof ChatDisconnectedEvent, 2_000));
+        assertFalse(alice.isConnected());
+        assertFalse(bob.isConnected());
+
+        alice.sendMessage("message after stop");
+        assertFalse(await(bobEvents, e -> e instanceof ChatMessageReceivedEvent message && message.text().equals("message after stop"), 300));
     }
 
     private ChatServerService track(ChatServerService server) {

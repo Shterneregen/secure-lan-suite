@@ -1022,18 +1022,17 @@ public class MainView {
 
     private void stopServer() {
         serverService.stop();
-        if (!clientService.isConnected()) {
-            fileTransferServerService.stop();
-        }
+        fileTransferServerService.stop();
         startPeerDiscoveryListener();
         setServerStatus("Server stopped", Color.web("#9aa4b2"));
         setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
         appendChat("[ui] server stopped");
+        updateQuickActionState();
     }
 
     private void startPeerDiscoveryListener() {
-        if (clientService.isConnected() && fileTransferServerService.isRunning()) {
-            startPeerDiscovery(localChatPort(), localFilePort(), false);
+        if (serverService.isRunning()) {
+            startPeerDiscovery(localChatPort(), localFilePort(), discoverableCheckBox.isSelected());
         } else {
             startPeerDiscovery(PeerDiscoveryConfig.listenOnly(LOCAL_PEER_ID, nicknameField.getText().trim()), false);
         }
@@ -1164,7 +1163,7 @@ public class MainView {
                 setConnectionStatus("Connection failed", Color.web("#dc2626"));
             } else {
                 startLocalFileTransferListener(localFilePort());
-                startPeerDiscovery(localChatPort(), localFilePort(), discoverableCheckBox.isSelected());
+                startPeerDiscoveryListener();
             }
         } catch (Exception ex) {
             showError(ex.getMessage());
@@ -1741,7 +1740,7 @@ public class MainView {
     }
 
     private boolean isLocalServerRunning() {
-        return serverService.isRunning() || fileTransferServerService.isRunning();
+        return serverService.isRunning();
     }
 
     private void handlePeerDiscovered(DiscoveredPeer discoveredPeer) {

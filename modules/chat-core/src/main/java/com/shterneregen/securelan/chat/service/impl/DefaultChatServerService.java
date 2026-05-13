@@ -16,8 +16,11 @@ import com.shterneregen.securelan.chat.transport.ServerChatSessionHandler;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DefaultChatServerService implements ChatServerService {
@@ -26,9 +29,10 @@ public class DefaultChatServerService implements ChatServerService {
     private final NicknameRegistryService nicknameRegistry;
     private final ChatHistoryService historyService;
     private final ChatBroadcastService broadcastService;
-    private final ExecutorService sessionExecutor = Executors.newCachedThreadPool();
+    private final Set<ChatSocketSession> activeSessions = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean running = new AtomicBoolean(false);
 
+    private ExecutorService sessionExecutor = Executors.newCachedThreadPool();
     private ServerSocket serverSocket;
     private Thread acceptThread;
     private ChatServerConfig config;
@@ -43,16 +47,19 @@ public class DefaultChatServerService implements ChatServerService {
 
     @Override
     public void start(ChatServerConfig config) {
-        if (running.get()) {
+        if (!running.compareAndSet(false, true)) {
             return;
         }
         try {
             this.config = config;
+            if (sessionExecutor.isShutdown() || sessionExecutor.isTerminated()) {
+                sessionExecutor = Executors.newCachedThreadPool();
+            }
             this.serverSocket = new ServerSocket(config.port());
-            running.set(true);
             acceptThread = new Thread(this::acceptLoop, "chat-server-accept-loop");
             acceptThread.start();
         } catch (IOException e) {
+            running.set(false);
             throw new IllegalStateException("Unable to start chat server", e);
         }
     }
@@ -71,10 +78,20 @@ public class DefaultChatServerService implements ChatServerService {
     }
 
     private void handleConnection(Socket socket) {
-        sessionExecutor.submit(() -> {
+        if (!running.get()) {
+            closeQuietly(socket);
+            return;
+        }
+        try {
+            sessionExecutor.submit(() -> {
             ChatSocketSession session = null;
             try {
                 session = new ChatSocketSession(socket);
+                activeSessions.add(session);
+                if (!running.get()) {
+                    session.close();
+                    return;
+                }
                 HandshakeResponse response = handshakeService.performServerHandshake(session, config.sessionPassword(), nicknameRegistry);
                 if (!response.accepted()) {
                     session.close();
@@ -94,8 +111,15 @@ public class DefaultChatServerService implements ChatServerService {
                     } catch (IOException ignored) {
                     }
                 }
+            } finally {
+                if (session != null) {
+                    activeSessions.remove(session);
+                }
             }
-        });
+            });
+        } catch (RejectedExecutionException e) {
+            closeQuietly(socket);
+        }
     }
 
     @Override
@@ -107,7 +131,24 @@ public class DefaultChatServerService implements ChatServerService {
             }
         } catch (IOException ignored) {
         }
+        activeSessions.forEach(session -> {
+            try {
+                session.close();
+            } catch (IOException ignored) {
+            }
+        });
+        activeSessions.clear();
         sessionExecutor.shutdownNow();
+        serverSocket = null;
+        acceptThread = null;
+        config = null;
+    }
+
+    private void closeQuietly(Socket socket) {
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+        }
     }
 
     @Override
