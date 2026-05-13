@@ -27,6 +27,7 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
     private static final int RECEIVE_BUFFER_SIZE = 1024;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicBoolean announceEnabled = new AtomicBoolean(false);
     private final Map<String, DiscoveredPeer> peers = new ConcurrentHashMap<>();
 
     private DatagramSocket socket;
@@ -42,6 +43,7 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
         }
         this.config = config;
         this.listener = listener;
+        announceEnabled.set(config.announceEnabled());
         peers.clear();
         try {
             socket = new DatagramSocket(null);
@@ -64,8 +66,14 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
     @Override
     public void stop() {
         running.set(false);
+        announceEnabled.set(false);
         closeSocket();
         peers.clear();
+    }
+
+    @Override
+    public void setAnnounceEnabled(boolean announceEnabled) {
+        this.announceEnabled.set(announceEnabled);
     }
 
     @Override
@@ -83,7 +91,7 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
     private void announceLoop() {
         while (running.get()) {
             try {
-                if (config.announceEnabled()) {
+                if (announceEnabled.get()) {
                     announceOnce();
                 }
                 expireStalePeers();

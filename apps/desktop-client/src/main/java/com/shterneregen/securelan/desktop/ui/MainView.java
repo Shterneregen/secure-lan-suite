@@ -66,6 +66,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -219,8 +220,9 @@ public class MainView {
     private final Button startVoiceQuickActionButton = new Button("Voice call");
     private final Button startVideoQuickActionButton = new Button("Video call");
     private final Button hangUpQuickActionButton = new Button("End call");
-    private final Button startServerButton = new Button("Make discoverable");
+    private final Button startServerButton = new Button("Open room");
     private final Button stopServerButton = new Button("Stop hosting");
+    private final CheckBox discoverableCheckBox = new CheckBox("Discoverable");
     private final Button connectButton = new Button("Connect");
     private final Button disconnectButton = new Button("Disconnect");
     private final Button sendMessageButton = new Button("Send");
@@ -349,6 +351,7 @@ public class MainView {
         configureVideoView(localVideoView);
         configureVideoView(remoteVideoView);
         configureVideoStage();
+        discoverableCheckBox.setSelected(true);
         styleInteractiveControls();
         configureMediaDeviceSelectors();
         peerListView.getStyleClass().add("content-list");
@@ -370,6 +373,7 @@ public class MainView {
     private void wireActions() {
         startServerButton.setOnAction(event -> startServer());
         stopServerButton.setOnAction(event -> stopServer());
+        discoverableCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateDiscoverableState(newValue));
         connectButton.setOnAction(event -> connectClient());
         disconnectButton.setOnAction(event -> disconnectClient());
         sendMessageButton.setOnAction(event -> sendMessage());
@@ -677,7 +681,7 @@ public class MainView {
     }
 
     private Node buildServerQuickPanel() {
-        Label summary = createMutedLabel("Set your name and shared room password. Then make this device discoverable on the LAN.");
+        Label summary = createMutedLabel("Set your name and shared room password. Then open a room. Keep Discoverable enabled if peers should find it automatically on the LAN.");
 
         GridPane mainGrid = createCompactFormGrid();
         mainGrid.addRow(0, new Label("Your name"), nicknameField, new Label("Room password"), clientPasswordField);
@@ -690,7 +694,8 @@ public class MainView {
         );
         TitledPane advancedPane = createCollapsedAdvancedPane("Advanced network settings", advancedContent);
 
-        HBox actions = new HBox(8, startServerButton, stopServerButton);
+        HBox actions = new HBox(8, startServerButton, stopServerButton, discoverableCheckBox);
+        actions.setAlignment(Pos.CENTER_LEFT);
         VBox box = new VBox(8, summary, mainGrid, actions, advancedPane);
         growFields(nicknameField, clientPasswordField, serverChatPortField, serverFilePortField);
         return box;
@@ -1022,7 +1027,8 @@ public class MainView {
                 LOCAL_PEER_ID,
                 nicknameField.getText().trim(),
                 chatPort,
-                filePort
+                filePort,
+                discoverableCheckBox.isSelected()
         ), true);
     }
 
@@ -1050,10 +1056,27 @@ public class MainView {
         });
         if (peerDiscoveryService.isRunning()) {
             appendChat(hosting
-                    ? "[discovery] broadcasting as " + discoveryConfig.nickname() + " on UDP " + discoveryConfig.discoveryPort()
+                    ? discoveryStartedMessage(discoveryConfig)
                     : "[discovery] listening on UDP " + discoveryConfig.discoveryPort());
             peersHintValue.setText("Looking for SecureLanSuite peers on this LAN. Select a discovered peer to connect, send files, or start a call.");
         }
+    }
+
+    private String discoveryStartedMessage(PeerDiscoveryConfig discoveryConfig) {
+        if (discoveryConfig.announceEnabled()) {
+            return "[discovery] broadcasting as " + discoveryConfig.nickname() + " on UDP " + discoveryConfig.discoveryPort();
+        }
+        return "[discovery] room is hidden; listening on UDP " + discoveryConfig.discoveryPort() + " without broadcasting";
+    }
+
+    private void updateDiscoverableState(boolean discoverable) {
+        if (!serverService.isRunning()) {
+            return;
+        }
+        peerDiscoveryService.setAnnounceEnabled(discoverable);
+        appendChat(discoverable
+                ? "[discovery] room is now discoverable"
+                : "[discovery] room is now hidden from automatic discovery");
     }
 
     private void startServer() {

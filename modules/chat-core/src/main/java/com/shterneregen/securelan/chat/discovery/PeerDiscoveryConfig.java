@@ -40,13 +40,17 @@ public record PeerDiscoveryConfig(
     }
 
     public static PeerDiscoveryConfig defaults(String peerId, String nickname, int chatPort, int filePort) {
+        return defaults(peerId, nickname, chatPort, filePort, true);
+    }
+
+    public static PeerDiscoveryConfig defaults(String peerId, String nickname, int chatPort, int filePort, boolean announceEnabled) {
         return new PeerDiscoveryConfig(
                 peerId,
                 nickname,
                 NetworkConstants.DEFAULT_DISCOVERY_PORT,
                 chatPort,
                 filePort,
-                true,
+                announceEnabled,
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(45)
         );

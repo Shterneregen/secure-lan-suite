@@ -7,6 +7,8 @@ public interface PeerDiscoveryService extends AutoCloseable {
 
     void stop();
 
+    void setAnnounceEnabled(boolean announceEnabled);
+
     boolean isRunning();
 
     List<DiscoveredPeer> snapshot();
