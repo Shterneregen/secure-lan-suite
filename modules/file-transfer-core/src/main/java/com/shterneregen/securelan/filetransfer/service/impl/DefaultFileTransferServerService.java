@@ -104,6 +104,12 @@ public class DefaultFileTransferServerService implements FileTransferServerServi
     private void handleClient(Socket socket, FileTransferServerConfig activeConfig) {
         try (socket; FileTransferSession session = new FileTransferSession(socket)) {
             FileTransferMetadata metadata = handshake.performServerHandshake(session, activeConfig.sessionPassword());
+            if (!activeConfig.acceptanceHandler().accept(metadata, session.remoteAddress())) {
+                handshake.rejectTransfer(session, "File transfer rejected by receiver");
+                eventPublisher.publish(new FileTransferFailedEvent(metadata.transferId(), metadata.fileName(), "Rejected incoming file from " + metadata.senderId(), null, false));
+                return;
+            }
+            handshake.acceptTransfer(session);
             eventPublisher.publish(new FileTransferStartedEvent(metadata.transferId(), metadata.fileName(), metadata.fileSize(), false));
 
             Path target = createUniqueTargetPath(metadata.fileName(), activeConfig);

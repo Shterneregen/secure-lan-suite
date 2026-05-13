@@ -34,6 +34,7 @@ import com.shterneregen.securelan.filetransfer.event.FileTransferEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent;
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata;
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest;
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientService;
 import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher;
@@ -66,6 +67,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -110,9 +112,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -123,6 +127,7 @@ public class MainView {
     private static final double TRANSFER_LIST_ROW_HEIGHT = 48;
     private static final Path DEFAULT_DOWNLOADS_PATH = Path.of("downloads").toAbsolutePath().normalize();
     private static final String LOCAL_PEER_ID = UUID.randomUUID().toString();
+    private static final int CLIENT_FILE_PORT_OFFSET = 1000;
     private final RandomNicknameService randomNicknameService = new DefaultRandomNicknameService();
 
     private final TextField serverChatPortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_CHAT_PORT));
@@ -225,6 +230,7 @@ public class MainView {
     private final CheckBox discoverableCheckBox = new CheckBox("Discoverable");
     private final Button connectButton = new Button("Connect");
     private final Button disconnectButton = new Button("Disconnect");
+    private final CheckBox autoAcceptFilesCheckBox = new CheckBox("Accept files without confirmation");
     private final Button sendMessageButton = new Button("Send");
     private final Button startDataButton = new Button("Start data");
     private final Button sendRtcMessageButton = new Button("Send RTC message");
@@ -351,6 +357,7 @@ public class MainView {
         configureVideoView(localVideoView);
         configureVideoView(remoteVideoView);
         configureVideoStage();
+        autoAcceptFilesCheckBox.setSelected(false);
         discoverableCheckBox.setSelected(true);
         styleInteractiveControls();
         configureMediaDeviceSelectors();
@@ -840,7 +847,11 @@ public class MainView {
                 createMetricBlock("Camera", new VBox(6, cameraChoiceBox, testCameraButton, cameraTestStatusValue))
         );
 
-        VBox transfersBlock = new VBox(8, transferHintValue, transferListView);
+        VBox transfersBlock = new VBox(8,
+                transferHintValue,
+                autoAcceptFilesCheckBox,
+                createMutedLabel("Unchecked by default: incoming files ask for confirmation and are accepted only from online chat peers."),
+                transferListView);
 
         VBox advancedContent = new VBox(10,
                 createSectionHeadingLabel("Runtime"),
@@ -1011,7 +1022,9 @@ public class MainView {
 
     private void stopServer() {
         serverService.stop();
-        fileTransferServerService.stop();
+        if (!clientService.isConnected()) {
+            fileTransferServerService.stop();
+        }
         startPeerDiscoveryListener();
         setServerStatus("Server stopped", Color.web("#9aa4b2"));
         setTransferStatus("Transfers idle", Color.web("#9aa4b2"));
@@ -1019,17 +1032,25 @@ public class MainView {
     }
 
     private void startPeerDiscoveryListener() {
-        startPeerDiscovery(PeerDiscoveryConfig.listenOnly(LOCAL_PEER_ID, nicknameField.getText().trim()), false);
+        if (clientService.isConnected() && fileTransferServerService.isRunning()) {
+            startPeerDiscovery(localChatPort(), localFilePort(), false);
+        } else {
+            startPeerDiscovery(PeerDiscoveryConfig.listenOnly(LOCAL_PEER_ID, nicknameField.getText().trim()), false);
+        }
     }
 
     private void startPeerDiscovery(int chatPort, int filePort) {
+        startPeerDiscovery(chatPort, filePort, discoverableCheckBox.isSelected());
+    }
+
+    private void startPeerDiscovery(int chatPort, int filePort, boolean announceEnabled) {
         startPeerDiscovery(PeerDiscoveryConfig.defaults(
                 LOCAL_PEER_ID,
                 nicknameField.getText().trim(),
                 chatPort,
                 filePort,
-                discoverableCheckBox.isSelected()
-        ), true);
+                announceEnabled
+        ), announceEnabled || serverService.isRunning());
     }
 
     private void startPeerDiscovery(PeerDiscoveryConfig discoveryConfig, boolean hosting) {
@@ -1084,7 +1105,7 @@ public class MainView {
             int chatPort = Integer.parseInt(serverChatPortField.getText().trim());
             int filePort = Integer.parseInt(serverFilePortField.getText().trim());
             serverService.start(new ChatServerConfig(chatPort, clientPasswordField.getText()));
-            fileTransferServerService.start(new FileTransferServerConfig(filePort, DEFAULT_DOWNLOADS_PATH, clientPasswordField.getText()));
+            startLocalFileTransferListener(filePort);
             startPeerDiscovery(chatPort, filePort);
             connectToLocalHostedChat(chatPort, filePort);
             setServerStatus("Server running", Color.web("#1f9d55"));
@@ -1116,6 +1137,9 @@ public class MainView {
             appendChat("[ui] local hosting connection failed");
             setConnectionStatus("Local connection failed", Color.web("#dc2626"));
         } else {
+            if (!fileTransferServerService.isRunning()) {
+                startLocalFileTransferListener(filePort);
+            }
             appendChat("[ui] joined local hosted room");
         }
     }
@@ -1138,6 +1162,9 @@ public class MainView {
             if (!connected) {
                 appendChat("[ui] connection failed");
                 setConnectionStatus("Connection failed", Color.web("#dc2626"));
+            } else {
+                startLocalFileTransferListener(localFilePort());
+                startPeerDiscovery(localChatPort(), localFilePort(), discoverableCheckBox.isSelected());
             }
         } catch (Exception ex) {
             showError(ex.getMessage());
@@ -1148,6 +1175,10 @@ public class MainView {
 
     private void disconnectClient() {
         clientService.disconnect();
+        if (!serverService.isRunning()) {
+            fileTransferServerService.stop();
+        }
+        startPeerDiscoveryListener();
         updateQuickActionState();
     }
 
@@ -1164,6 +1195,14 @@ public class MainView {
         PeerPresence peer = peerListView.getSelectionModel().getSelectedItem();
         if (peer == null || !peer.online()) {
             showError("Select an online peer first");
+            return;
+        }
+        if (!clientService.isConnected()) {
+            showError("Connect to chat before sending files");
+            return;
+        }
+        if (!peer.discovered()) {
+            showError("Selected peer does not advertise a file transfer endpoint yet");
             return;
         }
 
@@ -1210,6 +1249,78 @@ public class MainView {
         } catch (RuntimeException ex) {
             showError(fileTransferErrorMessage(ex));
         }
+    }
+
+    private void startLocalFileTransferListener(int filePort) {
+        if (fileTransferServerService.isRunning()) {
+            return;
+        }
+        fileTransferServerService.start(new FileTransferServerConfig(
+                filePort,
+                DEFAULT_DOWNLOADS_PATH,
+                clientPasswordField.getText(),
+                this::acceptIncomingFileTransfer
+        ));
+        appendChat("[ui] file transfer listener started on port " + filePort);
+    }
+
+    private int localFilePort() {
+        if (serverService.isRunning()) {
+            return Integer.parseInt(serverFilePortField.getText().trim());
+        }
+        int remoteFilePort = Integer.parseInt(clientFilePortField.getText().trim());
+        int candidate = remoteFilePort + CLIENT_FILE_PORT_OFFSET;
+        if (candidate > 65535) {
+            candidate = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + CLIENT_FILE_PORT_OFFSET;
+        }
+        return candidate;
+    }
+
+    private int localChatPort() {
+        if (serverService.isRunning()) {
+            return Integer.parseInt(serverChatPortField.getText().trim());
+        }
+        return Integer.parseInt(clientChatPortField.getText().trim());
+    }
+
+    private boolean acceptIncomingFileTransfer(FileTransferMetadata metadata, String remoteAddress) {
+        if (!clientService.isConnected()) {
+            Platform.runLater(() -> appendChat("[file-recv] rejected " + metadata.fileName() + " from " + metadata.senderId() + ": chat is not connected"));
+            return false;
+        }
+        PeerPresence peer = findOnlinePeer(metadata.senderId());
+        if (peer == null) {
+            Platform.runLater(() -> appendChat("[file-recv] rejected " + metadata.fileName() + " from unknown/offline peer " + metadata.senderId()));
+            return false;
+        }
+        if (autoAcceptFilesCheckBox.isSelected()) {
+            Platform.runLater(() -> appendChat("[file-recv] auto-accepted " + metadata.fileName() + " from " + metadata.senderId()));
+            return true;
+        }
+
+        FutureTask<Boolean> promptTask = new FutureTask<>(() -> showIncomingFileConfirmation(metadata, remoteAddress));
+        Platform.runLater(promptTask);
+        try {
+            return promptTask.get();
+        } catch (Exception ex) {
+            Platform.runLater(() -> appendDiagnostics("[file-recv] confirmation failed: " + ex.getMessage()));
+            return false;
+        }
+    }
+
+    private boolean showIncomingFileConfirmation(FileTransferMetadata metadata, String remoteAddress) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Incoming file");
+        alert.setHeaderText("Accept file from " + metadata.senderId() + "?");
+        alert.setContentText("File: " + metadata.fileName()
+                + System.lineSeparator()
+                + "Size: " + formatMegabytes(metadata.fileSize())
+                + System.lineSeparator()
+                + "Remote: " + remoteAddress);
+        Optional<ButtonType> result = alert.showAndWait();
+        boolean accepted = result.isPresent() && result.get() == ButtonType.OK;
+        appendChat((accepted ? "[file-recv] accepted " : "[file-recv] rejected ") + metadata.fileName() + " from " + metadata.senderId());
+        return accepted;
     }
 
     private String fileTransferErrorMessage(Throwable error) {
@@ -1611,7 +1722,7 @@ public class MainView {
 
     private void updateQuickActionState() {
         PeerPresence selectedPeer = peerListView.getSelectionModel().getSelectedItem();
-        boolean hasOnlinePeer = selectedPeer != null && selectedPeer.online();
+        boolean hasFileCapableOnlinePeer = selectedPeer != null && selectedPeer.online() && selectedPeer.discovered();
         boolean localServerRunning = isLocalServerRunning();
         boolean clientConnected = clientService.isConnected();
 
@@ -1619,10 +1730,10 @@ public class MainView {
         stopServerButton.setDisable(!localServerRunning);
         connectButton.setDisable(clientConnected);
         disconnectButton.setDisable(!clientConnected);
-        sendFileQuickActionButton.setDisable(!hasOnlinePeer);
-        startVoiceQuickActionButton.setDisable(!hasOnlinePeer);
-        startVideoQuickActionButton.setDisable(!hasOnlinePeer);
-        startDataButton.setDisable(!hasOnlinePeer);
+        sendFileQuickActionButton.setDisable(!clientConnected || !hasFileCapableOnlinePeer);
+        startVoiceQuickActionButton.setDisable(selectedPeer == null || !selectedPeer.online());
+        startVideoQuickActionButton.setDisable(selectedPeer == null || !selectedPeer.online());
+        startDataButton.setDisable(selectedPeer == null || !selectedPeer.online());
         sendRtcMessageButton.setDisable(false);
         boolean canHangUp = rtcSessionService.currentSession()
                 .map(snapshot -> snapshot.state() != RtcSessionState.CLOSED && snapshot.state() != RtcSessionState.FAILED && snapshot.state() != RtcSessionState.UNAVAILABLE)
@@ -1693,6 +1804,17 @@ public class MainView {
         sortPeers();
         refreshSelectedPeerStatus();
         return created;
+    }
+
+    private PeerPresence findOnlinePeer(String nickname) {
+        if (nickname == null || nickname.isBlank()) {
+            return null;
+        }
+        return peerItems.stream()
+                .filter(PeerPresence::online)
+                .filter(peer -> peer.nickname().equalsIgnoreCase(nickname))
+                .findFirst()
+                .orElse(null);
     }
 
     private boolean samePeer(PeerPresence peer, String nickname, String peerId) {

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
@@ -82,6 +83,107 @@ class FileTransferIntegrationTest {
             assertTrue(server.isRunning());
         } finally {
             server.stop();
+        }
+    }
+
+    @Test
+    void shouldRejectIncomingFileWhenReceiverDeclines() throws Exception {
+        Path tempDir = Files.createTempDirectory("file-transfer-reject");
+        Path inbox = tempDir.resolve("inbox");
+        Files.createDirectories(inbox);
+        Path sourceFile = tempDir.resolve("sample.txt");
+        Files.writeString(sourceFile, "rejected payload");
+
+        var serverEvents = new CopyOnWriteArrayList<String>();
+        FileTransferEventPublisher serverPublisher = event -> serverEvents.add(event.getClass().getSimpleName());
+        DefaultFileTransferServerService server = new DefaultFileTransferServerService(serverPublisher);
+        int port = findAvailablePort();
+        server.start(new FileTransferServerConfig(port, inbox, "files-pass", (metadata, remoteAddress) -> false));
+        try {
+            DefaultFileTransferClientService client = new DefaultFileTransferClientService(event -> {
+            });
+            try {
+                client.sendFile(new FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile));
+            } catch (IllegalStateException expected) {
+                // Receiver rejection is surfaced to the sender as a failed transfer.
+            }
+
+            TimeUnit.MILLISECONDS.sleep(250);
+            assertFalse(Files.exists(inbox.resolve("sample.txt")));
+            assertTrue(serverEvents.contains("FileTransferFailedEvent"));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void shouldInvokeAcceptanceHandlerBeforeReceivingBytes() throws Exception {
+        Path tempDir = Files.createTempDirectory("file-transfer-accept-handler");
+        Path inbox = tempDir.resolve("inbox");
+        Files.createDirectories(inbox);
+        Path sourceFile = tempDir.resolve("sample.txt");
+        Files.writeString(sourceFile, "accepted payload");
+
+        AtomicBoolean invoked = new AtomicBoolean(false);
+        DefaultFileTransferServerService server = new DefaultFileTransferServerService(event -> {
+        });
+        int port = findAvailablePort();
+        server.start(new FileTransferServerConfig(port, inbox, "files-pass", (metadata, remoteAddress) -> {
+            invoked.set(true);
+            assertEquals("alice", metadata.senderId());
+            assertEquals("bob", metadata.recipientId());
+            assertEquals("sample.txt", metadata.fileName());
+            assertFalse(remoteAddress.isBlank());
+            return true;
+        }));
+        try {
+            DefaultFileTransferClientService client = new DefaultFileTransferClientService(event -> {
+            });
+            client.sendFile(new FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile));
+
+            TimeUnit.MILLISECONDS.sleep(250);
+            assertTrue(invoked.get());
+            assertEquals(Files.readString(sourceFile), Files.readString(inbox.resolve("sample.txt")));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void shouldTransferFilesBidirectionallyBetweenTwoPeers() throws Exception {
+        Path tempDir = Files.createTempDirectory("file-transfer-bidirectional");
+        Path aliceInbox = tempDir.resolve("alice-inbox");
+        Path bobInbox = tempDir.resolve("bob-inbox");
+        Files.createDirectories(aliceInbox);
+        Files.createDirectories(bobInbox);
+        Path aliceFile = tempDir.resolve("alice-to-bob.txt");
+        Path bobFile = tempDir.resolve("bob-to-alice.txt");
+        Files.writeString(aliceFile, "hello from alice");
+        Files.writeString(bobFile, "hello from bob");
+
+        DefaultFileTransferServerService aliceReceiver = new DefaultFileTransferServerService(event -> {
+        });
+        DefaultFileTransferServerService bobReceiver = new DefaultFileTransferServerService(event -> {
+        });
+        int alicePort = findAvailablePort();
+        int bobPort = findAvailablePort();
+        aliceReceiver.start(new FileTransferServerConfig(alicePort, aliceInbox, "files-pass"));
+        bobReceiver.start(new FileTransferServerConfig(bobPort, bobInbox, "files-pass"));
+        try {
+            DefaultFileTransferClientService aliceSender = new DefaultFileTransferClientService(event -> {
+            });
+            DefaultFileTransferClientService bobSender = new DefaultFileTransferClientService(event -> {
+            });
+
+            aliceSender.sendFile(new FileTransferClientRequest("127.0.0.1", bobPort, "alice", "bob", "files-pass", aliceFile));
+            bobSender.sendFile(new FileTransferClientRequest("127.0.0.1", alicePort, "bob", "alice", "files-pass", bobFile));
+
+            TimeUnit.MILLISECONDS.sleep(250);
+            assertEquals(Files.readString(aliceFile), Files.readString(bobInbox.resolve("alice-to-bob.txt")));
+            assertEquals(Files.readString(bobFile), Files.readString(aliceInbox.resolve("bob-to-alice.txt")));
+        } finally {
+            aliceReceiver.stop();
+            bobReceiver.stop();
         }
     }
 

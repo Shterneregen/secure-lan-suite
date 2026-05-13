@@ -14,6 +14,7 @@ import java.util.Base64;
 final class SecureFileTransferHandshake {
     private static final String PROTOCOL = "SECURE_FILE_TRANSFER_V1";
     private static final String ACCEPTED = "ACCEPTED";
+    private static final String REJECTED_PREFIX = "REJECTED:";
 
     private final CryptoServices cryptoServices;
 
@@ -46,6 +47,14 @@ final class SecureFileTransferHandshake {
         return metadata;
     }
 
+    void acceptTransfer(FileTransferSession session) throws IOException {
+        session.writeEncryptedText(ACCEPTED);
+    }
+
+    void rejectTransfer(FileTransferSession session, String reason) throws IOException {
+        session.writeEncryptedText(REJECTED_PREFIX + (reason == null || reason.isBlank() ? "Transfer rejected" : reason));
+    }
+
     FileTransferMetadata performServerHandshake(FileTransferSession session, String expectedPassword) throws IOException {
         String protocol = session.readUtf();
         if (!PROTOCOL.equals(protocol)) {
@@ -70,7 +79,6 @@ final class SecureFileTransferHandshake {
         SecretKey sessionKey = cryptoServices.keyEncodingService().decodeAesKey(Base64.getDecoder().decode(parts[1]));
         FileTransferMetadata metadata = new FileTransferMetadata(parts[2], parts[3], parts[4], parts[5], Long.parseLong(parts[6]));
         session.enableTransportEncryption(sessionKey, cryptoServices.aesGcmCryptoService());
-        session.writeEncryptedText(ACCEPTED);
         return metadata;
     }
 }
