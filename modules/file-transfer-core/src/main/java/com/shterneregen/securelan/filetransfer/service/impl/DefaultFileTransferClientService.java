@@ -2,6 +2,8 @@ package com.shterneregen.securelan.filetransfer.service.impl;
 
 import com.shterneregen.securelan.common.model.FileTransferProgress;
 import com.shterneregen.securelan.common.model.TransferStatus;
+import com.shterneregen.securelan.common.net.transport.ClientSocketFactory;
+import com.shterneregen.securelan.common.net.transport.TransportEndpoint;
 import com.shterneregen.securelan.crypto.CryptoServices;
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent;
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent;
@@ -15,9 +17,9 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublishe
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.UUID;
 
 public class DefaultFileTransferClientService implements FileTransferClientService {
@@ -25,14 +27,22 @@ public class DefaultFileTransferClientService implements FileTransferClientServi
 
     private final FileTransferEventPublisher eventPublisher;
     private final SecureFileTransferHandshake handshake;
+    private final ClientSocketFactory clientSocketFactory;
 
     public DefaultFileTransferClientService(FileTransferEventPublisher eventPublisher) {
         this(eventPublisher, CryptoServices.createDefault());
     }
 
     public DefaultFileTransferClientService(FileTransferEventPublisher eventPublisher, CryptoServices cryptoServices) {
-        this.eventPublisher = eventPublisher;
-        this.handshake = new SecureFileTransferHandshake(cryptoServices);
+        this(eventPublisher, cryptoServices, ClientSocketFactory.systemDefault());
+    }
+
+    public DefaultFileTransferClientService(FileTransferEventPublisher eventPublisher,
+                                            CryptoServices cryptoServices,
+                                            ClientSocketFactory clientSocketFactory) {
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
+        this.handshake = new SecureFileTransferHandshake(Objects.requireNonNull(cryptoServices, "cryptoServices"));
+        this.clientSocketFactory = Objects.requireNonNull(clientSocketFactory, "clientSocketFactory");
     }
 
     @Override
@@ -43,7 +53,7 @@ public class DefaultFileTransferClientService implements FileTransferClientServi
         try {
             long fileSize = Files.size(file);
             eventPublisher.publish(new FileTransferStartedEvent(transferId, fileName, fileSize, true));
-            try (Socket socket = new Socket(request.host(), request.port());
+            try (var socket = clientSocketFactory.connect(TransportEndpoint.of(request.host(), request.port()));
                  FileTransferSession session = new FileTransferSession(socket);
                  InputStream inputStream = Files.newInputStream(file)) {
                 FileTransferMetadata metadata = handshake.performClientHandshake(

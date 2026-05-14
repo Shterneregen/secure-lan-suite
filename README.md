@@ -17,7 +17,7 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 
 ### Modules
 - `modules/common-model` — shared DTO records, enums, app events, transfer models, RTC signaling models
-- `modules/common-net` — shared network constants and common networking foundation
+- `modules/common-net` — shared network constants, TCP endpoint/socket helpers, reusable text/frame channels, server accept-loop utilities, and UDP broadcast address resolution
 - `modules/crypto-core` — AES-GCM, RSA, hashing, signatures, key generation, file crypto workflows, keystore helpers
 - `modules/chat-core` — secure chat server/client, handshake, message protocol, signaling transport, UDP peer discovery
 - `modules/file-transfer-core` — encrypted file transfer client/server, secure handshake, progress events

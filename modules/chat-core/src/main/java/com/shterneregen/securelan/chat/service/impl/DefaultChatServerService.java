@@ -12,15 +12,14 @@ import com.shterneregen.securelan.chat.service.NicknameRegistryService;
 import com.shterneregen.securelan.chat.service.SecureHandshakeService;
 import com.shterneregen.securelan.chat.transport.ChatSocketSession;
 import com.shterneregen.securelan.chat.transport.ServerChatSessionHandler;
+import com.shterneregen.securelan.common.net.transport.SocketClose;
+import com.shterneregen.securelan.common.net.transport.TcpServer;
 
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DefaultChatServerService implements ChatServerService {
@@ -31,18 +30,17 @@ public class DefaultChatServerService implements ChatServerService {
     private final ChatBroadcastService broadcastService;
     private final Set<ChatSocketSession> activeSessions = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final TcpServer tcpServer;
 
-    private ExecutorService sessionExecutor = Executors.newCachedThreadPool();
-    private ServerSocket serverSocket;
-    private Thread acceptThread;
     private ChatServerConfig config;
 
     public DefaultChatServerService(ChatEventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
         this.handshakeService = new SimpleHandshakeService();
         this.nicknameRegistry = new InMemoryNicknameRegistryService();
         this.historyService = new InMemoryChatHistoryService();
         this.broadcastService = new InMemoryChatBroadcastService(historyService);
+        this.tcpServer = new TcpServer("chat-server");
     }
 
     @Override
@@ -52,85 +50,57 @@ public class DefaultChatServerService implements ChatServerService {
         }
         try {
             this.config = config;
-            if (sessionExecutor.isShutdown() || sessionExecutor.isTerminated()) {
-                sessionExecutor = Executors.newCachedThreadPool();
-            }
-            this.serverSocket = new ServerSocket(config.port());
-            acceptThread = new Thread(this::acceptLoop, "chat-server-accept-loop");
-            acceptThread.start();
-        } catch (IOException e) {
+            tcpServer.start(config.port(), this::handleConnection, this::publishAcceptError);
+        } catch (IOException | RuntimeException e) {
             running.set(false);
             throw new IllegalStateException("Unable to start chat server", e);
         }
     }
 
-    private void acceptLoop() {
-        while (running.get()) {
-            try {
-                Socket socket = serverSocket.accept();
-                handleConnection(socket);
-            } catch (IOException e) {
-                if (running.get()) {
-                    eventPublisher.publish(new ChatErrorEvent("Error while accepting connection", e));
-                }
-            }
+    private void publishAcceptError(String message, Throwable cause) {
+        if (running.get()) {
+            eventPublisher.publish(new ChatErrorEvent(message, cause));
         }
     }
 
     private void handleConnection(Socket socket) {
         if (!running.get()) {
-            closeQuietly(socket);
+            SocketClose.closeQuietly(socket);
             return;
         }
+        ChatSocketSession session = null;
         try {
-            sessionExecutor.submit(() -> {
-            ChatSocketSession session = null;
-            try {
-                session = new ChatSocketSession(socket);
-                activeSessions.add(session);
-                if (!running.get()) {
-                    session.close();
-                    return;
-                }
-                HandshakeResponse response = handshakeService.performServerHandshake(session, config.sessionPassword(), nicknameRegistry);
-                if (!response.accepted()) {
-                    session.close();
-                    return;
-                }
-                String nickname = response.nickname();
-                broadcastService.syncPeers(session, nickname);
-                broadcastService.addClient(nickname, session);
-                broadcastService.publishUserJoined(nickname);
-                eventPublisher.publish(new ChatUserJoinedEvent(nickname));
-                new ServerChatSessionHandler(session, nickname, broadcastService, nicknameRegistry, eventPublisher).run();
-            } catch (IOException e) {
-                eventPublisher.publish(new ChatErrorEvent("Error while handling client", e));
-                if (session != null) {
-                    try {
-                        session.close();
-                    } catch (IOException ignored) {
-                    }
-                }
-            } finally {
-                if (session != null) {
-                    activeSessions.remove(session);
-                }
+            session = new ChatSocketSession(socket);
+            activeSessions.add(session);
+            if (!running.get()) {
+                session.close();
+                return;
             }
-            });
-        } catch (RejectedExecutionException e) {
-            closeQuietly(socket);
+            HandshakeResponse response = handshakeService.performServerHandshake(session, config.sessionPassword(), nicknameRegistry);
+            if (!response.accepted()) {
+                session.close();
+                return;
+            }
+            String nickname = response.nickname();
+            broadcastService.syncPeers(session, nickname);
+            broadcastService.addClient(nickname, session);
+            broadcastService.publishUserJoined(nickname);
+            eventPublisher.publish(new ChatUserJoinedEvent(nickname, session.remoteAddress()));
+            new ServerChatSessionHandler(session, nickname, broadcastService, nicknameRegistry, eventPublisher).run();
+        } catch (IOException e) {
+            eventPublisher.publish(new ChatErrorEvent("Error while handling client", e));
+            SocketClose.closeQuietly(session);
+        } finally {
+            if (session != null) {
+                activeSessions.remove(session);
+            }
         }
     }
 
     @Override
     public void stop() {
         running.set(false);
-        try {
-            if (serverSocket != null) {
-                serverSocket.close();
-            }
-        } catch (IOException ignored) {
-        }
+        tcpServer.close();
         activeSessions.forEach(session -> {
             try {
                 session.close();
@@ -138,17 +108,7 @@ public class DefaultChatServerService implements ChatServerService {
             }
         });
         activeSessions.clear();
-        sessionExecutor.shutdownNow();
-        serverSocket = null;
-        acceptThread = null;
         config = null;
-    }
-
-    private void closeQuietly(Socket socket) {
-        try {
-            socket.close();
-        } catch (IOException ignored) {
-        }
     }
 
     @Override

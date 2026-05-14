@@ -43,7 +43,7 @@ Use it to:
 | [x] | Project setup | Create Gradle multi-module skeleton | root project | Java 25, Gradle multi-project, module registration |
 | [x] | Project setup | Add `apps/desktop-client` | `apps/desktop-client` | Runnable JavaFX desktop app |
 | [x] | Shared models | Create immutable records for peer/chat/file/event/realtime models | `modules/common-model` | Records and enums reused across modules |
-| [ ] | Shared networking | Add reusable transport abstractions and utilities | `modules/common-net` | Current baseline contains shared network constants; richer TCP/UDP contracts remain open |
+| [x] | Shared networking | Add reusable transport abstractions and utilities | `modules/common-net` | Shared network constants, TCP endpoint/socket factories, text and frame channels, reusable accept loop, close helper, and UDP broadcast address resolver are available and reused by chat/file-transfer modules |
 | [x] | Standards | Establish package naming and module dependency rules | all modules | Current modules follow the `com.shterneregen.securelan` package structure and acyclic Gradle wiring |
 
 ---
@@ -212,7 +212,7 @@ Source repository:
 | Done | Phase | Goal | Deliverable |
 |---|---|---|---|
 | [x] | Phase 0 | Bootstrap the monorepo | Gradle modules, Java 25, initial structure |
-| [ ] | Phase 1 | Shared foundation | `common-model` is ready; `common-net` still needs reusable transport abstractions |
+| [x] | Phase 1 | Shared foundation | `common-model` is ready; `common-net` provides reusable TCP/UDP transport utilities reused by feature modules |
 | [x] | Phase 2 | Cryptographic base | `crypto-core` migrated and tested |
 | [x] | Phase 3 | Secure file transfer | `file-transfer-core` working |
 | [x] | Phase 4 | LAN chat and discovery | `chat-core` working with secure chat and UDP peer discovery |
@@ -230,7 +230,7 @@ Source repository:
 |---|---|---|---|
 | [x] | 1 | Finalize project structure | Prevent future architectural drift |
 | [x] | 2 | Implement `common-model` | Shared DTO baseline |
-| [ ] | 3 | Implement richer `common-net` abstractions | Shared networking baseline beyond constants |
+| [x] | 3 | Implement richer `common-net` abstractions | Shared networking baseline beyond constants |
 | [x] | 4 | Migrate `crypto-core` | Security foundation for other modules |
 | [x] | 5 | Migrate `file-transfer-core` | First practical secure feature |
 | [x] | 6 | Migrate `chat-core` | Core communication feature |
@@ -248,7 +248,7 @@ Source repository:
 | Done | Module | Definition of Done |
 |---|---|---|
 | [x] | common-model | Shared records/enums exist, compile cleanly, reused by other modules |
-| [ ] | common-net | Transport abstractions compile cleanly and are reused by feature modules |
+| [x] | common-net | Transport abstractions compile cleanly and are reused by feature modules |
 | [x] | crypto-core | AES/RSA/hash/signature/key/file-crypto APIs extracted, tested, UI-free |
 | [x] | chat-core | Message flow, handshake, signaling integration, discovery, peer/session logic extracted, tested, UI-free |
 | [x] | file-transfer-core | Send/receive/progress/encryption logic extracted, tested, UI-free |

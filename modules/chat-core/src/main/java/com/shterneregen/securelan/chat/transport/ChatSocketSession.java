@@ -1,36 +1,29 @@
 package com.shterneregen.securelan.chat.transport;
 
 import com.shterneregen.securelan.chat.protocol.WireMessage;
+import com.shterneregen.securelan.common.net.transport.LineTextChannel;
 import com.shterneregen.securelan.crypto.service.AesGcmCryptoService;
 
 import javax.crypto.SecretKey;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Objects;
 
 public class ChatSocketSession implements Closeable {
-    private final Socket socket;
-    private final BufferedReader reader;
-    private final BufferedWriter writer;
+    private final LineTextChannel channel;
 
     private volatile SecretKey transportKey;
     private volatile AesGcmCryptoService aesGcmCryptoService;
 
     public ChatSocketSession(Socket socket) throws IOException {
-        this.socket = socket;
-        this.reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-        this.writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+        this.channel = new LineTextChannel(socket);
     }
 
     public WireMessage readMessage() throws IOException {
-        String line = reader.readLine();
+        String line = channel.readLine();
         if (line == null) {
             return null;
         }
@@ -43,16 +36,12 @@ public class ChatSocketSession implements Closeable {
     }
 
     public void writeMessage(WireMessage message) throws IOException {
-        synchronized (writer) {
-            String line = message.serialize();
-            if (isSecure()) {
-                byte[] encrypted = aesGcmCryptoService.encrypt(line.getBytes(StandardCharsets.UTF_8), transportKey);
-                line = Base64.getEncoder().encodeToString(encrypted);
-            }
-            writer.write(line);
-            writer.newLine();
-            writer.flush();
+        String line = message.serialize();
+        if (isSecure()) {
+            byte[] encrypted = aesGcmCryptoService.encrypt(line.getBytes(StandardCharsets.UTF_8), transportKey);
+            line = Base64.getEncoder().encodeToString(encrypted);
         }
+        channel.writeLine(line);
     }
 
     public void enableTransportEncryption(SecretKey secretKey, AesGcmCryptoService aesGcmCryptoService) {
@@ -65,11 +54,11 @@ public class ChatSocketSession implements Closeable {
     }
 
     public String remoteAddress() {
-        return socket.getRemoteSocketAddress().toString();
+        return channel.remoteAddress();
     }
 
     @Override
     public void close() throws IOException {
-        socket.close();
+        channel.close();
     }
 }

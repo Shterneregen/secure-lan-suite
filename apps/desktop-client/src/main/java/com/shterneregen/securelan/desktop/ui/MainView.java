@@ -1737,7 +1737,7 @@ public class MainView {
                 // message appears once via normal chat flow
             } else if (event instanceof ChatUserJoinedEvent e) {
                 if (!e.nickname().equalsIgnoreCase(nicknameField.getText().trim())) {
-                    PeerPresence peer = upsertPeer(e.nickname(), true);
+                    PeerPresence peer = upsertJoinedPeer(e);
                     if (peer != null && peer.online()) {
                         appendChat("[join] " + e.nickname());
                         if (peerListView.getSelectionModel().getSelectedItem() == null) {
@@ -1758,6 +1758,50 @@ public class MainView {
                 appendDiagnostics("[error] " + e.message() + (e.cause() != null ? " -> " + e.cause().getMessage() : ""));
             }
         });
+    }
+
+    private PeerPresence upsertJoinedPeer(ChatUserJoinedEvent event) {
+        if (serverService.isRunning() && event.remoteAddress() != null && !event.remoteAddress().isBlank()) {
+            String host = hostFromRemoteAddress(event.remoteAddress());
+            if (host != null && !host.isBlank()) {
+                return upsertPeer(
+                        event.nickname(),
+                        true,
+                        null,
+                        host,
+                        localChatPort(),
+                        inferredClientFilePort(),
+                        Instant.now()
+                );
+            }
+        }
+        return upsertPeer(event.nickname(), true);
+    }
+
+    private String hostFromRemoteAddress(String remoteAddress) {
+        String value = remoteAddress == null ? "" : remoteAddress.trim();
+        if (value.isBlank()) {
+            return "";
+        }
+        int slash = value.lastIndexOf('/');
+        if (slash >= 0) {
+            value = value.substring(slash + 1);
+        }
+        if (value.startsWith("[")) {
+            int closing = value.indexOf(']');
+            return closing > 0 ? value.substring(1, closing) : value;
+        }
+        int colon = value.lastIndexOf(':');
+        return colon > 0 ? value.substring(0, colon) : value;
+    }
+
+    private int inferredClientFilePort() {
+        int hostFilePort = Integer.parseInt(serverFilePortField.getText().trim());
+        int candidate = hostFilePort + CLIENT_FILE_PORT_OFFSET;
+        if (candidate > 65535) {
+            candidate = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + CLIENT_FILE_PORT_OFFSET;
+        }
+        return candidate;
     }
 
     private void handleFileTransferEvent(FileTransferEvent event) {

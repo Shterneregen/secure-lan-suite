@@ -16,14 +16,17 @@ import com.shterneregen.securelan.chat.transport.ChatSocketSession;
 import com.shterneregen.securelan.chat.transport.ClientReceiveLoop;
 import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec;
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope;
+import com.shterneregen.securelan.common.net.transport.ClientSocketFactory;
+import com.shterneregen.securelan.common.net.transport.TransportEndpoint;
 
 import java.io.IOException;
-import java.net.Socket;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DefaultChatClientService implements ChatClientService {
     private final ChatEventPublisher eventPublisher;
     private final SecureHandshakeService handshakeService;
+    private final ClientSocketFactory clientSocketFactory;
     private final AtomicBoolean connected = new AtomicBoolean(false);
 
     private ChatSocketSession session;
@@ -31,8 +34,13 @@ public class DefaultChatClientService implements ChatClientService {
     private String nickname;
 
     public DefaultChatClientService(ChatEventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
+        this(eventPublisher, ClientSocketFactory.systemDefault());
+    }
+
+    public DefaultChatClientService(ChatEventPublisher eventPublisher, ClientSocketFactory clientSocketFactory) {
+        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher");
         this.handshakeService = new SimpleHandshakeService();
+        this.clientSocketFactory = Objects.requireNonNull(clientSocketFactory, "clientSocketFactory");
     }
 
     @Override
@@ -41,7 +49,7 @@ public class DefaultChatClientService implements ChatClientService {
             return true;
         }
         try {
-            session = new ChatSocketSession(new Socket(request.host(), request.port()));
+            session = new ChatSocketSession(clientSocketFactory.connect(TransportEndpoint.of(request.host(), request.port())));
             HandshakeResponse response = handshakeService.performClientHandshake(
                     session,
                     new HandshakeRequest(request.nickname(), request.sessionPassword())

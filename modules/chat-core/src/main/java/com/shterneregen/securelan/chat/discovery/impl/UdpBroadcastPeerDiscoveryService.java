@@ -4,28 +4,27 @@ import com.shterneregen.securelan.chat.discovery.DiscoveredPeer;
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig;
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener;
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryService;
+import com.shterneregen.securelan.common.net.udp.BroadcastAddressResolver;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
 import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
     private static final int RECEIVE_BUFFER_SIZE = 1024;
 
+    private final BroadcastAddressResolver broadcastAddressResolver;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean announceEnabled = new AtomicBoolean(false);
     private final Map<String, DiscoveredPeer> peers = new ConcurrentHashMap<>();
@@ -35,6 +34,14 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
     private Thread announcerThread;
     private PeerDiscoveryConfig config;
     private PeerDiscoveryListener listener;
+
+    public UdpBroadcastPeerDiscoveryService() {
+        this(new BroadcastAddressResolver());
+    }
+
+    public UdpBroadcastPeerDiscoveryService(BroadcastAddressResolver broadcastAddressResolver) {
+        this.broadcastAddressResolver = Objects.requireNonNull(broadcastAddressResolver, "broadcastAddressResolver");
+    }
 
     @Override
     public void start(PeerDiscoveryConfig config, PeerDiscoveryListener listener) {
@@ -146,7 +153,7 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
                 config.chatPort(),
                 config.filePort()
         ));
-        for (InetAddress address : broadcastAddresses()) {
+        for (InetAddress address : broadcastAddressResolver.resolve()) {
             DatagramPacket packet = new DatagramPacket(data, data.length, address, config.discoveryPort());
             socket.send(packet);
         }
@@ -159,25 +166,6 @@ public class UdpBroadcastPeerDiscoveryService implements PeerDiscoveryService {
                 listener.onPeerExpired(peer);
             }
         }
-    }
-
-    private static List<InetAddress> broadcastAddresses() throws SocketException, UnknownHostException {
-        List<InetAddress> result = new ArrayList<>();
-        result.add(InetAddress.getLoopbackAddress());
-        result.add(InetAddress.getByName("255.255.255.255"));
-        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-        while (interfaces.hasMoreElements()) {
-            NetworkInterface networkInterface = interfaces.nextElement();
-            if (!networkInterface.isUp() || networkInterface.isLoopback()) {
-                continue;
-            }
-            networkInterface.getInterfaceAddresses().stream()
-                    .filter(address -> address.getAddress() instanceof Inet4Address)
-                    .map(address -> address.getBroadcast())
-                    .filter(address -> address != null)
-                    .forEach(result::add);
-        }
-        return result.stream().distinct().toList();
     }
 
     private void closeSocket() {
