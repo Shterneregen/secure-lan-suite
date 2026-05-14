@@ -42,7 +42,6 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 - receive files into a configurable downloads directory
 - show transfer progress and transfer status in the main workspace
 - route RTC signaling through `chat-core` into `webrtc-core`
-- start `RTCDataChannel` sessions from the desktop UI
 - start voice sessions backed by native `webrtc-java`
 - choose detected microphone and camera capture devices for RTC sessions
 - test microphone capture and open a camera preview window from the desktop UI
@@ -210,6 +209,7 @@ wix --version
 - `chat-core` transports realtime signaling envelopes between peers over the secure chat path
 - `webrtc-core` owns RTC session state, signaling integration, diagnostics, and runtime/provider integration
 - `webrtc-core` boots a native `webrtc-java` engine and reuses chat signaling for SDP and ICE exchange
+- `RTCDataChannel` support remains in `webrtc-core`, but the desktop UI currently prioritizes voice/video controls and runtime diagnostics over data-channel test controls
 - `audio-core` and `webcam-core` expose default media profile hints for desktop/realtime sessions
 - implementation notes: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
 

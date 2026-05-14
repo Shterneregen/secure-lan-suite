@@ -940,12 +940,6 @@ public class MainView {
                 audioProfileValue,
                 videoProfileValue,
                 new Separator(),
-                createSectionHeadingLabel("RTCDataChannel"),
-                createMutedLabel("Use this for diagnostics and RTCDataChannel experiments. Video now opens as an inline stage in the chat column with self preview enabled by default."),
-                startDataButton,
-                rtcMessageField,
-                sendRtcMessageButton,
-                new Separator(),
                 createSectionHeadingLabel("Diagnostics"),
                 diagnosticsArea
         );
@@ -961,7 +955,7 @@ public class MainView {
         stegoPane.setExpanded(false);
         stegoPane.setAnimated(false);
 
-        TitledPane advancedPane = new TitledPane("Advanced / Experimental", advancedContent);
+        TitledPane advancedPane = new TitledPane("Runtime / Diagnostics", advancedContent);
         advancedPane.getStyleClass().add("advanced-pane");
         advancedPane.setExpanded(false);
         advancedPane.setAnimated(false);
