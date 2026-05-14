@@ -1,0 +1,16 @@
+.git/
+.idea/
+target/
+build/
+out/
+node_modules/
+dist/
+logs/
+*.log
+*.tmp
+*.class
+*.iml
+.env
+.env.*
+/infra/qdrant/qdrant_storage/
+/infra/qdrant/snapshots/

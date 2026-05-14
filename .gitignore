@@ -45,3 +45,8 @@ bin/
 
 ### Other ###
 *.log
+/apps/desktop-client/downloads/
+
+### Local infrastructure / AI tooling ###
+/infra/qdrant/qdrant_storage/
+/infra/qdrant/snapshots/
