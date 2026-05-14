@@ -199,7 +199,7 @@ Source repository:
 | [x] | Camera UI | Add experimental webcam/video call panel | `apps/desktop-client` | Inline video stage exists but remains experimental |
 | [ ] | Camera UI | Stabilize webcam/video call panel for normal use | `apps/desktop-client` | Needs broader runtime/device validation |
 | [ ] | Camera UI | Add recording controls | `apps/desktop-client` | Optional future feature |
-| [ ] | Stego UI | Add steganography tools panel | `apps/desktop-client` | Hide/extract workflows |
+| [x] | Stego UI | Add steganography tools panel | `apps/desktop-client` | Hide/extract text workflows with optional password encryption |
 | [x] | Security UX | Add clearer session/status indicators | `apps/desktop-client` | Compact top status bar and voice status area |
 | [x] | UX | Improve error display and diagnostics feedback | `apps/desktop-client` | Advanced/experimental panel plus richer logs |
 

@@ -42,6 +42,9 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig;
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService;
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService;
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService;
+import com.shterneregen.securelan.stego.StegoServices;
+import com.shterneregen.securelan.stego.model.BmpCapacity;
+import com.shterneregen.securelan.stego.service.SteganographyService;
 import com.shterneregen.securelan.webcam.service.VideoCallProfile;
 import com.shterneregen.securelan.webcam.service.VideoProfileService;
 import com.shterneregen.securelan.webcam.service.impl.DefaultVideoProfileService;
@@ -73,6 +76,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
@@ -97,11 +101,16 @@ import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -128,6 +137,8 @@ public class MainView {
     private static final Path DEFAULT_DOWNLOADS_PATH = Path.of("downloads").toAbsolutePath().normalize();
     private static final String LOCAL_PEER_ID = UUID.randomUUID().toString();
     private static final int CLIENT_FILE_PORT_OFFSET = 1000;
+    private static final String BMP_EXTENSION = "*.bmp";
+    private static final String[] IMAGE_EXTENSIONS = {"*.png", "*.bmp", "*.jpg", "*.jpeg"};
     private final RandomNicknameService randomNicknameService = new DefaultRandomNicknameService();
 
     private final TextField serverChatPortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_CHAT_PORT));
@@ -144,10 +155,16 @@ public class MainView {
     private final TextField rtcPeerField = new TextField("peer");
     private final TextField rtcDataChannelField = new TextField("securelan-data");
     private final TextField rtcMessageField = new TextField();
+    private final TextField stegoCoverPathField = new TextField();
+    private final TextField stegoOutputPathField = new TextField();
+    private final TextField stegoInputPathField = new TextField();
 
     private final TextArea logArea = new TextArea();
     private final TextArea diagnosticsArea = new TextArea();
+    private final TextArea stegoMessageArea = new TextArea();
+    private final TextArea stegoExtractedArea = new TextArea();
     private final TextField messageField = new TextField();
+    private final PasswordField stegoPasswordField = new PasswordField();
     private final ComboBox<MediaDeviceChoice> microphoneChoiceBox = new ComboBox<>();
     private final ComboBox<MediaDeviceChoice> cameraChoiceBox = new ComboBox<>();
 
@@ -188,6 +205,8 @@ public class MainView {
     private final Label localVideoCaptionValue = new Label("Self preview");
     private final Label remoteVideoPlaceholderValue = new Label("Remote video will appear here when the call connects.");
     private final Label localVideoPlaceholderValue = new Label();
+    private final Label stegoCapacityValue = new Label("Choose a cover BMP to inspect capacity.");
+    private final Label stegoStatusValue = new Label("Steganography idle");
 
     private final ProgressBar localAudioLevelBar = new ProgressBar(0);
     private final ProgressBar remoteAudioLevelBar = new ProgressBar(0);
@@ -206,14 +225,23 @@ public class MainView {
     private WritableImage cameraPreviewImage;
     private final AtomicLong latestCameraPreviewGeneration = new AtomicLong(0);
     private final AtomicLong fileTransferThreadSequence = new AtomicLong(0);
+    private final AtomicLong stegoThreadSequence = new AtomicLong(0);
     private final ExecutorService fileTransferExecutor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "securelan-file-transfer-client-" + fileTransferThreadSequence.incrementAndGet());
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final ExecutorService stegoExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "securelan-stego-worker-" + stegoThreadSequence.incrementAndGet());
         thread.setDaemon(true);
         return thread;
     });
     private final Object transferProgressLock = new Object();
     private final Map<String, FileTransferProgressEvent> pendingTransferProgressEvents = new LinkedHashMap<>();
     private final AtomicBoolean transferProgressUiUpdateScheduled = new AtomicBoolean(false);
+    private Path selectedStegoCoverPath;
+    private Path selectedStegoOutputPath;
+    private Path selectedStegoInputPath;
 
     private final ObservableList<PeerPresence> peerItems = FXCollections.observableArrayList();
     private final ListView<PeerPresence> peerListView = new ListView<>(peerItems);
@@ -236,6 +264,13 @@ public class MainView {
     private final Button sendRtcMessageButton = new Button("Send RTC message");
     private final Button testMicrophoneButton = new Button("Test mic");
     private final Button testCameraButton = new Button("Test camera");
+    private final Button chooseStegoCoverButton = new Button("Cover BMP");
+    private final Button chooseStegoOutputButton = new Button("Save as");
+    private final Button hideStegoTextButton = new Button("Hide message");
+    private final Button chooseStegoInputButton = new Button("Stego BMP");
+    private final Button extractStegoTextButton = new Button("Extract message");
+    private final Button clearStegoButton = new Button("Clear");
+    private final CheckBox stegoEncryptCheckBox = new CheckBox("Encrypt with password");
     private final ToggleButton themeToggleButton = new ToggleButton("Dark theme");
 
     private BorderPane root;
@@ -249,6 +284,7 @@ public class MainView {
     private final PeerDiscoveryService peerDiscoveryService;
     private final AudioProfileService audioProfileService;
     private final VideoProfileService videoProfileService;
+    private final SteganographyService steganographyService;
 
     public MainView() {
         ChatEventPublisher chatPublisher = this::handleChatEvent;
@@ -262,6 +298,7 @@ public class MainView {
         this.rtcMediaDeviceService = new DefaultRtcMediaDeviceService();
         this.peerDiscoveryService = new UdpBroadcastPeerDiscoveryService();
         this.rtcSessionService = new DefaultRtcSessionService(this::handleRtcEvent, clientService::sendSignal);
+        this.steganographyService = StegoServices.createDefault().steganographyService();
         syncSharedClientFields();
         configureUiState();
         wireActions();
@@ -284,6 +321,7 @@ public class MainView {
 
     public void shutdown() {
         fileTransferExecutor.shutdownNow();
+        stegoExecutor.shutdownNow();
         closeCameraPreview();
         rtcMediaDeviceService.close();
         rtcSessionService.close();
@@ -307,6 +345,7 @@ public class MainView {
         diagnosticsArea.setWrapText(true);
         diagnosticsArea.setPrefRowCount(10);
         diagnosticsArea.getStyleClass().addAll("chat-log-area", "mono-area");
+        configureStegoFields();
         conversationTitleValue.getStyleClass().add("page-title");
         conversationSubtitleValue.getStyleClass().add("muted-label");
         selectedPeerTitleValue.getStyleClass().add("section-heading");
@@ -354,6 +393,10 @@ public class MainView {
         configureMediaStatusLabel(remoteAudioStatusValue);
         configureMediaStatusLabel(microphoneTestStatusValue);
         configureMediaStatusLabel(cameraTestStatusValue);
+        stegoCapacityValue.setWrapText(true);
+        stegoCapacityValue.getStyleClass().add("subtle-label");
+        stegoStatusValue.setWrapText(true);
+        stegoStatusValue.getStyleClass().addAll("subtle-label", "status-value");
         configureVideoView(localVideoView);
         configureVideoView(remoteVideoView);
         configureVideoStage();
@@ -394,6 +437,12 @@ public class MainView {
         rtcMessageField.setOnAction(event -> sendRtcMessage());
         testMicrophoneButton.setOnAction(event -> testSelectedMicrophone());
         testCameraButton.setOnAction(event -> testSelectedCamera());
+        chooseStegoCoverButton.setOnAction(event -> chooseStegoCoverBmp());
+        chooseStegoOutputButton.setOnAction(event -> chooseStegoOutputBmp());
+        hideStegoTextButton.setOnAction(event -> hideStegoText());
+        chooseStegoInputButton.setOnAction(event -> chooseStegoInputBmp());
+        extractStegoTextButton.setOnAction(event -> extractStegoText());
+        clearStegoButton.setOnAction(event -> clearStegoForm());
     }
 
     private void fileFieldSetup() {
@@ -401,6 +450,25 @@ public class MainView {
         fileSenderField.setEditable(false);
         recipientField.setEditable(false);
         rtcPeerField.setEditable(false);
+    }
+
+    private void configureStegoFields() {
+        stegoCoverPathField.setEditable(false);
+        stegoOutputPathField.setEditable(false);
+        stegoInputPathField.setEditable(false);
+        stegoCoverPathField.setPromptText("No cover BMP selected");
+        stegoOutputPathField.setPromptText("No output BMP selected");
+        stegoInputPathField.setPromptText("No stego BMP selected");
+        stegoMessageArea.setPromptText("Message to hide in the BMP image...");
+        stegoMessageArea.setWrapText(true);
+        stegoMessageArea.setPrefRowCount(3);
+        stegoMessageArea.getStyleClass().add("chat-log-area");
+        stegoExtractedArea.setPromptText("Extracted message will appear here.");
+        stegoExtractedArea.setWrapText(true);
+        stegoExtractedArea.setEditable(false);
+        stegoExtractedArea.setPrefRowCount(3);
+        stegoExtractedArea.getStyleClass().add("chat-log-area");
+        stegoPasswordField.setPromptText("Password for encrypted stego flow");
     }
 
     private void publishRealtimeProfiles() {
@@ -838,6 +906,12 @@ public class MainView {
         sendRtcMessageButton.setMaxWidth(Double.MAX_VALUE);
         testMicrophoneButton.setMaxWidth(Double.MAX_VALUE);
         testCameraButton.setMaxWidth(Double.MAX_VALUE);
+        chooseStegoCoverButton.setMaxWidth(Double.MAX_VALUE);
+        chooseStegoOutputButton.setMaxWidth(Double.MAX_VALUE);
+        hideStegoTextButton.setMaxWidth(Double.MAX_VALUE);
+        chooseStegoInputButton.setMaxWidth(Double.MAX_VALUE);
+        extractStegoTextButton.setMaxWidth(Double.MAX_VALUE);
+        clearStegoButton.setMaxWidth(Double.MAX_VALUE);
 
         VBox voiceBlock = new VBox(8,
                 voicePanelStatusValue,
@@ -852,6 +926,13 @@ public class MainView {
                 autoAcceptFilesCheckBox,
                 createMutedLabel("Unchecked by default: incoming files ask for confirmation and are accepted only from online chat peers."),
                 transferListView);
+
+        VBox stegoBlock = new VBox(8,
+                stegoStatusValue,
+                createMutedLabel("Choose PNG, BMP, JPG, or JPEG images. Non-BMP cover images are converted to BMP for output because the stego core stores payloads in BMP pixel bytes."),
+                createMetricBlock("Hide message", buildStegoHideBlock()),
+                createMetricBlock("Extract message", buildStegoExtractBlock())
+        );
 
         VBox advancedContent = new VBox(10,
                 createSectionHeadingLabel("Runtime"),
@@ -875,6 +956,11 @@ public class MainView {
         mediaPane.setExpanded(false);
         mediaPane.setAnimated(false);
 
+        TitledPane stegoPane = new TitledPane("Steganography", stegoBlock);
+        stegoPane.getStyleClass().add("advanced-pane");
+        stegoPane.setExpanded(false);
+        stegoPane.setAnimated(false);
+
         TitledPane advancedPane = new TitledPane("Advanced / Experimental", advancedContent);
         advancedPane.getStyleClass().add("advanced-pane");
         advancedPane.setExpanded(false);
@@ -886,6 +972,7 @@ public class MainView {
                 selectedPeerTitleValue,
                 selectedPeerMetaValue,
                 transfersCard,
+                stegoPane,
                 mediaPane,
                 advancedPane
         );
@@ -896,6 +983,35 @@ public class MainView {
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         return createCard("Actions", scrollPane);
+    }
+
+    private Node buildStegoHideBlock() {
+        HBox chooseCoverRow = new HBox(8, chooseStegoCoverButton, stegoCoverPathField);
+        HBox.setHgrow(stegoCoverPathField, Priority.ALWAYS);
+        HBox chooseOutputRow = new HBox(8, chooseStegoOutputButton, stegoOutputPathField);
+        HBox.setHgrow(stegoOutputPathField, Priority.ALWAYS);
+        HBox actions = new HBox(8, hideStegoTextButton, clearStegoButton);
+        HBox.setHgrow(hideStegoTextButton, Priority.ALWAYS);
+        HBox.setHgrow(clearStegoButton, Priority.ALWAYS);
+        return new VBox(6,
+                chooseCoverRow,
+                stegoCapacityValue,
+                stegoMessageArea,
+                chooseOutputRow,
+                stegoEncryptCheckBox,
+                stegoPasswordField,
+                actions
+        );
+    }
+
+    private Node buildStegoExtractBlock() {
+        HBox chooseInputRow = new HBox(8, chooseStegoInputButton, stegoInputPathField);
+        HBox.setHgrow(stegoInputPathField, Priority.ALWAYS);
+        return new VBox(6,
+                chooseInputRow,
+                extractStegoTextButton,
+                stegoExtractedArea
+        );
     }
 
     private Node createMetricBlock(String title, Node content) {
@@ -979,6 +1095,12 @@ public class MainView {
         applyButtonVariant(sendRtcMessageButton, "secondary-button");
         applyButtonVariant(testMicrophoneButton, "secondary-button");
         applyButtonVariant(testCameraButton, "secondary-button");
+        applyButtonVariant(chooseStegoCoverButton, "secondary-button");
+        applyButtonVariant(chooseStegoOutputButton, "secondary-button");
+        applyButtonVariant(hideStegoTextButton, "primary-button");
+        applyButtonVariant(chooseStegoInputButton, "secondary-button");
+        applyButtonVariant(extractStegoTextButton, "primary-button");
+        applyButtonVariant(clearStegoButton, "secondary-button");
     }
 
     private void applyButtonVariant(Button button, String variantClass) {
@@ -1248,6 +1370,225 @@ public class MainView {
         } catch (RuntimeException ex) {
             showError(fileTransferErrorMessage(ex));
         }
+    }
+
+    private void chooseStegoCoverBmp() {
+        File file = createImageOpenChooser("Choose cover image").showOpenDialog(null);
+        if (file == null) {
+            return;
+        }
+        selectedStegoCoverPath = file.toPath().toAbsolutePath().normalize();
+        stegoCoverPathField.setText(selectedStegoCoverPath.toString());
+        if (selectedStegoOutputPath == null) {
+            selectedStegoOutputPath = suggestedStegoOutputPath(selectedStegoCoverPath);
+            stegoOutputPathField.setText(selectedStegoOutputPath.toString());
+        }
+        inspectStegoCoverAsync(selectedStegoCoverPath);
+    }
+
+    private void chooseStegoOutputBmp() {
+        FileChooser chooser = createBmpSaveChooser("Save stego BMP image");
+        if (selectedStegoCoverPath != null) {
+            Path parent = selectedStegoCoverPath.getParent();
+            if (parent != null && Files.isDirectory(parent)) {
+                chooser.setInitialDirectory(parent.toFile());
+            }
+            chooser.setInitialFileName(suggestedStegoOutputPath(selectedStegoCoverPath).getFileName().toString());
+        }
+        File file = chooser.showSaveDialog(null);
+        if (file == null) {
+            return;
+        }
+        selectedStegoOutputPath = ensureBmpExtension(file.toPath().toAbsolutePath().normalize());
+        stegoOutputPathField.setText(selectedStegoOutputPath.toString());
+    }
+
+    private void chooseStegoInputBmp() {
+        File file = createImageOpenChooser("Choose image with hidden message").showOpenDialog(null);
+        if (file == null) {
+            return;
+        }
+        selectedStegoInputPath = file.toPath().toAbsolutePath().normalize();
+        stegoInputPathField.setText(selectedStegoInputPath.toString());
+        setStegoStatus("Ready to extract from " + selectedStegoInputPath.getFileName());
+    }
+
+    private void hideStegoText() {
+        if (selectedStegoCoverPath == null) {
+            showError("Choose a cover BMP image first");
+            return;
+        }
+        if (selectedStegoOutputPath == null) {
+            showError("Choose an output BMP path first");
+            return;
+        }
+        String message = stegoMessageArea.getText();
+        if (message == null || message.isBlank()) {
+            showError("Enter a message to hide");
+            return;
+        }
+        boolean encrypt = stegoEncryptCheckBox.isSelected();
+        char[] password = stegoPasswordField.getText().toCharArray();
+        if (encrypt && password.length == 0) {
+            showError("Enter a password for encrypted steganography");
+            return;
+        }
+        runStegoTask("hide", () -> {
+            byte[] bmpBytes = readImageAsBmpBytes(selectedStegoCoverPath);
+            byte[] stegoBytes = encrypt
+                    ? steganographyService.hideEncryptedText(bmpBytes, message, password)
+                    : steganographyService.hideText(bmpBytes, message);
+            Path outputPath = ensureBmpExtension(selectedStegoOutputPath);
+            Path parent = outputPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.write(outputPath, stegoBytes);
+            Platform.runLater(() -> {
+                selectedStegoOutputPath = outputPath;
+                selectedStegoInputPath = outputPath;
+                stegoOutputPathField.setText(outputPath.toString());
+                stegoInputPathField.setText(outputPath.toString());
+                setStegoStatus("Hidden message saved to " + outputPath.getFileName());
+                appendChat("[stego] hidden message saved: " + outputPath);
+                appendDiagnostics("[stego] hide completed: " + outputPath + (encrypt ? " (encrypted)" : ""));
+            });
+        });
+    }
+
+    private void extractStegoText() {
+        if (selectedStegoInputPath == null) {
+            showError("Choose a stego BMP image first");
+            return;
+        }
+        boolean encrypted = stegoEncryptCheckBox.isSelected();
+        char[] password = stegoPasswordField.getText().toCharArray();
+        if (encrypted && password.length == 0) {
+            showError("Enter the password used for encrypted steganography");
+            return;
+        }
+        runStegoTask("extract", () -> {
+            byte[] bmpBytes = readImageAsBmpBytes(selectedStegoInputPath);
+            String message = encrypted
+                    ? steganographyService.extractEncryptedText(bmpBytes, password)
+                    : steganographyService.extractText(bmpBytes);
+            Platform.runLater(() -> {
+                stegoExtractedArea.setText(message);
+                setStegoStatus("Extracted message from " + selectedStegoInputPath.getFileName());
+                appendChat("[stego] extracted message from " + selectedStegoInputPath.getFileName());
+                appendDiagnostics("[stego] extract completed: " + selectedStegoInputPath + (encrypted ? " (encrypted)" : ""));
+            });
+        });
+    }
+
+    private void inspectStegoCoverAsync(Path bmpPath) {
+        runStegoTask("inspect", () -> {
+            byte[] bmpBytes = readImageAsBmpBytes(bmpPath);
+            BmpCapacity capacity = steganographyService.inspect(bmpBytes);
+            Platform.runLater(() -> {
+                stegoCapacityValue.setText("Capacity: %d bytes payload in %dx%d %d-bit BMP"
+                        .formatted(capacity.payloadCapacityBytes(), capacity.width(), capacity.height(), capacity.bitsPerPixel()));
+                setStegoStatus("Cover BMP ready: " + bmpPath.getFileName());
+                appendDiagnostics("[stego] inspected cover BMP: " + bmpPath + ", payload capacity " + capacity.payloadCapacityBytes() + " bytes");
+            });
+        });
+    }
+
+    private void clearStegoForm() {
+        selectedStegoCoverPath = null;
+        selectedStegoOutputPath = null;
+        selectedStegoInputPath = null;
+        stegoCoverPathField.clear();
+        stegoOutputPathField.clear();
+        stegoInputPathField.clear();
+        stegoMessageArea.clear();
+        stegoExtractedArea.clear();
+        stegoPasswordField.clear();
+        stegoEncryptCheckBox.setSelected(false);
+        stegoCapacityValue.setText("Choose a cover BMP to inspect capacity.");
+        setStegoStatus("Steganography idle");
+    }
+
+    private void runStegoTask(String operation, ThrowingRunnable action) {
+        setStegoStatus("Steganography " + operation + " in progress…");
+        setStegoControlsDisabled(true);
+        stegoExecutor.execute(() -> {
+            try {
+                action.run();
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    String message = fileTransferErrorMessage(ex);
+                    setStegoStatus("Steganography " + operation + " failed");
+                    appendDiagnostics("[stego-error] " + operation + " failed: " + message);
+                    showError(message);
+                });
+            } finally {
+                Platform.runLater(() -> setStegoControlsDisabled(false));
+            }
+        });
+    }
+
+    private void setStegoControlsDisabled(boolean disabled) {
+        chooseStegoCoverButton.setDisable(disabled);
+        chooseStegoOutputButton.setDisable(disabled);
+        hideStegoTextButton.setDisable(disabled);
+        chooseStegoInputButton.setDisable(disabled);
+        extractStegoTextButton.setDisable(disabled);
+        clearStegoButton.setDisable(disabled);
+    }
+
+    private void setStegoStatus(String value) {
+        stegoStatusValue.setText(value);
+    }
+
+    private FileChooser createImageOpenChooser(String title) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(title);
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("IMAGE files", IMAGE_EXTENSIONS));
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("BMP images", BMP_EXTENSION));
+        return chooser;
+    }
+
+    private FileChooser createBmpSaveChooser(String title) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(title);
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("BMP images", BMP_EXTENSION));
+        return chooser;
+    }
+
+    private Path suggestedStegoOutputPath(Path coverPath) {
+        String fileName = coverPath.getFileName().toString();
+        int extensionIndex = fileName.toLowerCase(Locale.ROOT).lastIndexOf(".bmp");
+        String outputName = extensionIndex > 0
+                ? fileName.substring(0, extensionIndex) + "-stego.bmp"
+                : fileName + "-stego.bmp";
+        Path parent = coverPath.getParent();
+        return (parent == null ? Path.of(outputName) : parent.resolve(outputName)).toAbsolutePath().normalize();
+    }
+
+    private Path ensureBmpExtension(Path path) {
+        String text = path.toString();
+        if (text.toLowerCase(Locale.ROOT).endsWith(".bmp")) {
+            return path;
+        }
+        return Path.of(text + ".bmp").toAbsolutePath().normalize();
+    }
+
+    private byte[] readImageAsBmpBytes(Path imagePath) throws IOException {
+        if (imagePath.toString().toLowerCase(Locale.ROOT).endsWith(".bmp")) {
+            return Files.readAllBytes(imagePath);
+        }
+        BufferedImage image = ImageIO.read(imagePath.toFile());
+        if (image == null) {
+            throw new IOException("Unsupported image file: " + imagePath);
+        }
+        BufferedImage rgbImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+        rgbImage.getGraphics().drawImage(image, 0, 0, null);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        if (!ImageIO.write(rgbImage, "bmp", output)) {
+            throw new IOException("BMP writer is unavailable");
+        }
+        return output.toByteArray();
     }
 
     private void startLocalFileTransferListener(int filePort) {
@@ -2175,5 +2516,10 @@ public class MainView {
             }
             setGraphic(box);
         }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 }

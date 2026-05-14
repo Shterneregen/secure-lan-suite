@@ -27,6 +27,7 @@ dependencies {
     implementation project(':modules:webcam-core')
     implementation project(':modules:audio-core')
     implementation project(':modules:webrtc-core')
+    implementation project(':modules:stego-core')
 }
 
 def appName = 'SecureLanSuite'
