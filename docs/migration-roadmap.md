@@ -163,11 +163,11 @@ Source repository:
 
 | Done | Source Repo | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | java-steganography-tool | Extract BMP encode/hide service | `modules/stego-core` | Hide text or payload in BMP |
-| [ ] | java-steganography-tool | Extract BMP decode/extract service | `modules/stego-core` | Extract hidden payload |
-| [ ] | java-steganography-tool | Remove JavaFX-specific code from migrated logic | `modules/stego-core` | Core only |
-| [ ] | java-steganography-tool | Integrate with `crypto-core` for encrypt-then-hide flow | `modules/stego-core` | Advanced secure workflow |
-| [ ] | java-steganography-tool | Add tests for encode/decode roundtrip | `modules/stego-core` | Verify extracted payload integrity |
+| [x] | java-steganography-tool | Extract BMP encode/hide service | `modules/stego-core` | UI-free service hides binary and UTF-8 text payloads in uncompressed BMP images |
+| [x] | java-steganography-tool | Extract BMP decode/extract service | `modules/stego-core` | Validates SecureLanSuite stego header and extracts exact payload bytes |
+| [x] | java-steganography-tool | Remove JavaFX-specific code from migrated logic | `modules/stego-core` | Core only; desktop tools panel remains a separate UI task |
+| [x] | java-steganography-tool | Integrate with `crypto-core` for encrypt-then-hide flow | `modules/stego-core` | Password-based encrypt-then-hide and decrypt-after-extract workflows use `crypto-core` |
+| [x] | java-steganography-tool | Add tests for encode/decode roundtrip | `modules/stego-core` | Capacity, text, binary, encrypted, wrong-password, and oversized payload tests |
 
 ---
 
@@ -219,7 +219,7 @@ Source repository:
 | [ ] | Phase 5 | First usable product | Messenger-style desktop MVP is mostly wired; cross-machine validation and polish remain |
 | [x] | Phase 6 | Realtime data + voice | `webrtc-core` with signaling, data, voice, diagnostics, and native runtime integration |
 | [ ] | Phase 7 | Stable webcam/media support | Video exists experimentally but is not yet stable enough to call complete |
-| [ ] | Phase 8 | Hidden-message workflows | `stego-core` + crypto integration |
+| [x] | Phase 8 | Hidden-message workflows | `stego-core` + crypto integration |
 | [ ] | Phase 9 | Stabilization | tests, packaging polish, documentation, UX hardening |
 
 ---
@@ -238,7 +238,7 @@ Source repository:
 | [x] | 8 | Integrate LAN discovery | Easier peer connection flow |
 | [x] | 9 | Integrate realtime data + voice through `webrtc-core` | Practical realtime layer without waiting for stable video |
 | [ ] | 10 | Stabilize video and output device selection | Needed before positioning video as a normal feature |
-| [ ] | 11 | Migrate `stego-core` | Advanced security feature |
+| [x] | 11 | Migrate `stego-core` | Advanced security feature |
 | [ ] | 12 | Refine UX, packaging, tests | Productization |
 
 ---
@@ -254,7 +254,7 @@ Source repository:
 | [x] | file-transfer-core | Send/receive/progress/encryption logic extracted, tested, UI-free |
 | [ ] | audio-core | Audio-specific services either extracted or intentionally superseded by the WebRTC runtime path |
 | [ ] | webcam-core | Camera/media services either extracted or intentionally superseded by the WebRTC runtime path |
-| [ ] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free |
+| [x] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free |
 | [x] | webrtc-core | Session state, signaling, `RTCDataChannel`, voice, experimental video, device enumeration, diagnostics, and native runtime integration are wired in |
 | [ ] | desktop-client | JavaFX client delivers a stable day-to-day workflow for chat, discovery, files, and voice across target machines |
 

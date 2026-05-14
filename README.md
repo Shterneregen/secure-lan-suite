@@ -24,7 +24,7 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 - `modules/webrtc-core` — RTC session orchestration, WebRTC runtime/provider integration, data channels, voice, experimental video, diagnostics
 - `modules/audio-core` — default audio profile hints used by desktop/realtime flows
 - `modules/webcam-core` — default video profile hints used by desktop/realtime flows
-- `modules/stego-core` — reserved for future steganography workflows
+- `modules/stego-core` — UI-free BMP steganography services for binary/text payload hide/extract workflows and password-based encrypt-then-hide flows
 
 ## Current product state
 
@@ -47,6 +47,7 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 - choose detected microphone and camera capture devices for RTC sessions
 - test microphone capture and open a camera preview window from the desktop UI
 - start experimental 1-to-1 video calls with an inline video stage
+- use `stego-core` from core code to hide/extract binary or text payloads in uncompressed BMP images, including password-encrypted payloads
 - monitor server, connection, selected peer, voice, transfer, runtime, and diagnostics state from the compact UI
 - use the messenger-style desktop layout:
   - peer list on the left
@@ -212,12 +213,19 @@ wix --version
 - `audio-core` and `webcam-core` expose default media profile hints for desktop/realtime sessions
 - implementation notes: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
 
+### Steganography
+- `stego-core` provides UI-agnostic BMP steganography services for uncompressed 24-bit and 32-bit BMP images
+- payloads are embedded into color-channel least-significant bits with a compact SecureLanSuite header containing magic, version, flags, content type, and payload length
+- service APIs support binary payloads, UTF-8 text convenience methods, and password-based encrypt-then-hide workflows through `crypto-core`
+- no JavaFX code is present in `stego-core`; desktop UI integration remains a separate future workflow
+
 ## Current limitations
 - `common-net` still contains only the shared network baseline; richer reusable transport abstractions are not finished
 - LAN discovery is implemented with UDP broadcast and may still require hardening for complex networks, firewalls, VPNs, and multi-adapter setups
 - key management and advanced transfer controls are not fully exposed in the desktop UI yet
 - video calls and preview are experimental and may fail on some Windows/JDK/camera combinations
 - microphone and camera capture selection is exposed, but audio output device selection is not yet exposed
+- steganography core services exist, but a desktop steganography tools panel is not wired yet
 - chunked large file transfer over `RTCDataChannel` is not implemented yet
 - screen sharing is not implemented yet
 - EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers
