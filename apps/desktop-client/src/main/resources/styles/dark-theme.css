@@ -6,6 +6,14 @@
     -fx-text-fill: #e7eef9;
 }
 
+.check-box {
+    -fx-text-fill: #e7eef9;
+}
+
+.check-box:disabled {
+    -fx-text-fill: #93a4bd;
+}
+
 .page-title,
 .section-heading,
 .card-title,
