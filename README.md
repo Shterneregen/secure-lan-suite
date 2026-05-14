@@ -73,7 +73,7 @@ The desktop client uses a **messenger-style workspace**.
 
 ## Screenshots
 
-<img src="docs/images/app-main-0.3.6.png" alt="Secure LAN Suite main window" width="900">
+<img src="docs/images/app-main-0.3.17.png" alt="Secure LAN Suite main window" width="900">
 
 ## Requirements
 - JDK 25 installed and active
