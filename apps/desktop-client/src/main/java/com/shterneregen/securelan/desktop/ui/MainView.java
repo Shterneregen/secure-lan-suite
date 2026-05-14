@@ -1856,7 +1856,7 @@ public class MainView {
 
     private void applyFileTransferEvent(FileTransferEvent event) {
         if (event instanceof FileTransferStartedEvent e) {
-            TransferEntry entry = new TransferEntry(e.transferId(), e.fileName(), e.outgoing() ? "Sending" : "Receiving", 0, e.totalBytes());
+            TransferEntry entry = new TransferEntry(e.transferId(), e.fileName(), e.outgoing(), e.outgoing() ? "Sending" : "Receiving", 0, e.totalBytes());
             transferEntries.put(e.transferId(), entry);
             refreshTransferEntries();
             appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "started: " + e.fileName());
@@ -1865,22 +1865,23 @@ public class MainView {
             TransferEntry existing = transferEntries.get(e.transferId());
             if (existing != null && existing.active()) {
                 existing.status = e.outgoing() ? "Sending" : "Receiving";
-                existing.percent = e.progress().percent();
-                existing.totalBytes = e.progress().totalBytes();
+                existing.updateProgress(e.progress().transferredBytes(), e.progress().percent(), e.progress().totalBytes());
                 refreshTransferEntries();
             }
             setTransferStatus(activeTransferSummary(), Color.web("#f59e0b"));
         } else if (event instanceof FileTransferCompletedEvent e) {
-            TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Completed", 100, e.totalBytes()));
+            TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), e.outgoing(), "Completed", 100, e.totalBytes()));
             entry.status = "Completed";
             entry.percent = 100;
             entry.totalBytes = e.totalBytes();
+            entry.stopSpeedTracking();
             refreshTransferEntries();
             appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "completed: " + e.path());
             setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#1f9d55"));
         } else if (event instanceof FileTransferFailedEvent e) {
-            TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), "Failed", 0, 0));
+            TransferEntry entry = transferEntries.computeIfAbsent(e.transferId(), id -> new TransferEntry(id, e.fileName(), e.outgoing(), "Failed", 0, 0));
             entry.status = "Failed";
+            entry.stopSpeedTracking();
             refreshTransferEntries();
             appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
             setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#dc2626"));
@@ -2350,6 +2351,16 @@ public class MainView {
         return String.format(Locale.ROOT, "%.2f MB", megabytes);
     }
 
+    private static String formatTransferSpeed(double bytesPerSecond) {
+        if (bytesPerSecond >= 1024.0 * 1024.0) {
+            return String.format(Locale.ROOT, "%.1f MB/s avg", bytesPerSecond / (1024.0 * 1024.0));
+        }
+        if (bytesPerSecond >= 1024.0) {
+            return String.format(Locale.ROOT, "%.0f KB/s avg", bytesPerSecond / 1024.0);
+        }
+        return String.format(Locale.ROOT, "%.0f B/s avg", bytesPerSecond);
+    }
+
     private void showError(String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("Error");
@@ -2437,22 +2448,57 @@ public class MainView {
     }
 
     private static final class TransferEntry {
+        private static final long SPEED_DISPLAY_INTERVAL_NANOS = 750_000_000L;
+
         private final String transferId;
         private final String fileName;
+        private final boolean outgoing;
         private String status;
         private int percent;
         private long totalBytes;
+        private final long startNanos;
+        private long lastTransferredBytes;
+        private long lastSpeedDisplayNanos;
+        private double speedBytesPerSecond;
 
-        private TransferEntry(String transferId, String fileName, String status, int percent, long totalBytes) {
+        private TransferEntry(String transferId, String fileName, boolean outgoing, String status, int percent, long totalBytes) {
             this.transferId = transferId;
             this.fileName = fileName;
+            this.outgoing = outgoing;
             this.status = status;
             this.percent = percent;
             this.totalBytes = totalBytes;
+            this.startNanos = System.nanoTime();
+            this.lastTransferredBytes = 0;
+            this.lastSpeedDisplayNanos = 0;
+            this.speedBytesPerSecond = 0;
         }
 
         private boolean active() {
             return "Sending".equals(status) || "Receiving".equals(status);
+        }
+
+        private String directionLabel() {
+            return outgoing ? "↑ Sent" : "↓ Received";
+        }
+
+        private void updateProgress(long transferredBytes, int percent, long totalBytes) {
+            long now = System.nanoTime();
+            long elapsedNanos = now - startNanos;
+            if (transferredBytes >= 0 && elapsedNanos > 0
+                    && (speedBytesPerSecond == 0
+                    || now - lastSpeedDisplayNanos >= SPEED_DISPLAY_INTERVAL_NANOS
+                    || percent >= 100)) {
+                speedBytesPerSecond = transferredBytes * 1_000_000_000.0 / elapsedNanos;
+                lastSpeedDisplayNanos = now;
+            }
+            this.percent = percent;
+            this.totalBytes = totalBytes;
+            this.lastTransferredBytes = transferredBytes;
+        }
+
+        private void stopSpeedTracking() {
+            speedBytesPerSecond = 0;
         }
     }
 
@@ -2536,7 +2582,7 @@ public class MainView {
 
             Label name = new Label(item.fileName);
             name.getStyleClass().add("list-primary");
-            String metaText = item.status;
+            String metaText = item.directionLabel() + " — " + item.status;
             if (item.percent > 0 && item.percent < 100 && item.active()) {
                 metaText += " — " + item.percent + "%";
             } else if (item.percent == 100 && "Completed".equals(item.status)) {
@@ -2544,6 +2590,9 @@ public class MainView {
             }
             if (item.totalBytes > 0) {
                 metaText += " — " + formatMegabytes(item.totalBytes);
+            }
+            if (item.active() && item.speedBytesPerSecond > 0) {
+                metaText += " — " + formatTransferSpeed(item.speedBytesPerSecond);
             }
             Label meta = new Label(metaText);
             meta.getStyleClass().add("list-secondary");
