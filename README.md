@@ -1,68 +1,82 @@
 # Secure LAN Suite
 
-Secure LAN Suite is a multi-module Gradle project for a secure LAN desktop application built with JavaFX.
+Secure LAN Suite is a JavaFX desktop application for secure communication in a local network. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, and future feature modules separated.
 
 ## Tech stack
-- Java 25 LTS
+- Java 25
 - Gradle 9.1+ recommended
 - JavaFX 25.0.2
-- `webrtc-java` for realtime data/audio/video transport
-- `jpackage` for native packaging
+- `webrtc-java` 0.14.0 for realtime data, voice, and experimental video transport
+- `jpackage` for native application images and installers
 - WiX 5.0.2 for Windows EXE installers
 
 ## Project structure
 
 ### Applications
-- `apps/desktop-client` — JavaFX desktop client
+- `apps/desktop-client` — JavaFX desktop client and application packaging tasks
 
 ### Modules
-- `modules/common-model`
-- `modules/common-net`
-- `modules/crypto-core`
-- `modules/chat-core`
-- `modules/file-transfer-core`
-- `modules/webrtc-core`
-- `modules/audio-core`
-- `modules/webcam-core`
-- `modules/stego-core`
+- `modules/common-model` — shared DTO records, enums, app events, transfer models, RTC signaling models
+- `modules/common-net` — shared network constants and common networking foundation
+- `modules/crypto-core` — AES-GCM, RSA, hashing, signatures, key generation, file crypto workflows, keystore helpers
+- `modules/chat-core` — secure chat server/client, handshake, message protocol, signaling transport, UDP peer discovery
+- `modules/file-transfer-core` — encrypted file transfer client/server, secure handshake, progress events
+- `modules/webrtc-core` — RTC session orchestration, WebRTC runtime/provider integration, data channels, voice, experimental video, diagnostics
+- `modules/audio-core` — default audio profile hints used by desktop/realtime flows
+- `modules/webcam-core` — default video profile hints used by desktop/realtime flows
+- `modules/stego-core` — reserved for future steganography workflows
 
 ## Current product state
 
 ### Working now
-- start a local secure chat server
-- connect a client with encrypted chat handshake
-- send and receive chat messages
-- start a secure file transfer server automatically with the chat server
-- send files from the desktop UI
+- start and stop a local secure chat room
+- automatically join the locally hosted room from the same desktop client
+- connect manually to a remote room by host and port
+- discover Secure LAN Suite peers on the LAN with UDP broadcast/listen mode
+- control room visibility with the **Discoverable** checkbox
+- connect to a discovered peer directly from the peer list
+- complete an encrypted chat handshake using the shared room password
+- send and receive chat messages in the shared room activity feed
+- start a secure file-transfer listener together with the chat room or client connection
+- send files from the desktop UI to a selected online peer
 - receive files into a configurable downloads directory
-- route WebRTC-style signaling through `chat-core` into `webrtc-core`
+- show transfer progress and transfer status in the main workspace
+- route RTC signaling through `chat-core` into `webrtc-core`
 - start `RTCDataChannel` sessions from the desktop UI
 - start voice sessions backed by native `webrtc-java`
-- monitor server, connection, peer, voice, and transfer state from the compact top status bar
-- use the redesigned messenger-style desktop layout:
+- choose detected microphone and camera capture devices for RTC sessions
+- test microphone capture and open a camera preview window from the desktop UI
+- start experimental 1-to-1 video calls with an inline video stage
+- monitor server, connection, selected peer, voice, transfer, runtime, and diagnostics state from the compact UI
+- use the messenger-style desktop layout:
   - peer list on the left
-  - chat/activity feed in the center
-  - actions, voice status, transfers, and advanced tools on the right
+  - chat/activity feed and inline video stage in the center
+  - actions, media status, transfers, and advanced tools on the right
 
 ### Current UI layout
-The desktop client now uses a **messenger-style workspace** instead of the older tabbed layout.
+The desktop client uses a **messenger-style workspace**.
 
 - **Top status bar** — compact colored indicators for server, connection, selected peer, voice state, and file transfers
-- **Left column** — peer list / contacts
-- **Center column** — chat, system events, file events, and realtime messages
-- **Right column** — quick actions, voice status, transfers, and advanced/experimental controls
+- **Header** — local profile/hosting controls and manual connection fallback
+- **Left column** — discovered/chat peers and contact status
+- **Center column** — optional inline video stage, chat messages, system events, file events, and realtime messages
+- **Right column** — quick actions, voice/media status, transfers, RTC data tools, diagnostics, and advanced/experimental controls
 
 ### Realtime status
 - `RTCDataChannel` is integrated and available from the desktop client
-- voice sessions are the primary supported realtime flow
-- video code paths still exist in `webrtc-core`, but video remains **experimental** and is hidden from the main UX until it becomes stable enough for normal use
+- voice sessions are the primary supported realtime media flow
+- microphone and camera capture device selection is exposed in the desktop UI
+- camera preview and 1-to-1 video calls are implemented but remain **experimental**
+- local and remote video preview behavior can be controlled with JVM system properties:
+  - `securelan.rtc.videoPreview.local.enabled`
+  - `securelan.rtc.videoPreview.remote.enabled`
 
 ## Screenshots
 
 <img src="docs/images/app-main-0.3.6.png" alt="Secure LAN Suite main window" width="900">
 
 ## Requirements
-- JDK 25 installed
+- JDK 25 installed and active
 - Gradle 9.1 or newer recommended for Java 25
 - Internet access on the first Gradle build so dependencies can be downloaded
 - Windows only: WiX 5.0.2 installed and available in `PATH` for EXE packaging
@@ -94,6 +108,27 @@ Run the desktop client:
 ./gradlew :apps:desktop-client:run
 ```
 
+On Windows, the same commands can be run with `gradlew.bat`:
+
+```powershell
+.\gradlew.bat clean build
+.\gradlew.bat :apps:desktop-client:run
+```
+
+## Desktop workflow
+
+1. Enter a nickname and shared room password.
+2. Click **Open room** to host locally, or wait for discovered peers in the left column.
+3. Keep **Discoverable** enabled if this room should be advertised through UDP discovery.
+4. Select a discovered peer and click **Connect**, or use the manual host/port fields as a fallback.
+5. Exchange chat messages in the center feed.
+6. Use right-side quick actions to send files, start a voice call, start an experimental video call, or end an active call.
+
+Default ports:
+- chat: `5050`
+- encrypted file transfer: `5051`
+- UDP discovery: `5052`
+
 ## Packaging
 
 All packaging tasks live in `apps/desktop-client`.
@@ -108,6 +143,9 @@ Build a portable application image and ZIP archive:
 
 Example output:
 - `apps/desktop-client/build/distributions/SecureLanSuite-<version>-portable.zip`
+
+The intermediate application image is created under:
+- `apps/desktop-client/build/packaging/SecureLanSuite/`
 
 This task uses `jpackage --type app-image`, so it does not require WiX.
 
@@ -126,10 +164,10 @@ or directly:
 ```
 
 Output directory:
-- `apps/desktop-client/build/jpackage/`
+- `apps/desktop-client/build/packaging/`
 
 Example output file:
-- `apps/desktop-client/build/jpackage/SecureLanSuite-<version>.exe`
+- `apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe`
 
 Notes:
 - this task must be run on Windows
@@ -137,14 +175,6 @@ Notes:
 - WiX 5.0.2 must be installed and available in `PATH`
 - WiX extensions `WixToolset.UI.wixext` and `WixToolset.Util.wixext` must be installed globally
 - WiX 7 is **not recommended** for this project because the working `jpackage` setup was verified with WiX 5.0.2
-
-### Inspect resolved packaging tools
-
-```bash
-./gradlew :apps:desktop-client:printPackagingEnvironment
-```
-
-This prints the resolved Java launcher, the `jpackage` executable used by the build, and whether WiX is visible in `PATH`.
 
 ## Installing WiX on Windows
 
@@ -161,21 +191,33 @@ wix extension list --global
 wix --version
 ```
 
-## Realtime architecture
-- `chat-core` transports realtime signaling envelopes between peers
-- `webrtc-core` owns realtime session state, signaling integration, diagnostics, and runtime/provider integration
-- `webrtc-core` boots a native `webrtc-java` engine and reuses the secure chat path for SDP and ICE signaling
-- `audio-core` and `webcam-core` expose default media profiles and UI/runtime hints for realtime sessions
+## Architecture notes
+
+### Chat and discovery
+- `chat-core` provides the secure room server/client, shared message protocol, and secure handshake integration
+- `chat-core` also provides UDP broadcast/listen peer discovery through `PeerDiscoveryService`
+- `desktop-client` starts discovery in listen-only mode by default and broadcasts when a hosted room is discoverable
+- discovered peers are shown in the left peer list and can populate manual connection fields automatically
+
+### File transfer
+- chat uses the configured chat port, for example `5050`
+- file transfer uses a separate configured port, commonly `5051`
+- file transfer uses `crypto-core` with an ephemeral RSA key exchange and AES-GCM encrypted payload chunks
+- transfer progress is exposed through shared progress models and desktop UI transfer entries
+
+### Realtime architecture
+- `chat-core` transports realtime signaling envelopes between peers over the secure chat path
+- `webrtc-core` owns RTC session state, signaling integration, diagnostics, and runtime/provider integration
+- `webrtc-core` boots a native `webrtc-java` engine and reuses chat signaling for SDP and ICE exchange
+- `audio-core` and `webcam-core` expose default media profile hints for desktop/realtime sessions
 - implementation notes: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
 
-## File transfer notes
-- chat uses the configured port, for example `5050`
-- file transfer uses `chat port + 1`, for example `5051`
-- file transfer handshake uses `crypto-core` with ephemeral RSA key exchange and AES-GCM transport encryption
-
 ## Current limitations
-- true LAN peer discovery is not implemented yet
+- `common-net` still contains only the shared network baseline; richer reusable transport abstractions are not finished
+- LAN discovery is implemented with UDP broadcast and may still require hardening for complex networks, firewalls, VPNs, and multi-adapter setups
 - key management and advanced transfer controls are not fully exposed in the desktop UI yet
-- video is still experimental and is intentionally hidden from the main workflow
-- device selection still defaults to the first/default available audio and camera devices
+- video calls and preview are experimental and may fail on some Windows/JDK/camera combinations
+- microphone and camera capture selection is exposed, but audio output device selection is not yet exposed
+- chunked large file transfer over `RTCDataChannel` is not implemented yet
+- screen sharing is not implemented yet
 - EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers

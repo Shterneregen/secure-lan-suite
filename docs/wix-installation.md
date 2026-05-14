@@ -14,7 +14,7 @@ This project uses `jpackage` to build a Windows EXE installer. For the current S
 ## Prerequisites
 - Windows
 - .NET SDK 8 or newer
-- JDK 25 installed
+- JDK 25 installed and active
 - PowerShell or Command Prompt restarted after tool installation if needed
 
 ## 1. Install the .NET SDK
@@ -107,15 +107,16 @@ Permanent user-level fix:
 
 Then reopen PowerShell.
 
-## 6. Verify the full packaging environment
+## 6. Verify the packaging environment
 
 ```powershell
 java --version
 jpackage --version
 wix --version
 wix extension list --global
-.\gradlew.bat :apps:desktop-client:printPackagingEnvironment
 ```
+
+The `jpackage` executable should come from JDK 25, and `wix --version` should report WiX 5.0.2.
 
 ## 7. Build the Windows EXE installer
 
@@ -132,14 +133,16 @@ or
 The generated EXE installer is written to:
 
 ```text
-apps/desktop-client/build/jpackage/
+apps/desktop-client/build/packaging/
 ```
 
 Expected output file:
 
 ```text
-apps/desktop-client/build/jpackage/SecureLanSuite-0.1.0.exe
+apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe
 ```
+
+For a snapshot project version such as `0.3.11-SNAPSHOT`, the packaging version strips the `-SNAPSHOT` suffix and produces a version like `0.3.11`.
 
 ## 8. Build the portable ZIP package
 
@@ -152,6 +155,20 @@ The generated ZIP package is written to:
 ```text
 apps/desktop-client/build/distributions/
 ```
+
+Expected output file:
+
+```text
+apps/desktop-client/build/distributions/SecureLanSuite-<version>-portable.zip
+```
+
+The intermediate application image is written to:
+
+```text
+apps/desktop-client/build/packaging/SecureLanSuite/
+```
+
+The portable build uses `jpackage --type app-image`, so WiX is not required for this task.
 
 ## Troubleshooting
 
@@ -170,7 +187,7 @@ Run:
 
 ```powershell
 wix --version
-.\gradlew.bat :apps:desktop-client:printPackagingEnvironment
+wix extension list --global
 ```
 
 If `wix --version` works but Gradle still fails, start a fresh terminal so Gradle inherits the updated `PATH`.
