@@ -41,6 +41,7 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 - send files from the desktop UI to a selected online peer
 - receive files into a configurable downloads directory
 - show transfer progress and transfer status in the main workspace
+- publish temporary no-auth LAN browser links for files or text snippets with expiration and access limits
 - route RTC signaling through `chat-core` into `webrtc-core`
 - start voice sessions backed by native `webrtc-java`
 - choose detected microphone and camera capture devices for RTC sessions
@@ -128,6 +129,18 @@ Default ports:
 - chat: `5050`
 - encrypted file transfer: `5051`
 - UDP discovery: `5052`
+- no-auth LAN browser quick share: `5053`
+
+### No-auth LAN browser quick share
+
+The desktop client can publish temporary browser-accessible LAN shares for a file or a text snippet. The receiver does not need Secure LAN Suite installed: they open the generated `http://<lan-ip>:5053/s/<share-name>` link in a browser, then download the file or copy the text.
+
+Safety constraints:
+- there is intentionally no login and no random URL token;
+- anyone on the same LAN who knows or discovers the link can access an active share;
+- each share should have an expiration and access limit;
+- stop the share server or stop individual shares when finished;
+- Windows/macOS/Linux firewalls may need to allow inbound TCP on the quick-share port.
 
 ## Packaging
 
@@ -201,9 +214,11 @@ wix --version
 
 ### File transfer
 - chat uses the configured chat port, for example `5050`
-- file transfer uses a separate configured port, commonly `5051`
-- file transfer uses `crypto-core` with an ephemeral RSA key exchange and AES-GCM encrypted payload chunks
+- encrypted app-to-app file transfer uses a separate configured port, commonly `5051`
+- encrypted app-to-app file transfer uses `crypto-core` with an ephemeral RSA key exchange and AES-GCM encrypted payload chunks
 - transfer progress is exposed through shared progress models and desktop UI transfer entries
+- no-auth LAN browser quick share uses a separate temporary HTTP server, commonly `5053`, in `file-transfer-core`
+- browser quick-share payloads are not encrypted by the app because the receiver is a plain browser over local HTTP; use it only on trusted LANs
 
 ### Realtime architecture
 - `chat-core` transports realtime signaling envelopes between peers over the secure chat path

@@ -42,6 +42,12 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig;
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService;
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService;
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService;
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateRequest;
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent;
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig;
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService;
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot;
+import com.shterneregen.securelan.filetransfer.quickshare.impl.DefaultQuickShareService;
 import com.shterneregen.securelan.stego.StegoServices;
 import com.shterneregen.securelan.stego.model.BmpCapacity;
 import com.shterneregen.securelan.stego.service.SteganographyService;
@@ -88,6 +94,8 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -112,6 +120,7 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -158,11 +167,16 @@ public class MainView {
     private final TextField stegoCoverPathField = new TextField();
     private final TextField stegoOutputPathField = new TextField();
     private final TextField stegoInputPathField = new TextField();
+    private final TextField quickSharePortField = new TextField(Integer.toString(NetworkConstants.DEFAULT_QUICK_SHARE_PORT));
+    private final TextField quickShareExpirationMinutesField = new TextField("30");
+    private final TextField quickShareAccessLimitField = new TextField("3");
+    private final TextField quickShareSelectedFileField = new TextField();
 
     private final TextArea logArea = new TextArea();
     private final TextArea diagnosticsArea = new TextArea();
     private final TextArea stegoMessageArea = new TextArea();
     private final TextArea stegoExtractedArea = new TextArea();
+    private final TextArea quickShareTextArea = new TextArea();
     private final TextField messageField = new TextField();
     private final PasswordField stegoPasswordField = new PasswordField();
     private final ComboBox<MediaDeviceChoice> microphoneChoiceBox = new ComboBox<>();
@@ -207,6 +221,8 @@ public class MainView {
     private final Label localVideoPlaceholderValue = new Label();
     private final Label stegoCapacityValue = new Label("Choose a cover BMP to inspect capacity.");
     private final Label stegoStatusValue = new Label("Steganography idle");
+    private final Label quickShareStatusValue = new Label("Quick share idle");
+    private final Label quickShareLandingValue = new Label("Start quick share to get LAN browser links.");
 
     private final ProgressBar localAudioLevelBar = new ProgressBar(0);
     private final ProgressBar remoteAudioLevelBar = new ProgressBar(0);
@@ -248,6 +264,9 @@ public class MainView {
     private final ObservableList<TransferEntry> transferItems = FXCollections.observableArrayList();
     private final ListView<TransferEntry> transferListView = new ListView<>(transferItems);
     private final Map<String, TransferEntry> transferEntries = new LinkedHashMap<>();
+    private final ObservableList<QuickShareEntry> quickShareItems = FXCollections.observableArrayList();
+    private final ListView<QuickShareEntry> quickShareListView = new ListView<>(quickShareItems);
+    private Path selectedQuickShareFile;
 
     private final Button sendFileQuickActionButton = new Button("Attach");
     private final Button startVoiceQuickActionButton = new Button("Voice call");
@@ -270,6 +289,12 @@ public class MainView {
     private final Button chooseStegoInputButton = new Button("Stego BMP");
     private final Button extractStegoTextButton = new Button("Extract message");
     private final Button clearStegoButton = new Button("Clear");
+    private final Button startQuickShareButton = new Button("Start share server");
+    private final Button stopQuickShareButton = new Button("Stop share server");
+    private final Button chooseQuickShareFileButton = new Button("Choose file");
+    private final Button createFileQuickShareButton = new Button("Share file");
+    private final Button createTextQuickShareButton = new Button("Share text");
+    private final Button copyQuickShareIndexButton = new Button("Copy index link");
     private final CheckBox stegoEncryptCheckBox = new CheckBox("Encrypt with password");
     private final ToggleButton themeToggleButton = new ToggleButton("Dark theme");
 
@@ -285,6 +310,7 @@ public class MainView {
     private final AudioProfileService audioProfileService;
     private final VideoProfileService videoProfileService;
     private final SteganographyService steganographyService;
+    private final QuickShareService quickShareService;
 
     public MainView() {
         ChatEventPublisher chatPublisher = this::handleChatEvent;
@@ -299,6 +325,7 @@ public class MainView {
         this.peerDiscoveryService = new UdpBroadcastPeerDiscoveryService();
         this.rtcSessionService = new DefaultRtcSessionService(this::handleRtcEvent, clientService::sendSignal);
         this.steganographyService = StegoServices.createDefault().steganographyService();
+        this.quickShareService = new DefaultQuickShareService(this::handleQuickShareEvent);
         syncSharedClientFields();
         configureUiState();
         wireActions();
@@ -329,6 +356,7 @@ public class MainView {
         clientService.disconnect();
         serverService.stop();
         fileTransferServerService.stop();
+        quickShareService.stop();
     }
 
     private void configureUiState() {
@@ -346,6 +374,7 @@ public class MainView {
         diagnosticsArea.setPrefRowCount(10);
         diagnosticsArea.getStyleClass().addAll("chat-log-area", "mono-area");
         configureStegoFields();
+        configureQuickShareFields();
         conversationTitleValue.getStyleClass().add("page-title");
         conversationSubtitleValue.getStyleClass().add("muted-label");
         selectedPeerTitleValue.getStyleClass().add("section-heading");
@@ -414,6 +443,13 @@ public class MainView {
         peerListView.setCellFactory(list -> new PeerCell());
         transferListView.setPlaceholder(createMutedLabel("Transfers will appear here."));
         transferListView.setCellFactory(list -> new TransferCell());
+        quickShareListView.getStyleClass().add("content-list");
+        quickShareListView.setFixedCellSize(72);
+        quickShareListView.setPrefHeight(72 * 3 + 2);
+        quickShareListView.setMinHeight(Region.USE_PREF_SIZE);
+        quickShareListView.setMaxHeight(Region.USE_PREF_SIZE);
+        quickShareListView.setPlaceholder(createMutedLabel("LAN quick shares will appear here."));
+        quickShareListView.setCellFactory(list -> new QuickShareCell(this::copyQuickShareLink, this::stopQuickShare));
         peerListView.getSelectionModel().selectedItemProperty().addListener((obs, oldPeer, newPeer) -> updateSelectedPeer(newPeer));
         themeToggleButton.selectedProperty().addListener((obs, oldValue, newValue) -> applyTheme());
         updateSelectedPeer(null);
@@ -443,6 +479,12 @@ public class MainView {
         chooseStegoInputButton.setOnAction(event -> chooseStegoInputBmp());
         extractStegoTextButton.setOnAction(event -> extractStegoText());
         clearStegoButton.setOnAction(event -> clearStegoForm());
+        startQuickShareButton.setOnAction(event -> startQuickShareServer());
+        stopQuickShareButton.setOnAction(event -> stopQuickShareServer());
+        chooseQuickShareFileButton.setOnAction(event -> chooseQuickShareFile());
+        createFileQuickShareButton.setOnAction(event -> createFileQuickShare());
+        createTextQuickShareButton.setOnAction(event -> createTextQuickShare());
+        copyQuickShareIndexButton.setOnAction(event -> copyQuickShareIndexLink());
     }
 
     private void fileFieldSetup() {
@@ -469,6 +511,19 @@ public class MainView {
         stegoExtractedArea.setPrefRowCount(3);
         stegoExtractedArea.getStyleClass().add("chat-log-area");
         stegoPasswordField.setPromptText("Password for encrypted stego flow");
+    }
+
+    private void configureQuickShareFields() {
+        quickShareSelectedFileField.setEditable(false);
+        quickShareSelectedFileField.setPromptText("No file selected");
+        quickShareTextArea.setPromptText("Text to publish on a temporary LAN browser page...");
+        quickShareTextArea.setWrapText(true);
+        quickShareTextArea.setPrefRowCount(3);
+        quickShareTextArea.getStyleClass().add("chat-log-area");
+        quickShareStatusValue.setWrapText(true);
+        quickShareStatusValue.getStyleClass().addAll("subtle-label", "status-value");
+        quickShareLandingValue.setWrapText(true);
+        quickShareLandingValue.getStyleClass().add("muted-label");
     }
 
     private void publishRealtimeProfiles() {
@@ -927,6 +982,13 @@ public class MainView {
                 createMutedLabel("Unchecked by default: incoming files ask for confirmation and are accepted only from online chat peers."),
                 transferListView);
 
+        VBox quickShareBlock = new VBox(8,
+                quickShareStatusValue,
+                createMutedLabel("No login and no random URL token: anyone on this LAN who knows the link can open active shares until they expire or reach the access limit."),
+                quickShareLandingValue,
+                buildQuickShareControls(),
+                quickShareListView);
+
         VBox stegoBlock = new VBox(8,
                 stegoStatusValue,
                 createMutedLabel("Choose PNG, BMP, JPG, or JPEG images. Non-BMP cover images are converted to BMP for output because the stego core stores payloads in BMP pixel bytes."),
@@ -955,6 +1017,11 @@ public class MainView {
         stegoPane.setExpanded(false);
         stegoPane.setAnimated(false);
 
+        TitledPane quickSharePane = new TitledPane("LAN browser quick share", quickShareBlock);
+        quickSharePane.getStyleClass().add("advanced-pane");
+        quickSharePane.setExpanded(false);
+        quickSharePane.setAnimated(false);
+
         TitledPane advancedPane = new TitledPane("Runtime / Diagnostics", advancedContent);
         advancedPane.getStyleClass().add("advanced-pane");
         advancedPane.setExpanded(false);
@@ -966,6 +1033,7 @@ public class MainView {
                 selectedPeerTitleValue,
                 selectedPeerMetaValue,
                 transfersCard,
+                quickSharePane,
                 stegoPane,
                 mediaPane,
                 advancedPane
@@ -977,6 +1045,29 @@ public class MainView {
         scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         return createCard("Actions", scrollPane);
+    }
+
+    private Node buildQuickShareControls() {
+        HBox serverActions = new HBox(8, startQuickShareButton, stopQuickShareButton, copyQuickShareIndexButton);
+        serverActions.setAlignment(Pos.CENTER_LEFT);
+
+        GridPane policyGrid = createCompactFormGrid();
+        policyGrid.addRow(0, new Label("Port"), quickSharePortField, new Label("Minutes"), quickShareExpirationMinutesField);
+        policyGrid.addRow(1, new Label("Access limit"), quickShareAccessLimitField);
+        growFields(quickSharePortField, quickShareExpirationMinutesField, quickShareAccessLimitField);
+
+        HBox fileRow = new HBox(8, chooseQuickShareFileButton, quickShareSelectedFileField);
+        HBox.setHgrow(quickShareSelectedFileField, Priority.ALWAYS);
+        VBox fileBlock = new VBox(6, fileRow, createFileQuickShareButton);
+
+        VBox textBlock = new VBox(6, quickShareTextArea, createTextQuickShareButton);
+
+        return new VBox(8,
+                serverActions,
+                policyGrid,
+                createMetricBlock("File share", fileBlock),
+                createMetricBlock("Text share", textBlock)
+        );
     }
 
     private Node buildStegoHideBlock() {
@@ -1095,6 +1186,12 @@ public class MainView {
         applyButtonVariant(chooseStegoInputButton, "secondary-button");
         applyButtonVariant(extractStegoTextButton, "primary-button");
         applyButtonVariant(clearStegoButton, "secondary-button");
+        applyButtonVariant(startQuickShareButton, "primary-button");
+        applyButtonVariant(stopQuickShareButton, "danger-button");
+        applyButtonVariant(copyQuickShareIndexButton, "secondary-button");
+        applyButtonVariant(chooseQuickShareFileButton, "secondary-button");
+        applyButtonVariant(createFileQuickShareButton, "primary-button");
+        applyButtonVariant(createTextQuickShareButton, "primary-button");
     }
 
     private void applyButtonVariant(Button button, String variantClass) {
@@ -1363,6 +1460,170 @@ public class MainView {
             });
         } catch (RuntimeException ex) {
             showError(fileTransferErrorMessage(ex));
+        }
+    }
+
+    private void startQuickShareServer() {
+        try {
+            int port = Integer.parseInt(quickSharePortField.getText().trim());
+            quickShareService.start(new QuickShareServerConfig(port));
+            quickSharePortField.setText(Integer.toString(quickShareService.port()));
+            refreshQuickShareUi();
+            appendChat("[quick-share] server started on port " + quickShareService.port());
+            appendDiagnostics("[quick-share] landing URLs: " + String.join(", ", quickShareService.landingUrls()));
+        } catch (Exception ex) {
+            showError(fileTransferErrorMessage(ex));
+        } finally {
+            updateQuickActionState();
+        }
+    }
+
+    private void stopQuickShareServer() {
+        quickShareService.stop();
+        refreshQuickShareUi();
+        appendChat("[quick-share] server stopped");
+        updateQuickActionState();
+    }
+
+    private void chooseQuickShareFile() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Choose file to share by LAN browser link");
+        File file = chooser.showOpenDialog(null);
+        if (file == null) {
+            return;
+        }
+        selectedQuickShareFile = file.toPath();
+        quickShareSelectedFileField.setText(selectedQuickShareFile.toString());
+        updateQuickActionState();
+    }
+
+    private void createFileQuickShare() {
+        if (selectedQuickShareFile == null) {
+            showError("Choose a file to share first");
+            return;
+        }
+        ensureQuickShareServerStarted();
+        try {
+            QuickShareSnapshot snapshot = quickShareService.share(QuickShareCreateRequest.file(
+                    selectedQuickShareFile,
+                    selectedQuickShareFile.getFileName().toString(),
+                    quickShareExpiration(),
+                    quickShareAccessLimit()
+            ));
+            copyToClipboard(snapshot.primaryUrl());
+            refreshQuickShareUi();
+            appendChat("[quick-share] file link copied: " + snapshot.primaryUrl());
+        } catch (Exception ex) {
+            showError(fileTransferErrorMessage(ex));
+        }
+    }
+
+    private void createTextQuickShare() {
+        String text = quickShareTextArea.getText();
+        if (text == null || text.isBlank()) {
+            showError("Enter text to share first");
+            return;
+        }
+        ensureQuickShareServerStarted();
+        try {
+            QuickShareSnapshot snapshot = quickShareService.share(QuickShareCreateRequest.text(
+                    text,
+                    firstLineName(text),
+                    quickShareExpiration(),
+                    quickShareAccessLimit()
+            ));
+            copyToClipboard(snapshot.primaryUrl());
+            refreshQuickShareUi();
+            appendChat("[quick-share] text link copied: " + snapshot.primaryUrl());
+        } catch (Exception ex) {
+            showError(fileTransferErrorMessage(ex));
+        }
+    }
+
+    private void ensureQuickShareServerStarted() {
+        if (!quickShareService.isRunning()) {
+            startQuickShareServer();
+        }
+    }
+
+    private Duration quickShareExpiration() {
+        long minutes = Long.parseLong(quickShareExpirationMinutesField.getText().trim());
+        if (minutes < 1) {
+            throw new IllegalArgumentException("Quick-share expiration must be at least 1 minute");
+        }
+        return Duration.ofMinutes(minutes);
+    }
+
+    private int quickShareAccessLimit() {
+        int limit = Integer.parseInt(quickShareAccessLimitField.getText().trim());
+        if (limit < 1) {
+            throw new IllegalArgumentException("Quick-share access limit must be at least 1");
+        }
+        return limit;
+    }
+
+    private String firstLineName(String text) {
+        String firstLine = text.lines().findFirst().orElse("shared-text").trim();
+        if (firstLine.isBlank()) {
+            return "shared-text";
+        }
+        return firstLine.length() > 32 ? firstLine.substring(0, 32) : firstLine;
+    }
+
+    private void copyQuickShareIndexLink() {
+        List<String> urls = quickShareService.landingUrls();
+        if (urls.isEmpty()) {
+            showError("Start the quick-share server first");
+            return;
+        }
+        copyToClipboard(urls.getFirst());
+        appendChat("[quick-share] index link copied: " + urls.getFirst());
+    }
+
+    private void copyQuickShareLink(QuickShareEntry entry) {
+        if (entry == null || entry.url().isBlank()) {
+            return;
+        }
+        copyToClipboard(entry.url());
+        appendChat("[quick-share] link copied: " + entry.url());
+    }
+
+    private void stopQuickShare(QuickShareEntry entry) {
+        if (entry == null) {
+            return;
+        }
+        quickShareService.stopShare(entry.id());
+        refreshQuickShareUi();
+    }
+
+    private void copyToClipboard(String value) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(value);
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    private void handleQuickShareEvent(QuickShareEvent event) {
+        Platform.runLater(() -> {
+            if (!event.message().isBlank()) {
+                appendDiagnostics("[quick-share] " + event.message()
+                        + (event.remoteAddress().isBlank() ? "" : " from " + event.remoteAddress()));
+            }
+            refreshQuickShareUi();
+        });
+    }
+
+    private void refreshQuickShareUi() {
+        List<QuickShareSnapshot> snapshots = quickShareService.shares();
+        quickShareItems.setAll(snapshots.stream().map(QuickShareEntry::new).toList());
+        if (quickShareService.isRunning()) {
+            List<String> landingUrls = quickShareService.landingUrls();
+            quickShareStatusValue.setText("Quick share running on port " + quickShareService.port());
+            quickShareLandingValue.setText(landingUrls.isEmpty()
+                    ? "No LAN URL detected. Check network adapter/firewall."
+                    : "Index: " + String.join(" • ", landingUrls));
+        } else {
+            quickShareStatusValue.setText("Quick share idle");
+            quickShareLandingValue.setText("Start quick share to get LAN browser links.");
         }
     }
 
@@ -2118,6 +2379,10 @@ public class MainView {
         startVideoQuickActionButton.setDisable(!clientConnected || !hasCallableOnlinePeer);
         startDataButton.setDisable(!clientConnected || !hasCallableOnlinePeer);
         sendRtcMessageButton.setDisable(false);
+        startQuickShareButton.setDisable(quickShareService.isRunning());
+        stopQuickShareButton.setDisable(!quickShareService.isRunning());
+        copyQuickShareIndexButton.setDisable(!quickShareService.isRunning());
+        createFileQuickShareButton.setDisable(selectedQuickShareFile == null);
         boolean canHangUp = rtcSessionService.currentSession()
                 .map(snapshot -> snapshot.state() != RtcSessionState.CLOSED && snapshot.state() != RtcSessionState.FAILED && snapshot.state() != RtcSessionState.UNAVAILABLE)
                 .orElse(false);
@@ -2447,6 +2712,26 @@ public class MainView {
         }
     }
 
+    private static final class QuickShareEntry {
+        private final QuickShareSnapshot snapshot;
+
+        private QuickShareEntry(QuickShareSnapshot snapshot) {
+            this.snapshot = snapshot;
+        }
+
+        private String id() {
+            return snapshot.id();
+        }
+
+        private String url() {
+            return snapshot.primaryUrl();
+        }
+
+        private boolean active() {
+            return snapshot.active();
+        }
+    }
+
     private static final class TransferEntry {
         private static final long SPEED_DISPLAY_INTERVAL_NANOS = 750_000_000L;
 
@@ -2561,6 +2846,53 @@ public class MainView {
             meta.getStyleClass().add("list-secondary");
             VBox textBox = new VBox(2, name, meta);
             HBox row = new HBox(8, dot, textBox);
+            row.getStyleClass().add("list-row");
+            row.setAlignment(Pos.CENTER_LEFT);
+            if (!getStyleClass().contains("content-list-cell")) {
+                getStyleClass().add("content-list-cell");
+            }
+            setGraphic(row);
+        }
+    }
+
+    private static final class QuickShareCell extends ListCell<QuickShareEntry> {
+        private final java.util.function.Consumer<QuickShareEntry> copyAction;
+        private final java.util.function.Consumer<QuickShareEntry> stopAction;
+
+        private QuickShareCell(java.util.function.Consumer<QuickShareEntry> copyAction,
+                               java.util.function.Consumer<QuickShareEntry> stopAction) {
+            this.copyAction = copyAction;
+            this.stopAction = stopAction;
+        }
+
+        @Override
+        protected void updateItem(QuickShareEntry item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setGraphic(null);
+                return;
+            }
+
+            QuickShareSnapshot snapshot = item.snapshot;
+            Label name = new Label(snapshot.displayName());
+            name.getStyleClass().add("list-primary");
+            String metaText = snapshot.type().name().toLowerCase(Locale.ROOT)
+                    + " — " + snapshot.status().name().toLowerCase(Locale.ROOT).replace('_', ' ')
+                    + " — " + snapshot.accessCount() + "/" + snapshot.accessLimit()
+                    + " — expires " + snapshot.expiresAt();
+            Label meta = new Label(metaText);
+            meta.getStyleClass().add("list-secondary");
+            Button copyButton = new Button("Copy");
+            Button stopButton = new Button("Stop");
+            copyButton.getStyleClass().addAll("app-button", "secondary-button");
+            stopButton.getStyleClass().addAll("app-button", "danger-button");
+            copyButton.setOnAction(event -> copyAction.accept(item));
+            stopButton.setOnAction(event -> stopAction.accept(item));
+            stopButton.setDisable(!item.active());
+            VBox textBox = new VBox(2, name, meta);
+            HBox row = new HBox(8, textBox, copyButton, stopButton);
+            HBox.setHgrow(textBox, Priority.ALWAYS);
             row.getStyleClass().add("list-row");
             row.setAlignment(Pos.CENTER_LEFT);
             if (!getStyleClass().contains("content-list-cell")) {
