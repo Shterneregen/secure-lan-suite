@@ -1,6 +1,15 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 rootProject.name = 'secure-lan-suite'
 
 include ':apps:desktop-client'
+include ':apps:android-client'
 
 include ':modules:common-model'
 include ':modules:common-net'
@@ -13,6 +22,7 @@ include ':modules:webcam-core'
 include ':modules:stego-core'
 
 project(':apps:desktop-client').projectDir = file('apps/desktop-client')
+project(':apps:android-client').projectDir = file('apps/android-client')
 
 project(':modules:common-model').projectDir = file('modules/common-model')
 project(':modules:common-net').projectDir = file('modules/common-net')

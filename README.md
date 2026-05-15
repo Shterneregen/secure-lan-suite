@@ -1,11 +1,12 @@
 # Secure LAN Suite
 
-Secure LAN Suite is a JavaFX desktop application for secure communication in a local network. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, and future feature modules separated.
+Secure LAN Suite is a local-network secure communication suite with a JavaFX desktop client and an experimental Android client. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, Android, and future feature modules separated.
 
 ## Tech stack
 - Java 25
 - Gradle 9.1+ recommended
 - JavaFX 25.0.2
+- Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3 for the experimental Android client
 - `webrtc-java` 0.14.0 for realtime data, voice, and experimental video transport
 - `jpackage` for native application images and installers
 - WiX 5.0.2 for Windows EXE installers
@@ -14,6 +15,7 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 
 ### Applications
 - `apps/desktop-client` — JavaFX desktop client and application packaging tasks
+- `apps/android-client` — experimental native Android client for LAN discovery, secure chat, and encrypted file transfer interoperability with the desktop client
 
 ### Modules
 - `modules/common-model` — shared DTO records, enums, app events, transfer models, RTC signaling models
@@ -48,6 +50,8 @@ Secure LAN Suite is a JavaFX desktop application for secure communication in a l
 - test microphone capture and open a camera preview window from the desktop UI
 - start experimental 1-to-1 video calls with an inline video stage
 - use the desktop steganography tools panel to hide/extract text payloads in uncompressed BMP images, including password-encrypted payloads through `stego-core`
+- build and install the experimental Android client as debug or release APK
+- discover desktop peers from Android, connect to a desktop room, exchange encrypted chat messages, send Android-selected files to desktop, and receive encrypted files from desktop into `Downloads/SecureLan`
 - monitor server, connection, selected peer, voice, transfer, runtime, and diagnostics state from the compact UI
 - use the messenger-style desktop layout:
   - peer list on the left
@@ -76,133 +80,15 @@ The desktop client uses a **messenger-style workspace**.
 
 <img src="docs/images/app-main-0.3.17.png" alt="Secure LAN Suite main window" width="900">
 
-## Requirements
-- JDK 25 installed and active
-- Gradle 9.1 or newer recommended for Java 25
-- Internet access on the first Gradle build so dependencies can be downloaded
-- Windows only: WiX 5.0.2 installed and available in `PATH` for EXE packaging
-- For WiX 5, the required extensions must also be installed:
-  - `WixToolset.UI.wixext`
-  - `WixToolset.Util.wixext`
+## Development and packaging
 
-## Verify the environment
+Development, build, run, smoke-test, and packaging details are intentionally kept outside this overview:
 
-```powershell
-java --version
-jpackage --version
-wix --version
-```
-
-`wix --version` is only required when you build the Windows EXE installer.
-
-## Build and run
-
-Build the whole project:
-
-```bash
-./gradlew clean build
-```
-
-Run the desktop client:
-
-```bash
-./gradlew :apps:desktop-client:run
-```
-
-On Windows, the same commands can be run with `gradlew.bat`:
-
-```powershell
-.\gradlew.bat clean build
-.\gradlew.bat :apps:desktop-client:run
-```
-
-## Desktop workflow
-
-1. Enter a nickname and shared room password.
-2. Click **Open room** to host locally, or wait for discovered peers in the left column.
-3. Keep **Discoverable** enabled if this room should be advertised through UDP discovery.
-4. Select a discovered peer and click **Connect**, or use the manual host/port fields as a fallback.
-5. Exchange chat messages in the center feed.
-6. Use right-side quick actions to send files, start a voice call, start an experimental video call, or end an active call.
-
-Default ports:
-- chat: `5050`
-- encrypted file transfer: `5051`
-- UDP discovery: `5052`
-- no-auth LAN browser quick share: `5053`
-
-### No-auth LAN browser quick share
-
-The desktop client can publish temporary browser-accessible LAN shares for a file or a text snippet. The receiver does not need Secure LAN Suite installed: they open the generated `http://<lan-ip>:5053/s/<share-name>` link in a browser, then download the file or copy the text.
-
-Safety constraints:
-- there is intentionally no login and no random URL token;
-- anyone on the same LAN who knows or discovers the link can access an active share;
-- each share should have an expiration and access limit;
-- stop the share server or stop individual shares when finished;
-- Windows/macOS/Linux firewalls may need to allow inbound TCP on the quick-share port.
-
-## Packaging
-
-All packaging tasks live in `apps/desktop-client`.
-
-### Portable build
-
-Build a portable application image and ZIP archive:
-
-```bash
-./gradlew :apps:desktop-client:buildPortable
-```
-
-Example output:
-- `apps/desktop-client/build/distributions/SecureLanSuite-<version>-portable.zip`
-
-The intermediate application image is created under:
-- `apps/desktop-client/build/packaging/SecureLanSuite/`
-
-This task uses `jpackage --type app-image`, so it does not require WiX.
-
-### Windows EXE installer
-
-Build the Windows EXE installer:
-
-```powershell
-.\gradlew.bat :apps:desktop-client:buildExe
-```
-
-or directly:
-
-```powershell
-.\gradlew.bat :apps:desktop-client:createExe
-```
-
-Output directory:
-- `apps/desktop-client/build/packaging/`
-
-Example output file:
-- `apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe`
-
-Notes:
-- this task must be run on Windows
-- `jpackage` must come from JDK 25
-- WiX 5.0.2 must be installed and available in `PATH`
-- WiX extensions `WixToolset.UI.wixext` and `WixToolset.Util.wixext` must be installed globally
-- WiX 7 is **not recommended** for this project because the working `jpackage` setup was verified with WiX 5.0.2
-
-## Installing WiX on Windows
-
-Use the instructions in [`docs/wix-installation.md`](docs/wix-installation.md).
-
-Short version:
-
-```powershell
-dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org
-dotnet tool install --global wix --version 5.0.2
-wix extension add --global WixToolset.UI.wixext/5.0.2
-wix extension add --global WixToolset.Util.wixext/5.0.2
-wix extension list --global
-wix --version
-```
+- Development guide: [`docs/development.md`](docs/development.md)
+- Android client build/signing/install guide: [`apps/android-client/android-readme.md`](apps/android-client/android-readme.md)
+- Windows WiX installation guide: [`docs/wix-installation.md`](docs/wix-installation.md)
+- Realtime/WebRTC architecture notes: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
+- Migration and roadmap checklist: [`docs/migration-roadmap.md`](docs/migration-roadmap.md)
 
 ## Architecture notes
 
@@ -219,6 +105,7 @@ wix --version
 - transfer progress is exposed through shared progress models and desktop UI transfer entries
 - no-auth LAN browser quick share uses a separate temporary HTTP server, commonly `5053`, in `file-transfer-core`
 - browser quick-share payloads are not encrypted by the app because the receiver is a plain browser over local HTTP; use it only on trusted LANs
+- the experimental Android MVP reimplements only the minimum desktop-compatible discovery, secure chat, AES-GCM/RSA handshake, file-send, and file-receive protocol code inside `apps/android-client` to avoid introducing Android UI dependencies into reusable core modules
 
 ### Realtime architecture
 - `chat-core` transports realtime signaling envelopes between peers over the secure chat path
@@ -242,6 +129,7 @@ wix --version
 - video calls and preview are experimental and may fail on some Windows/JDK/camera combinations
 - microphone and camera capture selection is exposed, but audio output device selection is not yet exposed
 - desktop steganography currently targets text workflows over uncompressed 24-bit/32-bit BMP images; arbitrary binary payload UI is not exposed yet
+- Android remains an experimental interoperability client and does not yet implement room hosting, voice, WebRTC data channels, camera/video, steganography tools, screen sharing, or no-auth browser quick share
 - chunked large file transfer over `RTCDataChannel` is not implemented yet
 - screen sharing is not implemented yet
 - EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers

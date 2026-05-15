@@ -150,6 +150,37 @@ class FileTransferIntegrationTest {
     }
 
     @Test
+    void shouldSendFileWithLongNameWithoutOversizedRsaHandshakePayload() throws Exception {
+        Path tempDir = Files.createTempDirectory("file-transfer-long-name");
+        Path inbox = tempDir.resolve("inbox");
+        Files.createDirectories(inbox);
+        String longName = "Screenshot_2026-05-18-10-57-14-520_com.shterneregen.securelan.androidclient_"
+                + "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789.jpg";
+        Path sourceFile = tempDir.resolve(longName);
+        byte[] payload = new byte[419_172];
+        for (int index = 0; index < payload.length; index++) {
+            payload[index] = (byte) (index % 251);
+        }
+        Files.write(sourceFile, payload);
+
+        DefaultFileTransferServerService server = new DefaultFileTransferServerService(event -> {
+        });
+        int port = findAvailablePort();
+        server.start(new FileTransferServerConfig(port, inbox, "files-pass"));
+        try {
+            DefaultFileTransferClientService client = new DefaultFileTransferClientService(event -> {
+            });
+            client.sendFile(new FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile));
+
+            TimeUnit.MILLISECONDS.sleep(250);
+            assertTrue(Files.exists(inbox.resolve(longName)));
+            assertEquals(Files.size(sourceFile), Files.size(inbox.resolve(longName)));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
     void shouldTransferFilesBidirectionallyBetweenTwoPeers() throws Exception {
         Path tempDir = Files.createTempDirectory("file-transfer-bidirectional");
         Path aliceInbox = tempDir.resolve("alice-inbox");

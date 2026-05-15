@@ -35,11 +35,11 @@ final class SecureFileTransferHandshake {
         SecretKey sessionKey = cryptoServices.keyGenerationService().generateAesKey();
         FileTransferMetadata metadata = new FileTransferMetadata(transferId, senderId, recipientId, fileName, fileSize);
         String payload = sessionPassword + "\n"
-                + Base64.getEncoder().encodeToString(cryptoServices.keyEncodingService().encodeSecretKey(sessionKey)) + "\n"
-                + metadata.serialize();
+                + Base64.getEncoder().encodeToString(cryptoServices.keyEncodingService().encodeSecretKey(sessionKey));
         byte[] encrypted = cryptoServices.rsaCryptoService().encrypt(payload.getBytes(StandardCharsets.UTF_8), serverPublicKey);
         session.writeBytes(encrypted);
         session.enableTransportEncryption(sessionKey, cryptoServices.aesGcmCryptoService());
+        session.writeEncryptedText(metadata.compactSerialize());
         String response = session.readEncryptedText();
         if (!ACCEPTED.equals(response)) {
             throw new IOException(response);
@@ -69,7 +69,7 @@ final class SecureFileTransferHandshake {
                 StandardCharsets.UTF_8
         );
         String[] parts = payload.split("\n", 7);
-        if (parts.length != 7) {
+        if (parts.length != 2 && parts.length != 7) {
             throw new IOException("Malformed secure file transfer payload");
         }
         String password = parts[0];
@@ -77,8 +77,22 @@ final class SecureFileTransferHandshake {
             throw new IOException("Wrong transfer password");
         }
         SecretKey sessionKey = cryptoServices.keyEncodingService().decodeAesKey(Base64.getDecoder().decode(parts[1]));
-        FileTransferMetadata metadata = new FileTransferMetadata(parts[2], parts[3], parts[4], parts[5], Long.parseLong(parts[6]));
         session.enableTransportEncryption(sessionKey, cryptoServices.aesGcmCryptoService());
-        return metadata;
+        return parts.length == 2 ? decodeCompactMetadata(session.readEncryptedText()) : decodeMetadata(parts);
+    }
+
+    private FileTransferMetadata decodeMetadata(String[] parts) throws IOException {
+        if (parts[2].contains("|")) {
+            return decodeCompactMetadata(parts[2]);
+        }
+        return new FileTransferMetadata(parts[2], parts[3], parts[4], parts[5], Long.parseLong(parts[6]));
+    }
+
+    private FileTransferMetadata decodeCompactMetadata(String value) throws IOException {
+        try {
+            return FileTransferMetadata.deserializeCompact(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IOException("Malformed compact metadata payload", exception);
+        }
     }
 }

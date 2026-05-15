@@ -13,10 +13,11 @@ Use it to:
 
 ## Current baseline
 
-- Current project version: `0.3.11-SNAPSHOT`
 - Current runtime target: Java 25
-- Current product direction: secure chat + encrypted files + LAN discovery + voice-first realtime, with experimental video
+- Current Android build target: Android SDK 35 with Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3
+- Current product direction: secure chat + encrypted files + LAN discovery + voice-first realtime, experimental video, and Android desktop-interoperability MVP
 - Current desktop UX: messenger-style JavaFX workspace with peers, chat/activity feed, transfers, RTC controls, diagnostics, and inline video stage
+- Current Android UX: native Compose MVP with peer discovery, secure chat, encrypted file send/receive, transfer progress, dark theme toggle, and diagnostics logs
 
 ---
 
@@ -42,6 +43,7 @@ Use it to:
 |---|---|---|---|---|
 | [x] | Project setup | Create Gradle multi-module skeleton | root project | Java 25, Gradle multi-project, module registration |
 | [x] | Project setup | Add `apps/desktop-client` | `apps/desktop-client` | Runnable JavaFX desktop app |
+| [x] | Project setup | Add `apps/android-client` | `apps/android-client` | Experimental Android application module using Android Gradle Plugin, Kotlin, and Compose |
 | [x] | Shared models | Create immutable records for peer/chat/file/event/realtime models | `modules/common-model` | Records and enums reused across modules |
 | [x] | Shared networking | Add reusable transport abstractions and utilities | `modules/common-net` | Shared network constants, TCP endpoint/socket factories, text and frame channels, reusable accept loop, close helper, and UDP broadcast address resolver are available and reused by chat/file-transfer modules |
 | [x] | Standards | Establish package naming and module dependency rules | all modules | Current modules follow the `com.shterneregen.securelan` package structure and acyclic Gradle wiring |
@@ -102,6 +104,7 @@ Source repository:
 | [ ] | java-file-transceiver | Extract SSL/TLS-related transport logic if useful | `modules/file-transfer-core` | Keep transport modular if this path remains relevant |
 | [x] | java-file-transceiver | Remove command-line orchestration from migrated code | `modules/file-transfer-core` | Core only |
 | [x] | java-file-transceiver | Add integration tests for file send/receive | `modules/file-transfer-core` | Includes transfer behavior coverage |
+| [x] | product integration | Add Android-compatible encrypted file send/receive MVP | `apps/android-client` | Android reimplements the minimum desktop-compatible RSA/AES-GCM handshake and chunk protocol locally to avoid Android dependencies in core modules |
 
 ---
 
@@ -205,9 +208,31 @@ Source repository:
 
 ---
 
-# 3. Product Development Roadmap
+# 3. Android Client Development Plan
 
-## 3.1 Milestones
+## 3.1 Android MVP
+
+| Done | Milestone | Step | Target | Notes |
+|---|---|---|---|---|
+| [x] | Android shell | Create Android application module | `apps/android-client` | Native Android app with Kotlin and Compose Material 3 |
+| [x] | Build setup | Configure Android SDK 35 build and APK naming | `apps/android-client` | Outputs `secure-lan-<version>.apk` for debug and release variants |
+| [x] | Release signing | Add configurable release APK signing | `apps/android-client` | Uses Gradle properties or `ANDROID_RELEASE_*` environment variables; falls back to debug signing for local installable builds |
+| [x] | Permissions | Declare LAN/network/storage permissions | `apps/android-client` | Includes `INTERNET`, Wi-Fi/network permissions, `NEARBY_WIFI_DEVICES`, and legacy `WRITE_EXTERNAL_STORAGE` for API 28 and lower |
+| [x] | Discovery | Add desktop-compatible UDP discovery listener | `apps/android-client` | Starts on launch and shows discovered desktop rooms as peers |
+| [x] | Chat | Add secure desktop chat client flow | `apps/android-client` | Connects to a desktop room using the shared password and encrypted handshake |
+| [x] | Chat UI | Add Compose chat and connection UI | `apps/android-client` | Nickname/password, peer selection, connect/disconnect, inbound/outbound messages |
+| [x] | File send | Add Android-to-desktop encrypted file sending | `apps/android-client` | Uses Android document picker, desktop-compatible handshake, and send progress |
+| [x] | File receive | Add desktop-to-Android encrypted file receiving | `apps/android-client` | Listens on the normal file port or connected peer file port + `1000`; saves into `Downloads/SecureLan` on Android 10+ |
+| [x] | Diagnostics | Add Android in-app status and log surface | `apps/android-client` | Recent logs are available from the settings panel |
+| [ ] | Hosting | Add Android-hosted desktop-compatible chat room | `apps/android-client` | Not implemented; Android currently acts as a client/interoperability peer |
+| [ ] | Realtime | Add Android WebRTC/voice/data support | `apps/android-client` + future Android media integration | Not implemented; desktop remains the only realtime media client |
+| [ ] | Advanced tools | Add Android steganography or quick-share workflows if needed | `apps/android-client` | Not implemented; desktop-only today |
+
+---
+
+# 4. Product Development Roadmap
+
+## 4.1 Milestones
 
 | Done | Phase | Goal | Deliverable |
 |---|---|---|---|
@@ -220,11 +245,12 @@ Source repository:
 | [x] | Phase 6 | Realtime data + voice | `webrtc-core` with signaling, data, voice, diagnostics, and native runtime integration |
 | [ ] | Phase 7 | Stable webcam/media support | Video exists experimentally but is not yet stable enough to call complete |
 | [x] | Phase 8 | Hidden-message workflows | `stego-core` + crypto integration |
-| [ ] | Phase 9 | Stabilization | tests, packaging polish, documentation, UX hardening |
+| [x] | Phase 9 | Android interoperability MVP | Android app can discover desktop peers, connect to secure chat, send files, receive files, and build signed release APKs |
+| [ ] | Phase 10 | Stabilization | tests, packaging polish, documentation, UX hardening, cross-device validation |
 
 ---
 
-## 3.2 Recommended Order of Work
+## 4.2 Recommended Order of Work
 
 | Done | Order | Work Item | Why |
 |---|---|---|---|
@@ -239,11 +265,12 @@ Source repository:
 | [x] | 9 | Integrate realtime data + voice through `webrtc-core` | Practical realtime layer without waiting for stable video |
 | [ ] | 10 | Stabilize video and output device selection | Needed before positioning video as a normal feature |
 | [x] | 11 | Migrate `stego-core` | Advanced security feature |
-| [ ] | 12 | Refine UX, packaging, tests | Productization |
+| [x] | 12 | Add Android desktop-interoperability MVP | Enables mobile LAN chat/file-transfer testing against the desktop client |
+| [ ] | 13 | Refine UX, packaging, tests | Productization |
 
 ---
 
-## 3.3 Definition of Done for Each Module
+## 4.3 Definition of Done for Each Module
 
 | Done | Module | Definition of Done |
 |---|---|---|
@@ -257,10 +284,11 @@ Source repository:
 | [x] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free |
 | [x] | webrtc-core | Session state, signaling, `RTCDataChannel`, voice, experimental video, device enumeration, diagnostics, and native runtime integration are wired in |
 | [ ] | desktop-client | JavaFX client delivers a stable day-to-day workflow for chat, discovery, files, and voice across target machines |
+| [ ] | android-client | Android client can be considered stable only after cross-device validation of discovery, chat, file send/receive, permissions, signed APK install/update behavior, and failure diagnostics |
 
 ---
 
-## 3.4 Quality and Stabilization Checklist
+## 4.4 Quality and Stabilization Checklist
 
 | Done | Area | Step | Notes |
 |---|---|---|---|
@@ -270,14 +298,17 @@ Source repository:
 | [ ] | Reliability | Add consistent exception model across modules | Avoid ad-hoc error handling |
 | [x] | Logging | Add richer runtime diagnostics for realtime troubleshooting | Core and UI logging still need a cleaner long-term strategy |
 | [x] | Packaging | Define runnable desktop packaging strategy | Portable app image/ZIP and Windows EXE tasks are defined |
+| [x] | Packaging | Define Android APK build and release signing flow | Debug/release APK tasks, JKS signing properties, `apksigner` verification, and install notes are documented |
 | [ ] | Packaging | Polish distribution-ready installer behavior | Signing, upgrade behavior, release notes, and platform validation remain open |
 | [x] | Documentation | Add architecture overview to repository | Include messenger UI and realtime notes |
 | [x] | Documentation | Add migration notes for realtime layer | Track current WebRTC-first direction |
+| [x] | Documentation | Add Android client build and interoperability notes | Android README covers SDK setup, release APK signing, verification, install, permissions, and LAN scenarios |
 | [ ] | UX | Improve desktop usability and error feedback | Continue polishing peer handling, discovery edge cases, and advanced flows |
+| [ ] | UX | Improve Android usability and error feedback | Continue polishing permission rationale, discovery edge cases, file receive setup, and LAN diagnostics |
 
 ---
 
-# 4. Notes
+# 5. Notes
 
 - Prefer **incremental migration** over large rewrites.
 - The current product direction is **chat + secure files + discovery + voice-first realtime**.
@@ -285,3 +316,5 @@ Source repository:
 - UDP LAN discovery is implemented, but complex-network hardening remains a stabilization task.
 - Audio, webcam, and steganography migrations can be revisited after the messenger-style MVP is more stable.
 - `audio-core` and `webcam-core` currently provide profile hints; realtime media capture is handled primarily by `webrtc-core`.
+- The Android client is an experimental interoperability MVP: keep Android-specific UI/platform code inside `apps/android-client` and do not introduce Android dependencies into reusable core modules.
+- Android release APKs can be built and signed today, but broader device/install/update validation remains part of stabilization.

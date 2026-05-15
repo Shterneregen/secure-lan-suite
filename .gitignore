@@ -45,8 +45,13 @@ bin/
 
 ### Other ###
 *.log
+*.jks
 /apps/desktop-client/downloads/
 
 ### Local infrastructure / AI tooling ###
 /infra/qdrant/qdrant_storage/
 /infra/qdrant/snapshots/
+
+### Android CLient ###
+/apps/android-client/.idea/
+/local.properties

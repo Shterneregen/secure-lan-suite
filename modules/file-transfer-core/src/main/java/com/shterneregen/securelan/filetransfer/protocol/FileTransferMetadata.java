@@ -1,6 +1,8 @@
 package com.shterneregen.securelan.filetransfer.protocol;
 
 import java.util.Objects;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 public record FileTransferMetadata(
         String transferId,
@@ -34,11 +36,43 @@ public record FileTransferMetadata(
         );
     }
 
+    public String compactSerialize() {
+        return String.join("|",
+                encodeText(transferId),
+                encodeText(senderId),
+                encodeText(recipientId),
+                encodeText(fileName),
+                Long.toString(fileSize)
+        );
+    }
+
     public static FileTransferMetadata deserialize(String value) {
         String[] parts = value.split(SEPARATOR, 5);
         if (parts.length != 5) {
             throw new IllegalArgumentException("Malformed metadata payload");
         }
         return new FileTransferMetadata(parts[0], parts[1], parts[2], parts[3], Long.parseLong(parts[4]));
+    }
+
+    public static FileTransferMetadata deserializeCompact(String value) {
+        String[] parts = value.split("\\|", 5);
+        if (parts.length != 5) {
+            throw new IllegalArgumentException("Malformed compact metadata payload");
+        }
+        return new FileTransferMetadata(
+                decodeText(parts[0]),
+                decodeText(parts[1]),
+                decodeText(parts[2]),
+                decodeText(parts[3]),
+                Long.parseLong(parts[4])
+        );
+    }
+
+    private static String encodeText(String value) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeText(String value) {
+        return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
     }
 }

@@ -2144,7 +2144,8 @@ public class MainView {
             entry.status = "Failed";
             entry.stopSpeedTracking();
             refreshTransferEntries();
-            appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + e.message());
+            String message = e.message() == null || e.message().isBlank() ? "unknown error" : e.message();
+            appendChat((e.outgoing() ? "[file-send] " : "[file-recv] ") + "failed: " + message);
             setTransferStatus(activeTransferSummary(), transferEntries.values().stream().anyMatch(TransferEntry::active) ? Color.web("#f59e0b") : Color.web("#dc2626"));
         }
     }

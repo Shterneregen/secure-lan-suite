@@ -4,33 +4,36 @@ plugins {
 
 allprojects {
     group = 'com.shterneregen.securelan'
-    version = '0.3.18-SNAPSHOT'
+    version = providers.gradleProperty('secureLanVersion').get()
 
     repositories {
+        google()
         mavenCentral()
     }
 }
 
 subprojects {
-    apply plugin: 'java-library'
+    if (path != ':apps:android-client') {
+        apply plugin: 'java-library'
 
-    java {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(25)
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(25)
+            }
         }
-    }
 
-    tasks.withType(JavaCompile).configureEach {
-        options.release = 25
-        options.encoding = 'UTF-8'
-    }
+        tasks.withType(JavaCompile).configureEach {
+            options.release = 25
+            options.encoding = 'UTF-8'
+        }
 
-    tasks.withType(Test).configureEach {
-        useJUnitPlatform()
-    }
+        tasks.withType(Test).configureEach {
+            useJUnitPlatform()
+        }
 
-    dependencies {
-        testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
-        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        dependencies {
+            testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+            testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        }
     }
 }
