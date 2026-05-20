@@ -12,5 +12,3 @@ logs/
 *.iml
 .env
 .env.*
-/infra/qdrant/qdrant_storage/
-/infra/qdrant/snapshots/

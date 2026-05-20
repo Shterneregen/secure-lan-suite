@@ -1,0 +1,57 @@
+# Build outputs
+.gradle/
+build/
+target/
+out/
+dist/
+bin/
+node_modules/
+*.class
+
+# IDE / Editor
+.idea/
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.iml
+*.iws
+*.ipr
+
+# Kotlin / Gradle
+.kotlin/
+!gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.jar
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+logs/
+*.log
+*.tmp
+
+# Sensitive / local
+.env
+.env.*
+*.jks
+local.properties
+
+# App-specific
+/apps/desktop-client/downloads/
+/apps/android-client/.idea/
+
+# Large binary assets (icons etc.)
+*.png
+*.ico
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.svg
+
+# Tool ignore files themselves
+.aiignore
+.kilocodeignore
