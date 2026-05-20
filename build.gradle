@@ -27,6 +27,12 @@ subprojects {
             options.encoding = 'UTF-8'
         }
 
+        plugins.withId('org.jetbrains.kotlin.jvm') {
+            kotlin {
+                jvmToolchain(25)
+            }
+        }
+
         tasks.withType(Test).configureEach {
             useJUnitPlatform()
         }

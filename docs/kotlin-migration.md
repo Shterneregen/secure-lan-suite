@@ -167,9 +167,9 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 
 ## Implementation checklist
 
-- [ ] Add Kotlin JVM plugin setup for JVM modules without changing Android plugin behavior.
-- [ ] Verify Kotlin version compatibility with Java 25, Gradle 9.1 or newer, and the existing Android Kotlin version.
-- [ ] Configure Kotlin JVM toolchain consistently with the Java 25 toolchain.
+- [x] Add Kotlin JVM plugin setup for JVM modules without changing Android plugin behavior.
+- [x] Verify Kotlin plugin resolution with Gradle 9.1 or newer and the existing Android Kotlin version.
+- [x] Configure Kotlin JVM toolchain consistently with the Java 25 toolchain.
 - [ ] Enable Kotlin in one low-risk JVM module first.
 - [ ] Migrate [`modules/audio-core`](../modules/audio-core/build.gradle) and validate the full build.
 - [ ] Migrate [`modules/webcam-core`](../modules/webcam-core/build.gradle) and validate the full build.
