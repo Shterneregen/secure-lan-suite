@@ -90,6 +90,8 @@ Status: completed. [`modules/common-net`](../modules/common-net/build.gradle) an
 - Migrate [`modules/stego-core`](../modules/stego-core/build.gradle) after crypto-core validation.
 - Preserve BMP capacity checks, header layout, payload encoding, password-based encryption integration, and oversized payload behavior.
 
+Status: completed. [`modules/crypto-core`](../modules/crypto-core/build.gradle) and [`modules/stego-core`](../modules/stego-core/build.gradle) now use Kotlin JVM. Crypto services preserve AES-GCM/RSA/signature/hash/key/file workflow behavior, while encrypted payload model classes remain defensive-copy Kotlin classes rather than JVM records. Steganography preserves BMP capacity/header/payload behavior and password encrypt-then-hide integration.
+
 ### Phase 5: Chat and file transfer
 
 - Migrate [`modules/chat-core`](../modules/chat-core/build.gradle) after common-net and crypto-core are stable.
@@ -186,8 +188,8 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Migrate [`modules/common-net`](../modules/common-net/build.gradle) and validate transport tests.
 - [x] Review the public API strategy for [`modules/common-model`](../modules/common-model/build.gradle).
 - [x] Migrate [`modules/common-model`](../modules/common-model/build.gradle) without breaking Java callers.
-- [ ] Migrate [`modules/crypto-core`](../modules/crypto-core/build.gradle) with byte-level behavior tests.
-- [ ] Migrate [`modules/stego-core`](../modules/stego-core/build.gradle) after crypto validation.
+- [x] Migrate [`modules/crypto-core`](../modules/crypto-core/build.gradle) with byte-level behavior tests.
+- [x] Migrate [`modules/stego-core`](../modules/stego-core/build.gradle) after crypto validation.
 - [ ] Migrate [`modules/chat-core`](../modules/chat-core/build.gradle) and run chat integration tests.
 - [ ] Migrate [`modules/file-transfer-core`](../modules/file-transfer-core/build.gradle) and run file transfer integration tests.
 - [ ] Migrate low-risk parts of [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
