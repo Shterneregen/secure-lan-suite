@@ -2071,7 +2071,7 @@ public class MainView {
             return;
         }
         if (event instanceof FileTransferCompletedEvent || event instanceof FileTransferFailedEvent) {
-            clearPendingTransferProgress(event.transferId());
+            clearPendingTransferProgress(event.getTransferId());
         }
         Platform.runLater(() -> applyFileTransferEvent(event));
     }

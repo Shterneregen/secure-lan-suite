@@ -12,11 +12,11 @@ object DiscoveryCodec {
     fun decode(bytes: ByteArray, length: Int, address: InetAddress): DiscoveredPeer {
         val message = CoreDiscoveryCodec.fromBytes(bytes, length)
         return DiscoveredPeer(
-            peerId = message.peerId(),
-            nickname = message.nickname(),
+            peerId = message.peerId,
+            nickname = message.nickname,
             host = address.hostAddress ?: address.hostName,
-            chatPort = message.chatPort(),
-            filePort = message.filePort(),
+            chatPort = message.chatPort,
+            filePort = message.filePort,
         )
     }
 }
