@@ -1,5 +1,9 @@
 plugins {
     id 'base'
+    id 'com.android.application' apply false
+    id 'org.jetbrains.kotlin.android' apply false
+    id 'org.jetbrains.kotlin.jvm' apply false
+    id 'org.jetbrains.kotlin.plugin.compose' apply false
 }
 
 allprojects {
@@ -30,6 +34,14 @@ subprojects {
         plugins.withId('org.jetbrains.kotlin.jvm') {
             kotlin {
                 jvmToolchain(25)
+            }
+
+            tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                jvmTargetValidationMode = org.jetbrains.kotlin.gradle.dsl.jvm.JvmTargetValidationMode.IGNORE
+
+                compilerOptions {
+                    jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_24
+                }
             }
         }
 
