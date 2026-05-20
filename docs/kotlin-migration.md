@@ -59,6 +59,8 @@ flowchart TD
 - Build the Android debug APK through [`apps/android-client`](../apps/android-client/build.gradle).
 - Keep the current protocol behavior unchanged for LAN discovery, chat handshake, file transfer, and RTC signaling.
 
+Status: completed. The clean full build passed, Android debug assembly was covered by the full build, and the reusable module public API baseline is captured in [`docs/kotlin-api-baseline.md`](kotlin-api-baseline.md).
+
 ### Phase 2: Low-risk modules first
 
 - Migrate [`modules/audio-core`](../modules/audio-core/build.gradle) first.
@@ -170,6 +172,8 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Add Kotlin JVM plugin setup for JVM modules without changing Android plugin behavior.
 - [x] Verify Kotlin plugin resolution with Gradle 9.1 or newer and the existing Android Kotlin version.
 - [x] Configure Kotlin JVM toolchain consistently with the Java 25 toolchain.
+- [x] Run Phase 1 clean full build baseline validation.
+- [x] Capture reusable module public API baseline in [`docs/kotlin-api-baseline.md`](kotlin-api-baseline.md).
 - [ ] Enable Kotlin in one low-risk JVM module first.
 - [ ] Migrate [`modules/audio-core`](../modules/audio-core/build.gradle) and validate the full build.
 - [ ] Migrate [`modules/webcam-core`](../modules/webcam-core/build.gradle) and validate the full build.
