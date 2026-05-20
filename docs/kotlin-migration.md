@@ -100,6 +100,8 @@ Status: completed. [`modules/crypto-core`](../modules/crypto-core/build.gradle) 
 - Preserve file metadata format, encrypted transfer handshake, progress events, acceptance handling, and integration tests.
 - Avoid changing desktop and Android interoperability protocols during this phase.
 
+Status: completed. [`modules/chat-core`](../modules/chat-core/build.gradle) and [`modules/file-transfer-core`](../modules/file-transfer-core/build.gradle) now use Kotlin JVM for main sources. UDP discovery, secure chat handshake, RTC signaling transport, file metadata serialization, encrypted file-transfer handshake, quick-share, acceptance handling, progress events, existing Java integration tests, and the full repository build are preserved.
+
 ### Phase 6: WebRTC last
 
 - Migrate [`modules/webrtc-core`](../modules/webrtc-core/build.gradle) last.
@@ -190,8 +192,8 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Migrate [`modules/common-model`](../modules/common-model/build.gradle) without breaking Java callers.
 - [x] Migrate [`modules/crypto-core`](../modules/crypto-core/build.gradle) with byte-level behavior tests.
 - [x] Migrate [`modules/stego-core`](../modules/stego-core/build.gradle) after crypto validation.
-- [ ] Migrate [`modules/chat-core`](../modules/chat-core/build.gradle) and run chat integration tests.
-- [ ] Migrate [`modules/file-transfer-core`](../modules/file-transfer-core/build.gradle) and run file transfer integration tests.
+- [x] Migrate [`modules/chat-core`](../modules/chat-core/build.gradle) and run chat integration tests.
+- [x] Migrate [`modules/file-transfer-core`](../modules/file-transfer-core/build.gradle) and run file transfer integration tests.
 - [ ] Migrate low-risk parts of [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
 - [ ] Decide whether high-risk WebRTC runtime implementation should remain Java.
 - [ ] Run desktop launch validation.
