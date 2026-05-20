@@ -1,7 +1,7 @@
 plugins {
-    id 'com.android.application' version '8.13.2'
-    id 'org.jetbrains.kotlin.android' version '2.2.21'
-    id 'org.jetbrains.kotlin.plugin.compose' version '2.2.21'
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 def releaseStoreFilePath = findProperty('android.release.storeFile') ?: System.getenv('ANDROID_RELEASE_STORE_FILE')
