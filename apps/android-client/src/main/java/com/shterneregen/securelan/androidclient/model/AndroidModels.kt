@@ -1,12 +1,13 @@
 package com.shterneregen.securelan.androidclient.model
 
 import android.net.Uri
+import com.shterneregen.securelan.common.net.NetworkConstants
 import java.time.Instant
 
 object SecureLanPorts {
-    const val DEFAULT_CHAT_PORT: Int = 5050
-    const val DEFAULT_FILE_TRANSFER_PORT: Int = 5051
-    const val DEFAULT_DISCOVERY_PORT: Int = 5052
+    val DEFAULT_CHAT_PORT: Int = NetworkConstants.DEFAULT_CHAT_PORT
+    val DEFAULT_FILE_TRANSFER_PORT: Int = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT
+    val DEFAULT_DISCOVERY_PORT: Int = NetworkConstants.DEFAULT_DISCOVERY_PORT
 }
 
 enum class PeerRole {

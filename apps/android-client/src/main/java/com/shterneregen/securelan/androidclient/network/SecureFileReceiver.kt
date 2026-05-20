@@ -98,11 +98,11 @@ class SecureFileReceiver(private val context: Context) {
         val compactParts = value.split("|", limit = 5)
         require(compactParts.size == 5) { "Malformed compact metadata payload" }
         return FileTransferMetadata(
-            transferId = decodeCompactText(compactParts[0]),
-            senderId = decodeCompactText(compactParts[1]),
-            recipientId = decodeCompactText(compactParts[2]),
-            fileName = decodeCompactText(compactParts[3]),
-            fileSize = compactParts[4].toLong(),
+            decodeCompactText(compactParts[0]),
+            decodeCompactText(compactParts[1]),
+            decodeCompactText(compactParts[2]),
+            decodeCompactText(compactParts[3]),
+            compactParts[4].toLong(),
         )
     }
 

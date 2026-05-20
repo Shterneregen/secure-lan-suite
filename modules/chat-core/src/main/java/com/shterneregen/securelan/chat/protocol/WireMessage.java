@@ -50,6 +50,7 @@ public record WireMessage(
             char c = input.charAt(i);
 
             if (escaping) {
+                current.append(ESCAPE);
                 current.append(c);
                 escaping = false;
                 continue;

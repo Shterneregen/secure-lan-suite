@@ -75,6 +75,8 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
     implementation project(':modules:chat-core')
+    implementation project(':modules:common-net')
+    implementation project(':modules:file-transfer-core')
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
 
