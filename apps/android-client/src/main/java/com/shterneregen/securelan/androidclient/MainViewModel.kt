@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
 import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.ChatLine
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
@@ -28,17 +29,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    private val randomNicknameService = DefaultRandomNicknameService()
     private val discoveryRepository = PeerDiscoveryRepository()
     private val chatClient = SecureChatClient()
     private val fileSender = SecureFileSender(application.contentResolver)
     private val fileReceiver = SecureFileReceiver(application)
 
-    private val _uiState = MutableStateFlow(MainUiState())
+    private val _uiState = MutableStateFlow(MainUiState(nickname = randomNicknameService.generate()))
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     private var discoveryJob: Job? = null
     private var receiveJob: Job? = null
     private var fileReceiverJob: Job? = null
+    private var disconnectRequested: Boolean = false
 
     fun updateNickname(value: String) = _uiState.update { it.copy(nickname = value) }
 
@@ -178,6 +181,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: return setError("Select a server peer first")
         if (state.nickname.isBlank()) return setError("Nickname must not be blank")
         _uiState.update { it.copy(connecting = true, error = null, status = "Connecting to ${peer.nickname}") }
+        disconnectRequested = false
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
         viewModelScope.launch {
             runCatching {
@@ -202,11 +206,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disconnect() {
+        disconnectRequested = true
         receiveJob?.cancel()
         receiveJob = null
         viewModelScope.launch {
             chatClient.disconnect()
-            _uiState.update { it.copy(connected = false, status = "Disconnected") }
+            _uiState.update { it.copy(connected = false, error = null, status = "Disconnected") }
             addLog("Disconnected")
         }
     }
@@ -280,8 +285,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 runCatching { chatClient.readMessage() }
                     .onSuccess { message ->
                         if (message == null) {
-                            _uiState.update { it.copy(connected = false, status = "Connection closed") }
-                            addLog("Connection closed")
+                            val status = if (disconnectRequested) "Disconnected" else "Connection closed"
+                            _uiState.update { it.copy(connected = false, error = null, status = status) }
+                            addLog(status)
                             return@launch
                         }
                         when (message.type) {
@@ -296,8 +302,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     .onFailure { error ->
-                        _uiState.update { it.copy(connected = false, error = error.message, status = "Receive failed") }
-                        addLog(error.message ?: "Receive failed", level = "ERROR")
+                        if (disconnectRequested || error.isExpectedDisconnect()) {
+                            _uiState.update { it.copy(connected = false, error = null, status = "Disconnected") }
+                            addLog("Disconnected")
+                        } else {
+                            _uiState.update { it.copy(connected = false, error = error.message, status = "Receive failed") }
+                            addLog(error.message ?: "Receive failed", level = "ERROR")
+                        }
                         return@launch
                     }
             }
@@ -431,4 +442,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val CLIENT_FILE_PORT_OFFSET = 1000
         private const val MAX_LOG_ENTRIES = 300
     }
+}
+
+private fun Throwable.isExpectedDisconnect(): Boolean {
+    val message = message?.lowercase() ?: return false
+    return "socket closed" in message || "connection reset" in message || "connection abort" in message
 }

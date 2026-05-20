@@ -6,6 +6,8 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 
 - The Android client is currently an experimental MVP, not yet a full feature peer of the desktop client.
 - The UI is implemented with native Android + Jetpack Compose Material 3 inside `apps/android-client`.
+- The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths keep bottom navigation; wider widths use a navigation rail, centered content width, and readable chat width. Expanded tablet/TV-like widths show a three-pane workspace with connection controls on the left, chat in the center, and file actions on the right; settings remain a dedicated diagnostics/configuration page.
+- TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
 - Protocol code is minimally reimplemented inside `apps/android-client` to avoid introducing Android/UI dependencies into reusable Java core modules.
 - Supported flows include desktop-compatible UDP discovery, secure chat handshake, encrypted chat messages, AES-GCM/RSA file-transfer handshake, Android-to-desktop file sending, and desktop-to-Android file receiving.
 - The app starts UDP discovery automatically on launch and requests `NEARBY_WIFI_DEVICES` on Android 13+.

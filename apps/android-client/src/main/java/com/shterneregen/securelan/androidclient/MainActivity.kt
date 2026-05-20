@@ -14,24 +14,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imeNestedScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -43,7 +44,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -53,6 +53,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -91,6 +93,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Chat
@@ -101,7 +104,6 @@ import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.ChatLine
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
 import com.shterneregen.securelan.androidclient.model.MainUiState
-import com.shterneregen.securelan.androidclient.model.PeerRole
 import com.shterneregen.securelan.androidclient.model.SecureLanPorts
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
@@ -156,6 +158,64 @@ private enum class AppDestination(val label: String) {
     SETTINGS("Settings"),
 }
 
+private enum class AdaptiveLayoutMode {
+    COMPACT,
+    MEDIUM,
+    EXPANDED,
+}
+
+private data class AdaptiveLayoutSpec(
+    val mode: AdaptiveLayoutMode,
+    val contentMaxWidth: Dp,
+    val chatMaxWidth: Dp,
+    val horizontalPadding: Dp,
+    val verticalPadding: Dp,
+    val paneSpacing: Dp,
+) {
+    val usesNavigationRail: Boolean
+        get() = mode != AdaptiveLayoutMode.COMPACT
+
+    val supportsTwoPane: Boolean
+        get() = mode == AdaptiveLayoutMode.EXPANDED
+
+    val supportsThreePaneWorkspace: Boolean
+        get() = mode == AdaptiveLayoutMode.EXPANDED
+
+    val chatBubbleWidthFraction: Float
+        get() = when (mode) {
+            AdaptiveLayoutMode.COMPACT -> 0.86f
+            AdaptiveLayoutMode.MEDIUM -> 0.76f
+            AdaptiveLayoutMode.EXPANDED -> 0.78f
+        }
+}
+
+private fun adaptiveLayoutSpec(screenWidth: Dp): AdaptiveLayoutSpec = when {
+    screenWidth < 600.dp -> AdaptiveLayoutSpec(
+        mode = AdaptiveLayoutMode.COMPACT,
+        contentMaxWidth = 720.dp,
+        chatMaxWidth = 720.dp,
+        horizontalPadding = 16.dp,
+        verticalPadding = 12.dp,
+        paneSpacing = 10.dp,
+    )
+    screenWidth < 840.dp -> AdaptiveLayoutSpec(
+        mode = AdaptiveLayoutMode.MEDIUM,
+        contentMaxWidth = 960.dp,
+        chatMaxWidth = 840.dp,
+        horizontalPadding = 20.dp,
+        verticalPadding = 14.dp,
+        paneSpacing = 14.dp,
+    )
+    else -> AdaptiveLayoutSpec(
+        mode = AdaptiveLayoutMode.EXPANDED,
+        contentMaxWidth = 1680.dp,
+        chatMaxWidth = 1180.dp,
+        horizontalPadding = 24.dp,
+        verticalPadding = 16.dp,
+        paneSpacing = 16.dp,
+    )
+}
+
 @Composable
 private fun MainScreen(
     state: MainUiState,
@@ -198,113 +258,153 @@ private fun MainScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            AppHeader(
-                state = state,
-                friendlyError = friendlyError,
-                onOpenLogs = { logsVisible = true },
-            )
-        },
-        bottomBar = {
-            AppNavigationBar(
-                selectedDestination = selectedDestination,
-                onDestinationSelected = { selectedDestination = it },
-            )
-        },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.navigationBars.exclude(WindowInsets.ime),
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            when (selectedDestination) {
-                AppDestination.CONNECTION -> ConnectionScreen(
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val layoutSpec = adaptiveLayoutSpec(this.maxWidth)
+        Scaffold(
+            topBar = {
+                AppHeader(
                     state = state,
-                    onNicknameChange = onNicknameChange,
-                    onPasswordChange = onPasswordChange,
-                    onPeerSelected = onPeerSelected,
-                    onConnect = onConnect,
-                    onDisconnect = onDisconnect,
-                )
-                AppDestination.CHAT -> ChatScreen(
-                    state = state,
-                    onInputChange = onInputChange,
-                    onSendMessage = onSendMessage,
-                    onGoToConnection = { selectedDestination = AppDestination.CONNECTION },
-                )
-                AppDestination.FILES -> FilesScreen(
-                    state = state,
-                    onPeerSelected = onPeerSelected,
-                    onPickFile = { filePicker.launch(arrayOf("*/*")) },
-                    onSendFile = onSendFile,
-                    onStartFileReceiver = onStartFileReceiver,
-                    onStopFileReceiver = onStopFileReceiver,
-                )
-                AppDestination.SETTINGS -> SettingsScreen(
-                    state = state,
-                    onDarkThemeChange = onDarkThemeChange,
+                    friendlyError = friendlyError,
                     onOpenLogs = { logsVisible = true },
+                    layoutSpec = layoutSpec,
                 )
+            },
+            bottomBar = {
+                if (!layoutSpec.usesNavigationRail) {
+                    AppNavigationBar(
+                        selectedDestination = selectedDestination,
+                        onDestinationSelected = { selectedDestination = it },
+                    )
+                }
+            },
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+            containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets.navigationBars.exclude(WindowInsets.ime),
+        ) { innerPadding ->
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                if (layoutSpec.usesNavigationRail) {
+                    AppNavigationRail(
+                        selectedDestination = selectedDestination,
+                        onDestinationSelected = { selectedDestination = it },
+                    )
+                }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (layoutSpec.supportsThreePaneWorkspace && selectedDestination != AppDestination.SETTINGS) {
+                        ThreePaneWorkspace(
+                            state = state,
+                            onNicknameChange = onNicknameChange,
+                            onPasswordChange = onPasswordChange,
+                            onPeerSelected = onPeerSelected,
+                            onConnect = onConnect,
+                            onDisconnect = onDisconnect,
+                            onInputChange = onInputChange,
+                            onSendMessage = onSendMessage,
+                            onPickFile = { filePicker.launch(arrayOf("*/*")) },
+                            onSendFile = onSendFile,
+                            onStartFileReceiver = onStartFileReceiver,
+                            onStopFileReceiver = onStopFileReceiver,
+                            layoutSpec = layoutSpec,
+                        )
+                    } else when (selectedDestination) {
+                        AppDestination.CONNECTION -> ConnectionScreen(
+                            state = state,
+                            onNicknameChange = onNicknameChange,
+                            onPasswordChange = onPasswordChange,
+                            onPeerSelected = onPeerSelected,
+                            onConnect = onConnect,
+                            onDisconnect = onDisconnect,
+                            layoutSpec = layoutSpec,
+                        )
+                        AppDestination.CHAT -> ChatScreen(
+                            state = state,
+                            onInputChange = onInputChange,
+                            onSendMessage = onSendMessage,
+                            layoutSpec = layoutSpec,
+                        )
+                        AppDestination.FILES -> FilesScreen(
+                            state = state,
+                            onPeerSelected = onPeerSelected,
+                            onPickFile = { filePicker.launch(arrayOf("*/*")) },
+                            onSendFile = onSendFile,
+                            onStartFileReceiver = onStartFileReceiver,
+                            onStopFileReceiver = onStopFileReceiver,
+                            layoutSpec = layoutSpec,
+                        )
+                        AppDestination.SETTINGS -> SettingsScreen(
+                            state = state,
+                            onDarkThemeChange = onDarkThemeChange,
+                            onOpenLogs = { logsVisible = true },
+                            layoutSpec = layoutSpec,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AppHeader(state: MainUiState, friendlyError: FriendlyError?, onOpenLogs: () -> Unit) {
+private fun AppHeader(state: MainUiState, friendlyError: FriendlyError?, onOpenLogs: () -> Unit, layoutSpec: AdaptiveLayoutSpec) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 3.dp,
         shadowElevation = 1.dp,
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = layoutSpec.horizontalPadding, vertical = 12.dp),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = layoutSpec.contentMaxWidth),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "SecureLan",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "SecureLan",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = state.connectionPeer?.let { "Target: ${it.nickname} · ${it.host}:${it.chatPort}" }
+                                ?: "Encrypted LAN chat and file transfer",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    StatusText(text = if (state.connected) "Connected" else "Offline", active = state.connected)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    StatusChip(
+                        text = state.status.toFriendlyStatus(),
+                        active = state.connected || state.discoveryRunning,
+                        modifier = Modifier.weight(1.35f),
                     )
-                    Text(
-                        text = state.connectionPeer?.let { "Target: ${it.nickname} · ${it.host}:${it.chatPort}" }
-                            ?: "Encrypted LAN chat and file transfer",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    StatusChip(
+                        text = if (state.connected) "Session active" else "Session inactive",
+                        active = state.connected,
+                        modifier = Modifier.weight(1f),
                     )
                 }
-                StatusText(text = if (state.connected) "Connected" else "Offline", active = state.connected)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                StatusChip(
-                    text = if (state.discoveryRunning) "Discovery on" else "Discovery off",
-                    active = state.discoveryRunning,
-                    modifier = Modifier.weight(1f),
-                )
-                StatusChip(
-                    text = state.status.toFriendlyStatus(),
-                    active = state.connected || state.discoveryRunning,
-                    modifier = Modifier.weight(1.35f),
-                )
-            }
-            if (friendlyError != null) {
-                FriendlyErrorBanner(error = friendlyError, onOpenLogs = onOpenLogs)
+                if (friendlyError != null) {
+                    FriendlyErrorBanner(error = friendlyError, onOpenLogs = onOpenLogs)
+                }
             }
         }
     }
@@ -390,6 +490,28 @@ private fun AppNavigationBar(selectedDestination: AppDestination, onDestinationS
     }
 }
 
+@Composable
+private fun AppNavigationRail(selectedDestination: AppDestination, onDestinationSelected: (AppDestination) -> Unit) {
+    NavigationRail(
+        modifier = Modifier.fillMaxHeight(),
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Spacer(modifier = Modifier.height(12.dp))
+        AppDestination.entries.forEach { destination ->
+            NavigationRailItem(
+                selected = selectedDestination == destination,
+                onClick = { onDestinationSelected(destination) },
+                icon = { Icon(destination.navIcon(), contentDescription = null) },
+                label = { Text(destination.label) },
+                modifier = Modifier.semantics {
+                    contentDescription = "Open ${destination.label}"
+                    stateDescription = if (selectedDestination == destination) "selected" else "not selected"
+                },
+            )
+        }
+    }
+}
+
 private fun AppDestination.navIcon(): ImageVector = when (this) {
     AppDestination.CONNECTION -> Icons.Outlined.Devices
     AppDestination.CHAT -> Icons.Outlined.Chat
@@ -398,13 +520,20 @@ private fun AppDestination.navIcon(): ImageVector = when (this) {
 }
 
 @Composable
-private fun ConnectionScreen(
+private fun ThreePaneWorkspace(
     state: MainUiState,
     onNicknameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPeerSelected: (DiscoveredPeer) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onInputChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    onPickFile: () -> Unit,
+    onSendFile: () -> Unit,
+    onStartFileReceiver: () -> Unit,
+    onStopFileReceiver: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
 ) {
     var helpVisible by remember { mutableStateOf(false) }
     if (helpVisible) {
@@ -420,132 +549,70 @@ private fun ConnectionScreen(
             confirmButton = { Button(onClick = { helpVisible = false }) { Text("Got it") } },
         )
     }
-    ScreenLazyColumn {
-        item {
-            SectionCard(
-                title = "Connection",
-                subtitle = state.connectionPeer?.let { "Target: ${it.nickname} · ${it.host}:${it.chatPort}" }
-                    ?: "Choose a server peer and connect.",
-                trailing = { OutlinedButton(onClick = { helpVisible = true }) { Text("?") } },
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = layoutSpec.horizontalPadding, vertical = layoutSpec.verticalPadding),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = layoutSpec.contentMaxWidth),
+            horizontalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(0.30f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
             ) {
-                OutlinedTextField(
-                    value = state.nickname,
-                    onValueChange = onNicknameChange,
-                    label = { Text("Nickname") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.connected && !state.connecting,
+                ConnectionFormCard(
+                    state = state,
+                    onNicknameChange = onNicknameChange,
+                    onPasswordChange = onPasswordChange,
+                    onConnect = onConnect,
+                    onDisconnect = onDisconnect,
+                    onOpenHelp = { helpVisible = true },
                 )
-                OutlinedTextField(
-                    value = state.sessionPassword,
-                    onValueChange = onPasswordChange,
-                    label = { Text("Session password") },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "Session password field" },
-                    visualTransformation = PasswordVisualTransformation(),
-                    enabled = !state.connected && !state.connecting,
-                )
-                CompactSelectedPeerSummary(state.connectionPeer)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = onConnect,
-                        enabled = !state.connected && !state.connecting && state.connectionPeer != null,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(if (state.connecting) "Connecting…" else "Connect")
-                    }
-                    OutlinedButton(onClick = onDisconnect, enabled = state.connected, modifier = Modifier.weight(1f)) {
-                        Text("Disconnect")
-                    }
-                }
-                if (!state.connected && state.connectionPeer == null) {
-                    DisabledReason("Connect becomes available after a server peer is discovered and selected.")
-                }
-                if (state.connected) {
-                    DisabledReason("Identity fields are locked while connected.")
-                }
+                PeersCard(state = state, onPeerSelected = onPeerSelected)
             }
-        }
-        item {
-            SectionCard(
-                title = "Peers",
-                subtitle = if (state.peers.isEmpty()) "No discovered peers yet." else "${state.peers.size} peer(s) available.",
-            ) {
-                if (state.peers.isEmpty()) {
-                    EmptyState(
-                        title = "No peers available",
-                        message = "Keep discovery on and check that desktop SecureLan is open on the same Wi‑Fi.",
-                    )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.peers.forEach { peer ->
-                            CompactPeerChoice(
-                                peer = peer,
-                                selected = state.selectedPeer?.peerId == peer.peerId,
-                                onClick = { onPeerSelected(peer) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConnectionGuidance(state: MainUiState) {
-    when {
-        state.connected -> InfoBox(
-            title = "Session active",
-            message = "Messages are encrypted end-to-end for the current desktop connection.",
-            positive = true,
-        )
-        state.connecting -> InfoBox(
-            title = "Connecting",
-            message = "Keep both devices on the same network while SecureLan completes the handshake.",
-            positive = true,
-        )
-        state.peers.isEmpty() -> TroubleshootingBox()
-        state.connectionPeer != null -> InfoBox(
-            title = "Ready to connect",
-            message = "If connection fails, check that the desktop room is still open and that the password matches.",
-            positive = true,
-        )
-    }
-}
-
-@Composable
-private fun PeersScreen(state: MainUiState, onPeerSelected: (DiscoveredPeer) -> Unit) {
-    ScreenLazyColumn {
-        item {
-            ScreenIntroCard(
-                title = "Peers",
-                message = "SecureLan listens for desktop peers on your local network and lets you choose a server target.",
+            WorkspaceChatPane(
+                state = state,
+                onInputChange = onInputChange,
+                onSendMessage = onSendMessage,
+                layoutSpec = layoutSpec,
+                modifier = Modifier
+                    .weight(0.42f)
+                    .fillMaxHeight(),
             )
-        }
-        if (state.peers.isEmpty()) {
-            item { TroubleshootingBox() }
-        } else {
-            items(state.peers, key = { it.peerId }) { peer ->
-                PeerRow(
-                    peer = peer,
-                    selected = state.selectedPeer?.peerId == peer.peerId,
-                    onClick = { onPeerSelected(peer) },
+            Column(
+                modifier = Modifier
+                    .weight(0.28f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+            ) {
+                FileSelectedCard(state = state, onPickFile = onPickFile, onSendFile = onSendFile)
+                FileReceiveCard(
+                    state = state,
+                    onStartFileReceiver = onStartFileReceiver,
+                    onStopFileReceiver = onStopFileReceiver,
                 )
+                FileProgressCards(state)
             }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChatScreen(
+private fun WorkspaceChatPane(
     state: MainUiState,
     onInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onGoToConnection: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+    modifier: Modifier = Modifier,
 ) {
     val chatListState = rememberLazyListState()
     LaunchedEffect(state.messages.size) {
@@ -553,64 +620,283 @@ private fun ChatScreen(
             chatListState.animateScrollToItem(state.messages.lastIndex)
         }
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .padding(top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        LazyColumn(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .imeNestedScroll(),
-            state = chatListState,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
+                .fillMaxSize()
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.messages.isEmpty()) {
-                item {
-                    EmptyState(
-                        title = if (state.connected) "No messages yet" else "Connect first",
-                        message = if (state.connected) {
-                            "Your secure session is ready. Send the first message to start the conversation."
-                        } else {
-                            "Open Connection, choose a desktop server, and connect before sending messages."
-                        },
-                    )
-                }
-            } else {
-                items(state.messages) { line -> ChatBubble(line) }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (state.connected) "Secure session is active." else "Connect before sending messages.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                state = chatListState,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (state.messages.isEmpty()) {
+                    item {
+                        EmptyState(
+                            title = if (state.connected) "No messages yet" else "Connect first",
+                            message = if (state.connected) {
+                                "Your secure session is ready. Send the first message to start the conversation."
+                            } else {
+                                "Use the Connection pane before sending messages."
+                            },
+                        )
+                    }
+                } else {
+                    items(state.messages) { line -> ChatBubble(line, widthFraction = layoutSpec.chatBubbleWidthFraction) }
+                }
+            }
+            ChatInputBar(
+                state = state,
+                onInputChange = onInputChange,
+                onSendMessage = onSendMessage,
+                modifier = Modifier.imePadding(),
+            )
         }
-        ChatInputBar(
-            state = state,
-            onInputChange = onInputChange,
-            onSendMessage = onSendMessage,
-            modifier = Modifier
-                .padding(bottom = 12.dp)
-                .imePadding(),
-        )
     }
 }
 
 @Composable
-private fun ChatStateHeader(state: MainUiState, onGoToConnection: () -> Unit) {
-    SectionCard(
-        title = "Chat",
-        subtitle = if (state.connected) "End-to-end encrypted session is active." else "Messaging is available after connection.",
-        trailing = {
-            if (!state.connected) {
-                OutlinedButton(onClick = onGoToConnection) { Text("Connect") }
+private fun ConnectionScreen(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onPeerSelected: (DiscoveredPeer) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+) {
+    var helpVisible by remember { mutableStateOf(false) }
+    if (helpVisible) {
+        AlertDialog(
+            onDismissRequest = { helpVisible = false },
+            title = { Text("Connection help") },
+            text = {
+                Text(
+                    "Choose a discovered desktop server, enter the nickname and the same session password as on desktop, then connect. If connection fails, check firewall, VPN, guest Wi‑Fi, and that the desktop room is still open.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = { Button(onClick = { helpVisible = false }) { Text("Got it") } },
+        )
+    }
+    if (layoutSpec.supportsTwoPane) {
+        AdaptiveContentFrame(layoutSpec) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+                ) {
+                    ConnectionFormCard(
+                        state = state,
+                        onNicknameChange = onNicknameChange,
+                        onPasswordChange = onPasswordChange,
+                        onConnect = onConnect,
+                        onDisconnect = onDisconnect,
+                        onOpenHelp = { helpVisible = true },
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    PeersCard(state = state, onPeerSelected = onPeerSelected)
+                }
             }
+        }
+    } else {
+        ScreenLazyColumn(layoutSpec) {
+            item {
+                ConnectionFormCard(
+                    state = state,
+                    onNicknameChange = onNicknameChange,
+                    onPasswordChange = onPasswordChange,
+                    onConnect = onConnect,
+                    onDisconnect = onDisconnect,
+                    onOpenHelp = { helpVisible = true },
+                )
+            }
+            item { PeersCard(state = state, onPeerSelected = onPeerSelected) }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionFormCard(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onOpenHelp: () -> Unit,
+) {
+    SectionCard(
+        title = "Connection",
+        subtitle = state.connectionPeer?.let { "Target: ${it.nickname} · ${it.host}:${it.chatPort}" }
+            ?: "Choose a server peer and connect.",
+        trailing = { OutlinedButton(onClick = onOpenHelp) { Text("?") } },
+    ) {
+        OutlinedTextField(
+            value = state.nickname,
+            onValueChange = onNicknameChange,
+            label = { Text("Nickname") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !state.connected && !state.connecting,
+        )
+        OutlinedTextField(
+            value = state.sessionPassword,
+            onValueChange = onPasswordChange,
+            label = { Text("Session password") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Session password field" },
+            visualTransformation = PasswordVisualTransformation(),
+            enabled = !state.connected && !state.connecting,
+        )
+        CompactSelectedPeerSummary(state.connectionPeer)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onConnect,
+                enabled = !state.connected && !state.connecting && state.connectionPeer != null,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(if (state.connecting) "Connecting…" else "Connect")
+            }
+            OutlinedButton(onClick = onDisconnect, enabled = state.connected, modifier = Modifier.weight(1f)) {
+                Text("Disconnect")
+            }
+        }
+        if (!state.connected && state.connectionPeer == null) {
+            DisabledReason("Connect becomes available after a server peer is discovered and selected.")
+        }
+    }
+}
+
+@Composable
+private fun PeersCard(state: MainUiState, onPeerSelected: (DiscoveredPeer) -> Unit) {
+    var helpVisible by remember { mutableStateOf(false) }
+    if (helpVisible) {
+        AlertDialog(
+            onDismissRequest = { helpVisible = false },
+            title = { Text("No peers yet") },
+            text = {
+                Text(
+                    text = "Discovery can take a few seconds on some networks. Check that the desktop app is open, both devices use the same Wi‑Fi, discovery is enabled, and VPN, firewall, guest Wi‑Fi, or client isolation are not blocking LAN traffic.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = { Button(onClick = { helpVisible = false }) { Text("Got it") } },
+        )
+    }
+    SectionCard(
+        title = "Peers",
+        subtitle = if (state.peers.isEmpty()) "No discovered peers yet." else "${state.peers.size} peer(s) available.",
+        trailing = if (state.peers.isEmpty()) {
+            { OutlinedButton(onClick = { helpVisible = true }) { Text("?") } }
+        } else {
+            null
         },
     ) {
-        StatusChip(
-            text = if (state.connected) "Ready to send secure messages" else "Offline — connect to start messaging",
-            active = state.connected,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (state.peers.isEmpty()) {
+            EmptyState(
+                title = "No peers available",
+                message = "Keep discovery on and check that desktop SecureLan is open on the same Wi‑Fi.",
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.peers.forEach { peer ->
+                    CompactPeerChoice(
+                        peer = peer,
+                        selected = state.selectedPeer?.peerId == peer.peerId,
+                        onClick = { onPeerSelected(peer) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatScreen(
+    state: MainUiState,
+    onInputChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+) {
+    val chatListState = rememberLazyListState()
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) {
+            chatListState.animateScrollToItem(state.messages.lastIndex)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = layoutSpec.horizontalPadding, vertical = layoutSpec.verticalPadding),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = layoutSpec.chatMaxWidth),
+            verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                state = chatListState,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
+            ) {
+                if (state.messages.isEmpty()) {
+                    item {
+                        EmptyState(
+                            title = if (state.connected) "No messages yet" else "Connect first",
+                            message = if (state.connected) {
+                                "Your secure session is ready. Send the first message to start the conversation."
+                            } else {
+                                "Open Connection, choose a desktop server, and connect before sending messages."
+                            },
+                        )
+                    }
+                } else {
+                    items(state.messages) { line -> ChatBubble(line, widthFraction = layoutSpec.chatBubbleWidthFraction) }
+                }
+            }
+            ChatInputBar(
+                state = state,
+                onInputChange = onInputChange,
+                onSendMessage = onSendMessage,
+                modifier = Modifier.imePadding(),
+            )
+        }
     }
 }
 
@@ -666,142 +952,240 @@ private fun FilesScreen(
     onSendFile: () -> Unit,
     onStartFileReceiver: () -> Unit,
     onStopFileReceiver: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
 ) {
-    ScreenLazyColumn {
-        item {
+    if (layoutSpec.supportsTwoPane) {
+        AdaptiveContentFrame(layoutSpec) {
             ScreenIntroCard(
                 title = "Files",
                 message = "Send one selected document to a peer or listen for an encrypted desktop-to-Android transfer.",
             )
-        }
-        item {
-            SectionCard(
-                title = "Send target",
-                subtitle = state.selectedPeer?.let { "${it.nickname} · ${it.host}:${it.filePort}" } ?: "Select a peer before sending files.",
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
             ) {
-                if (state.peers.isEmpty()) {
-                    EmptyState(
-                        title = "No peers available",
-                        message = "Keep discovery on and check that desktop SecureLan is open on the same Wi‑Fi.",
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+                ) {
+                    FileSendTargetCard(state = state, onPeerSelected = onPeerSelected)
+                    FileSelectedCard(state = state, onPickFile = onPickFile, onSendFile = onSendFile)
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+                ) {
+                    FileReceiveCard(
+                        state = state,
+                        onStartFileReceiver = onStartFileReceiver,
+                        onStopFileReceiver = onStopFileReceiver,
                     )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        state.peers.forEach { peer ->
-                            CompactPeerChoice(
-                                peer = peer,
-                                selected = state.selectedPeer?.peerId == peer.peerId,
-                                onClick = { onPeerSelected(peer) },
-                            )
-                        }
-                    }
+                    FileProgressCards(state)
                 }
             }
         }
-        item {
-            SectionCard(title = "Selected file", subtitle = "Choose a local document to send.") {
-                SelectedFileCard(state)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(onClick = onPickFile, modifier = Modifier.weight(1f)) { Text("Pick file") }
-                    FilledTonalButton(
-                        onClick = onSendFile,
-                        enabled = state.selectedPeer != null && state.selectedFile != null && !state.fileProgress.active,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Send file")
-                    }
-                }
-                FileSendHint(state)
-            }
-        }
-        item {
-            SectionCard(title = "Receive from desktop", subtitle = "Start a listener when the desktop sends a file to this phone.") {
-                ReceiveListenerStatus(state)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = onStartFileReceiver,
-                        enabled = !state.fileReceiverRunning && state.sessionPassword.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Receive")
-                    }
-                    OutlinedButton(onClick = onStopFileReceiver, enabled = state.fileReceiverRunning, modifier = Modifier.weight(1f)) {
-                        Text("Stop")
-                    }
-                }
-                if (state.sessionPassword.isBlank()) {
-                    DisabledReason("Enter the session password on Connection before receiving files.")
-                }
-            }
-        }
-        if (state.fileProgress.active || state.fileProgress.bytesSent > 0 || state.fileProgress.error != null) {
+    } else {
+        ScreenLazyColumn(layoutSpec) {
             item {
-                TransferProgressCard(
-                    title = if (state.fileProgress.active) "Sending ${state.fileProgress.fileName.ifBlank { "file" }}" else "Last sent file",
-                    progress = state.fileProgress.percent,
-                    currentBytes = state.fileProgress.bytesSent,
-                    totalBytes = state.fileProgress.totalBytes,
-                    error = state.fileProgress.error,
+                ScreenIntroCard(
+                    title = "Files",
+                    message = "Send one selected document to a peer or listen for an encrypted desktop-to-Android transfer.",
                 )
             }
-        }
-        if (state.incomingFileProgress.active || state.incomingFileProgress.bytesReceived > 0 || state.incomingFileProgress.error != null) {
+            item { FileSendTargetCard(state = state, onPeerSelected = onPeerSelected) }
+            item { FileSelectedCard(state = state, onPickFile = onPickFile, onSendFile = onSendFile) }
             item {
-                TransferProgressCard(
-                    title = if (state.incomingFileProgress.active) {
-                        "Receiving ${state.incomingFileProgress.fileName.ifBlank { "file" }}"
-                    } else {
-                        "Incoming file"
-                    },
-                    progress = state.incomingFileProgress.percent,
-                    currentBytes = state.incomingFileProgress.bytesReceived,
-                    totalBytes = state.incomingFileProgress.totalBytes,
-                    error = state.incomingFileProgress.error,
-                    completedPath = state.incomingFileProgress.completedPath,
+                FileReceiveCard(
+                    state = state,
+                    onStartFileReceiver = onStartFileReceiver,
+                    onStopFileReceiver = onStopFileReceiver,
                 )
+            }
+            item { FileProgressCards(state) }
+        }
+    }
+}
+
+@Composable
+private fun FileSendTargetCard(state: MainUiState, onPeerSelected: (DiscoveredPeer) -> Unit) {
+    SectionCard(
+        title = "Send target",
+        subtitle = state.selectedPeer?.let { "${it.nickname} · ${it.host}:${it.filePort}" } ?: "Select a peer before sending files.",
+    ) {
+        if (state.peers.isEmpty()) {
+            EmptyState(
+                title = "No peers available",
+                message = "Keep discovery on and check that desktop SecureLan is open on the same Wi‑Fi.",
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.peers.forEach { peer ->
+                    CompactPeerChoice(
+                        peer = peer,
+                        selected = state.selectedPeer?.peerId == peer.peerId,
+                        onClick = { onPeerSelected(peer) },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SettingsScreen(state: MainUiState, onDarkThemeChange: (Boolean) -> Unit, onOpenLogs: () -> Unit) {
-    ScreenLazyColumn {
-        item {
+private fun FileSelectedCard(state: MainUiState, onPickFile: () -> Unit, onSendFile: () -> Unit) {
+    SectionCard(title = "Selected file", subtitle = "Choose a local document to send.") {
+        SelectedFileCard(state)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = onPickFile, modifier = Modifier.weight(1f)) { Text("Pick file") }
+            FilledTonalButton(
+                onClick = onSendFile,
+                enabled = state.selectedPeer != null && state.selectedFile != null && !state.fileProgress.active,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Send file")
+            }
+        }
+        FileSendHint(state)
+    }
+}
+
+@Composable
+private fun FileReceiveCard(state: MainUiState, onStartFileReceiver: () -> Unit, onStopFileReceiver: () -> Unit) {
+    SectionCard(title = "Receive from desktop", subtitle = "Start a listener when the desktop sends a file to this phone.") {
+        ReceiveListenerStatus(state)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onStartFileReceiver,
+                enabled = !state.fileReceiverRunning && state.sessionPassword.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Receive")
+            }
+            OutlinedButton(onClick = onStopFileReceiver, enabled = state.fileReceiverRunning, modifier = Modifier.weight(1f)) {
+                Text("Stop")
+            }
+        }
+        if (state.sessionPassword.isBlank()) {
+            DisabledReason("Enter the session password on Connection before receiving files.")
+        }
+    }
+}
+
+@Composable
+private fun FileProgressCards(state: MainUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (state.fileProgress.active || state.fileProgress.bytesSent > 0 || state.fileProgress.error != null) {
+            TransferProgressCard(
+                title = if (state.fileProgress.active) "Sending ${state.fileProgress.fileName.ifBlank { "file" }}" else "Last sent file",
+                progress = state.fileProgress.percent,
+                currentBytes = state.fileProgress.bytesSent,
+                totalBytes = state.fileProgress.totalBytes,
+                error = state.fileProgress.error,
+            )
+        }
+        if (state.incomingFileProgress.active || state.incomingFileProgress.bytesReceived > 0 || state.incomingFileProgress.error != null) {
+            TransferProgressCard(
+                title = if (state.incomingFileProgress.active) {
+                    "Receiving ${state.incomingFileProgress.fileName.ifBlank { "file" }}"
+                } else {
+                    "Incoming file"
+                },
+                progress = state.incomingFileProgress.percent,
+                currentBytes = state.incomingFileProgress.bytesReceived,
+                totalBytes = state.incomingFileProgress.totalBytes,
+                error = state.incomingFileProgress.error,
+                completedPath = state.incomingFileProgress.completedPath,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(state: MainUiState, onDarkThemeChange: (Boolean) -> Unit, onOpenLogs: () -> Unit, layoutSpec: AdaptiveLayoutSpec) {
+    if (layoutSpec.supportsTwoPane) {
+        AdaptiveContentFrame(layoutSpec) {
             ScreenIntroCard(
                 title = "Settings",
                 message = "Theme, diagnostics, and quick app state details for troubleshooting LAN sessions.",
             )
-        }
-        item {
-            SectionCard(title = "Appearance", subtitle = "Choose the local app theme.") {
-                SettingsRow(
-                    title = "Dark theme",
-                    subtitle = if (state.darkThemeEnabled) "Enabled" else "Disabled",
-                    trailing = { Switch(checked = state.darkThemeEnabled, onCheckedChange = onDarkThemeChange) },
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+                ) {
+                    AppearanceCard(state = state, onDarkThemeChange = onDarkThemeChange)
+                    DiagnosticsCard(state = state, onOpenLogs = onOpenLogs)
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    CurrentSessionCard(state)
+                }
             }
         }
-        item {
-            SectionCard(title = "Diagnostics", subtitle = "Useful when discovery, connection, or file transfer fails.") {
-                SettingsRow(
-                    title = "Logs",
-                    subtitle = "${state.logs.size} entries available to view or copy.",
-                    trailing = { OutlinedButton(onClick = onOpenLogs, enabled = state.logs.isNotEmpty()) { Text("Open") } },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                SettingsRow(
-                    title = "Network ports",
-                    subtitle = "Chat ${SecureLanPorts.DEFAULT_CHAT_PORT} · Files ${SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT} · Discovery ${SecureLanPorts.DEFAULT_DISCOVERY_PORT}",
+    } else {
+        ScreenLazyColumn(layoutSpec) {
+            item {
+                ScreenIntroCard(
+                    title = "Settings",
+                    message = "Theme, diagnostics, and quick app state details for troubleshooting LAN sessions.",
                 )
             }
+            item { AppearanceCard(state = state, onDarkThemeChange = onDarkThemeChange) }
+            item { DiagnosticsCard(state = state, onOpenLogs = onOpenLogs) }
+            item { CurrentSessionCard(state) }
         }
-        item {
-            SectionCard(title = "Current session", subtitle = "Read-only summary.") {
-                SettingsRow(title = "Discovery", subtitle = if (state.discoveryRunning) "Listening for peers" else "Stopped")
-                SettingsRow(title = "Connection", subtitle = if (state.connected) "Connected as ${state.nickname}" else "Offline")
-                SettingsRow(title = "Selected peer", subtitle = state.selectedPeer?.let { "${it.nickname} · ${it.host}:${it.chatPort}" } ?: "None")
-            }
-        }
+    }
+}
+
+@Composable
+private fun AppearanceCard(state: MainUiState, onDarkThemeChange: (Boolean) -> Unit) {
+    SectionCard(title = "Appearance", subtitle = "Choose the local app theme.") {
+        SettingsRow(
+            title = "Dark theme",
+            subtitle = if (state.darkThemeEnabled) "Enabled" else "Disabled",
+            trailing = { Switch(checked = state.darkThemeEnabled, onCheckedChange = onDarkThemeChange) },
+        )
+    }
+}
+
+@Composable
+private fun DiagnosticsCard(state: MainUiState, onOpenLogs: () -> Unit) {
+    SectionCard(title = "Diagnostics", subtitle = "Useful when discovery, connection, or file transfer fails.") {
+        SettingsRow(
+            title = "Logs",
+            subtitle = "${state.logs.size} entries available to view or copy.",
+            trailing = { OutlinedButton(onClick = onOpenLogs, enabled = state.logs.isNotEmpty()) { Text("Open") } },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        SettingsRow(
+            title = "Network ports",
+            subtitle = "Chat ${SecureLanPorts.DEFAULT_CHAT_PORT} · Files ${SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT} · Discovery ${SecureLanPorts.DEFAULT_DISCOVERY_PORT}",
+        )
+    }
+}
+
+@Composable
+private fun CurrentSessionCard(state: MainUiState) {
+    SectionCard(title = "Current session", subtitle = "Read-only summary.") {
+        SettingsRow(title = "Discovery", subtitle = if (state.discoveryRunning) "Listening for peers" else "Stopped")
+        SettingsRow(title = "Connection", subtitle = if (state.connected) "Connected as ${state.nickname}" else "Offline")
+        SettingsRow(title = "Selected peer", subtitle = state.selectedPeer?.let { "${it.nickname} · ${it.host}:${it.chatPort}" } ?: "None")
     }
 }
 
@@ -860,38 +1244,6 @@ private fun LogsDialog(logs: List<AppLogEntry>, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun SelectedPeerSummary(peer: DiscoveredPeer?) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StatusDot(active = peer != null)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = peer?.nickname ?: "No server peer selected",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = peer?.let { "${it.host}:${it.chatPort} · file ${it.filePort}" }
-                        ?: "Open Peers after discovery finds your desktop.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun CompactSelectedPeerSummary(peer: DiscoveredPeer?) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -916,63 +1268,9 @@ private fun CompactSelectedPeerSummary(peer: DiscoveredPeer?) {
     }
 }
 
-@Composable
-private fun PeerRow(peer: DiscoveredPeer, selected: Boolean, onClick: () -> Unit) {
-    val containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics {
-                contentDescription = "Peer ${peer.nickname}, ${peer.role.name.lowercase()}, ${if (selected) "selected" else "not selected"}"
-                stateDescription = if (selected) "selected" else "not selected"
-            },
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shape = RoundedCornerShape(22.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AvatarLetter(peer.nickname)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = contentColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    PeerRolePill(peer.role, selected)
-                }
-                Text(
-                    AndroidUiFormatters.peerEndpointSummary(peer),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor.copy(alpha = 0.72f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = if (selected) "Selected" else "Select",
-                style = MaterialTheme.typography.labelLarge,
-                color = contentColor.copy(alpha = 0.86f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PeerRolePill(role: PeerRole, selected: Boolean) {
-    val label = if (role == PeerRole.SERVER) "Server" else "Client"
-    val background = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.secondaryContainer
-    val foreground = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-    Surface(color = background, contentColor = foreground, shape = RoundedCornerShape(100.dp)) {
-        Text(label, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall)
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatBubble(line: ChatLine) {
+private fun ChatBubble(line: ChatLine, widthFraction: Float) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val alignment = if (line.outbound) Alignment.CenterEnd else Alignment.CenterStart
@@ -982,7 +1280,7 @@ private fun ChatBubble(line: ChatLine) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.86f)
+                .fillMaxWidth(widthFraction)
                 .clip(RoundedCornerShape(20.dp))
                 .background(bubbleColor)
                 .combinedClickable(
@@ -1183,13 +1481,42 @@ private fun SettingsRow(title: String, subtitle: String, trailing: (@Composable 
 }
 
 @Composable
-private fun ScreenLazyColumn(content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        content = content,
-    )
+private fun AdaptiveContentFrame(
+    layoutSpec: AdaptiveLayoutSpec,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = layoutSpec.horizontalPadding, vertical = layoutSpec.verticalPadding),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = layoutSpec.contentMaxWidth),
+            verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun ScreenLazyColumn(
+    layoutSpec: AdaptiveLayoutSpec = adaptiveLayoutSpec(0.dp),
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth()
+                .widthIn(max = layoutSpec.contentMaxWidth),
+            contentPadding = PaddingValues(horizontal = layoutSpec.horizontalPadding, vertical = layoutSpec.verticalPadding),
+            verticalArrangement = Arrangement.spacedBy(layoutSpec.paneSpacing),
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -1252,17 +1579,6 @@ private fun InfoBox(title: String, message: String, positive: Boolean) {
 }
 
 @Composable
-private fun TroubleshootingBox() {
-    SectionCard(title = "No peers yet", subtitle = "Discovery can take a few seconds on some networks.") {
-        Text(
-            text = "Check that the desktop app is open, both devices use the same Wi‑Fi, discovery is enabled, and VPN, firewall, guest Wi‑Fi, or client isolation are not blocking LAN traffic.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun EmptyState(title: String, message: String) {
     Box(
         modifier = Modifier
@@ -1300,20 +1616,6 @@ private fun StatusDot(active: Boolean) {
                 stateDescription = if (active) "active" else "inactive"
             },
     )
-}
-
-@Composable
-private fun AvatarLetter(name: String) {
-    Surface(
-        modifier = Modifier.size(48.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        shape = CircleShape,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?", fontWeight = FontWeight.Bold)
-        }
-    }
 }
 
 private data class FriendlyError(val title: String, val message: String)

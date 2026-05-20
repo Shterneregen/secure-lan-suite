@@ -69,7 +69,7 @@ data class IncomingFileProgress(
 }
 
 data class MainUiState(
-    val nickname: String = "Android",
+    val nickname: String = "",
     val sessionPassword: String = "",
     val darkThemeEnabled: Boolean = true,
     val peers: List<DiscoveredPeer> = emptyList(),
