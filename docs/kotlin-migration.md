@@ -80,6 +80,8 @@ Compatibility note: Kotlin 2.2.21 does not yet emit JVM target 25 bytecode, so K
 - Decide per model whether to keep Java records temporarily or replace them with Kotlin data classes after checking Java caller compatibility.
 - Preserve RTC signaling payload behavior from the common model package.
 
+Status: completed. [`modules/common-net`](../modules/common-net/build.gradle) and [`modules/common-model`](../modules/common-model/build.gradle) now use Kotlin JVM. Common model DTOs use Kotlin JVM records where the constructor contract is record-compatible; [`RtcSignalEnvelope`](../modules/common-model/src/main/kotlin/com/shterneregen/securelan/common/model/rtc/RtcSignalEnvelope.kt) remains a Java-callable Kotlin class to preserve null-normalization and factory behavior.
+
 ### Phase 4: Crypto and steganography
 
 - Migrate [`modules/crypto-core`](../modules/crypto-core/build.gradle) only with strict test coverage for AES-GCM, RSA, hashing, signatures, key generation, key encoding, and file crypto workflows.
@@ -181,9 +183,9 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Enable Kotlin in one low-risk JVM module first.
 - [x] Migrate [`modules/audio-core`](../modules/audio-core/build.gradle) and validate the full build.
 - [x] Migrate [`modules/webcam-core`](../modules/webcam-core/build.gradle) and validate the full build.
-- [ ] Migrate [`modules/common-net`](../modules/common-net/build.gradle) and validate transport tests.
-- [ ] Review the public API strategy for [`modules/common-model`](../modules/common-model/build.gradle).
-- [ ] Migrate [`modules/common-model`](../modules/common-model/build.gradle) without breaking Java callers.
+- [x] Migrate [`modules/common-net`](../modules/common-net/build.gradle) and validate transport tests.
+- [x] Review the public API strategy for [`modules/common-model`](../modules/common-model/build.gradle).
+- [x] Migrate [`modules/common-model`](../modules/common-model/build.gradle) without breaking Java callers.
 - [ ] Migrate [`modules/crypto-core`](../modules/crypto-core/build.gradle) with byte-level behavior tests.
 - [ ] Migrate [`modules/stego-core`](../modules/stego-core/build.gradle) after crypto validation.
 - [ ] Migrate [`modules/chat-core`](../modules/chat-core/build.gradle) and run chat integration tests.
