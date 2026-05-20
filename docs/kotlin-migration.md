@@ -68,6 +68,10 @@ Status: completed. The clean full build passed, Android debug assembly was cover
 - Recheck module dependency rules before changing these modules, because current build files depend on [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
 - Keep these modules small and profile-oriented; do not introduce UI code or Android-specific dependencies.
 
+Status: completed. [`modules/audio-core`](../modules/audio-core/build.gradle) and [`modules/webcam-core`](../modules/webcam-core/build.gradle) now use Kotlin JVM and keep Java-callable record-style profile DTOs through Kotlin JVM records.
+
+Compatibility note: Kotlin 2.2.21 does not yet emit JVM target 25 bytecode, so Kotlin JVM modules compile with JVM target 24 while the Java toolchain remains Java 25. The build explicitly ignores Kotlin/Java target validation for migrated JVM modules until Kotlin supports JVM target 25.
+
 ### Phase 3: Foundation modules
 
 - Migrate [`modules/common-net`](../modules/common-net/build.gradle) before higher-level networking modules.
@@ -174,9 +178,9 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Configure Kotlin JVM toolchain consistently with the Java 25 toolchain.
 - [x] Run Phase 1 clean full build baseline validation.
 - [x] Capture reusable module public API baseline in [`docs/kotlin-api-baseline.md`](kotlin-api-baseline.md).
-- [ ] Enable Kotlin in one low-risk JVM module first.
-- [ ] Migrate [`modules/audio-core`](../modules/audio-core/build.gradle) and validate the full build.
-- [ ] Migrate [`modules/webcam-core`](../modules/webcam-core/build.gradle) and validate the full build.
+- [x] Enable Kotlin in one low-risk JVM module first.
+- [x] Migrate [`modules/audio-core`](../modules/audio-core/build.gradle) and validate the full build.
+- [x] Migrate [`modules/webcam-core`](../modules/webcam-core/build.gradle) and validate the full build.
 - [ ] Migrate [`modules/common-net`](../modules/common-net/build.gradle) and validate transport tests.
 - [ ] Review the public API strategy for [`modules/common-model`](../modules/common-model/build.gradle).
 - [ ] Migrate [`modules/common-model`](../modules/common-model/build.gradle) without breaking Java callers.

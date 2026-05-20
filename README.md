@@ -4,6 +4,7 @@ Secure LAN Suite is a local-network secure communication suite with a JavaFX des
 
 ## Tech stack
 - Java 25
+- Kotlin 2.2.21 for the Android client and migrated JVM core modules
 - Gradle 9.1+ recommended
 - JavaFX 25.0.2
 - Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3 for the experimental Android client
