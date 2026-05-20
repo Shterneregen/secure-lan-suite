@@ -110,6 +110,8 @@ Status: completed. [`modules/chat-core`](../modules/chat-core/build.gradle) and 
 - Preserve diagnostics for provider initialization, SDP, ICE, media devices, audio levels, video frames, preview conversion, and runtime failures.
 - Treat video-related code as experimental and avoid expanding scope during migration.
 
+Status: partially completed. [`modules/webrtc-core`](../modules/webrtc-core/build.gradle) now uses Kotlin JVM for low-risk public event types, service interfaces, request/snapshot/device/status objects, `NoOpRtcEngine`, provider selection, file logging, video diagnostics, and preview policy. The callback-heavy [`WebRtcJavaEngine`](../modules/webrtc-core/src/main/java/com/shterneregen/securelan/webrtc/runtime/WebRtcJavaEngine.java), media device service, video capture/session/sink/conversion utilities, and capability selector remain Java to minimize risk around `webrtc-java` callback interop. Targeted validation passed with `gradlew.bat :modules:webrtc-core:test`.
+
 ### Phase 7: Tests and documentation
 
 - Migrate tests close to the corresponding production module, but do not rewrite tests and production behavior in the same large commit.
@@ -194,8 +196,8 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Migrate [`modules/stego-core`](../modules/stego-core/build.gradle) after crypto validation.
 - [x] Migrate [`modules/chat-core`](../modules/chat-core/build.gradle) and run chat integration tests.
 - [x] Migrate [`modules/file-transfer-core`](../modules/file-transfer-core/build.gradle) and run file transfer integration tests.
-- [ ] Migrate low-risk parts of [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
-- [ ] Decide whether high-risk WebRTC runtime implementation should remain Java.
+- [x] Migrate low-risk parts of [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
+- [x] Decide whether high-risk WebRTC runtime implementation should remain Java.
 - [ ] Run desktop launch validation.
 - [ ] Run Android APK build validation.
 - [ ] Run portable ZIP packaging validation.
