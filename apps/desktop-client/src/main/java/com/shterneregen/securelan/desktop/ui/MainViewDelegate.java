@@ -80,7 +80,6 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressBar;
@@ -138,7 +137,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class MainView {
+final class MainViewDelegate {
     private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "true"));
     private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
     private static final double TRANSFER_LIST_VISIBLE_ROWS = 3;
@@ -312,7 +311,7 @@ public class MainView {
     private final SteganographyService steganographyService;
     private final QuickShareService quickShareService;
 
-    public MainView() {
+    MainViewDelegate() {
         ChatEventPublisher chatPublisher = this::handleChatEvent;
         FileTransferEventPublisher fileTransferPublisher = this::handleFileTransferEvent;
         this.serverService = new DefaultChatServerService(chatPublisher);
@@ -529,13 +528,8 @@ public class MainView {
     private void publishRealtimeProfiles() {
         AudioCallProfile audioProfile = audioProfileService.defaultProfile();
         VideoCallProfile videoProfile = videoProfileService.defaultProfile();
-        audioProfileValue.setText("Audio: %d Hz, %d ch, echo cancel=%s, noise suppression=%s"
-                .formatted(audioProfile.sampleRateHz(), audioProfile.channels(), audioProfile.echoCancellation(), audioProfile.noiseSuppression()));
-        videoProfileValue.setText((LOCAL_VIDEO_PREVIEW_ENABLED
-                ? "Video stage enabled inline with self preview. "
-                : "Video stage enabled inline with self preview disabled by configuration. ")
-                + "Default profile %dx%d @ %d FPS."
-                .formatted(videoProfile.width(), videoProfile.height(), videoProfile.framesPerSecond()));
+        audioProfileValue.setText(DesktopRealtimeFormatters.formatAudioProfile(audioProfile));
+        videoProfileValue.setText(DesktopRealtimeFormatters.formatVideoProfile(videoProfile, LOCAL_VIDEO_PREVIEW_ENABLED));
     }
 
     private void configureMediaDeviceSelectors() {
@@ -1528,7 +1522,7 @@ public class MainView {
         try {
             QuickShareSnapshot snapshot = quickShareService.share(QuickShareCreateRequest.text(
                     text,
-                    firstLineName(text),
+                    DesktopQuickShareFormatters.formatTextDisplayName(text),
                     quickShareExpiration(),
                     quickShareAccessLimit()
             ));
@@ -1560,14 +1554,6 @@ public class MainView {
             throw new IllegalArgumentException("Quick-share access limit must be at least 1");
         }
         return limit;
-    }
-
-    private String firstLineName(String text) {
-        String firstLine = text.lines().findFirst().orElse("shared-text").trim();
-        if (firstLine.isBlank()) {
-            return "shared-text";
-        }
-        return firstLine.length() > 32 ? firstLine.substring(0, 32) : firstLine;
     }
 
     private void copyQuickShareIndexLink() {
@@ -1617,10 +1603,8 @@ public class MainView {
         quickShareItems.setAll(snapshots.stream().map(QuickShareEntry::new).toList());
         if (quickShareService.isRunning()) {
             List<String> landingUrls = quickShareService.landingUrls();
-            quickShareStatusValue.setText("Quick share running on port " + quickShareService.port());
-            quickShareLandingValue.setText(landingUrls.isEmpty()
-                    ? "No LAN URL detected. Check network adapter/firewall."
-                    : "Index: " + String.join(" • ", landingUrls));
+            quickShareStatusValue.setText(DesktopQuickShareFormatters.formatServerStatus(quickShareService.port()));
+            quickShareLandingValue.setText(DesktopQuickShareFormatters.formatLandingValue(landingUrls));
         } else {
             quickShareStatusValue.setText("Quick share idle");
             quickShareLandingValue.setText("Start quick share to get LAN browser links.");
@@ -1635,7 +1619,7 @@ public class MainView {
         selectedStegoCoverPath = file.toPath().toAbsolutePath().normalize();
         stegoCoverPathField.setText(selectedStegoCoverPath.toString());
         if (selectedStegoOutputPath == null) {
-            selectedStegoOutputPath = suggestedStegoOutputPath(selectedStegoCoverPath);
+            selectedStegoOutputPath = DesktopMainViewHelpers.suggestedStegoOutputPath(selectedStegoCoverPath);
             stegoOutputPathField.setText(selectedStegoOutputPath.toString());
         }
         inspectStegoCoverAsync(selectedStegoCoverPath);
@@ -1648,7 +1632,7 @@ public class MainView {
             if (parent != null && Files.isDirectory(parent)) {
                 chooser.setInitialDirectory(parent.toFile());
             }
-            chooser.setInitialFileName(suggestedStegoOutputPath(selectedStegoCoverPath).getFileName().toString());
+            chooser.setInitialFileName(DesktopMainViewHelpers.suggestedStegoOutputPath(selectedStegoCoverPath).getFileName().toString());
         }
         File file = chooser.showSaveDialog(null);
         if (file == null) {
@@ -1811,16 +1795,6 @@ public class MainView {
         return chooser;
     }
 
-    private Path suggestedStegoOutputPath(Path coverPath) {
-        String fileName = coverPath.getFileName().toString();
-        int extensionIndex = fileName.toLowerCase(Locale.ROOT).lastIndexOf(".bmp");
-        String outputName = extensionIndex > 0
-                ? fileName.substring(0, extensionIndex) + "-stego.bmp"
-                : fileName + "-stego.bmp";
-        Path parent = coverPath.getParent();
-        return (parent == null ? Path.of(outputName) : parent.resolve(outputName)).toAbsolutePath().normalize();
-    }
-
     private Path ensureBmpExtension(Path path) {
         String text = path.toString();
         if (text.toLowerCase(Locale.ROOT).endsWith(".bmp")) {
@@ -1860,15 +1834,13 @@ public class MainView {
     }
 
     private int localFilePort() {
-        if (serverService.isRunning()) {
-            return Integer.parseInt(serverFilePortField.getText().trim());
-        }
-        int remoteFilePort = Integer.parseInt(clientFilePortField.getText().trim());
-        int candidate = remoteFilePort + CLIENT_FILE_PORT_OFFSET;
-        if (candidate > 65535) {
-            candidate = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + CLIENT_FILE_PORT_OFFSET;
-        }
-        return candidate;
+        return DesktopMainViewHelpers.resolveLocalFilePort(
+                serverService.isRunning(),
+                serverFilePortField.getText().trim(),
+                clientFilePortField.getText().trim(),
+                NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
+                CLIENT_FILE_PORT_OFFSET
+        );
     }
 
     private int localChatPort() {
@@ -1909,7 +1881,7 @@ public class MainView {
         alert.setHeaderText("Accept file from " + metadata.senderId() + "?");
         alert.setContentText("File: " + metadata.fileName()
                 + System.lineSeparator()
-                + "Size: " + formatMegabytes(metadata.fileSize())
+                + "Size: " + DesktopTransferFormatters.formatMegabytes(metadata.fileSize())
                 + System.lineSeparator()
                 + "Remote: " + remoteAddress);
         Optional<ButtonType> result = alert.showAndWait();
@@ -1919,12 +1891,7 @@ public class MainView {
     }
 
     private String fileTransferErrorMessage(Throwable error) {
-        Throwable candidate = error.getCause() != null ? error.getCause() : error;
-        String message = candidate.getMessage();
-        if (message == null || message.isBlank()) {
-            return candidate.getClass().getSimpleName();
-        }
-        return message;
+        return DesktopMainViewHelpers.fileTransferErrorMessage(error);
     }
 
     private void startRealtimeSession(RtcSessionMode mode) {
@@ -2040,20 +2007,7 @@ public class MainView {
     }
 
     private String hostFromRemoteAddress(String remoteAddress) {
-        String value = remoteAddress == null ? "" : remoteAddress.trim();
-        if (value.isBlank()) {
-            return "";
-        }
-        int slash = value.lastIndexOf('/');
-        if (slash >= 0) {
-            value = value.substring(slash + 1);
-        }
-        if (value.startsWith("[")) {
-            int closing = value.indexOf(']');
-            return closing > 0 ? value.substring(1, closing) : value;
-        }
-        int colon = value.lastIndexOf(':');
-        return colon > 0 ? value.substring(0, colon) : value;
+        return DesktopMainViewHelpers.hostFromRemoteAddress(remoteAddress);
     }
 
     private int inferredClientFilePort() {
@@ -2192,13 +2146,7 @@ public class MainView {
     }
 
     private void refreshRealtimeRuntimeValue(RtcRuntimeStatus status) {
-        if (status == null) {
-            realtimeRuntimeValue.setText("Unavailable");
-            return;
-        }
-        realtimeRuntimeValue.setText(status.available()
-                ? status.providerName() + " ready"
-                : "Unavailable — " + status.message());
+        realtimeRuntimeValue.setText(DesktopRealtimeFormatters.formatRuntimeStatus(status));
     }
 
     private void updateVideoStageFromRtc(RtcStateChangedEvent event) {
@@ -2312,8 +2260,7 @@ public class MainView {
         ProgressBar bar = event.local() ? localAudioLevelBar : remoteAudioLevelBar;
         Label label = event.local() ? localAudioStatusValue : remoteAudioStatusValue;
         bar.setProgress(Math.max(0d, Math.min(1d, event.level())));
-        String peerInfo = event.local() ? "local microphone" : event.peer();
-        label.setText((event.active() ? "Active" : "Quiet") + " — " + peerInfo + " — " + Math.round(event.level() * 100) + "%");
+        label.setText(DesktopRealtimeFormatters.formatAudioLevel(event.active(), event.local(), event.peer(), event.level()));
     }
 
     private void clearRealtimeMediaUi() {
@@ -2467,10 +2414,7 @@ public class MainView {
     }
 
     private boolean samePeer(PeerPresence peer, String nickname, String peerId) {
-        if (peerId != null && !peerId.isBlank() && peer.peerId() != null && !peer.peerId().isBlank()) {
-            return peer.peerId().equals(peerId);
-        }
-        return peer.nickname().equalsIgnoreCase(nickname);
+        return DesktopMainViewHelpers.samePeer(peer, nickname, peerId);
     }
 
     private boolean markPeerOffline(String nickname) {
@@ -2479,8 +2423,7 @@ public class MainView {
         }
         for (PeerPresence item : peerItems) {
             if (item.nickname().equalsIgnoreCase(nickname)) {
-                boolean changed = item.online;
-                item.online = false;
+                boolean changed = item.markOffline();
                 if (changed) {
                     peerListView.refresh();
                     sortPeers();
@@ -2523,15 +2466,7 @@ public class MainView {
             conversationTitleValue.setText("Shared room activity");
             conversationSubtitleValue.setText("Actions on the right will target “" + peer.nickname() + "”. Text chat remains shared for now.");
             selectedPeerTitleValue.setText(peer.nickname());
-            selectedPeerMetaValue.setText(peer.online()
-                    ? clientService.isConnected()
-                    ? peer.discovered()
-                    ? "Online via chat and LAN discovery — " + peer.host() + ":" + peer.chatPort() + " chat, " + peer.filePort() + " file."
-                    : "Online in chat — voice and video are available."
-                    : peer.discovered()
-                    ? "Discovered via LAN — connect to chat before sending files or starting calls."
-                    : "Online candidate — connect to chat before starting voice or video."
-                    : "Offline — wait until this peer rejoins the chat or discovery refreshes.");
+            selectedPeerMetaValue.setText(DesktopPeerFormatters.formatSelectedPeerMeta(peer, clientService.isConnected()));
             setPeerStatus(peer.online() ? "Peer " + peer.nickname() : "Peer offline", peer.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
         }
         updateQuickActionState();
@@ -2544,21 +2479,12 @@ public class MainView {
     private void refreshTransferEntries() {
         transferItems.setAll(transferEntries.values());
         long activeCount = transferEntries.values().stream().filter(TransferEntry::active).count();
-        if (activeCount == 0 && transferEntries.isEmpty()) {
-            transferHintValue.setText("No transfers yet");
-        } else if (activeCount == 0) {
-            transferHintValue.setText("No active transfers. Recent results remain visible below.");
-        } else {
-            transferHintValue.setText(activeCount + " active transfer" + (activeCount == 1 ? "" : "s"));
-        }
+        transferHintValue.setText(DesktopTransferFormatters.formatTransferHint(activeCount, !transferEntries.isEmpty()));
     }
 
     private String activeTransferSummary() {
         long activeCount = transferEntries.values().stream().filter(TransferEntry::active).count();
-        if (activeCount == 0) {
-            return "Transfers idle";
-        }
-        return activeCount + " transfer" + (activeCount == 1 ? " active" : "s active");
+        return DesktopTransferFormatters.formatActiveTransferSummary(activeCount);
     }
 
     private void setServerStatus(String value, Color color) {
@@ -2612,330 +2538,12 @@ public class MainView {
         view.getStyleClass().add("video-preview");
     }
 
-    private static String formatMegabytes(long bytes) {
-        double megabytes = bytes / (1024.0 * 1024.0);
-        return String.format(Locale.ROOT, "%.2f MB", megabytes);
-    }
-
-    private static String formatTransferSpeed(double bytesPerSecond) {
-        if (bytesPerSecond >= 1024.0 * 1024.0) {
-            return String.format(Locale.ROOT, "%.1f MB/s avg", bytesPerSecond / (1024.0 * 1024.0));
-        }
-        if (bytesPerSecond >= 1024.0) {
-            return String.format(Locale.ROOT, "%.0f KB/s avg", bytesPerSecond / 1024.0);
-        }
-        return String.format(Locale.ROOT, "%.0f B/s avg", bytesPerSecond);
-    }
-
     private void showError(String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("Error");
         alert.setHeaderText("Operation failed");
         alert.setContentText(message);
         alert.showAndWait();
-    }
-
-    private static final class PeerPresence {
-        private final String nickname;
-        private boolean online;
-        private String peerId;
-        private String host;
-        private int chatPort;
-        private int filePort;
-        private Instant lastSeen;
-
-        private PeerPresence(String nickname, boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen) {
-            this.nickname = nickname;
-            this.online = online;
-            this.peerId = peerId;
-            this.host = host;
-            this.chatPort = chatPort;
-            this.filePort = filePort;
-            this.lastSeen = lastSeen;
-        }
-
-        private boolean apply(boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen) {
-            boolean changed = this.online != online;
-            this.online = online;
-            if (peerId != null && !peerId.isBlank() && !Objects.equals(this.peerId, peerId)) {
-                this.peerId = peerId;
-                changed = true;
-            }
-            if (host != null && !host.isBlank() && !Objects.equals(this.host, host)) {
-                this.host = host;
-                changed = true;
-            }
-            if (chatPort > 0 && this.chatPort != chatPort) {
-                this.chatPort = chatPort;
-                changed = true;
-            }
-            if (filePort > 0 && this.filePort != filePort) {
-                this.filePort = filePort;
-                changed = true;
-            }
-            if (lastSeen != null && !Objects.equals(this.lastSeen, lastSeen)) {
-                this.lastSeen = lastSeen;
-                changed = true;
-            }
-            return changed;
-        }
-
-        public String nickname() {
-            return nickname;
-        }
-
-        public boolean online() {
-            return online;
-        }
-
-        public String peerId() {
-            return peerId;
-        }
-
-        public String host() {
-            return host;
-        }
-
-        public int chatPort() {
-            return chatPort;
-        }
-
-        public int filePort() {
-            return filePort;
-        }
-
-        public Instant lastSeen() {
-            return lastSeen;
-        }
-
-        public boolean discovered() {
-            return host != null && !host.isBlank() && chatPort > 0 && filePort > 0;
-        }
-    }
-
-    private static final class QuickShareEntry {
-        private final QuickShareSnapshot snapshot;
-
-        private QuickShareEntry(QuickShareSnapshot snapshot) {
-            this.snapshot = snapshot;
-        }
-
-        private String id() {
-            return snapshot.id();
-        }
-
-        private String url() {
-            return snapshot.primaryUrl();
-        }
-
-        private boolean active() {
-            return snapshot.active();
-        }
-    }
-
-    private static final class TransferEntry {
-        private static final long SPEED_DISPLAY_INTERVAL_NANOS = 750_000_000L;
-
-        private final String transferId;
-        private final String fileName;
-        private final boolean outgoing;
-        private String status;
-        private int percent;
-        private long totalBytes;
-        private final long startNanos;
-        private long lastTransferredBytes;
-        private long lastSpeedDisplayNanos;
-        private double speedBytesPerSecond;
-
-        private TransferEntry(String transferId, String fileName, boolean outgoing, String status, int percent, long totalBytes) {
-            this.transferId = transferId;
-            this.fileName = fileName;
-            this.outgoing = outgoing;
-            this.status = status;
-            this.percent = percent;
-            this.totalBytes = totalBytes;
-            this.startNanos = System.nanoTime();
-            this.lastTransferredBytes = 0;
-            this.lastSpeedDisplayNanos = 0;
-            this.speedBytesPerSecond = 0;
-        }
-
-        private boolean active() {
-            return "Sending".equals(status) || "Receiving".equals(status);
-        }
-
-        private String directionLabel() {
-            return outgoing ? "↑ Sent" : "↓ Received";
-        }
-
-        private void updateProgress(long transferredBytes, int percent, long totalBytes) {
-            long now = System.nanoTime();
-            long elapsedNanos = now - startNanos;
-            if (transferredBytes >= 0 && elapsedNanos > 0
-                    && (speedBytesPerSecond == 0
-                    || now - lastSpeedDisplayNanos >= SPEED_DISPLAY_INTERVAL_NANOS
-                    || percent >= 100)) {
-                speedBytesPerSecond = transferredBytes * 1_000_000_000.0 / elapsedNanos;
-                lastSpeedDisplayNanos = now;
-            }
-            this.percent = percent;
-            this.totalBytes = totalBytes;
-            this.lastTransferredBytes = transferredBytes;
-        }
-
-        private void stopSpeedTracking() {
-            speedBytesPerSecond = 0;
-        }
-    }
-
-    private record MediaDeviceChoice(String deviceId, String label, boolean systemDefault, boolean defaultDevice) {
-        private static MediaDeviceChoice systemDefault(String label) {
-            return new MediaDeviceChoice("", label, true, true);
-        }
-
-        private static MediaDeviceChoice of(RtcMediaDevice device) {
-            return new MediaDeviceChoice(device.id(), device.name(), false, device.defaultDevice());
-        }
-
-        private boolean matches(String selectedDeviceId) {
-            String normalized = selectedDeviceId == null ? "" : selectedDeviceId.trim();
-            return deviceId.equals(normalized);
-        }
-
-        @Override
-        public String toString() {
-            if (systemDefault) {
-                return label;
-            }
-            return defaultDevice ? label + " (default)" : label;
-        }
-    }
-
-    private static final class MediaDeviceChoiceCell extends ListCell<MediaDeviceChoice> {
-        @Override
-        protected void updateItem(MediaDeviceChoice item, boolean empty) {
-            super.updateItem(item, empty);
-            setText(empty || item == null ? null : item.toString());
-            setGraphic(null);
-        }
-    }
-
-    private static String peerMeta(PeerPresence item) {
-        if (!item.online()) {
-            return item.discovered() ? "offline • " + item.host() : "offline";
-        }
-        if (item.discovered()) {
-            return "discovered • " + item.host() + ":" + item.chatPort() + " • file " + item.filePort();
-        }
-        return "chat • voice • video • file";
-    }
-
-    private static final class PeerCell extends ListCell<PeerPresence> {
-        @Override
-        protected void updateItem(PeerPresence item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-                setGraphic(null);
-                return;
-            }
-
-            Circle dot = new Circle(5, item.online() ? Color.web("#1f9d55") : Color.web("#9aa4b2"));
-            Label name = new Label(item.nickname());
-            name.getStyleClass().add("list-primary");
-            Label meta = new Label(peerMeta(item));
-            meta.getStyleClass().add("list-secondary");
-            VBox textBox = new VBox(2, name, meta);
-            HBox row = new HBox(8, dot, textBox);
-            row.getStyleClass().add("list-row");
-            row.setAlignment(Pos.CENTER_LEFT);
-            if (!getStyleClass().contains("content-list-cell")) {
-                getStyleClass().add("content-list-cell");
-            }
-            setGraphic(row);
-        }
-    }
-
-    private static final class QuickShareCell extends ListCell<QuickShareEntry> {
-        private final java.util.function.Consumer<QuickShareEntry> copyAction;
-        private final java.util.function.Consumer<QuickShareEntry> stopAction;
-
-        private QuickShareCell(java.util.function.Consumer<QuickShareEntry> copyAction,
-                               java.util.function.Consumer<QuickShareEntry> stopAction) {
-            this.copyAction = copyAction;
-            this.stopAction = stopAction;
-        }
-
-        @Override
-        protected void updateItem(QuickShareEntry item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-                setGraphic(null);
-                return;
-            }
-
-            QuickShareSnapshot snapshot = item.snapshot;
-            Label name = new Label(snapshot.displayName());
-            name.getStyleClass().add("list-primary");
-            String metaText = snapshot.type().name().toLowerCase(Locale.ROOT)
-                    + " — " + snapshot.status().name().toLowerCase(Locale.ROOT).replace('_', ' ')
-                    + " — " + snapshot.accessCount() + "/" + snapshot.accessLimit()
-                    + " — expires " + snapshot.expiresAt();
-            Label meta = new Label(metaText);
-            meta.getStyleClass().add("list-secondary");
-            Button copyButton = new Button("Copy");
-            Button stopButton = new Button("Stop");
-            copyButton.getStyleClass().addAll("app-button", "secondary-button");
-            stopButton.getStyleClass().addAll("app-button", "danger-button");
-            copyButton.setOnAction(event -> copyAction.accept(item));
-            stopButton.setOnAction(event -> stopAction.accept(item));
-            stopButton.setDisable(!item.active());
-            VBox textBox = new VBox(2, name, meta);
-            HBox row = new HBox(8, textBox, copyButton, stopButton);
-            HBox.setHgrow(textBox, Priority.ALWAYS);
-            row.getStyleClass().add("list-row");
-            row.setAlignment(Pos.CENTER_LEFT);
-            if (!getStyleClass().contains("content-list-cell")) {
-                getStyleClass().add("content-list-cell");
-            }
-            setGraphic(row);
-        }
-    }
-
-    private static final class TransferCell extends ListCell<TransferEntry> {
-        @Override
-        protected void updateItem(TransferEntry item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-                setGraphic(null);
-                return;
-            }
-
-            Label name = new Label(item.fileName);
-            name.getStyleClass().add("list-primary");
-            String metaText = item.directionLabel() + " — " + item.status;
-            if (item.percent > 0 && item.percent < 100 && item.active()) {
-                metaText += " — " + item.percent + "%";
-            } else if (item.percent == 100 && "Completed".equals(item.status)) {
-                metaText += " — 100%";
-            }
-            if (item.totalBytes > 0) {
-                metaText += " — " + formatMegabytes(item.totalBytes);
-            }
-            if (item.active() && item.speedBytesPerSecond > 0) {
-                metaText += " — " + formatTransferSpeed(item.speedBytesPerSecond);
-            }
-            Label meta = new Label(metaText);
-            meta.getStyleClass().add("list-secondary");
-            VBox box = new VBox(2, name, meta);
-            box.getStyleClass().add("list-row");
-            if (!getStyleClass().contains("content-list-cell")) {
-                getStyleClass().add("content-list-cell");
-            }
-            setGraphic(box);
-        }
     }
 
     @FunctionalInterface

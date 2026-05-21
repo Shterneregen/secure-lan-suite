@@ -37,7 +37,9 @@ flowchart TD
     D --> E[Migrate crypto and stego]
     E --> F[Migrate chat and file transfer]
     F --> G[Migrate WebRTC last]
-    G --> H[Validate desktop Android and packaging]
+    G --> H[Migrate reusable module tests and docs]
+    H --> I[Migrate desktop client incrementally]
+    I --> J[Validate desktop Android and packaging]
 ```
 
 ## Migration phases
@@ -121,6 +123,47 @@ Status: partially completed. [`modules/webrtc-core`](../modules/webrtc-core/buil
 
 Status: completed for the reusable-module test and documentation migration scope. Remaining Java JUnit tests in migrated reusable modules were moved from `src/test/java` to `src/test/kotlin` without changing the covered protocol, crypto, stego, transport, chat, file-transfer, or quick-share behaviors. The public overview already lists Kotlin as part of the core stack, and [`docs/development.md`](development.md) now notes that Kotlin core sources and tests are built through Gradle with no separate local Kotlin installation required. Targeted validation passed with `gradlew.bat :modules:common-model:test :modules:common-net:test :modules:crypto-core:test :modules:stego-core:test :modules:chat-core:test :modules:file-transfer-core:test`.
 
+### Phase 8: Desktop client migration
+
+Goal: migrate [`apps/desktop-client`](../apps/desktop-client/build.gradle) to Kotlin incrementally after reusable modules are stable, without changing JavaFX behavior, LAN interoperability, or packaging outputs.
+
+- The Kotlin JVM plugin is enabled in [`apps/desktop-client`](../apps/desktop-client/build.gradle) without changing the JavaFX plugin, Application plugin, Java 25 toolchain, packaging tasks, or the existing dependency graph.
+- Keep the Java launcher [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) and JavaFX application boundary [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java) in place so [`application.mainClass`](../apps/desktop-client/build.gradle:8), JAR manifest generation, and `jpackage` tasks continue to resolve `com.shterneregen.securelan.desktop.Main`.
+- The public desktop `MainView` source is now [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt). It must preserve JVM class identity `com.shterneregen.securelan.desktop.ui.MainView`, the no-argument constructor, and Java-callable `createContent()` / `shutdown()` lifecycle methods used by [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java).
+- The source-equivalent JavaFX implementation intentionally remains in package-private [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) for the current interop slice; do not document the removed `MainView.java` as the current public desktop source.
+- Continue extracting delegate/panel logic incrementally from [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java), reusing existing Kotlin helper models, list cells, and formatter files instead of inlining them back into the shell.
+- Migrate extracted helpers and UI panels one area at a time: connection/status bar, peer list, chat workspace, file transfer controls, quick share controls, steganography controls, and realtime media controls.
+- Keep JavaFX event handlers, listeners, observable lists, image updates, and nullable stage/image state under explicit review because Kotlin null-safety and JavaFX overloaded APIs can subtly change behavior.
+- Keep RTC video and camera-preview UI migration late within this phase because it depends on callback-heavy runtime state and experimental video diagnostics.
+- Change the application entry point to Kotlin only after `run`, portable packaging, and EXE packaging have been validated with the Java launcher. If the launcher remains Java permanently, document that as an intentional packaging-stability choice.
+- Preserve CSS/resource loading, icon loading, JavaFX native-access JVM arguments, runtime classpath contents, and output locations for [`buildPortable`](../apps/desktop-client/build.gradle:100), [`createExe`](../apps/desktop-client/build.gradle:119), and [`buildExe`](../apps/desktop-client/build.gradle:158).
+- Update [`docs/development.md`](development.md), packaging notes, and this migration baseline if desktop Kotlin sources or launcher/packaging behavior become part of the official workflow.
+
+Suggested desktop migration order:
+
+```mermaid
+flowchart TD
+    A[Enable Kotlin JVM in desktop module] --> B[Keep Java launcher stable]
+    B --> C[Migrate desktop services]
+    C --> D[Extract MainView helpers]
+    D --> E[Migrate helper models and adapters]
+    E --> F[Replace public MainView shell with Kotlin]
+    F --> G[Migrate package-private delegate and UI panels]
+    G --> H[Optional Kotlin entry point]
+    H --> I[Validate run and packaging]
+```
+
+Desktop-specific acceptance criteria:
+
+- [`gradlew.bat :apps:desktop-client:build`](../gradlew.bat) succeeds after each desktop migration slice.
+- [`gradlew.bat :apps:desktop-client:run`](../gradlew.bat) launches the UI and verifies room hosting, manual connect, discovery, chat send/receive, encrypted file transfer, quick share, steganography, voice, and existing experimental video/camera preview behavior.
+- [`gradlew.bat :apps:desktop-client:buildPortable`](../gradlew.bat) produces a portable ZIP that includes Kotlin runtime dependencies and launches from the generated app image.
+- [`gradlew.bat :apps:desktop-client:buildExe`](../gradlew.bat) remains valid on a WiX-enabled Windows environment, or the limitation is explicitly documented if WiX is unavailable during validation.
+- The desktop client remains an application boundary only; no reusable core module depends on [`apps/desktop-client`](../apps/desktop-client/build.gradle).
+- No JavaFX code is moved into reusable core modules.
+
+Status: started. [`apps/desktop-client`](../apps/desktop-client/build.gradle) now applies the Kotlin JVM plugin while keeping the Java launcher, JavaFX plugin, Application plugin, packaging tasks, dependencies, and main-class configuration unchanged. The attempted duplicate desktop nickname service was removed in favor of the shared [`DefaultRandomNicknameService`](../modules/chat-core/src/main/kotlin/com/shterneregen/securelan/chat/service/impl/DefaultRandomNicknameService.kt) from chat-core. Safe desktop slices extracted transfer, quick-share, realtime, peer, media-device, list-cell, and low-risk main-view helper logic to Kotlin helpers with desktop-client tests. The public desktop `MainView` JVM class is now provided by [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt), preserving the no-argument constructor plus Java-callable `createContent()` and `shutdown()` lifecycle methods for [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java). The source-equivalent JavaFX implementation was renamed to package-private [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) to avoid a duplicate `MainView` JVM class while keeping behavior stable for this controlled interop slice. Targeted validation passed with `gradlew.bat :apps:desktop-client:test :apps:desktop-client:build`.
+
 ## Pros of moving from Java to Kotlin
 
 - Less boilerplate in models, events, request objects, and tests.
@@ -145,29 +188,29 @@ Status: completed for the reusable-module test and documentation migration scope
 
 ## Desktop client Kotlin assessment
 
-The desktop client can be migrated to Kotlin, but it should not be the first migration target.
+The desktop client migration is now in Phase 8 after the reusable modules. Kotlin is enabled in the desktop module, low-risk helpers have been extracted, and the public `MainView` JVM class is provided by [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt). The large JavaFX implementation remains intentionally isolated in package-private [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) until smaller UI panels can be extracted and validated.
 
-### Why it is technically possible
+### Current desktop boundary
 
-- JavaFX APIs can be used from Kotlin.
-- The desktop module can remain a JVM application module.
-- The existing Application plugin configuration in [`apps/desktop-client/build.gradle`](../apps/desktop-client/build.gradle:3) can continue to produce a runnable application.
-- Packaging with [`jpackage`](../apps/desktop-client/build.gradle:80) can still work if the main class and runtime classpath are correct.
+- [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) remains the Application-plugin, manifest, and packaging launcher.
+- [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java) remains Java and constructs the Kotlin-backed public `MainView` class.
+- [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) is a Kotlin compatibility shell that delegates to [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java).
+- Existing Kotlin desktop helpers include models, formatter files, list cells, and low-risk main-view helper functions under [`apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui).
 
-### Why it should be delayed
+### Why remaining work stays incremental
 
-- The main UI class [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) is very large and should be split before language migration.
 - JavaFX listeners, properties, overloaded methods, and nullable UI state require careful Kotlin interop.
 - The desktop client depends on almost every reusable module through [`apps/desktop-client/build.gradle`](../apps/desktop-client/build.gradle:21), so core API churn would affect it heavily.
 - Packaging tasks depend on main JAR naming, runtime classpath, and main class configuration in [`apps/desktop-client/build.gradle`](../apps/desktop-client/build.gradle:42).
+- Realtime voice/video and camera-preview UI paths remain higher risk because they depend on callback-heavy runtime state and experimental video diagnostics.
 
 ### Recommended desktop path
 
-- Keep the current Java launcher initially.
-- Extract smaller UI components and desktop services from [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java).
-- Migrate non-UI desktop services before UI panels.
-- Migrate UI panels one at a time.
-- Change the application entry point only after packaging tasks are verified.
+- Keep the current Java launcher until runtime smoke checks and packaging validation are complete.
+- Continue extracting smaller UI components from [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java).
+- Migrate delegate/panel code one area at a time, preserving current JavaFX UX, resource loading, service orchestration, and protocol behavior.
+- Run desktop launch smoke validation before portable ZIP packaging validation.
+- Change the application entry point only after packaging tasks are verified, or document the Java launcher as a permanent packaging-stability boundary.
 
 ## Acceptance criteria
 
@@ -201,6 +244,12 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Migrate low-risk parts of [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
 - [x] Decide whether high-risk WebRTC runtime implementation should remain Java.
 - [x] Migrate reusable module tests to Kotlin test sources.
+- [x] Add Kotlin JVM support to [`apps/desktop-client`](../apps/desktop-client/build.gradle) without breaking JavaFX run or packaging tasks.
+- [x] Migrate desktop non-UI services before JavaFX UI code.
+- [x] Extract small helpers and panel-level boundaries from the desktop main view before converting the public `MainView` shell.
+- [x] Replace the public desktop `MainView` source with [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt), preserving JVM class identity and Java-callable lifecycle methods through a package-private [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java).
+- [ ] Continue migrating the package-private desktop UI delegate/panels incrementally and validate each slice with desktop launch checks.
+- [ ] Decide whether the desktop launcher should remain Java or move to Kotlin after packaging validation.
 - [ ] Run desktop launch validation.
 - [ ] Run Android APK build validation.
 - [ ] Run portable ZIP packaging validation.
@@ -209,4 +258,4 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 
 ## Recommended next decision
 
-Start with build foundation and a proof-of-migration on [`modules/audio-core`](../modules/audio-core/build.gradle). This gives the project a safe Kotlin JVM setup before touching public models, protocols, cryptography, file transfer, or WebRTC runtime code.
+Continue from the current desktop baseline: keep [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) as the public Kotlin shell, extract and migrate [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) panels incrementally, then run desktop launch smoke checks before portable ZIP and WiX EXE packaging validation.

@@ -1,6 +1,7 @@
 import static java.io.File.pathSeparator
 
 plugins {
+    id 'org.jetbrains.kotlin.jvm'
     id 'application'
     id 'org.openjfx.javafxplugin' version '0.1.0'
 }

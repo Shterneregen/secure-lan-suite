@@ -2,13 +2,13 @@ package com.shterneregen.securelan.chat.service.impl
 
 import com.shterneregen.securelan.chat.service.RandomNicknameService
 import java.security.SecureRandom
-import java.util.Objects
 import java.util.random.RandomGenerator
 
 class DefaultRandomNicknameService @JvmOverloads constructor(
-    randomGenerator: RandomGenerator = SecureRandom(),
+    randomGenerator: RandomGenerator? = SecureRandom(),
 ) : RandomNicknameService {
-    private val randomGenerator: RandomGenerator = Objects.requireNonNull(randomGenerator, "randomGenerator must not be null")
+    private val randomGenerator: RandomGenerator =
+        randomGenerator ?: throw NullPointerException("randomGenerator must not be null")
 
     override fun generate(): String = NICKNAMES[randomGenerator.nextInt(NICKNAMES.size)]
 
