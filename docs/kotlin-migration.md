@@ -119,6 +119,8 @@ Status: partially completed. [`modules/webrtc-core`](../modules/webrtc-core/buil
 - Update [`docs/development.md`](development.md) if build, run, or environment requirements change.
 - Update packaging documentation if Kotlin runtime dependencies affect desktop distributions.
 
+Status: completed for the reusable-module test and documentation migration scope. Remaining Java JUnit tests in migrated reusable modules were moved from `src/test/java` to `src/test/kotlin` without changing the covered protocol, crypto, stego, transport, chat, file-transfer, or quick-share behaviors. The public overview already lists Kotlin as part of the core stack, and [`docs/development.md`](development.md) now notes that Kotlin core sources and tests are built through Gradle with no separate local Kotlin installation required. Targeted validation passed with `gradlew.bat :modules:common-model:test :modules:common-net:test :modules:crypto-core:test :modules:stego-core:test :modules:chat-core:test :modules:file-transfer-core:test`.
+
 ## Pros of moving from Java to Kotlin
 
 - Less boilerplate in models, events, request objects, and tests.
@@ -198,11 +200,12 @@ The desktop client can be migrated to Kotlin, but it should not be the first mig
 - [x] Migrate [`modules/file-transfer-core`](../modules/file-transfer-core/build.gradle) and run file transfer integration tests.
 - [x] Migrate low-risk parts of [`modules/webrtc-core`](../modules/webrtc-core/build.gradle).
 - [x] Decide whether high-risk WebRTC runtime implementation should remain Java.
+- [x] Migrate reusable module tests to Kotlin test sources.
 - [ ] Run desktop launch validation.
 - [ ] Run Android APK build validation.
 - [ ] Run portable ZIP packaging validation.
 - [ ] Run Windows EXE packaging validation where WiX is available.
-- [ ] Update [`README.md`](../README.md) and [`docs/development.md`](development.md) if the official stack or build flow changes.
+- [x] Update [`README.md`](../README.md) and [`docs/development.md`](development.md) if the official stack or build flow changes.
 
 ## Recommended next decision
 

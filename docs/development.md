@@ -6,6 +6,7 @@ This guide contains local development, build, run, packaging, and smoke-test not
 
 - JDK 25 installed and active.
 - Gradle 9.1 or newer is recommended for Java 25. The repository uses the Gradle Wrapper, so normal builds should use `gradlew` or `gradlew.bat` from the repository root.
+- Kotlin 2.2.21 is used by the Android client and migrated JVM core modules, including Kotlin test sources; use the Gradle Wrapper rather than installing a separate local Kotlin compiler.
 - Internet access on the first Gradle build so dependencies can be downloaded.
 - Android SDK Platform 35 and Android SDK Platform Tools are required when building or installing `apps/android-client`.
 - Windows only: WiX 5.0.2 installed and available in `PATH` for EXE packaging.
