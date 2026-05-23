@@ -1,5 +1,9 @@
 package com.shterneregen.securelan.desktop.ui
 
+import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
+import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
+import com.shterneregen.securelan.common.model.rtc.RtcSessionState
+import com.shterneregen.securelan.stego.model.BmpCapacity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -39,6 +43,31 @@ class DesktopMainViewHelpersTest {
     }
 
     @Test
+    fun shouldKeepBmpExtensionWhenEnsuringBmpPath() {
+        val path = Path.of("images", "cover.BMP").toAbsolutePath().normalize()
+
+        assertEquals(path, DesktopMainViewHelpers.ensureBmpExtension(path))
+    }
+
+    @Test
+    fun shouldAppendBmpExtensionWhenEnsuringBmpPath() {
+        assertEquals(
+            Path.of("images", "cover.png.bmp").toAbsolutePath().normalize(),
+            DesktopMainViewHelpers.ensureBmpExtension(Path.of("images", "cover.png")),
+        )
+    }
+
+    @Test
+    fun shouldFormatStegoCapacity() {
+        val capacity = BmpCapacity(320, 240, 24, 230_400, 54, 7_680)
+
+        assertEquals(
+            "Capacity: 7680 bytes payload in 320x240 24-bit BMP",
+            DesktopMainViewHelpers.formatStegoCapacity(capacity),
+        )
+    }
+
+    @Test
     fun shouldUseServerFilePortWhenServerRuns() {
         assertEquals(
             5556,
@@ -74,6 +103,30 @@ class DesktopMainViewHelpersTest {
                 serverRunning = false,
                 serverFilePortText = "5556",
                 clientFilePortText = "65000",
+                defaultFileTransferPort = 6001,
+                clientFilePortOffset = 1000,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldInferClientFilePortFromHostedFilePort() {
+        assertEquals(
+            6556,
+            DesktopMainViewHelpers.resolveInferredClientFilePort(
+                hostFilePortText = "5556",
+                defaultFileTransferPort = 6001,
+                clientFilePortOffset = 1000,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldFallbackWhenInferredClientFilePortExceedsMaximumPort() {
+        assertEquals(
+            7001,
+            DesktopMainViewHelpers.resolveInferredClientFilePort(
+                hostFilePortText = "65000",
                 defaultFileTransferPort = 6001,
                 clientFilePortOffset = 1000,
             ),
@@ -122,10 +175,144 @@ class DesktopMainViewHelpersTest {
         assertTrue(DesktopMainViewHelpers.samePeer(peer(peerId = null), nickname = "alice", peerId = null))
     }
 
+    @Test
+    fun shouldFormatDiscoveryBroadcastMessage() {
+        val config = PeerDiscoveryConfig.defaults("peer-1", "Alice", 5555, 5556, true)
+
+        assertEquals(
+            "[discovery] broadcasting as Alice on UDP ${config.discoveryPort}",
+            DesktopMainViewHelpers.discoveryStartedMessage(config),
+        )
+    }
+
+    @Test
+    fun shouldFormatHiddenDiscoveryMessage() {
+        val config = PeerDiscoveryConfig.defaults("peer-1", "Alice", 5555, 5556, false)
+
+        assertEquals(
+            "[discovery] room is hidden; listening on UDP ${config.discoveryPort} without broadcasting",
+            DesktopMainViewHelpers.discoveryStartedMessage(config),
+        )
+    }
+
+    @Test
+    fun shouldFormatDiscoveryListenOnlyMessage() {
+        assertEquals("[discovery] listening on UDP 54545", DesktopMainViewHelpers.discoveryListeningMessage(54545))
+    }
+
+    @Test
+    fun shouldFormatDiscoveryErrorAndVisibilityMessages() {
+        assertEquals(
+            "[discovery-error] socket failed -> bind failed",
+            DesktopMainViewHelpers.discoveryErrorDiagnostics("socket failed", IllegalStateException("bind failed")),
+        )
+        assertEquals(
+            "[discovery-error] socket failed",
+            DesktopMainViewHelpers.discoveryErrorDiagnostics("socket failed", null),
+        )
+        assertEquals("[discovery] socket failed", DesktopMainViewHelpers.discoveryChatMessage("socket failed"))
+        assertEquals(
+            "Looking for SecureLanSuite peers on this LAN. Select a discovered peer and connect before sending files or starting a call.",
+            DesktopMainViewHelpers.discoverySearchHint(),
+        )
+        assertEquals("[discovery] room is now discoverable", DesktopMainViewHelpers.discoveryVisibilityMessage(true))
+        assertEquals(
+            "[discovery] room is now hidden from automatic discovery",
+            DesktopMainViewHelpers.discoveryVisibilityMessage(false),
+        )
+    }
+
+    @Test
+    fun shouldFormatDiscoveryPeerDiagnostics() {
+        val peer = DiscoveredPeer("peer-1", "Alice", "192.168.1.20", 5555, 5556, Instant.EPOCH)
+
+        assertEquals(
+            "[discovery] Alice at 192.168.1.20:5555",
+            DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer),
+        )
+        assertEquals(
+            "[discovery] expired Alice at 192.168.1.20",
+            DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer),
+        )
+    }
+
+    @Test
+    fun shouldFormatLocalNetworkInfoMessages() {
+        assertEquals(
+            "[info] local network IP is unavailable right now",
+            DesktopMainViewHelpers.localNetworkInfoMessage(emptyList()),
+        )
+        assertEquals(
+            "[info] local network IP: 192.168.1.20",
+            DesktopMainViewHelpers.localNetworkInfoMessage(listOf("192.168.1.20")),
+        )
+        assertEquals(
+            "[info] local network IPs: 10.0.0.5, 192.168.1.20",
+            DesktopMainViewHelpers.localNetworkInfoMessage(listOf("10.0.0.5", "192.168.1.20")),
+        )
+    }
+
+    @Test
+    fun shouldFormatLocalNetworkInfoErrorMessage() {
+        assertEquals(
+            "[info] failed to determine local network IP: permission denied",
+            DesktopMainViewHelpers.localNetworkInfoErrorMessage("permission denied"),
+        )
+    }
+
+    @Test
+    fun shouldDetectHangUpAvailabilityFromRtcState() {
+        assertFalse(DesktopMainViewHelpers.hangUpAvailable(null))
+        assertFalse(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.IDLE))
+        assertTrue(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.NEGOTIATING))
+        assertTrue(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.CONNECTING))
+        assertTrue(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.CONNECTED))
+        assertTrue(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.CLOSING))
+        assertFalse(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.CLOSED))
+        assertFalse(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.FAILED))
+        assertFalse(DesktopMainViewHelpers.hangUpAvailable(RtcSessionState.UNAVAILABLE))
+    }
+
+    @Test
+    fun shouldDetectSelectedPeerFileCapability() {
+        assertFalse(DesktopMainViewHelpers.selectedPeerFileCapable(null))
+        assertFalse(DesktopMainViewHelpers.selectedPeerFileCapable(chatOnlyPeer()))
+        assertFalse(DesktopMainViewHelpers.selectedPeerFileCapable(discoveredPeer(online = false)))
+        assertTrue(DesktopMainViewHelpers.selectedPeerFileCapable(discoveredPeer()))
+    }
+
+    @Test
+    fun shouldDetectSelectedPeerCallableState() {
+        assertFalse(DesktopMainViewHelpers.selectedPeerCallable(null))
+        assertFalse(DesktopMainViewHelpers.selectedPeerCallable(discoveredPeer(online = false)))
+        assertTrue(DesktopMainViewHelpers.selectedPeerCallable(chatOnlyPeer()))
+        assertTrue(DesktopMainViewHelpers.selectedPeerCallable(discoveredPeer()))
+    }
+
     private fun peer(peerId: String?): PeerPresence = PeerPresence(
         "Alice",
         true,
         peerId,
+        "192.168.1.20",
+        5555,
+        5556,
+        Instant.parse("2026-05-22T09:00:00Z"),
+    )
+
+    private fun chatOnlyPeer(): PeerPresence = PeerPresence(
+        "Alice",
+        true,
+        null,
+        null,
+        0,
+        0,
+        Instant.parse("2026-05-22T09:00:00Z"),
+    )
+
+    private fun discoveredPeer(online: Boolean = true): PeerPresence = PeerPresence(
+        "Alice",
+        online,
+        "peer-1",
         "192.168.1.20",
         5555,
         5556,

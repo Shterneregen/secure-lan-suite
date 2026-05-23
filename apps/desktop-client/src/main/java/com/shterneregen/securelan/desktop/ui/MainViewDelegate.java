@@ -108,9 +108,6 @@ import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.net.Inet4Address;
@@ -126,7 +123,6 @@ import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -676,7 +672,7 @@ final class MainViewDelegate {
             cameraPreviewPlaceholderValue.setManaged(false);
         }
         if (cameraPreviewStatusValue != null) {
-            cameraPreviewStatusValue.setText("Camera preview live • " + event.width() + "x" + event.height());
+            cameraPreviewStatusValue.setText(DesktopRealtimeFormatters.cameraPreviewLiveStatus(event.width(), event.height()));
         }
     }
 
@@ -709,25 +705,15 @@ final class MainViewDelegate {
     private void publishRealtimeRuntimeStatus() {
         RtcRuntimeStatus status = rtcSessionService.runtimeStatus();
         refreshRealtimeRuntimeValue(status);
-        appendDiagnostics("[rtc] runtime: " + status.providerName() + " - " + status.message());
-        appendChat("[rtc] runtime: " + status.providerName() + " - " + status.message());
+        appendDiagnostics(DesktopRealtimeFormatters.formatRuntimeLog(status));
+        appendChat(DesktopRealtimeFormatters.formatRuntimeLog(status));
     }
 
     private void publishLocalNetworkInfo() {
         try {
-            List<String> localIps = resolveLocalLanIps();
-            if (localIps.isEmpty()) {
-                appendChat("[info] local network IP is unavailable right now");
-                return;
-            }
-
-            if (localIps.size() == 1) {
-                appendChat("[info] local network IP: " + localIps.getFirst());
-            } else {
-                appendChat("[info] local network IPs: " + String.join(", ", localIps));
-            }
+            appendChat(DesktopMainViewHelpers.localNetworkInfoMessage(resolveLocalLanIps()));
         } catch (SocketException ex) {
-            appendChat("[info] failed to determine local network IP: " + ex.getMessage());
+            appendChat(DesktopMainViewHelpers.localNetworkInfoErrorMessage(ex.getMessage()));
         }
     }
 
@@ -1274,26 +1260,19 @@ final class MainViewDelegate {
             @Override
             public void onDiscoveryError(String message, Throwable cause) {
                 Platform.runLater(() -> {
-                    appendDiagnostics("[discovery-error] " + message + (cause != null ? " -> " + cause.getMessage() : ""));
+                    appendDiagnostics(DesktopMainViewHelpers.discoveryErrorDiagnostics(message, cause));
                     if (!peerDiscoveryService.isRunning()) {
-                        appendChat("[discovery] " + message);
+                        appendChat(DesktopMainViewHelpers.discoveryChatMessage(message));
                     }
                 });
             }
         });
         if (peerDiscoveryService.isRunning()) {
             appendChat(hosting
-                    ? discoveryStartedMessage(discoveryConfig)
-                    : "[discovery] listening on UDP " + discoveryConfig.discoveryPort());
-            peersHintValue.setText("Looking for SecureLanSuite peers on this LAN. Select a discovered peer and connect before sending files or starting a call.");
+                    ? DesktopMainViewHelpers.discoveryStartedMessage(discoveryConfig)
+                    : DesktopMainViewHelpers.discoveryListeningMessage(discoveryConfig.discoveryPort()));
+            peersHintValue.setText(DesktopMainViewHelpers.discoverySearchHint());
         }
-    }
-
-    private String discoveryStartedMessage(PeerDiscoveryConfig discoveryConfig) {
-        if (discoveryConfig.announceEnabled()) {
-            return "[discovery] broadcasting as " + discoveryConfig.nickname() + " on UDP " + discoveryConfig.discoveryPort();
-        }
-        return "[discovery] room is hidden; listening on UDP " + discoveryConfig.discoveryPort() + " without broadcasting";
     }
 
     private void updateDiscoverableState(boolean discoverable) {
@@ -1301,9 +1280,7 @@ final class MainViewDelegate {
             return;
         }
         peerDiscoveryService.setAnnounceEnabled(discoverable);
-        appendChat(discoverable
-                ? "[discovery] room is now discoverable"
-                : "[discovery] room is now hidden from automatic discovery");
+        appendChat(DesktopMainViewHelpers.discoveryVisibilityMessage(discoverable));
     }
 
     private void startServer() {
@@ -1463,8 +1440,8 @@ final class MainViewDelegate {
             quickShareService.start(new QuickShareServerConfig(port));
             quickSharePortField.setText(Integer.toString(quickShareService.port()));
             refreshQuickShareUi();
-            appendChat("[quick-share] server started on port " + quickShareService.port());
-            appendDiagnostics("[quick-share] landing URLs: " + String.join(", ", quickShareService.landingUrls()));
+            appendChat(DesktopQuickShareFormatters.formatServerStartedMessage(quickShareService.port()));
+            appendDiagnostics(DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(quickShareService.landingUrls()));
         } catch (Exception ex) {
             showError(fileTransferErrorMessage(ex));
         } finally {
@@ -1475,7 +1452,7 @@ final class MainViewDelegate {
     private void stopQuickShareServer() {
         quickShareService.stop();
         refreshQuickShareUi();
-        appendChat("[quick-share] server stopped");
+        appendChat(DesktopQuickShareFormatters.formatServerStoppedMessage());
         updateQuickActionState();
     }
 
@@ -1506,7 +1483,7 @@ final class MainViewDelegate {
             ));
             copyToClipboard(snapshot.primaryUrl());
             refreshQuickShareUi();
-            appendChat("[quick-share] file link copied: " + snapshot.primaryUrl());
+            appendChat(DesktopQuickShareFormatters.formatFileLinkCopiedMessage(snapshot.primaryUrl()));
         } catch (Exception ex) {
             showError(fileTransferErrorMessage(ex));
         }
@@ -1528,7 +1505,7 @@ final class MainViewDelegate {
             ));
             copyToClipboard(snapshot.primaryUrl());
             refreshQuickShareUi();
-            appendChat("[quick-share] text link copied: " + snapshot.primaryUrl());
+            appendChat(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(snapshot.primaryUrl()));
         } catch (Exception ex) {
             showError(fileTransferErrorMessage(ex));
         }
@@ -1563,7 +1540,7 @@ final class MainViewDelegate {
             return;
         }
         copyToClipboard(urls.getFirst());
-        appendChat("[quick-share] index link copied: " + urls.getFirst());
+        appendChat(DesktopQuickShareFormatters.formatIndexLinkCopiedMessage(urls.getFirst()));
     }
 
     private void copyQuickShareLink(QuickShareEntry entry) {
@@ -1571,7 +1548,7 @@ final class MainViewDelegate {
             return;
         }
         copyToClipboard(entry.url());
-        appendChat("[quick-share] link copied: " + entry.url());
+        appendChat(DesktopQuickShareFormatters.formatLinkCopiedMessage(entry.url()));
     }
 
     private void stopQuickShare(QuickShareEntry entry) {
@@ -1591,8 +1568,7 @@ final class MainViewDelegate {
     private void handleQuickShareEvent(QuickShareEvent event) {
         Platform.runLater(() -> {
             if (!event.message().isBlank()) {
-                appendDiagnostics("[quick-share] " + event.message()
-                        + (event.remoteAddress().isBlank() ? "" : " from " + event.remoteAddress()));
+                appendDiagnostics(DesktopQuickShareFormatters.formatEventDiagnostics(event.message(), event.remoteAddress()));
             }
             refreshQuickShareUi();
         });
@@ -1638,7 +1614,7 @@ final class MainViewDelegate {
         if (file == null) {
             return;
         }
-        selectedStegoOutputPath = ensureBmpExtension(file.toPath().toAbsolutePath().normalize());
+        selectedStegoOutputPath = DesktopMainViewHelpers.ensureBmpExtension(file.toPath().toAbsolutePath().normalize());
         stegoOutputPathField.setText(selectedStegoOutputPath.toString());
     }
 
@@ -1673,11 +1649,11 @@ final class MainViewDelegate {
             return;
         }
         runStegoTask("hide", () -> {
-            byte[] bmpBytes = readImageAsBmpBytes(selectedStegoCoverPath);
+            byte[] bmpBytes = DesktopMainViewHelpers.readImageAsBmpBytes(selectedStegoCoverPath);
             byte[] stegoBytes = encrypt
                     ? steganographyService.hideEncryptedText(bmpBytes, message, password)
                     : steganographyService.hideText(bmpBytes, message);
-            Path outputPath = ensureBmpExtension(selectedStegoOutputPath);
+            Path outputPath = DesktopMainViewHelpers.ensureBmpExtension(selectedStegoOutputPath);
             Path parent = outputPath.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
@@ -1707,7 +1683,7 @@ final class MainViewDelegate {
             return;
         }
         runStegoTask("extract", () -> {
-            byte[] bmpBytes = readImageAsBmpBytes(selectedStegoInputPath);
+            byte[] bmpBytes = DesktopMainViewHelpers.readImageAsBmpBytes(selectedStegoInputPath);
             String message = encrypted
                     ? steganographyService.extractEncryptedText(bmpBytes, password)
                     : steganographyService.extractText(bmpBytes);
@@ -1722,11 +1698,10 @@ final class MainViewDelegate {
 
     private void inspectStegoCoverAsync(Path bmpPath) {
         runStegoTask("inspect", () -> {
-            byte[] bmpBytes = readImageAsBmpBytes(bmpPath);
+            byte[] bmpBytes = DesktopMainViewHelpers.readImageAsBmpBytes(bmpPath);
             BmpCapacity capacity = steganographyService.inspect(bmpBytes);
             Platform.runLater(() -> {
-                stegoCapacityValue.setText("Capacity: %d bytes payload in %dx%d %d-bit BMP"
-                        .formatted(capacity.payloadCapacityBytes(), capacity.width(), capacity.height(), capacity.bitsPerPixel()));
+                stegoCapacityValue.setText(DesktopMainViewHelpers.formatStegoCapacity(capacity));
                 setStegoStatus("Cover BMP ready: " + bmpPath.getFileName());
                 appendDiagnostics("[stego] inspected cover BMP: " + bmpPath + ", payload capacity " + capacity.payloadCapacityBytes() + " bytes");
             });
@@ -1795,31 +1770,6 @@ final class MainViewDelegate {
         return chooser;
     }
 
-    private Path ensureBmpExtension(Path path) {
-        String text = path.toString();
-        if (text.toLowerCase(Locale.ROOT).endsWith(".bmp")) {
-            return path;
-        }
-        return Path.of(text + ".bmp").toAbsolutePath().normalize();
-    }
-
-    private byte[] readImageAsBmpBytes(Path imagePath) throws IOException {
-        if (imagePath.toString().toLowerCase(Locale.ROOT).endsWith(".bmp")) {
-            return Files.readAllBytes(imagePath);
-        }
-        BufferedImage image = ImageIO.read(imagePath.toFile());
-        if (image == null) {
-            throw new IOException("Unsupported image file: " + imagePath);
-        }
-        BufferedImage rgbImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
-        rgbImage.getGraphics().drawImage(image, 0, 0, null);
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        if (!ImageIO.write(rgbImage, "bmp", output)) {
-            throw new IOException("BMP writer is unavailable");
-        }
-        return output.toByteArray();
-    }
-
     private void startLocalFileTransferListener(int filePort) {
         if (fileTransferServerService.isRunning()) {
             return;
@@ -1852,16 +1802,16 @@ final class MainViewDelegate {
 
     private boolean acceptIncomingFileTransfer(FileTransferMetadata metadata, String remoteAddress) {
         if (!clientService.isConnected()) {
-            Platform.runLater(() -> appendChat("[file-recv] rejected " + metadata.fileName() + " from " + metadata.senderId() + ": chat is not connected"));
+            Platform.runLater(() -> appendChat(DesktopTransferFormatters.fileRejectedDisconnectedMessage(metadata.fileName(), metadata.senderId())));
             return false;
         }
         PeerPresence peer = findOnlinePeer(metadata.senderId());
         if (peer == null) {
-            Platform.runLater(() -> appendChat("[file-recv] rejected " + metadata.fileName() + " from unknown/offline peer " + metadata.senderId()));
+            Platform.runLater(() -> appendChat(DesktopTransferFormatters.fileRejectedUnknownPeerMessage(metadata.fileName(), metadata.senderId())));
             return false;
         }
         if (autoAcceptFilesCheckBox.isSelected()) {
-            Platform.runLater(() -> appendChat("[file-recv] auto-accepted " + metadata.fileName() + " from " + metadata.senderId()));
+            Platform.runLater(() -> appendChat(DesktopTransferFormatters.fileAutoAcceptedMessage(metadata.fileName(), metadata.senderId())));
             return true;
         }
 
@@ -1870,23 +1820,19 @@ final class MainViewDelegate {
         try {
             return promptTask.get();
         } catch (Exception ex) {
-            Platform.runLater(() -> appendDiagnostics("[file-recv] confirmation failed: " + ex.getMessage()));
+            Platform.runLater(() -> appendDiagnostics(DesktopTransferFormatters.fileConfirmationFailedDiagnostics(ex.getMessage())));
             return false;
         }
     }
 
     private boolean showIncomingFileConfirmation(FileTransferMetadata metadata, String remoteAddress) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Incoming file");
-        alert.setHeaderText("Accept file from " + metadata.senderId() + "?");
-        alert.setContentText("File: " + metadata.fileName()
-                + System.lineSeparator()
-                + "Size: " + DesktopTransferFormatters.formatMegabytes(metadata.fileSize())
-                + System.lineSeparator()
-                + "Remote: " + remoteAddress);
+        alert.setTitle(DesktopTransferFormatters.incomingFileTitle());
+        alert.setHeaderText(DesktopTransferFormatters.incomingFileHeader(metadata.senderId()));
+        alert.setContentText(DesktopTransferFormatters.incomingFileContent(metadata.fileName(), metadata.fileSize(), remoteAddress));
         Optional<ButtonType> result = alert.showAndWait();
         boolean accepted = result.isPresent() && result.get() == ButtonType.OK;
-        appendChat((accepted ? "[file-recv] accepted " : "[file-recv] rejected ") + metadata.fileName() + " from " + metadata.senderId());
+        appendChat(DesktopTransferFormatters.fileConfirmationResultMessage(accepted, metadata.fileName(), metadata.senderId()));
         return accepted;
     }
 
@@ -2011,12 +1957,11 @@ final class MainViewDelegate {
     }
 
     private int inferredClientFilePort() {
-        int hostFilePort = Integer.parseInt(serverFilePortField.getText().trim());
-        int candidate = hostFilePort + CLIENT_FILE_PORT_OFFSET;
-        if (candidate > 65535) {
-            candidate = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + CLIENT_FILE_PORT_OFFSET;
-        }
-        return candidate;
+        return DesktopMainViewHelpers.resolveInferredClientFilePort(
+                serverFilePortField.getText().trim(),
+                NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
+                CLIENT_FILE_PORT_OFFSET
+        );
     }
 
     private void handleFileTransferEvent(FileTransferEvent event) {
@@ -2107,7 +2052,7 @@ final class MainViewDelegate {
     private void handleRtcEvent(RtcEvent event) {
         Platform.runLater(() -> {
             if (event instanceof RtcStateChangedEvent e) {
-                appendDiagnostics("[rtc] " + e.mode() + " session " + e.state() + " with " + e.remotePeer() + " - " + e.message());
+                appendDiagnostics(DesktopRealtimeFormatters.rtcStateDiagnostics(e.mode(), e.state(), e.remotePeer(), e.message()));
                 refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
                 upsertPeer(e.remotePeer(), true);
                 updateVoiceStatusFromRtc(e);
@@ -2119,7 +2064,7 @@ final class MainViewDelegate {
                     clearRealtimeMediaUi();
                 }
             } else if (event instanceof RtcRuntimeWarningEvent e) {
-                appendDiagnostics("[rtc-warning] " + e.message());
+                appendDiagnostics(DesktopRealtimeFormatters.rtcWarningDiagnostics(e.message()));
                 refreshRealtimeRuntimeValue(rtcSessionService.runtimeStatus());
                 if (videoStageBox.isVisible() && (e.message().toLowerCase().contains("video") || e.message().toLowerCase().contains("camera"))) {
                     videoStageSubtitleValue.setText(e.message());
@@ -2155,28 +2100,14 @@ final class MainViewDelegate {
         }
 
         showVideoStage(true);
-        String remotePeer = safePeerName(event.remotePeer());
-        videoStageTitleValue.setText(event.mode() == RtcSessionMode.AUDIO_VIDEO
-                ? "Video call with " + remotePeer
-                : "Video stream with " + remotePeer);
+        String remotePeer = DesktopRealtimeFormatters.safePeerName(event.remotePeer());
+        videoStageTitleValue.setText(DesktopRealtimeFormatters.videoStageTitle(event.mode(), event.remotePeer()));
         videoParticipantsValue.setText(nicknameField.getText().trim() + " • " + remotePeer);
-        videoMediaValue.setText(event.mode() == RtcSessionMode.AUDIO_VIDEO ? "Audio + camera" : "Camera only");
+        videoMediaValue.setText(DesktopRealtimeFormatters.videoMediaLabel(event.mode()));
         videoStageSubtitleValue.setText(event.message());
 
-        switch (event.state()) {
-            case NEGOTIATING -> videoStageBadgeValue.setText("Negotiating");
-            case CONNECTING -> videoStageBadgeValue.setText("Connecting");
-            case CONNECTED -> videoStageBadgeValue.setText("Live");
-            case CLOSING -> videoStageBadgeValue.setText("Closing");
-            case CLOSED -> {
-                videoStageBadgeValue.setText("Ended");
-                showVideoStage(false);
-            }
-            case FAILED, UNAVAILABLE -> {
-                videoStageBadgeValue.setText("Unavailable");
-                showVideoStage(false);
-            }
-        }
+        videoStageBadgeValue.setText(DesktopRealtimeFormatters.videoStageBadge(event.state()));
+        showVideoStage(DesktopRealtimeFormatters.shouldShowVideoStageAfterState(event.state()));
 
         updateVideoCaptions();
     }
@@ -2189,12 +2120,12 @@ final class MainViewDelegate {
             localVideoImage = applyVideoFrame(localVideoView, localVideoImage, event);
             localVideoPlaceholderValue.setVisible(false);
             localVideoPlaceholderValue.setManaged(false);
-            localVideoCaptionValue.setText("Self preview • " + event.width() + "x" + event.height());
+            localVideoCaptionValue.setText(DesktopRealtimeFormatters.videoFrameCaption(true, event.peer(), event.width(), event.height()));
         } else {
             remoteVideoImage = applyVideoFrame(remoteVideoView, remoteVideoImage, event);
             remoteVideoPlaceholderValue.setVisible(false);
             remoteVideoPlaceholderValue.setManaged(false);
-            remoteVideoCaptionValue.setText(safePeerName(event.peer()) + " • " + event.width() + "x" + event.height());
+            remoteVideoCaptionValue.setText(DesktopRealtimeFormatters.videoFrameCaption(false, event.peer(), event.width(), event.height()));
             showVideoStage(true);
             if (!"Live".equals(videoStageBadgeValue.getText())) {
                 videoStageBadgeValue.setText("Live");
@@ -2252,10 +2183,6 @@ final class MainViewDelegate {
         videoStageBox.setManaged(visible);
     }
 
-    private String safePeerName(String peer) {
-        return peer == null || peer.isBlank() ? "peer" : peer;
-    }
-
     private void updateAudioLevel(RtcAudioLevelEvent event) {
         ProgressBar bar = event.local() ? localAudioLevelBar : remoteAudioLevelBar;
         Label label = event.local() ? localAudioStatusValue : remoteAudioStatusValue;
@@ -2297,24 +2224,26 @@ final class MainViewDelegate {
             return;
         }
 
-        String peer = event.remotePeer() == null || event.remotePeer().isBlank() ? "peer" : event.remotePeer();
-        if (event.state() == RtcSessionState.CONNECTED) {
-            setVoiceStatus("In call with " + peer, Color.web("#1f9d55"));
-        } else if (event.state() == RtcSessionState.CONNECTING || event.state() == RtcSessionState.NEGOTIATING) {
-            setVoiceStatus("Voice connecting", Color.web("#f59e0b"));
-        } else if (event.state() == RtcSessionState.CLOSING) {
-            setVoiceStatus("Voice closing", Color.web("#f59e0b"));
-        } else if (event.state() == RtcSessionState.CLOSED) {
-            setVoiceStatus("Voice idle", Color.web("#9aa4b2"));
-        } else if (event.state() == RtcSessionState.FAILED || event.state() == RtcSessionState.UNAVAILABLE) {
-            setVoiceStatus("Voice unavailable", Color.web("#dc2626"));
+        setVoiceStatus(DesktopRealtimeFormatters.voiceStatusText(event.state(), event.remotePeer()), voiceStatusColor(event.state()));
+    }
+
+    private Color voiceStatusColor(RtcSessionState state) {
+        if (state == RtcSessionState.CONNECTED) {
+            return Color.web("#1f9d55");
         }
+        if (state == RtcSessionState.CONNECTING || state == RtcSessionState.NEGOTIATING || state == RtcSessionState.CLOSING) {
+            return Color.web("#f59e0b");
+        }
+        if (state == RtcSessionState.CLOSED) {
+            return Color.web("#9aa4b2");
+        }
+        return Color.web("#dc2626");
     }
 
     private void updateQuickActionState() {
         PeerPresence selectedPeer = peerListView.getSelectionModel().getSelectedItem();
-        boolean hasFileCapableOnlinePeer = selectedPeer != null && selectedPeer.online() && selectedPeer.discovered();
-        boolean hasCallableOnlinePeer = selectedPeer != null && selectedPeer.online();
+        boolean hasFileCapableOnlinePeer = DesktopMainViewHelpers.selectedPeerFileCapable(selectedPeer);
+        boolean hasCallableOnlinePeer = DesktopMainViewHelpers.selectedPeerCallable(selectedPeer);
         boolean localServerRunning = isLocalServerRunning();
         boolean clientConnected = clientService.isConnected();
 
@@ -2332,7 +2261,7 @@ final class MainViewDelegate {
         copyQuickShareIndexButton.setDisable(!quickShareService.isRunning());
         createFileQuickShareButton.setDisable(selectedQuickShareFile == null);
         boolean canHangUp = rtcSessionService.currentSession()
-                .map(snapshot -> snapshot.state() != RtcSessionState.CLOSED && snapshot.state() != RtcSessionState.FAILED && snapshot.state() != RtcSessionState.UNAVAILABLE)
+                .map(snapshot -> DesktopMainViewHelpers.hangUpAvailable(snapshot.state()))
                 .orElse(false);
         hangUpQuickActionButton.setDisable(!canHangUp);
     }
@@ -2346,7 +2275,7 @@ final class MainViewDelegate {
         if (peer == null) {
             return;
         }
-        appendDiagnostics("[discovery] " + discoveredPeer.nickname() + " at " + discoveredPeer.host() + ":" + discoveredPeer.chatPort());
+        appendDiagnostics(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(discoveredPeer));
         if (peerListView.getSelectionModel().getSelectedItem() == null) {
             peerListView.getSelectionModel().select(peer);
         }
@@ -2354,7 +2283,7 @@ final class MainViewDelegate {
 
     private void handlePeerExpired(DiscoveredPeer discoveredPeer) {
         if (markPeerOffline(discoveredPeer.nickname())) {
-            appendDiagnostics("[discovery] expired " + discoveredPeer.nickname() + " at " + discoveredPeer.host());
+            appendDiagnostics(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(discoveredPeer));
         }
     }
 

@@ -8,7 +8,7 @@ interface RtcSessionService : AutoCloseable {
     fun runtimeStatus(): RtcRuntimeStatus
     fun currentSession(): Optional<RtcSessionSnapshot>
     fun startSession(request: RtcSessionRequest): RtcSessionSnapshot
-    fun acceptInboundSignal(localPeer: String?, signal: RtcSignalEnvelope)
+    fun acceptInboundSignal(localPeer: String?, signal: RtcSignalEnvelope?)
     fun sendDataMessage(payload: String?)
     fun closeCurrentSession()
 

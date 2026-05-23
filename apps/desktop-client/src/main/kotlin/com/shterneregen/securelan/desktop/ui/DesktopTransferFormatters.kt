@@ -28,6 +28,37 @@ object DesktopTransferFormatters {
         if (activeCount == 0L) "Transfers idle" else "$activeCount transfer${if (activeCount == 1L) " active" else "s active"}"
 
     @JvmStatic
+    fun fileRejectedDisconnectedMessage(fileName: String, senderId: String): String =
+        "[file-recv] rejected $fileName from $senderId: chat is not connected"
+
+    @JvmStatic
+    fun fileRejectedUnknownPeerMessage(fileName: String, senderId: String): String =
+        "[file-recv] rejected $fileName from unknown/offline peer $senderId"
+
+    @JvmStatic
+    fun fileAutoAcceptedMessage(fileName: String, senderId: String): String =
+        "[file-recv] auto-accepted $fileName from $senderId"
+
+    @JvmStatic
+    fun fileConfirmationFailedDiagnostics(message: String?): String = "[file-recv] confirmation failed: $message"
+
+    @JvmStatic
+    fun incomingFileTitle(): String = "Incoming file"
+
+    @JvmStatic
+    fun incomingFileHeader(senderId: String): String = "Accept file from $senderId?"
+
+    @JvmStatic
+    fun incomingFileContent(fileName: String, fileSize: Long, remoteAddress: String): String =
+        "File: $fileName" + System.lineSeparator() +
+            "Size: ${formatMegabytes(fileSize)}" + System.lineSeparator() +
+            "Remote: $remoteAddress"
+
+    @JvmStatic
+    fun fileConfirmationResultMessage(accepted: Boolean, fileName: String, senderId: String): String =
+        "[file-recv] ${if (accepted) "accepted" else "rejected"} $fileName from $senderId"
+
+    @JvmStatic
     fun formatTransferListMeta(entry: TransferEntry): String = buildString {
         append(entry.directionLabel())
         append(" — ")

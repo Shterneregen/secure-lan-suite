@@ -1,7 +1,11 @@
 import static java.io.File.pathSeparator
 
+import org.gradle.api.file.DuplicatesStrategy
+
 plugins {
     id 'org.jetbrains.kotlin.jvm'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.compose'
     id 'application'
     id 'org.openjfx.javafxplugin' version '0.1.0'
 }
@@ -29,6 +33,7 @@ dependencies {
     implementation project(':modules:audio-core')
     implementation project(':modules:webrtc-core')
     implementation project(':modules:stego-core')
+    implementation compose.desktop.currentOs
 }
 
 def appName = 'SecureLanSuite'
@@ -39,6 +44,26 @@ def mainJarName = "${project.name}-${project.version}.jar"
 def packageInputDir = layout.buildDirectory.dir('package-input')
 def packageOutputDir = layout.buildDirectory.dir('packaging')
 def appImageDir = packageOutputDir.map { it.dir(appName) }
+
+tasks.register('runComposeShell', JavaExec) {
+    group = 'application'
+    description = 'Run the experimental Compose Multiplatform desktop shell without replacing the JavaFX launcher.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.shterneregen.securelan.desktop.compose.ComposeDesktopMainKt'
+    jvmArgs = application.applicationDefaultJvmArgs
+}
+
+tasks.named('distTar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named('distZip') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named('installDist') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 tasks.named('jar') {
     manifest {

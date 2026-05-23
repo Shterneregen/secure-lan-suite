@@ -1,173 +1,92 @@
-# Desktop Client Kotlin Migration Plan
+# Desktop Client Kotlin Migration Record
 
 ## Goal
 
-Start Phase 8 by migrating `apps/desktop-client` to Kotlin incrementally while keeping the JavaFX UI, LAN interoperability, and packaging behavior stable.
+Record the finalized Phase 8 desktop Kotlin interop slice. Phase 8 is closed and is no longer the active path for converting JavaFX UI panels or delegate code to Kotlin.
 
-## Scope for the first migration slice
+The next desktop UI direction is the Phase 9 Compose Multiplatform migration plan in [`kotlin-migration.md`](kotlin-migration.md#phase-9-desktop-ui-migration-to-compose-multiplatform).
 
-- Enable Kotlin JVM support in the desktop application module.
-- Keep the Java launcher and JavaFX application entry point unchanged.
-- Migrate only non-UI desktop services first.
-- Leave the large `MainView.java` UI shell in Java until smaller helpers and panels are extracted.
-- Validate that the desktop module still builds after the first slice.
+## Final Phase 8 status
 
-## Planned sequence
+- [`apps/desktop-client`](../apps/desktop-client/build.gradle) has Kotlin JVM support.
+- [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) remains the Java launcher used by the Application plugin, manifest, and packaging configuration.
+- [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java) remains the JavaFX application boundary.
+- [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) provides the public JVM class `com.shterneregen.securelan.desktop.ui.MainView`, preserving the no-argument constructor and Java-callable `createContent()` / `shutdown()` lifecycle methods.
+- [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) contains the package-private JavaFX implementation and remains the stable JavaFX baseline.
+- Kotlin desktop helpers, models, formatters, and list cells were extracted under [`apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui).
+- The duplicate desktop nickname service attempt was removed; the desktop client uses the shared chat-core [`DefaultRandomNicknameService`](../modules/chat-core/src/main/kotlin/com/shterneregen/securelan/chat/service/impl/DefaultRandomNicknameService.kt).
 
-```mermaid
-flowchart TD
-    A[Enable Kotlin JVM in desktop module] --> B[Keep Java launcher stable]
-    B --> C[Migrate desktop services]
-    C --> D[Validate desktop build]
-    D --> E[Extract MainView helpers]
-    E --> F[Migrate helper models and adapters]
-    F --> G[Migrate UI panels incrementally]
-    G --> H[Decide launcher language]
-    H --> I[Validate run and packaging]
-```
+## Completed Phase 8 checklist
 
-## Checklist
+- [x] Apply the Kotlin JVM plugin to [`apps/desktop-client/build.gradle`](../apps/desktop-client/build.gradle) without changing JavaFX, Application, dependencies, `application.mainClass`, JAR manifest, or jpackage tasks.
+- [x] Confirm desktop Kotlin source layout under [`apps/desktop-client/src/main/kotlin`](../apps/desktop-client/src/main/kotlin).
+- [x] Keep [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) and [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java) in Java.
+- [x] Reuse the shared chat-core nickname service API instead of a duplicate desktop implementation.
+- [x] Extract transfer, quick-share, realtime, peer, media-device, list-cell, and low-risk main-view helper logic to Kotlin helpers with desktop-client tests.
+- [x] Replace the public desktop main-view source with [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) as a compatibility shell delegating to [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java).
+- [x] Validate the finalized interop slice with `gradlew.bat :apps:desktop-client:test :apps:desktop-client:build`.
+- [x] Close Phase 8 without further JavaFX delegate/panel migration to Kotlin.
 
-- [x] Apply Kotlin JVM plugin to `apps/desktop-client/build.gradle` without changing JavaFX, Application, dependencies, `application.mainClass`, JAR manifest, or jpackage tasks.
-- [x] Confirm desktop Kotlin source layout under `apps/desktop-client/src/main/kotlin`.
-- [x] Keep `Main.java` and `ChatApplication.java` in Java for the first slice.
-- [x] Replace the duplicate desktop nickname service with reuse of the shared chat-core `RandomNicknameService` API.
-- [x] Keep canonical nickname generation in shared chat-core `DefaultRandomNicknameService`, preserving the no-arg constructor, injectable `RandomGenerator` constructor, nickname list, and null validation.
-- [x] Delete duplicated desktop-client nickname service files.
-- [x] Switch `MainView.java` back to the shared chat-core nickname service imports.
-- [x] Run `gradlew.bat :modules:chat-core:test :apps:desktop-client:build` after deduplicating the nickname service.
-- [x] If build succeeds, record Phase 8 first-slice status in `docs/kotlin-migration.md` and `docs/kotlin-api-baseline.md` if public desktop API notes are needed.
-- [x] Extract pure transfer formatting helpers from `MainView.java` into Kotlin and cover them with desktop-client tests.
-- [x] Extract pure quick-share display formatting from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract desktop media-device choice wrapper from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract peer presence model from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract quick-share entry wrapper from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract transfer list entry state and speed tracking from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract peer display metadata formatting from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract transfer hint and active-transfer summary text from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract realtime profile, runtime status, and audio-level display formatting from `MainView.java` into Kotlin and cover it with desktop-client tests.
-- [x] Extract quick-share text display-name and landing/status formatting from [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) into Kotlin and cover it with desktop-client tests.
-- [x] Extract desktop JavaFX list-cell renderers from [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) into Kotlin and move transfer-row metadata formatting behind a tested Kotlin helper.
-- [x] Extract the remaining low-risk pre-conversion helpers for stego output naming, local file-port selection, remote-address host parsing, peer matching, and file-transfer error messages from [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) into Kotlin and cover them with desktop-client tests. Validation: `gradlew.bat :apps:desktop-client:test` passed in this slice.
-- [x] Convert [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) to [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) through a controlled source conversion after the currently extracted helpers are stable. Implemented as a Kotlin JVM `MainView` compatibility shell delegating to package-private Java `MainViewDelegate`, preserving the public class identity and lifecycle API while retiring the duplicate Java `MainView` source. Validation: `gradlew.bat :apps:desktop-client:test :apps:desktop-client:build` passed after the conversion.
+## Superseded Phase 8 work
 
-## MainView Kotlin conversion plan
+The following work is intentionally not active under Phase 8 anymore:
 
-### Key conclusion
+- Migrating JavaFX UI panels from [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) to Kotlin.
+- Rewriting the Java launcher in Kotlin.
+- Treating JavaFX-to-Kotlin conversion as the next desktop UI modernization path.
+- Claiming runtime launch, portable ZIP, or Windows EXE packaging validation beyond the documented `test` and `build` tasks.
 
-The remaining [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) migration should be a controlled source conversion, not a redesign. The target file is [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt), but it must still expose the JVM class `com.shterneregen.securelan.desktop.ui.MainView` so the existing Java application boundary keeps working.
+These items are superseded by the Phase 9 Compose Multiplatform plan in [`kotlin-migration.md`](kotlin-migration.md#phase-9-desktop-ui-migration-to-compose-multiplatform).
 
-The Java entry point boundary stays unchanged during this conversion:
+## Current desktop boundary
 
-- [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) remains the launcher resolved by the Application plugin, manifest, and packaging tasks.
-- [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java) remains Java and continues constructing `com.shterneregen.securelan.desktop.ui.MainView`.
-- [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) must preserve the public no-argument constructor plus the Java-callable `createContent()` and `shutdown()` methods used by the JavaFX application lifecycle.
-- No product behavior, protocol behavior, service orchestration, packaging main-class setting, CSS/resource loading, or JavaFX UX layout should be redesigned as part of the language conversion.
+- [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) remains the launcher resolved by the Application plugin, manifest, and existing packaging tasks.
+- [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java) remains Java and constructs the Kotlin-backed public [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) class.
+- [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) remains a Kotlin compatibility shell.
+- [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) remains the package-private JavaFX implementation and fallback baseline.
+- Existing Kotlin desktop helpers remain in [`apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui) and should not be inlined back into the JavaFX delegate.
 
-### Already available Kotlin helpers
+## Validation recorded for Phase 8
 
-The current baseline in [`docs/kotlin-migration.md`](kotlin-migration.md) and [`docs/kotlin-api-baseline.md`](kotlin-api-baseline.md) shows that the desktop module already has Kotlin support and several low-risk pieces extracted from [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java):
+- `gradlew.bat :apps:desktop-client:test` passed for the extracted Kotlin helpers and compatibility shell.
+- `gradlew.bat :apps:desktop-client:build` passed for the mixed Java/Kotlin desktop module.
+- Further Compose parity, user-friendly UI stabilization, portable ZIP packaging, and Windows EXE packaging are Phase 9 concerns before Compose-only promotion. This record no longer maintains a separate manual validation checklist; runtime problems are handled as user-reported issue-driven fixes.
 
-- [`MediaDeviceChoice.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MediaDeviceChoice.kt): Java-callable media-device wrapper for system-default and concrete device selections.
-- [`PeerPresence.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/PeerPresence.kt): desktop peer-presence model with discovery updates and offline transitions.
-- [`QuickShareEntry.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/QuickShareEntry.kt): quick-share list entry wrapper around snapshots.
-- [`TransferEntry.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/TransferEntry.kt): transfer row state, progress, direction labels, active-state detection, and speed tracking.
-- [`DesktopTransferFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopTransferFormatters.kt): transfer display text, hints, active-transfer summary, and transfer-row metadata.
-- [`DesktopQuickShareFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopQuickShareFormatters.kt): quick-share display names, text-share names, server status, and landing URL text.
-- [`DesktopRealtimeFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopRealtimeFormatters.kt): realtime profile, runtime availability/status, microphone labels, remote peer labels, and audio-level text.
-- [`DesktopPeerFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopPeerFormatters.kt): peer list metadata and selected-peer status copy.
-- [`DesktopListCells.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopListCells.kt): JavaFX list-cell renderers for media devices, peers, quick shares, and transfers.
+## Next direction
 
-These helpers should be reused from the Kotlin shell rather than inlined back into [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt).
+Phase 9 migrated from JavaFX to a full experimental Compose Multiplatform desktop shell while keeping JavaFX as the packaged fallback. Phase 9 is now closed; follow-up runtime hardening, UX modernization, packaging validation, and launcher/fallback decisions are tracked as Phase 10 in [`kotlin-migration.md`](kotlin-migration.md#phase-10-compose-runtime-stabilization-ux-modernization-and-release-readiness).
 
-### Phased conversion plan
+Final Phase 9 status:
 
-1. **Freeze the current baseline.**
-   - Treat the existing [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) behavior as the source of truth.
-   - Confirm a green baseline with `gradlew.bat :apps:desktop-client:test :apps:desktop-client:build` before the source conversion.
-   - Keep [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java), [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java), build files, packaging configuration, resources, CSS, and module dependencies unchanged.
+- Done: Compose Multiplatform build foundation is enabled only in [`apps/desktop-client/build.gradle`](../apps/desktop-client/build.gradle), while [`application.mainClass`](../apps/desktop-client/build.gradle:14) still points to the JavaFX launcher.
+- Done: a controlled experimental shell starts through [`runComposeShell`](../apps/desktop-client/build.gradle:48), backed by [`ComposeDesktopMain.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopMain.kt), [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt), [`SecureLanTheme.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanTheme.kt), [`ComposeShellMetadata.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeShellMetadata.kt), and [`ComposeDesktopResources.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopResources.kt).
+- Done: reusable UI-adjacent Kotlin helpers preserve JavaFX copy and decisions for discovery/status, peer metadata, file-transfer messages, quick-share formatting, and realtime labels through [`DesktopMainViewHelpers.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopMainViewHelpers.kt), [`DesktopPeerFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopPeerFormatters.kt), [`DesktopTransferFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopTransferFormatters.kt), [`DesktopQuickShareFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopQuickShareFormatters.kt), and [`DesktopRealtimeFormatters.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopRealtimeFormatters.kt).
+- Done: [`ComposeShellMetadata.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeShellMetadata.kt) contains deterministic preview/state contracts for status/connection, peer list, chat workspace, encrypted file transfer, quick share, adapter events, lifecycle, transitions, selected-peer target readiness, and diagnostics.
+- Done for Phase 9.3.1 implementation scope: [`ComposeDesktopHostAdapter.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopHostAdapter.kt) wraps the live status/connection adapter path for hosting, manual connection, discovery visibility, adapter events, and shutdown cleanup. Its discovered-peer snapshots, chat transcript capture, guarded chat send, file-transfer listener startup, transfer event mapping, receive-prompt decisions, and quick-share text workflow remain available for JavaFX-parity polishing and issue-driven fixes.
+- Done for Phase 9.3.1 implementation scope: [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) renders live status/connection controls when a host adapter is provided. The live peer-list shell covers Compose-side target selection in Phase 9.4; live chat workspace wiring has deterministic adapter coverage in Phase 9.5; encrypted transfer and quick-share cards now expose Phase 9.6/9.7 state, rows, controls, outgoing send/file chooser boundaries, and diagnostics while remaining subject to JavaFX-parity polishing and issue-driven fixes.
+- Done for Phase 9.5 through Phase 9.7 initial parity: [`ComposeDesktopHostAdapterTest.kt`](../apps/desktop-client/src/test/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopHostAdapterTest.kt) covers JavaFX-compatible chat transcript event mapping, disconnected/blank send blocking, trimmed connected sends, manual peer exposure, JavaFX-compatible chat-peer tracking without self/server rows, random/manual nickname propagation, RTC signal diagnostics through chat-core, file-transfer started/progress/completed/failed row mapping, incoming transfer prompt decisions, quick-share status/rows, and quick-share diagnostics without changing chat, file metadata, crypto, or quick-share URL behavior. Targeted validation passed with [`gradlew.bat :apps:desktop-client:test --no-daemon`](../gradlew.bat).
+- Done for Phase 9.8 through Phase 9.10 initial parity: [`ComposeShellMetadata.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeShellMetadata.kt) defines Compose steganography, media/voice, and experimental-video state contracts; [`ComposeDesktopHostAdapter.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopHostAdapter.kt) wires stego-core BMP inspect/hide/extract, WebRTC media device refresh/test, voice session start/stop, camera preview start/stop, and RTC diagnostics; [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) renders the corresponding live Compose cards with steganography cover/input/output chooser boundaries. Targeted validation passed on 2026-05-26 with [`gradlew.bat :apps:desktop-client:test --no-daemon`](../gradlew.bat).
+- Done for Phase 9.11 and Phase 9.12 guardrail scaffolding: [`ComposeShellMetadata.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeShellMetadata.kt) defines JavaFX workspace parity layout state, Actions-column TitledPane-density presentation state, diagnostics-channel summaries, readiness gates, evidence records, packaging validation gates, packaging evidence records, copyable validation-report summaries, artifact/path requirements, rollback copy, launcher-decision options, promotion decision steps, and launcher-promotion blockers; [`ComposeDesktopHostAdapter.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopHostAdapter.kt) aggregates live diagnostics and records runtime, artifact, build/package, and packaging-evidence-record evidence without changing launcher or jpackage configuration; [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) renders live and preview JavaFX-style status/header/workspace rows, collapsible Actions sections, diagnostics/packaging cards, artifact summaries, copyable evidence, rollback copy, validation reports, and launcher-decision summaries.
+- Done for the first JavaFX-parity polish pass on 2026-06-11: [`SecureLanTheme.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanTheme.kt) now supports light and dark palettes; [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) wires the theme toggle, advanced connection port panes, chat-header voice/video/end-call actions, video-stage placeholder parity, file-transfer auto-accept and receive prompt controls, quick-share copy-index action, JavaFX-aligned steganography labels, and microphone/camera chooser controls; [`ComposeDesktopHostAdapter.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/ComposeDesktopHostAdapter.kt) exposes quick-share landing URLs and media-device selection methods while preserving incoming-transfer prompt history.
+- Done for the next JavaFX-parity polish pass on 2026-06-11: [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) tightens the Actions column to better match JavaFX `TitledPane` density by using compact section spacing, bordered rounded section headers, explicit expand/collapse chevrons, zero-card elevation, and removing repeated implementation-summary copy from each Actions section.
+- Done for the compact top-shell density polish pass on 2026-06-11: [`SecureLanTheme.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanTheme.kt) now uses a denser desktop typography scale and a darker JavaFX-aligned palette; [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) adds JavaFX-style bordered zero-elevation shell surfaces, compact status chips, compact header cards, and tighter My profile / Manual connection fields and buttons so the Peers/Chat/Actions workspace gets more vertical room.
+- Done for the visual parity completion pass on 2026-06-11: [`SecureLanComposeApp.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/compose/SecureLanComposeApp.kt) moves manual peer entry into a collapsed fallback, restores the Peers list-placeholder emphasis, makes the Chat transcript a dominant bordered surface with compact input controls, replaces floating Material header fields with compact JavaFX-style inline fields, reduces Selected peer / Transfers verbosity, and reuses JavaFX-aligned panel/list/input borders and surfaces.
+- Done: the Application-plugin archive tasks exclude duplicate Compose runtime entries through [`distTar`](../apps/desktop-client/build.gradle:56), [`distZip`](../apps/desktop-client/build.gradle:60), and [`installDist`](../apps/desktop-client/build.gradle:64); `jpackage` tasks remain unchanged.
+- Validation recorded on 2026-05-25: [`gradlew.bat :apps:desktop-client:test :apps:desktop-client:build --no-daemon`](../gradlew.bat) passed and [`runComposeShell`](../apps/desktop-client/build.gradle:48) launched and exited successfully.
+- Validation recorded on 2026-05-26: [`gradlew.bat :apps:desktop-client:test --no-daemon`](../gradlew.bat) and [`gradlew.bat :apps:desktop-client:build --no-daemon`](../gradlew.bat) passed after adding the JavaFX workspace parity layout contract.
+- Validation recorded on 2026-06-11: [`gradlew.bat :apps:desktop-client:test --no-daemon`](../gradlew.bat) and [`gradlew.bat :apps:desktop-client:build --no-daemon`](../gradlew.bat) passed after the JavaFX-parity polish pass.
+- Validation recorded on 2026-06-11: [`runComposeShell`](../apps/desktop-client/build.gradle:48) and the JavaFX [`run`](../apps/desktop-client/build.gradle:13) launcher were exercised for side-by-side runtime review at the 1360x860 baseline; [`gradlew.bat :apps:desktop-client:test --no-daemon`](../gradlew.bat) and [`gradlew.bat :apps:desktop-client:build --no-daemon`](../gradlew.bat) passed after the Actions-column density polish, after the compact top-shell density polish, and again after the visual parity completion pass.
+- Validation recorded on 2026-06-11: [`gradlew.bat :apps:desktop-client:test --no-daemon`](../gradlew.bat) passed after JavaFX-compatible peer-list behavior, local/self filtering, random/manual nickname propagation, and Enter-to-send fixes.
+- Phase 10 carry-forward: continue side-by-side runtime visual review with live JavaFX or screenshots; run old UI server ↔ new UI client and new UI server ↔ old UI client smoke tests; re-check Android interoperability; harden discovery for firewalls, VPNs, multi-adapter hosts, and complex LANs; close full file-transfer receive-prompt/runtime parity and advanced-transfer-control gaps; harden quick-share LAN behavior; stabilize voice/video diagnostics; modernize the UI after parity acceptance; validate portable ZIP and Windows EXE packaging; then decide whether to keep JavaFX fallback, promote Compose, or remove unused JavaFX paths.
 
-2. **Extract any remaining low-risk helpers before the shell move.**
-   - Prefer tiny, behavior-preserving helpers with deterministic tests when extraction is safer than converting the logic inside the large UI class.
-   - Candidate helpers still suitable for extraction are `hostFromRemoteAddress()`, `localFilePort()`, `samePeer()`, `suggestedStegoOutputPath()`, and `fileTransferErrorMessage()`.
-   - Keep helper extraction in [`apps/desktop-client`](../apps/desktop-client) only; do not move JavaFX or desktop-specific state into reusable core modules.
+The active Phase 10 plan and checklist are intentionally kept in one place: [`kotlin-migration.md`](kotlin-migration.md#phase-10-compose-runtime-stabilization-ux-modernization-and-release-readiness). This desktop-specific record should summarize current status only and must not duplicate the roadmap table.
 
-3. **Mechanically convert the class shell.**
-   - Create [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) in package `com.shterneregen.securelan.desktop.ui`.
-   - Remove [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) only in the same slice that proves there is no duplicate JVM class.
-   - Preserve class name, constructor shape, method names, field initialization order, service creation order, event-handler wiring, lifecycle ownership, and shutdown semantics.
-   - Keep constants and companion/object choices JavaFX-friendly and avoid changing visibility unless it is required for compilation.
-
-4. **Review JavaFX interop explicitly.**
-   - Check nullable state, selected items, observable lists, property listeners, bindings, image fields, stage references, and overloaded JavaFX methods after Kotlin conversion.
-   - Ensure event handlers still run on the JavaFX application thread where the Java code did.
-   - Preserve existing CSS style classes, resource lookup behavior, icon/image loading, window sizing, tab/pane structure, and UI control ordering.
-
-5. **Convert UI builders without UX redesign.**
-   - Convert card/pane/status-bar/list builder methods as source-equivalent Kotlin code.
-   - Reuse [`DesktopListCells.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/DesktopListCells.kt) for list-cell factories.
-   - Reuse formatter helpers instead of changing labels, statuses, hints, or summary text.
-   - Avoid introducing a new UI architecture, FXML, TornadoFX, Compose, coroutines, or dependency-injection framework during this step.
-
-6. **Convert service orchestration blocks conservatively.**
-   - Preserve chat hosting/client connection flows, UDP discovery use, quick-share lifecycle, encrypted file-transfer send/receive flows, steganography calls, and RTC signaling transport through chat-core.
-   - Keep crypto usage and file/network orchestration behind the same service boundaries already used by the Java class.
-   - Do not change discovery, chat, file-transfer, quick-share, RTC signaling, voice, or video wire behavior.
-
-7. **Review high-risk realtime and video code late.**
-   - Convert voice, camera preview, video-frame handling, RTC callbacks, media-device refresh, diagnostics, and runtime status updates only after the rest of the shell compiles.
-   - Treat video and camera preview as experimental and preserve fallback behavior plus diagnostics.
-   - Pay special attention to Kotlin SAM/lambda interop with callback-heavy realtime APIs and nullable runtime state.
-
-8. **Validate the converted desktop client.**
-   - Run targeted tests and build first.
-   - Launch through the Java launcher before attempting packaging.
-   - Perform manual smoke checks against the same visible behavior that existed before the conversion.
-   - Attempt packaging only after runtime launch and smoke checks are successful.
-
-9. **Final cleanup.**
-   - Remove temporary compatibility comments, unused imports, and dead code introduced by conversion.
-   - Keep cleanup source-equivalent; do not fold in unrelated refactors.
-   - Update documentation only after the converted [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) is validated and the desktop workflow status changes.
-
-### Validation checklist
-
-- `gradlew.bat :apps:desktop-client:test` passes.
-- `gradlew.bat :apps:desktop-client:build` passes.
-- The Java launcher path still starts the UI through [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java) and [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java).
-- The public no-argument `MainView` constructor and Java-callable `createContent()` and `shutdown()` methods remain available to Java callers.
-- Manual smoke validation covers room hosting, manual connect, UDP discovery, chat send/receive, encrypted file transfer send/receive, quick-share start/copy/stop, steganography encode/decode controls, media device selection, voice start/stop, audio levels, camera preview, 1-to-1 experimental video, theme/resource loading, and shutdown cleanup.
-- Packaging validation is deferred until runtime success; then `gradlew.bat :apps:desktop-client:buildPortable` should be checked before `gradlew.bat :apps:desktop-client:buildExe` on a WiX-enabled Windows environment.
-
-### Risks
-
-- Kotlin null-safety can expose or alter assumptions around JavaFX selected values, optional runtime state, image/stage references, and service handles.
-- JavaFX overloaded APIs, listener signatures, and SAM conversions can compile while changing subtle event-handler behavior.
-- Duplicate [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) and [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) classes would create a JVM class conflict if both are present with the same package/class name.
-- Realtime voice/video and camera preview are high risk because callback ordering, diagnostics, and nullable runtime status are sensitive.
-- Packaging may reveal classpath or Kotlin runtime issues even after local build/run succeeds.
-- Large mechanical conversion may make review difficult, so unrelated refactors should remain out of scope.
-
-### Rollback plan
-
-- Restore [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) from version control.
-- Remove [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) to eliminate the duplicate JVM class.
-- Keep only independently validated helper extractions that already have green tests and are still used by the Java UI shell.
-- Re-run `gradlew.bat :apps:desktop-client:test :apps:desktop-client:build` after rollback.
-- Do not roll back build files, launcher classes, protocols, or reusable modules as part of a failed [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) shell attempt unless the failed slice actually changed them.
-
-### Completion criteria
-
-- [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) is removed and [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) provides JVM class `com.shterneregen.securelan.desktop.ui.MainView`. The existing JavaFX implementation is retained source-equivalently in package-private [`MainViewDelegate.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainViewDelegate.java) for this controlled interop slice.
-- [`Main.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/Main.java), [`ChatApplication.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ChatApplication.java), `application.mainClass`, manifest behavior, and packaging task wiring remain unchanged.
-- The public constructor, `createContent()`, and `shutdown()` lifecycle contract are preserved for Java callers.
-- Existing Kotlin helpers remain reused instead of duplicated in the converted shell.
-- Tests and build validation pass. Java launcher runtime, manual smoke validation, and packaging validation remain follow-up checks after this interop slice.
-- No JavaFX code moves outside [`apps/desktop-client`](../apps/desktop-client), no Spring dependency is introduced, no cyclic dependency is added, and discovery/chat/file-transfer/quick-share/RTC/voice/video protocols are unchanged.
+The next implementation direction is Phase 10: verify the visually polished Compose UI against live JavaFX and screenshots, harden runtime interop and LAN behavior, improve it into a more modern and user-friendly desktop interface after parity acceptance, validate portable ZIP and Windows EXE artifacts, and make the final launcher/fallback decision only after explicit approval.
 
 ## Guardrails
 
-- Do not move JavaFX code into reusable core modules.
-- Do not change protocol behavior for discovery, chat, file transfer, quick share, RTC signaling, voice, or experimental video.
-- Do not change packaging output paths or main-class configuration during the first slice or the [`MainView.kt`](../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) conversion.
-- Do not convert [`MainView.java`](../apps/desktop-client/src/main/java/com/shterneregen/securelan/desktop/ui/MainView.java) as an unreviewed automatic rewrite; keep the conversion source-equivalent and review JavaFX/realtime interop explicitly.
+- Do not move JavaFX or Compose UI code outside [`apps/desktop-client`](../apps/desktop-client/build.gradle).
+- Do not move UI dependencies into reusable core modules under [`modules`](../modules).
+- Do not introduce Spring, Spring Boot, TornadoFX, an FXML redesign, a coroutines-first rewrite, or cyclic dependencies.
+- Do not change protocol behavior for discovery, chat, file transfer, quick share, RTC signaling, voice, or experimental video as part of UI migration.
+- Preserve diagnostics for network, file transfer, RTC, media devices, audio levels, video frames, preview conversion, and runtime failures before retiring JavaFX equivalents.

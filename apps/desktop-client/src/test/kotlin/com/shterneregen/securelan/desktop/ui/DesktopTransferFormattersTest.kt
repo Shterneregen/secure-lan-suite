@@ -63,6 +63,46 @@ class DesktopTransferFormattersTest {
     }
 
     @Test
+    fun shouldFormatIncomingFileDecisionMessages() {
+        assertEquals(
+            "[file-recv] rejected report.pdf from Alice: chat is not connected",
+            DesktopTransferFormatters.fileRejectedDisconnectedMessage("report.pdf", "Alice"),
+        )
+        assertEquals(
+            "[file-recv] rejected report.pdf from unknown/offline peer Alice",
+            DesktopTransferFormatters.fileRejectedUnknownPeerMessage("report.pdf", "Alice"),
+        )
+        assertEquals(
+            "[file-recv] auto-accepted report.pdf from Alice",
+            DesktopTransferFormatters.fileAutoAcceptedMessage("report.pdf", "Alice"),
+        )
+        assertEquals(
+            "[file-recv] confirmation failed: dialog closed",
+            DesktopTransferFormatters.fileConfirmationFailedDiagnostics("dialog closed"),
+        )
+        assertEquals(
+            "[file-recv] accepted report.pdf from Alice",
+            DesktopTransferFormatters.fileConfirmationResultMessage(true, "report.pdf", "Alice"),
+        )
+        assertEquals(
+            "[file-recv] rejected report.pdf from Alice",
+            DesktopTransferFormatters.fileConfirmationResultMessage(false, "report.pdf", "Alice"),
+        )
+    }
+
+    @Test
+    fun shouldFormatIncomingFileDialogCopy() {
+        assertEquals("Incoming file", DesktopTransferFormatters.incomingFileTitle())
+        assertEquals("Accept file from Alice?", DesktopTransferFormatters.incomingFileHeader("Alice"))
+        assertEquals(
+            "File: report.pdf" + System.lineSeparator() +
+                "Size: 1.50 MB" + System.lineSeparator() +
+                "Remote: /192.168.1.20:54545",
+            DesktopTransferFormatters.incomingFileContent("report.pdf", 1_572_864, "/192.168.1.20:54545"),
+        )
+    }
+
+    @Test
     fun shouldFormatActiveOutgoingTransferListMetaWithProgressSizeAndSpeed() {
         val entry = TransferEntry("transfer-1", "report.pdf", true, "Sending", 42, 2_097_152)
         entry.speedBytesPerSecond = 1_572_864.0

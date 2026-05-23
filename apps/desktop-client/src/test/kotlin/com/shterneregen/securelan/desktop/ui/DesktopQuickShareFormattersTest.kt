@@ -77,6 +77,38 @@ class DesktopQuickShareFormattersTest {
         )
     }
 
+    @Test
+    fun shouldFormatQuickShareLifecycleMessages() {
+        assertEquals("[quick-share] server started on port 8090", DesktopQuickShareFormatters.formatServerStartedMessage(8090))
+        assertEquals("[quick-share] server stopped", DesktopQuickShareFormatters.formatServerStoppedMessage())
+        assertEquals(
+            "[quick-share] landing URLs: http://192.168.1.10:8090, http://127.0.0.1:8090",
+            DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(listOf("http://192.168.1.10:8090", "http://127.0.0.1:8090")),
+        )
+    }
+
+    @Test
+    fun shouldFormatQuickShareCopyMessages() {
+        val url = "http://127.0.0.1:8090/share-1"
+
+        assertEquals("[quick-share] file link copied: $url", DesktopQuickShareFormatters.formatFileLinkCopiedMessage(url))
+        assertEquals("[quick-share] text link copied: $url", DesktopQuickShareFormatters.formatTextLinkCopiedMessage(url))
+        assertEquals("[quick-share] index link copied: $url", DesktopQuickShareFormatters.formatIndexLinkCopiedMessage(url))
+        assertEquals("[quick-share] link copied: $url", DesktopQuickShareFormatters.formatLinkCopiedMessage(url))
+    }
+
+    @Test
+    fun shouldFormatQuickShareEventDiagnostics() {
+        assertEquals(
+            "[quick-share] downloaded demo.txt from /192.168.1.10:54545",
+            DesktopQuickShareFormatters.formatEventDiagnostics("downloaded demo.txt", "/192.168.1.10:54545"),
+        )
+        assertEquals(
+            "[quick-share] share expired",
+            DesktopQuickShareFormatters.formatEventDiagnostics("share expired", " "),
+        )
+    }
+
     private fun snapshot(
         type: QuickShareType,
         status: QuickShareStatus,

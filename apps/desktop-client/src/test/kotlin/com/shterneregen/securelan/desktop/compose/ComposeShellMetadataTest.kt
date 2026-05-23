@@ -1,0 +1,1747 @@
+package com.shterneregen.securelan.desktop.compose
+
+import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
+import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
+import com.shterneregen.securelan.common.model.rtc.RtcSessionState
+import com.shterneregen.securelan.common.net.NetworkConstants
+import com.shterneregen.securelan.desktop.ui.MediaDeviceChoice
+import com.shterneregen.securelan.desktop.ui.QuickShareEntry
+import com.shterneregen.securelan.desktop.ui.TransferEntry
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareStatus
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareType
+import com.shterneregen.securelan.stego.model.BmpCapacity
+import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus
+import com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
+import java.time.Instant
+
+class ComposeShellMetadataTest {
+    @Test
+    fun shouldKeepComposeWindowTitleAlignedWithJavaFxBaseline() {
+        assertEquals("SecureLanSuite Chat", ComposeShellMetadata.WINDOW_TITLE)
+    }
+
+    @Test
+    fun shouldDocumentJavaFxFallbackInShellCopy() {
+        assertTrue(ComposeShellMetadata.STATUS_TEXT.contains("JavaFX"))
+        assertTrue(ComposeShellMetadata.FALLBACK_TEXT.contains("standard desktop launcher"))
+    }
+
+    @Test
+    fun shouldKeepComposeWindowSizeAlignedWithJavaFxBaselineScene() {
+        assertEquals(1360f, ComposeShellMetadata.DEFAULT_WINDOW_WIDTH.value)
+        assertEquals(860f, ComposeShellMetadata.DEFAULT_WINDOW_HEIGHT.value)
+    }
+
+    @Test
+    fun shouldExposeJavaFxWorkspaceParityLayoutContract() {
+        val state = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE
+
+        assertEquals("JavaFX workspace parity layout", state.title)
+        assertEquals(listOf(0.20, 0.72), state.dividerPositions)
+        assertEquals(listOf("Peers", "Chat", "Actions"), state.workspaceColumns.map { it.title })
+        assertEquals(listOf(0.20f, 0.52f, 0.28f), state.workspaceColumns.map { it.weight })
+        assertTrue(state.statusSummary.contains("Transfers"))
+        assertTrue(state.headerSummary.contains("Manual connection"))
+        assertTrue(state.actionSectionSummary.contains("Runtime / Diagnostics"))
+        assertTrue(state.quickActionSummary.contains("Voice call"))
+        assertTrue(state.javaFxMappingSummary.contains("buildWorkspace") || state.javaFxMappingSummary.contains("buildPeersColumn"))
+        assertEquals(true, state.parityReady)
+    }
+
+    @Test
+    fun shouldBlockJavaFxWorkspaceParityWhenFallbackUnavailable() {
+        val state = ComposeJavaFxWorkspaceParityState(javaFxFallbackAvailable = false)
+
+        assertEquals(false, state.parityReady)
+        assertTrue(state.fallbackLabel.contains("unavailable"))
+    }
+
+    @Test
+    fun shouldExposeActionsColumnPresentationContractWithJavaFxTitledPaneDensity() {
+        val state = ComposeShellMetadata.DEFAULT_ACTIONS_PRESENTATION_STATE
+
+        assertEquals("Actions column parity presentation", state.title)
+        assertEquals(
+            listOf(
+                ComposeActionsSectionKind.SELECTED_PEER,
+                ComposeActionsSectionKind.TRANSFERS,
+                ComposeActionsSectionKind.QUICK_SHARE,
+                ComposeActionsSectionKind.STEGANOGRAPHY,
+                ComposeActionsSectionKind.MEDIA_DEVICES,
+                ComposeActionsSectionKind.RUNTIME_DIAGNOSTICS,
+            ),
+            state.sections.map { it.kind },
+        )
+        assertEquals(listOf("Selected peer", "Transfers"), state.expandedSectionTitles)
+        assertEquals(
+            listOf("LAN browser quick share", "Steganography", "Audio / Video devices", "Runtime / Diagnostics"),
+            state.collapsedSectionTitles,
+        )
+        assertTrue(state.javaFxMappingSummary.contains("TitledPane"))
+        assertEquals(
+            "Selected peer → Transfers → LAN browser quick share → Steganography → Audio / Video devices → Runtime / Diagnostics",
+            state.sectionOrderSummary,
+        )
+        assertEquals("Transfers", state.section(ComposeActionsSectionKind.TRANSFERS).title)
+        assertTrue(state.visualNoiseSummary.contains("Collapsed by default"))
+        assertTrue(state.fallbackLabel.contains("JavaFX actions column"))
+        assertEquals(true, state.parityReady)
+    }
+
+    @Test
+    fun shouldBlockActionsColumnPresentationWhenFallbackUnavailable() {
+        val state = ComposeActionsColumnPresentationState(javaFxFallbackAvailable = false)
+
+        assertEquals(false, state.parityReady)
+        assertTrue(state.fallbackLabel.contains("unavailable"))
+    }
+
+    @Test
+    fun shouldExposeDefaultChatWorkspaceStateWithoutRuntimeSideEffects() {
+        val state = ComposeShellMetadata.DEFAULT_CHAT_WORKSPACE_STATE
+
+        assertEquals("Shared room activity", state.title)
+        assertTrue(state.subtitle.contains("Astra Laptop"))
+        assertEquals(3, state.transcriptLines.size)
+        assertTrue(state.transcriptLines.first().contains("[connected]"))
+        assertEquals(true, state.draftValid)
+        assertEquals(false, state.canSendMessage)
+        assertEquals("Send blocked", state.sendLabel)
+        assertTrue(state.readinessSummary.contains("Connect to chat"))
+        assertTrue(state.fallbackLabel.contains("JavaFX chat workspace"))
+    }
+
+    @Test
+    fun shouldAllowChatSendPreviewOnlyWhenConnectedAndDraftIsNotBlank() {
+        val state = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(),
+            draftMessage = "  hello  ",
+        )
+
+        assertEquals(true, state.draftValid)
+        assertEquals(true, state.canSendMessage)
+        assertEquals("Send ready", state.sendLabel)
+        assertEquals(emptyList<String>(), state.blockedReasons)
+        assertTrue(state.readinessSummary.contains("ready"))
+    }
+
+    @Test
+    fun shouldBlockChatSendPreviewForBlankDraftAndMissingFallback() {
+        val state = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(peers = emptyList()),
+            draftMessage = " ",
+            messages = emptyList(),
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals(
+            "Connect to chat, then select a peer on the left for voice, video, and file actions.",
+            state.subtitle
+        )
+        assertEquals(emptyList<String>(), state.transcriptLines)
+        assertEquals("No chat messages yet.", state.transcriptSummary)
+        assertEquals(false, state.draftValid)
+        assertEquals(false, state.canSendMessage)
+        assertTrue(state.blockedReasons.any { it.contains("non-empty message") })
+        assertTrue(state.blockedReasons.any { it.contains("JavaFX fallback") })
+    }
+
+    @Test
+    fun shouldMapIncomingTransferPromptFromMetadata() {
+        val metadata = FileTransferMetadata("rx-1", "Alice", "Bob", "archive.zip", 2_097_152)
+        val prompt = ComposeIncomingTransferPrompt.from(metadata, "192.168.1.20")
+
+        assertEquals("rx-1", prompt.id)
+        assertEquals("Incoming file", prompt.title)
+        assertEquals("Accept file from Alice?", prompt.header)
+        assertEquals("2.00 MB", prompt.sizeLabel)
+        assertTrue(prompt.content.contains("archive.zip"))
+        assertTrue(prompt.content.contains("192.168.1.20"))
+    }
+
+    @Test
+    fun shouldExposeFileTransferStateReadinessAndRows() {
+        val entry = TransferEntry("tx-1", "demo.bin", true, "Sending", 40, 4096).apply {
+            updateProgress(2048, 50, 4096)
+        }
+        val state = ComposeFileTransferState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(selectedPeerIndex = 0),
+            selectedFilePath = "C:/Users/Alice/demo.bin",
+            senderId = "Alice",
+            sessionPassword = "secret",
+            entries = listOf(entry),
+            incomingPrompts = listOf(ComposeIncomingTransferPrompt.from(FileTransferMetadata("rx", "Astra Laptop", "Me", "in.txt", 1024), "host")),
+        )
+
+        assertEquals("Encrypted file transfer", state.title)
+        assertEquals(true, state.sendTargetReady)
+        assertEquals(true, state.canSendSelectedFile)
+        assertEquals(true, state.listenerReady)
+        assertEquals("Send file ready", state.sendLabel)
+        assertTrue(state.hint.contains("1 active"))
+        assertTrue(state.entryRows.first().contains("Sending"))
+        assertTrue(state.promptSummary.contains("Incoming prompts: 1"))
+        assertEquals(emptyList<String>(), state.blockedReasons)
+    }
+
+    @Test
+    fun shouldBlockFileTransferStateWithoutConnectionOrDiscoveredPeer() {
+        val state = ComposeFileTransferState(
+            statusState = ComposeStatusConnectionState(clientConnected = false, clientFilePortText = "bad"),
+            peerListState = ComposePeerListState(peers = emptyList(), selectedPeerIndex = -1),
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals(false, state.sendTargetReady)
+        assertEquals(false, state.canSendSelectedFile)
+        assertEquals(false, state.listenerReady)
+        assertEquals("Send file blocked", state.sendLabel)
+        assertEquals("Receive listener blocked", state.receiveLabel)
+        assertTrue(state.blockedReasons.any { it.contains("Connect to chat") })
+        assertTrue(state.blockedReasons.any { it.contains("Select a discovered peer") })
+        assertTrue(state.blockedReasons.any { it.contains("Choose a local file") })
+        assertTrue(state.blockedReasons.any { it.contains("session password") })
+        assertTrue(state.blockedReasons.any { it.contains("JavaFX fallback") })
+    }
+
+    @Test
+    fun shouldExposeQuickShareStateReadinessAndTrustedLanWarning() {
+        val snapshot = QuickShareSnapshot(
+            "share-1",
+            QuickShareType.TEXT,
+            "hello",
+            "",
+            0,
+            Instant.parse("2026-05-25T19:00:00Z"),
+            Instant.parse("2026-05-25T19:10:00Z"),
+            3,
+            1,
+            QuickShareStatus.ACTIVE,
+            listOf("http://127.0.0.1:5053/s/share-1"),
+        )
+        val state = ComposeQuickShareState(
+            running = true,
+            selectedFilePath = "C:/Temp/demo.txt",
+            textDraft = "hello",
+            entries = listOf(QuickShareEntry(snapshot)),
+            landingUrls = listOf("http://127.0.0.1:5053/"),
+        )
+
+        assertEquals("No-auth LAN browser quick share", state.title)
+        assertEquals(NetworkConstants.DEFAULT_QUICK_SHARE_PORT, state.port)
+        assertEquals(false, state.canStartServer)
+        assertEquals(true, state.canStopServer)
+        assertEquals(true, state.canCreateFileShare)
+        assertEquals(true, state.canCreateTextShare)
+        assertEquals(true, state.canCopyIndex)
+        assertTrue(state.statusText.contains("5053"))
+        assertTrue(state.landingText.contains("Index"))
+        assertTrue(state.trustedLanWarning.contains("Trusted LAN"))
+        assertTrue(state.shareRows.first().contains("text"))
+    }
+
+    @Test
+    fun shouldBlockQuickShareStateForInvalidInputsAndMissingFallback() {
+        val state = ComposeQuickShareState(
+            portText = "0",
+            selectedFilePath = "",
+            textDraft = " ",
+            expirationMinutesText = "0",
+            accessLimitText = "0",
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals(null, state.port)
+        assertEquals(false, state.canStartServer)
+        assertEquals(false, state.canCreateFileShare)
+        assertEquals(false, state.canCreateTextShare)
+        assertTrue(state.readinessSummary.contains("port must be valid"))
+        assertTrue(state.readinessSummary.contains("Expiration"))
+        assertTrue(state.readinessSummary.contains("JavaFX fallback"))
+    }
+
+    @Test
+    fun shouldReusePackagedJavaFxAppIconForComposeShell() {
+        assertEquals("icons/app-icon.png", ComposeDesktopResources.APP_ICON_PNG)
+        assertEquals("/icons/app-icon.png", ComposeDesktopResources.JAVA_FX_APP_ICON_RESOURCE)
+
+        ComposeDesktopResources.openAppIconStream().use { stream ->
+            assertNotNull(stream)
+        }
+    }
+
+    @Test
+    fun shouldExposeDefaultStatusConnectionAdapterStateWithoutRuntimeSideEffects() {
+        val state = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE
+
+        assertEquals("Compose Preview", state.nickname)
+        assertEquals("chatpass", state.roomPasswordPlaceholder)
+        assertEquals("127.0.0.1", state.manualHost)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT, state.chatPort)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, state.filePort)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT, state.clientChatPort)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, state.clientFilePort)
+        assertEquals(
+            "Room chat ${NetworkConstants.DEFAULT_CHAT_PORT} · Room files ${NetworkConstants.DEFAULT_FILE_TRANSFER_PORT} · Client chat ${NetworkConstants.DEFAULT_CHAT_PORT} · Client files ${NetworkConstants.DEFAULT_FILE_TRANSFER_PORT}",
+            state.portSummary
+        )
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + 1000, state.resolvedLocalFilePort)
+        assertTrue(state.canOpenRoom)
+        assertTrue(state.canConnect)
+        assertEquals("Open room ready", state.actionState.openRoomLabel)
+        assertEquals("Connect ready", state.actionState.connectLabel)
+        assertEquals("Stop hosting blocked", state.actionState.stopHostingLabel)
+        assertEquals("Disconnect blocked", state.actionState.disconnectLabel)
+        assertTrue(state.validationSummary.contains("Inputs are valid"))
+        assertEquals("Discoverable", state.discoverableLabel)
+        assertEquals("JavaFX fallback available", state.fallbackLabel)
+        assertTrue(state.discoveryStatus.contains("not started"))
+        assertTrue(state.runtimePlan.hostingReady)
+        assertTrue(state.runtimePlan.manualConnectionReady)
+        assertEquals(false, state.eventPreview.hasErrors)
+        assertEquals(
+            listOf(ComposeConnectionCommandKind.OPEN_ROOM, ComposeConnectionCommandKind.CONNECT),
+            state.controlPlan.enabledCommands.map { it.kind },
+        )
+    }
+
+    @Test
+    fun shouldExposeComposeSideCommandControlPlanForReadyStatusConnectionActions() {
+        val state = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20")
+        val controlPlan = state.controlPlan
+
+        assertEquals("Status/connection control boundary", controlPlan.title)
+        assertEquals(5, controlPlan.commands.size)
+        assertEquals(
+            ComposeConnectionCommandKind.OPEN_ROOM,
+            controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).kind
+        )
+        assertEquals(true, controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).enabled)
+        assertEquals(true, controlPlan.command(ComposeConnectionCommandKind.CONNECT).enabled)
+        assertEquals(false, controlPlan.command(ComposeConnectionCommandKind.STOP_HOSTING).enabled)
+        assertEquals(false, controlPlan.command(ComposeConnectionCommandKind.DISCONNECT).enabled)
+        assertEquals(false, controlPlan.command(ComposeConnectionCommandKind.SET_DISCOVERABLE).enabled)
+        assertTrue(controlPlan.enabledSummary.contains("Open room"))
+        assertTrue(controlPlan.enabledSummary.contains("Connect"))
+        assertTrue(controlPlan.disabledSummary.contains("Stop hosting"))
+        assertTrue(controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).queuedEvent.message.contains("open-room"))
+    }
+
+    @Test
+    fun shouldBlockComposeSideCommandControlPlanWhenFallbackIsUnavailable() {
+        val state = ComposeStatusConnectionState(javaFxFallbackAvailable = false)
+        val controlPlan = state.controlPlan
+
+        assertEquals(emptyList<ComposeConnectionCommand>(), controlPlan.enabledCommands)
+        assertEquals(5, controlPlan.disabledCommands.size)
+        assertTrue(controlPlan.disabledSummary.contains("Open room"))
+        assertTrue(controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).blockedReason.contains("JavaFX fallback"))
+        assertEquals("Open room blocked", controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).displayLabel)
+    }
+
+    @Test
+    fun shouldExposeHostedStateCommandControlPlanForStopAndDiscoveryToggle() {
+        val state = ComposeStatusConnectionState(localServerRunning = true, discoverable = false)
+        val controlPlan = state.controlPlan
+
+        assertEquals(false, controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).enabled)
+        assertEquals(true, controlPlan.command(ComposeConnectionCommandKind.STOP_HOSTING).enabled)
+        assertEquals(true, controlPlan.command(ComposeConnectionCommandKind.SET_DISCOVERABLE).enabled)
+        assertEquals("Make discoverable", controlPlan.command(ComposeConnectionCommandKind.SET_DISCOVERABLE).label)
+        assertTrue(controlPlan.command(ComposeConnectionCommandKind.SET_DISCOVERABLE).summary.contains("broadcasts"))
+    }
+
+    @Test
+    fun shouldExposeValidIdleLifecycleContractWithoutRuntimeSideEffects() {
+        val state = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20")
+        val lifecycle = state.lifecyclePlan
+
+        assertEquals("Live status/connection binding contract", lifecycle.title)
+        assertEquals(ComposeConnectionLifecyclePhase.IDLE, lifecycle.currentPhase)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.IDLE).ready)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.HOSTING_READY).ready)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.CONNECTING_READY).ready)
+        assertEquals(false, lifecycle.step(ComposeConnectionLifecyclePhase.HOSTED).ready)
+        assertEquals(emptyList<String>(), lifecycle.blockedReasons)
+        assertEquals(true, lifecycle.rollbackFallbackRequired)
+        assertTrue(lifecycle.readinessSummary.contains("Hosting-ready"))
+        assertTrue(lifecycle.sideEffectContractSummary.contains("without invoking services"))
+        assertTrue(lifecycle.cleanupOrderSummary.contains("side-effect free"))
+    }
+
+    @Test
+    fun shouldExposeHostedLifecycleContractAndCleanupOrder() {
+        val state = ComposeStatusConnectionState(localServerRunning = true, discoverable = false)
+        val lifecycle = state.lifecyclePlan
+
+        assertEquals(ComposeConnectionLifecyclePhase.HOSTED, lifecycle.currentPhase)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.HOSTED).ready)
+        assertEquals(false, lifecycle.step(ComposeConnectionLifecyclePhase.HOSTING_READY).ready)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.CONNECTING_READY).ready)
+        assertTrue(lifecycle.cleanupOrderSummary.contains("Stop discovery announcement"))
+        assertTrue(lifecycle.cleanupOrderSummary.contains("Stop hosted chat server"))
+        assertEquals("JavaFX fallback available for rollback", lifecycle.fallbackStatus)
+    }
+
+    @Test
+    fun shouldExposeConnectedLifecycleContractAndCleanupOrder() {
+        val state = ComposeStatusConnectionState(clientConnected = true)
+        val lifecycle = state.lifecyclePlan
+
+        assertEquals(ComposeConnectionLifecyclePhase.CONNECTED, lifecycle.currentPhase)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.CONNECTED).ready)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.HOSTING_READY).ready)
+        assertEquals(false, lifecycle.step(ComposeConnectionLifecyclePhase.CONNECTING_READY).ready)
+        assertTrue(lifecycle.cleanupOrderSummary.contains("Disconnect chat client"))
+        assertTrue(lifecycle.cleanupOrderSummary.contains("Stop client-only local file listener"))
+        assertTrue(lifecycle.cleanupOrderSummary.contains("Return to listen-only discovery"))
+    }
+
+    @Test
+    fun shouldBlockLifecycleContractForInvalidPortsAndBlankNickname() {
+        val state = ComposeStatusConnectionState(
+            nickname = " ",
+            serverChatPortText = "0",
+            clientChatPortText = "abc",
+        )
+        val lifecycle = state.lifecyclePlan
+
+        assertEquals(ComposeConnectionLifecyclePhase.BLOCKED_ERROR, lifecycle.currentPhase)
+        assertEquals(true, lifecycle.step(ComposeConnectionLifecyclePhase.BLOCKED_ERROR).ready)
+        assertEquals(false, lifecycle.step(ComposeConnectionLifecyclePhase.HOSTING_READY).ready)
+        assertEquals(false, lifecycle.step(ComposeConnectionLifecyclePhase.CONNECTING_READY).ready)
+        assertTrue(lifecycle.blockedReasons.any { it.contains("Nickname is blank") })
+        assertTrue(lifecycle.blockedReasons.any { it.contains("Room ports") })
+        assertTrue(lifecycle.blockedReasons.any { it.contains("Manual connection ports") })
+        assertTrue(lifecycle.cleanupOrderSummary.contains("Do not invoke runtime services"))
+    }
+
+    @Test
+    fun shouldBlockLifecycleContractWhenFallbackIsUnavailable() {
+        val state = ComposeStatusConnectionState(javaFxFallbackAvailable = false)
+        val lifecycle = state.lifecyclePlan
+
+        assertEquals(ComposeConnectionLifecyclePhase.BLOCKED_ERROR, lifecycle.currentPhase)
+        assertEquals(false, lifecycle.fallbackAvailable)
+        assertEquals(true, lifecycle.rollbackFallbackRequired)
+        assertTrue(lifecycle.fallbackStatus.contains("unavailable"))
+        assertTrue(lifecycle.blockedReasons.any { it.contains("JavaFX fallback") })
+        assertTrue(lifecycle.blockedSummary.contains("rollback safety"))
+    }
+
+    @Test
+    fun shouldSummarizeLifecycleCleanupOrderDeterministically() {
+        val hosted = ComposeStatusConnectionState(localServerRunning = true).lifecyclePlan
+        val connected = ComposeStatusConnectionState(clientConnected = true, localServerRunning = true).lifecyclePlan
+
+        assertEquals(
+            "Stop discovery announcement → Disconnect local self-client if attached → Stop hosted chat server → Stop hosted file listener → Return to listen-only discovery",
+            hosted.cleanupOrderSummary,
+        )
+        assertEquals(
+            "Disconnect chat client → Stop client-only local file listener → Keep hosted room running until Stop hosting is requested → Return to listen-only discovery",
+            connected.cleanupOrderSummary,
+        )
+    }
+
+    @Test
+    fun shouldExposeReadyTransitionIntentsForIdleStatusConnectionState() {
+        val state = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20")
+        val transitions = state.transitionPlan
+
+        assertEquals("Status/connection transition intents", transitions.title)
+        assertEquals(
+            listOf(ComposeConnectionTransitionKind.START_HOSTING, ComposeConnectionTransitionKind.START_MANUAL_CONNECT),
+            transitions.enabledTransitions.map { it.kind },
+        )
+        assertEquals(
+            ComposeConnectionLifecyclePhase.IDLE,
+            transitions.transition(ComposeConnectionTransitionKind.START_HOSTING).sourcePhase
+        )
+        assertEquals(
+            ComposeConnectionLifecyclePhase.HOSTED,
+            transitions.transition(ComposeConnectionTransitionKind.START_HOSTING).targetPhase
+        )
+        assertTrue(transitions.transition(ComposeConnectionTransitionKind.START_HOSTING).queuedEvent.message.contains("start-hosting"))
+        assertTrue(
+            transitions.transition(ComposeConnectionTransitionKind.START_MANUAL_CONNECT).sideEffectContract.contains(
+                "chat-core"
+            )
+        )
+        assertTrue(transitions.cleanupSummary.contains("Start hosting transition"))
+    }
+
+    @Test
+    fun shouldExposeHostedTransitionIntentsForStopAndDiscoveryVisibilityOnly() {
+        val state = ComposeStatusConnectionState(localServerRunning = true, discoverable = false)
+        val transitions = state.transitionPlan
+
+        assertEquals(
+            listOf(
+                ComposeConnectionTransitionKind.STOP_HOSTING,
+                ComposeConnectionTransitionKind.CHANGE_DISCOVERY_VISIBILITY
+            ),
+            transitions.enabledTransitions.map { it.kind },
+        )
+        assertEquals(false, transitions.transition(ComposeConnectionTransitionKind.START_HOSTING).enabled)
+        assertEquals(
+            ComposeConnectionLifecyclePhase.HOSTED,
+            transitions.transition(ComposeConnectionTransitionKind.STOP_HOSTING).sourcePhase
+        )
+        assertEquals(
+            ComposeConnectionLifecyclePhase.IDLE,
+            transitions.transition(ComposeConnectionTransitionKind.STOP_HOSTING).targetPhase
+        )
+        assertTrue(transitions.transition(ComposeConnectionTransitionKind.STOP_HOSTING).cleanupPreview.contains("Stop discovery announcement"))
+        assertTrue(
+            transitions.transition(ComposeConnectionTransitionKind.CHANGE_DISCOVERY_VISIBILITY).guardSummary.contains(
+                "UDP payload format unchanged"
+            )
+        )
+    }
+
+    @Test
+    fun shouldExposeConnectedTransitionIntentForDisconnect() {
+        val state = ComposeStatusConnectionState(clientConnected = true)
+        val transitions = state.transitionPlan
+
+        assertEquals(
+            listOf(ComposeConnectionTransitionKind.DISCONNECT_CLIENT),
+            transitions.enabledTransitions.map { it.kind })
+        assertEquals(
+            ComposeConnectionLifecyclePhase.CONNECTED,
+            transitions.transition(ComposeConnectionTransitionKind.DISCONNECT_CLIENT).sourcePhase
+        )
+        assertEquals(
+            ComposeConnectionLifecyclePhase.IDLE,
+            transitions.transition(ComposeConnectionTransitionKind.DISCONNECT_CLIENT).targetPhase
+        )
+        assertTrue(transitions.transition(ComposeConnectionTransitionKind.DISCONNECT_CLIENT).cleanupPreview.contains("Disconnect chat client"))
+        assertTrue(transitions.blockedSummary.contains("Manual connect transition"))
+    }
+
+    @Test
+    fun shouldBlockTransitionIntentsForInvalidOrFallbackUnavailableState() {
+        val invalid = ComposeStatusConnectionState(nickname = " ", serverChatPortText = "0", clientChatPortText = "abc")
+        val fallbackUnavailable = ComposeStatusConnectionState(javaFxFallbackAvailable = false)
+
+        assertEquals(emptyList<ComposeConnectionTransitionIntent>(), invalid.transitionPlan.enabledTransitions)
+        assertEquals(5, invalid.transitionPlan.blockedTransitions.size)
+        assertTrue(
+            invalid.transitionPlan.transition(ComposeConnectionTransitionKind.START_HOSTING).blockedReason.contains(
+                "Hosting command is blocked"
+            )
+        )
+        assertEquals(
+            emptyList<ComposeConnectionTransitionIntent>(),
+            fallbackUnavailable.transitionPlan.enabledTransitions
+        )
+        assertTrue(
+            fallbackUnavailable.transitionPlan.transition(ComposeConnectionTransitionKind.START_HOSTING).blockedReason.contains(
+                "JavaFX fallback"
+            )
+        )
+        assertTrue(fallbackUnavailable.transitionPlan.blockedSummary.contains("Manual connect transition"))
+    }
+
+    @Test
+    fun shouldBuildRuntimeNeutralConnectionPlanForValidStatusConnectionState() {
+        val state = ComposeStatusConnectionState(nickname = " Alice ", manualHost = " 192.168.1.20 ")
+        val plan = state.runtimePlan
+
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT, plan.chatServerConfig?.port)
+        assertEquals("chatpass", plan.chatServerConfig?.sessionPassword)
+        assertEquals("127.0.0.1", plan.localHostConnectRequest?.host)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT, plan.localHostConnectRequest?.port)
+        assertEquals("Alice", plan.localHostConnectRequest?.nickname)
+        assertEquals("192.168.1.20", plan.manualConnectRequest?.host)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT, plan.manualConnectRequest?.port)
+        assertEquals("Alice", plan.manualConnectRequest?.nickname)
+        assertEquals(NetworkConstants.DEFAULT_DISCOVERY_PORT, plan.hostingDiscoveryConfig?.discoveryPort)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT, plan.hostingDiscoveryConfig?.chatPort)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, plan.hostingDiscoveryConfig?.filePort)
+        assertEquals(true, plan.hostingDiscoveryConfig?.announceEnabled)
+        assertEquals(NetworkConstants.DEFAULT_DISCOVERY_PORT, plan.listenOnlyDiscoveryConfig.discoveryPort)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + 1000, plan.localFileListenerPort)
+        assertEquals(emptyList<String>(), plan.disabledReasons)
+        assertTrue(plan.discoveryAnnouncement.contains("broadcasting as Alice"))
+        assertTrue(plan.hostingSummary.contains("Host ${NetworkConstants.DEFAULT_CHAT_PORT}"))
+        assertTrue(plan.manualConnectionSummary.contains("192.168.1.20:${NetworkConstants.DEFAULT_CHAT_PORT}"))
+    }
+
+    @Test
+    fun shouldExposeRuntimeNeutralConnectionEventPreviewForValidState() {
+        val state = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20")
+        val preview = state.eventPreview
+
+        assertEquals("Status/connection event preview", preview.title)
+        assertEquals(false, preview.hasErrors)
+        assertEquals(false, preview.hasWarnings)
+        assertTrue(preview.summary.contains("ready"))
+        assertTrue(preview.events.any { it.kind == ComposeConnectionEventKind.SUCCESS && it.message.contains("Host ${NetworkConstants.DEFAULT_CHAT_PORT}") })
+        assertTrue(preview.events.any { it.kind == ComposeConnectionEventKind.SUCCESS && it.message.contains("192.168.1.20:${NetworkConstants.DEFAULT_CHAT_PORT}") })
+        assertTrue(preview.events.any { it.displayText.startsWith("info:") })
+        assertTrue(preview.latestMessage.contains("192.168.1.20"))
+    }
+
+    @Test
+    fun shouldExposeWarningsAndErrorsInRuntimeNeutralConnectionEventPreviewForBlockedState() {
+        val state = ComposeStatusConnectionState(
+            nickname = " ",
+            manualHost = " ",
+            serverChatPortText = "0",
+            serverFilePortText = "70000",
+            clientChatPortText = "abc",
+            clientFilePortText = "65536",
+            javaFxFallbackAvailable = false,
+        )
+        val preview = state.eventPreview
+
+        assertEquals(true, preview.hasErrors)
+        assertEquals(true, preview.hasWarnings)
+        assertTrue(preview.summary.contains("Blocked"))
+        assertTrue(preview.events.any { it.kind == ComposeConnectionEventKind.WARNING && it.message.contains("Hosting plan unavailable") })
+        assertTrue(preview.events.any { it.kind == ComposeConnectionEventKind.WARNING && it.message.contains("Manual connection plan unavailable") })
+        assertTrue(preview.events.any { it.kind == ComposeConnectionEventKind.ERROR && it.message.contains("Hosting command is blocked") })
+        assertTrue(preview.events.any { it.kind == ComposeConnectionEventKind.ERROR && it.message.contains("JavaFX fallback is unavailable") })
+        assertTrue(preview.latestMessage.contains("JavaFX fallback"))
+    }
+
+    @Test
+    fun shouldBuildHiddenDiscoveryPlanWhenStatusConnectionStateIsNotDiscoverable() {
+        val state = ComposeStatusConnectionState(discoverable = false)
+        val plan = state.runtimePlan
+
+        assertEquals(false, plan.hostingDiscoveryConfig?.announceEnabled)
+        assertTrue(plan.discoveryAnnouncement.contains("room is hidden"))
+    }
+
+    @Test
+    fun shouldBlockRuntimeConnectionPlanWhenStatusConnectionInputsAreInvalid() {
+        val state = ComposeStatusConnectionState(
+            nickname = " ",
+            manualHost = " ",
+            serverChatPortText = "0",
+            serverFilePortText = "70000",
+            clientChatPortText = "abc",
+            clientFilePortText = "65536",
+        )
+        val plan = state.runtimePlan
+
+        assertEquals(null, plan.chatServerConfig)
+        assertEquals(null, plan.localHostConnectRequest)
+        assertEquals(null, plan.manualConnectRequest)
+        assertEquals(null, plan.hostingDiscoveryConfig)
+        assertEquals(null, plan.localFileListenerPort)
+        assertEquals(false, plan.hostingReady)
+        assertEquals(false, plan.manualConnectionReady)
+        assertTrue(plan.discoveryAnnouncement.contains("listening on UDP ${NetworkConstants.DEFAULT_DISCOVERY_PORT}"))
+        assertTrue(plan.disabledReasons.any { it.contains("Hosting command is blocked") })
+        assertTrue(plan.disabledReasons.any { it.contains("Manual connection command is blocked") })
+    }
+
+    @Test
+    fun shouldFormatHiddenAndFallbackUnavailableLabelsForStatusConnectionAdapterState() {
+        val state = ComposeStatusConnectionState(
+            discoverable = false,
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals("Hidden", state.discoverableLabel)
+        assertEquals("JavaFX fallback unavailable", state.fallbackLabel)
+    }
+
+    @Test
+    fun shouldBlockStatusConnectionActionsWhenNicknameIsBlank() {
+        val state = ComposeStatusConnectionState(nickname = "   ")
+
+        assertEquals(false, state.nicknameValid)
+        assertEquals(false, state.canOpenRoom)
+        assertEquals(false, state.canConnect)
+        assertEquals(false, state.actionState.openRoomReady)
+        assertEquals(false, state.actionState.connectReady)
+        assertTrue(state.validationSummary.contains("Enter a name"))
+    }
+
+    @Test
+    fun shouldBlockOpenRoomWhenServerPortsAreInvalid() {
+        val state = ComposeStatusConnectionState(serverChatPortText = "0", serverFilePortText = "70000")
+
+        assertEquals(null, state.serverChatPort)
+        assertEquals(null, state.serverFilePort)
+        assertEquals(false, state.canOpenRoom)
+        assertEquals("Open room blocked", state.actionState.openRoomLabel)
+        assertTrue(state.validationSummary.contains("Room ports"))
+    }
+
+    @Test
+    fun shouldBlockManualConnectWhenHostOrClientPortsAreInvalid() {
+        val blankHost = ComposeStatusConnectionState(manualHost = "   ")
+        val invalidPorts = ComposeStatusConnectionState(clientChatPortText = "abc", clientFilePortText = "65536")
+
+        assertEquals(false, blankHost.manualHostValid)
+        assertEquals(false, blankHost.canConnect)
+        assertTrue(blankHost.validationSummary.contains("host address"))
+        assertEquals(null, invalidPorts.clientChatPort)
+        assertEquals(null, invalidPorts.clientFilePort)
+        assertEquals(false, invalidPorts.canConnect)
+        assertEquals(null, invalidPorts.resolvedLocalFilePort)
+        assertEquals("Connect blocked", invalidPorts.actionState.connectLabel)
+        assertTrue(invalidPorts.validationSummary.contains("Manual connection ports"))
+    }
+
+    @Test
+    fun shouldReflectRuntimeGatesForStatusConnectionPreviewActions() {
+        val serverRunning = ComposeStatusConnectionState(localServerRunning = true)
+        val clientConnected = ComposeStatusConnectionState(clientConnected = true)
+
+        assertEquals(false, serverRunning.canOpenRoom)
+        assertEquals(true, serverRunning.canConnect)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, serverRunning.resolvedLocalFilePort)
+        assertEquals(true, serverRunning.actionState.stopHostingReady)
+        assertEquals(true, serverRunning.actionState.discoverabilityToggleReady)
+        assertTrue(serverRunning.actionState.diagnosticSummary.contains("Stop hosting ready"))
+        assertTrue(serverRunning.validationSummary.contains("Room is open"))
+        assertEquals(true, clientConnected.canOpenRoom)
+        assertEquals(false, clientConnected.canConnect)
+        assertEquals(true, clientConnected.actionState.disconnectReady)
+        assertEquals("Disconnect ready", clientConnected.actionState.disconnectLabel)
+        assertTrue(clientConnected.validationSummary.contains("Client is connected"))
+    }
+
+    @Test
+    fun shouldExposeDefaultPeerListAdapterStateWithoutRuntimeSideEffects() {
+        val state = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
+
+        assertEquals("Contacts / Peers", state.title)
+        assertTrue(state.hint.contains("Discovered LAN peers"))
+        assertEquals(listOf("Astra Laptop", "Beta Phone", "Offline NAS"), state.visiblePeers.map { it.nickname })
+        assertEquals("Astra Laptop", state.selectedPeerTitle)
+        assertEquals("Peer Astra Laptop", state.peerStatus)
+        assertEquals("JavaFX peer list remains production fallback", state.fallbackLabel)
+        assertTrue(state.selectedPeerMeta.contains("connect to chat"))
+        assertTrue(state.actionSummary.contains("encrypted file transfer"))
+        assertEquals(true, state.targetActions.chatReady)
+        assertEquals(true, state.targetActions.fileReady)
+        assertEquals(true, state.targetActions.voiceReady)
+        assertEquals(true, state.targetActions.videoReady)
+        assertEquals(true, state.targetActions.dataChannelReady)
+        assertEquals(emptyList<String>(), state.targetActions.blockedReasons)
+        assertEquals(5, state.targetControlPlan.enabledCommands.size)
+        assertEquals(emptyList<ComposePeerTargetCommand>(), state.targetControlPlan.disabledCommands)
+    }
+
+    @Test
+    fun shouldExposePeerTargetControlPlanForOnlineDiscoveredPeer() {
+        val state = ComposePeerListState(selectedPeerIndex = 0)
+        val controlPlan = state.targetControlPlan
+
+        assertEquals("Selected-peer command boundary", controlPlan.title)
+        assertEquals(5, controlPlan.commands.size)
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.CHAT_TARGET).enabled)
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).enabled)
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.VOICE_TARGET).enabled)
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.VIDEO_TARGET).enabled)
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.DATA_TARGET).enabled)
+        assertTrue(controlPlan.enabledSummary.contains("Use for files"))
+        assertTrue(controlPlan.disabledSummary.contains("No selected-peer commands"))
+        assertTrue(controlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).queuedEvent.message.contains("file-target"))
+    }
+
+    @Test
+    fun shouldBlockPeerTargetControlPlanForFallbackUnavailableState() {
+        val state = ComposePeerListState(selectedPeerIndex = 0, javaFxFallbackAvailable = false)
+        val controlPlan = state.targetControlPlan
+
+        assertEquals(emptyList<ComposePeerTargetCommand>(), controlPlan.enabledCommands)
+        assertEquals(5, controlPlan.disabledCommands.size)
+        assertTrue(controlPlan.disabledSummary.contains("Use for chat"))
+        assertTrue(controlPlan.command(ComposePeerTargetCommandKind.CHAT_TARGET).blockedReason.contains("JavaFX peer-list fallback"))
+        assertEquals("Use for chat blocked", controlPlan.command(ComposePeerTargetCommandKind.CHAT_TARGET).displayLabel)
+    }
+
+    @Test
+    fun shouldBlockOnlyFileTargetCommandForOnlinePeerWithoutDiscoveryEndpoint() {
+        val state = ComposePeerListState(selectedPeerIndex = 1)
+        val controlPlan = state.targetControlPlan
+
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.CHAT_TARGET).enabled)
+        assertEquals(false, controlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).enabled)
+        assertEquals(true, controlPlan.command(ComposePeerTargetCommandKind.VOICE_TARGET).enabled)
+        assertTrue(controlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).blockedReason.contains("file endpoint"))
+        assertTrue(controlPlan.enabledSummary.contains("Use for voice"))
+    }
+
+    @Test
+    fun shouldExposePeerTargetActionsForOnlineDiscoveredPeer() {
+        val targetActions = ComposePeerTargetActions.from(
+            ComposePeerListItem(
+                nickname = "Alice",
+                online = true,
+                discovered = true,
+                listMeta = "discovered",
+                selectedMeta = "selected",
+            ),
+        )
+
+        assertEquals("Peer target action readiness", targetActions.title)
+        assertEquals(true, targetActions.chatReady)
+        assertEquals(true, targetActions.fileReady)
+        assertEquals(true, targetActions.voiceReady)
+        assertEquals(true, targetActions.videoReady)
+        assertEquals(true, targetActions.dataChannelReady)
+        assertEquals(emptyList<String>(), targetActions.blockedReasons)
+        assertTrue(targetActions.summary.contains("File transfer target ready"))
+        assertTrue(targetActions.blockedSummary.contains("All selected-peer actions"))
+    }
+
+    @Test
+    fun shouldExposeSelectedPeerQuickActionsForConnectedOnlineDiscoveredPeer() {
+        val state = ComposePeerListState(
+            peers = listOf(
+                ComposePeerListItem(
+                    nickname = "Alice",
+                    online = true,
+                    discovered = true,
+                    listMeta = "192.168.1.20",
+                    selectedMeta = "LAN endpoint 192.168.1.20",
+                ),
+            ),
+            selectedPeerIndex = 0,
+        )
+        val quickActions = ComposeSelectedPeerQuickActionsState(
+            peerListState = state,
+            clientConnected = true,
+            voiceRuntimeReady = true,
+            videoRuntimeReady = true,
+        )
+
+        assertEquals("Alice", quickActions.title)
+        assertTrue(quickActions.meta.contains("192.168.1.20"))
+        assertEquals(true, quickActions.attachEnabled)
+        assertEquals(true, quickActions.voiceEnabled)
+        assertEquals(true, quickActions.videoEnabled)
+        assertEquals(false, quickActions.hangUpEnabled)
+        assertEquals(emptyList<String>(), quickActions.blockedReasons)
+        assertTrue(quickActions.readinessLabel.contains("Attach"), quickActions.readinessLabel)
+        assertTrue(quickActions.readinessSummary.contains("Quick actions are ready"), quickActions.readinessSummary)
+    }
+
+    @Test
+    fun shouldBlockSelectedPeerQuickActionsWithoutPeerWithClearCopy() {
+        val quickActions = ComposeSelectedPeerQuickActionsState(
+            peerListState = ComposePeerListState(peers = emptyList(), selectedPeerIndex = -1),
+            clientConnected = true,
+        )
+
+        assertEquals("No peer selected", quickActions.title)
+        assertEquals(false, quickActions.attachEnabled)
+        assertEquals(false, quickActions.voiceEnabled)
+        assertEquals(false, quickActions.videoEnabled)
+        assertTrue(quickActions.readinessLabel.contains("blocked"), quickActions.readinessLabel)
+        assertTrue(quickActions.blockedReasons.any { it.contains("Select an online peer") }, quickActions.blockedReasons.toString())
+        assertTrue(quickActions.readinessSummary.contains("Select an online peer"), quickActions.readinessSummary)
+    }
+
+    @Test
+    fun shouldBlockSelectedPeerQuickActionsForOfflinePeer() {
+        val quickActions = ComposeSelectedPeerQuickActionsState(
+            peerListState = ComposePeerListState(selectedPeerIndex = 2),
+            clientConnected = true,
+        )
+
+        assertEquals("Offline NAS", quickActions.title)
+        assertEquals(false, quickActions.attachEnabled)
+        assertEquals(false, quickActions.voiceEnabled)
+        assertEquals(false, quickActions.videoEnabled)
+        assertTrue(quickActions.blockedReasons.any { it.contains("offline") }, quickActions.blockedReasons.toString())
+        assertTrue(quickActions.readinessSummary.contains("offline"), quickActions.readinessSummary)
+    }
+
+    @Test
+    fun shouldBlockSelectedPeerQuickActionsWhenFallbackUnavailable() {
+        val quickActions = ComposeSelectedPeerQuickActionsState(
+            peerListState = ComposePeerListState(selectedPeerIndex = 0, javaFxFallbackAvailable = false),
+            clientConnected = true,
+            hangUpReady = true,
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals("Astra Laptop", quickActions.title)
+        assertEquals(false, quickActions.attachEnabled)
+        assertEquals(false, quickActions.voiceEnabled)
+        assertEquals(false, quickActions.videoEnabled)
+        assertEquals(false, quickActions.hangUpEnabled)
+        assertTrue(quickActions.blockedReasons.any { it.contains("JavaFX fallback") }, quickActions.blockedReasons.toString())
+        assertTrue(quickActions.readinessSummary.contains("JavaFX fallback"), quickActions.readinessSummary)
+    }
+
+    @Test
+    fun shouldUseSelectedPeerNicknameAsUnifiedComposeActionTransferVoiceAndVideoTarget() {
+        val peerState = ComposePeerListState(
+            peers = listOf(
+                ComposePeerListItem("Astra Laptop", online = true, discovered = true, listMeta = "astra", selectedMeta = "astra"),
+                ComposePeerListItem("Beta Phone", online = true, discovered = true, listMeta = "beta", selectedMeta = "beta"),
+                ComposePeerListItem("Offline NAS", online = false, discovered = true, listMeta = "offline", selectedMeta = "offline"),
+            ),
+            selectedPeerIndex = -1,
+            selectedPeerNickname = "Beta Phone",
+        )
+        val statusState = ComposeStatusConnectionState(clientConnected = true)
+        val quickActions = ComposeSelectedPeerQuickActionsState(peerListState = peerState, clientConnected = true)
+        val fileTransfer = ComposeFileTransferState(
+            statusState = statusState,
+            peerListState = peerState,
+            selectedFilePath = "demo.bin",
+            senderId = "Alice",
+            sessionPassword = "secret",
+        )
+        val voice = ComposeMediaVoiceState(statusState = statusState, peerListState = peerState)
+        val video = ComposeExperimentalVideoState(statusState = statusState, peerListState = peerState)
+
+        assertEquals("Beta Phone", quickActions.selectedPeer?.nickname)
+        assertEquals("Beta Phone", fileTransfer.selectedPeerName)
+        assertEquals("Beta Phone", voice.selectedPeerName)
+        assertEquals("Beta Phone", video.selectedPeerName)
+        assertEquals(true, quickActions.attachEnabled)
+        assertEquals(true, fileTransfer.canSendSelectedFile)
+        assertEquals(true, voice.canStartVoice)
+        assertEquals(true, video.canStartVideo)
+        assertTrue(quickActions.actionSummary.contains("Beta Phone"), quickActions.actionSummary)
+    }
+
+    @Test
+    fun shouldKeepUnifiedComposeTargetsBlockedForNoPeerOrOfflinePeer() {
+        val statusState = ComposeStatusConnectionState(clientConnected = true)
+        val noPeerState = ComposePeerListState(peers = emptyList(), selectedPeerIndex = -1)
+        val offlinePeerState = ComposePeerListState(
+            peers = listOf(
+                ComposePeerListItem("Offline NAS", online = false, discovered = true, listMeta = "offline", selectedMeta = "offline"),
+                ComposePeerListItem("Astra Laptop", online = true, discovered = true, listMeta = "astra", selectedMeta = "astra"),
+            ),
+            selectedPeerIndex = -1,
+            selectedPeerNickname = "Offline NAS",
+        )
+
+        val noPeerQuickActions = ComposeSelectedPeerQuickActionsState(peerListState = noPeerState, clientConnected = true)
+        val noPeerFileTransfer = ComposeFileTransferState(statusState = statusState, peerListState = noPeerState)
+        val noPeerVoice = ComposeMediaVoiceState(statusState = statusState, peerListState = noPeerState)
+        val noPeerVideo = ComposeExperimentalVideoState(statusState = statusState, peerListState = noPeerState)
+        val offlineQuickActions = ComposeSelectedPeerQuickActionsState(peerListState = offlinePeerState, clientConnected = true)
+        val offlineFileTransfer = ComposeFileTransferState(statusState = statusState, peerListState = offlinePeerState)
+        val offlineVoice = ComposeMediaVoiceState(statusState = statusState, peerListState = offlinePeerState)
+        val offlineVideo = ComposeExperimentalVideoState(statusState = statusState, peerListState = offlinePeerState)
+
+        assertEquals("No peer selected", noPeerFileTransfer.selectedPeerName)
+        assertEquals(false, noPeerQuickActions.attachEnabled)
+        assertEquals(false, noPeerFileTransfer.canSendSelectedFile)
+        assertEquals(false, noPeerVoice.canStartVoice)
+        assertEquals(false, noPeerVideo.canStartVideo)
+        assertTrue(noPeerQuickActions.readinessSummary.contains("Select an online peer"), noPeerQuickActions.readinessSummary)
+        assertTrue(noPeerFileTransfer.readinessSummary.contains("Select a discovered peer"), noPeerFileTransfer.readinessSummary)
+        assertTrue(noPeerVoice.readinessSummary.contains("Select an online peer"), noPeerVoice.readinessSummary)
+        assertTrue(noPeerVideo.readinessSummary.contains("Select an online peer"), noPeerVideo.readinessSummary)
+
+        assertEquals("Offline NAS", offlineFileTransfer.selectedPeerName)
+        assertEquals(false, offlineQuickActions.attachEnabled)
+        assertEquals(false, offlineFileTransfer.canSendSelectedFile)
+        assertEquals(false, offlineVoice.canStartVoice)
+        assertEquals(false, offlineVideo.canStartVideo)
+        assertTrue(offlineQuickActions.readinessSummary.contains("offline"), offlineQuickActions.readinessSummary)
+        assertTrue(offlineFileTransfer.readinessSummary.contains("offline"), offlineFileTransfer.readinessSummary)
+        assertTrue(offlineVoice.readinessSummary.contains("offline"), offlineVoice.readinessSummary)
+        assertTrue(offlineVideo.readinessSummary.contains("offline"), offlineVideo.readinessSummary)
+    }
+
+    @Test
+    fun shouldExposeQuickShareFileWorkflowReadiness() {
+        val blocked = ComposeQuickShareState(selectedFilePath = "   ")
+        val ready = ComposeQuickShareState(selectedFilePath = "C:/Users/Alice/demo.txt")
+
+        assertEquals(false, blocked.canCreateFileShare)
+        assertTrue(blocked.readinessSummary.contains("Choose a file"))
+        assertEquals(true, ready.hasSelectedFile)
+        assertEquals(true, ready.canCreateFileShare)
+        assertTrue(ready.readinessSummary.contains("Quick-share controls are ready"))
+    }
+
+    @Test
+    fun shouldBlockOnlyFileTransferForOnlinePeerWithoutDiscoveryEndpoint() {
+        val state = ComposePeerListState(selectedPeerIndex = 1)
+        val targetActions = state.targetActions
+
+        assertEquals("Beta Phone", state.selectedPeerTitle)
+        assertEquals(true, targetActions.chatReady)
+        assertEquals(false, targetActions.fileReady)
+        assertEquals(true, targetActions.voiceReady)
+        assertEquals(true, targetActions.videoReady)
+        assertEquals(true, targetActions.dataChannelReady)
+        assertTrue(targetActions.blockedReasons.any { it.contains("file endpoint") })
+        assertTrue(targetActions.fileLabel.contains("blocked"))
+    }
+
+    @Test
+    fun shouldBlockAllPeerTargetActionsForOfflinePeer() {
+        val state = ComposePeerListState(selectedPeerIndex = 2)
+        val targetActions = state.targetActions
+
+        assertEquals("Offline NAS", state.selectedPeerTitle)
+        assertEquals(false, targetActions.chatReady)
+        assertEquals(false, targetActions.fileReady)
+        assertEquals(false, targetActions.voiceReady)
+        assertEquals(false, targetActions.videoReady)
+        assertEquals(false, targetActions.dataChannelReady)
+        assertTrue(targetActions.blockedReasons.any { it.contains("offline") })
+        assertTrue(targetActions.summary.contains("Chat target blocked"))
+    }
+
+    @Test
+    fun shouldExposeNoPeerSelectedCopyForEmptyPeerListAdapterState() {
+        val state = ComposePeerListState(peers = emptyList(), selectedPeerIndex = 4, javaFxFallbackAvailable = false)
+
+        assertEquals(emptyList<ComposePeerListItem>(), state.visiblePeers)
+        assertEquals("No peer selected", state.selectedPeerTitle)
+        assertEquals("Peer not selected", state.peerStatus)
+        assertTrue(state.selectedPeerMeta.contains("Choose an online chat peer"))
+        assertTrue(state.actionSummary.contains("Select an online peer"))
+        assertEquals("JavaFX peer list fallback unavailable", state.fallbackLabel)
+        assertEquals(false, state.targetActions.chatReady)
+        assertTrue(state.targetActions.blockedReasons.any { it.contains("Select an online peer") })
+        assertEquals(emptyList<ComposePeerTargetCommand>(), state.targetControlPlan.enabledCommands)
+        assertEquals(5, state.targetControlPlan.disabledCommands.size)
+    }
+
+    @Test
+    fun shouldSortPeerListAdapterStateWithOnlinePeersFirstAndCaseInsensitiveNames() {
+        val peers = listOf(
+            ComposePeerListItem(
+                "zeta",
+                online = false,
+                discovered = false,
+                listMeta = "offline",
+                selectedMeta = "offline"
+            ),
+            ComposePeerListItem("beta", online = true, discovered = false, listMeta = "chat", selectedMeta = "chat"),
+            ComposePeerListItem(
+                "Alpha",
+                online = true,
+                discovered = true,
+                listMeta = "discovered",
+                selectedMeta = "discovered"
+            ),
+        )
+        val state = ComposePeerListState(peers = peers, selectedPeerIndex = 1)
+
+        assertEquals(listOf("Alpha", "beta", "zeta"), state.visiblePeers.map { it.nickname })
+        assertEquals("beta", state.selectedPeerTitle)
+    }
+
+    @Test
+    fun shouldExposeDefaultDiagnosticsStateWithoutRuntimeSubscriptions() {
+        val state = ComposeShellMetadata.DEFAULT_DIAGNOSTICS_STATE
+
+        assertEquals("Compose migration diagnostics", state.title)
+        assertEquals("JavaFX fallback is available", state.fallbackStatus)
+        assertTrue(state.statusAdapterSummary.contains("Inputs are valid"))
+        assertTrue(state.connectionActionSummary.contains("Open room ready"))
+        assertEquals("Selected peer: Astra Laptop · Peer Astra Laptop", state.selectedPeerSummary)
+        assertEquals("Visible peers: 3", state.visiblePeerSummary)
+        assertTrue(state.diagnosticChannelSummary.contains("chat=0"))
+        assertTrue(state.warningMessages.any { it.contains("Chat runtime diagnostics") })
+        assertTrue(state.warningMessages.any { it.contains("File-transfer diagnostics") })
+        assertTrue(state.warningSummary.contains("desktop-to-desktop"))
+        assertEquals(7, state.summaryLines.size)
+    }
+
+    @Test
+    fun shouldReportDiagnosticsWarningsForBlockedAdapters() {
+        val diagnostics = ComposeDiagnosticsState(
+            statusState = ComposeStatusConnectionState(
+                nickname = " ",
+                serverChatPortText = "0",
+                clientChatPortText = "abc",
+            ),
+            peerListState = ComposePeerListState(peers = emptyList()),
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals("JavaFX fallback is unavailable", diagnostics.fallbackStatus)
+        assertTrue(diagnostics.warningMessages.any { it.contains("Fallback unavailable") })
+        assertTrue(diagnostics.warningMessages.any { it.contains("Name is required") })
+        assertTrue(diagnostics.warningMessages.any { it.contains("Room ports") })
+        assertTrue(diagnostics.warningMessages.any { it.contains("Manual connection") })
+        assertTrue(diagnostics.warningMessages.any { it.contains("No peer") })
+        assertTrue(diagnostics.warningMessages.any { it.contains("Realtime diagnostics") })
+        assertTrue(diagnostics.warningSummary.contains("hosting must remain blocked"))
+    }
+
+    @Test
+    fun shouldClearDiagnosticsWarningsWhenAllRuntimeChannelsHaveEvidence() {
+        val diagnostics = ComposeDiagnosticsState(
+            statusState = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20"),
+            peerListState = ComposePeerListState(selectedPeerIndex = 0),
+            chatDiagnostics = listOf("Alice: hello"),
+            fileTransferDiagnostics = listOf("Transfer completed: demo.txt."),
+            quickShareDiagnostics = listOf("Quick-share created."),
+            realtimeDiagnostics = listOf("AUDIO session CONNECTED"),
+        )
+
+        assertEquals(emptyList<String>(), diagnostics.warningMessages)
+        assertTrue(diagnostics.warningSummary.contains("No Compose diagnostics warnings"))
+        assertTrue(diagnostics.diagnosticChannelSummary.contains("realtime=1"))
+    }
+
+    @Test
+    fun shouldExposeRegressionReadinessGatesForPendingRuntimeEvidence() {
+        val state = ComposeShellMetadata.DEFAULT_REGRESSION_STATE
+
+        assertEquals("Compose regression readiness", state.title)
+        assertEquals(9, state.totalCount)
+        assertEquals(7, state.runtimeEvidenceRequirements.size)
+        assertTrue(state.readyCount >= 2)
+        assertTrue(state.blockedGates.any { it.kind == ComposeRegressionGateKind.CHAT_INTEROP })
+        assertTrue(state.blockedGates.any { it.kind == ComposeRegressionGateKind.FILE_TRANSFER })
+        assertTrue(state.missingRuntimeEvidence.any { it.kind == ComposeRuntimeEvidenceKind.CHAT_INTEROP })
+        assertTrue(state.runtimeEvidenceSummary.contains("missing"))
+        assertTrue(state.runtimeChecklistSummary.contains("desktop-to-desktop"))
+        assertEquals(7, state.runtimeRegressionChecklist.size)
+        assertTrue(state.runtimeRegressionChecklistCopy.contains("1. Chat interop"))
+        assertTrue(state.acceptedRuntimeFlowSummary.contains("No runtime evidence"))
+        assertTrue(state.runtimeEvidenceRecordSummary.contains("No runtime evidence records"))
+        assertEquals("", state.runtimeEvidenceCopyText)
+        assertTrue(state.pendingRuntimeFlowSummary.contains("Chat interop"))
+        assertTrue(state.nextActionSummary.contains("chat smoke"))
+        assertEquals(false, state.allRuntimeValidated)
+    }
+
+    @Test
+    fun shouldExposeReadyRegressionStateAfterAllRuntimeEvidenceIsRecorded() {
+        val peerState = ComposePeerListState(selectedPeerIndex = 0)
+        val state = ComposeRegressionReadinessState(
+            statusState = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20"),
+            peerListState = peerState,
+            chatState = ComposeChatWorkspaceState(ComposeStatusConnectionState(clientConnected = true), peerState),
+            fileTransferState = ComposeFileTransferState(
+                statusState = ComposeStatusConnectionState(clientConnected = true),
+                peerListState = peerState,
+                selectedFilePath = "demo.txt",
+                sessionPassword = "secret",
+            ),
+            quickShareState = ComposeQuickShareState(selectedFilePath = "demo.txt", textDraft = "hello"),
+            steganographyState = ComposeSteganographyState(coverPathText = "cover.bmp", inputPathText = "stego.bmp", outputPathText = "out.bmp", messageDraft = "secret"),
+            mediaVoiceState = ComposeMediaVoiceState(ComposeStatusConnectionState(clientConnected = true), peerState),
+            experimentalVideoState = ComposeExperimentalVideoState(ComposeStatusConnectionState(clientConnected = true), peerState),
+            diagnosticsState = ComposeDiagnosticsState(
+                statusState = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20"),
+                peerListState = peerState,
+                chatDiagnostics = listOf("chat ok"),
+                fileTransferDiagnostics = listOf("file ok"),
+                quickShareDiagnostics = listOf("share ok"),
+                realtimeDiagnostics = listOf("rtc ok"),
+            ),
+            chatRuntimeValidated = true,
+            fileTransferRuntimeValidated = true,
+            quickShareRuntimeValidated = true,
+            steganographyRuntimeValidated = true,
+            voiceRuntimeValidated = true,
+            videoRuntimeValidated = true,
+            fullRuntimeRegressionValidated = true,
+            runtimeEvidenceRecords = listOf(
+                ComposeRuntimeEvidenceRecord(
+                    ComposeRuntimeEvidenceKind.CHAT_INTEROP,
+                    ComposeRuntimeEvidenceChecklistStatus.ACCEPTED,
+                    "desktop and Android chat smoke passed",
+                    Instant.parse("2026-05-26T20:00:00Z"),
+                ),
+            ),
+        )
+
+        assertEquals(true, state.allRuntimeValidated)
+        assertEquals(emptyList<ComposeRegressionGate>(), state.blockedGates)
+        assertEquals(7, state.recordedRuntimeEvidence.size)
+        assertEquals(emptyList<ComposeRuntimeEvidenceRequirement>(), state.missingRuntimeEvidence)
+        assertTrue(state.runtimeEvidenceSummary.contains("7 of 7"))
+        assertTrue(state.runtimeChecklistSummary.contains("packaging validation"))
+        assertTrue(state.runtimeRegressionChecklist.all { it.recorded })
+        assertTrue(state.acceptedRuntimeFlowSummary.contains("Full Compose regression"))
+        assertTrue(state.runtimeEvidenceRecordSummary.contains("1 accepted"))
+        assertTrue(state.runtimeEvidenceCopyText.contains("chat-interop=accepted"))
+        assertTrue(state.pendingRuntimeFlowSummary.contains("No runtime evidence"))
+        assertTrue(state.summary.contains("9 of 9"))
+        assertTrue(state.nextActionSummary.contains("packaging validation"))
+    }
+
+    @Test
+    fun shouldExposePackagingReadinessWithoutChangingJavaFxLauncher() {
+        val state = ComposeShellMetadata.DEFAULT_PACKAGING_STATE
+
+        assertEquals("Compose packaging readiness", state.title)
+        assertEquals("com.shterneregen.securelan.desktop.Main", state.applicationMainClass)
+        assertTrue(state.launcherStatus.contains("JavaFX launcher"))
+        assertEquals(false, state.canPromoteComposeLauncher)
+        assertEquals(false, state.releaseValidationReady)
+        assertEquals(ComposeLauncherDecisionKind.CONTINUE_VALIDATION, state.launcherDecision.recommendedOption.kind)
+        assertTrue(state.launcherDecision.blockerSummary.contains("Release validation"))
+        assertTrue(state.blockedGates.any { it.kind == ComposePackagingGateKind.DESKTOP_BUILD })
+        assertTrue(state.packagingTasksSummary.contains(":apps:desktop-client:buildPortable"))
+        assertEquals(4, state.artifactRequirements.size)
+        assertTrue(state.artifactRequirements.any { it.kind == ComposePackagingArtifactKind.PORTABLE_ZIP && !it.validated })
+        assertTrue(state.artifactSummary.contains("1 of 4"))
+        assertTrue(state.pendingArtifactSummary.contains(":apps:desktop-client:buildPortable"))
+        assertTrue(state.rollbackPlanSummary.contains("Rollback path preserved"))
+        assertTrue(state.promotionChecklistSummary.contains("desktop build=false"))
+        assertTrue(state.packagingEvidenceSummary.contains("No packaging evidence records"))
+        assertTrue(state.validationReport.copyText.contains("Compose packaging validation report"))
+        assertTrue(state.promotionSummary.contains("Keep JavaFX launcher"))
+    }
+
+    @Test
+    fun shouldExposeCopyablePackagingEvidenceRecords() {
+        val state = ComposePackagingReadinessState(
+            desktopBuildPassed = true,
+            evidenceRecords = listOf(
+                ComposePackagingEvidenceRecord(
+                    ComposePackagingEvidenceKind.DESKTOP_BUILD,
+                    true,
+                    "desktop build passed",
+                    Instant.parse("2026-05-26T20:10:00Z"),
+                ),
+                ComposePackagingEvidenceRecord(
+                    ComposePackagingEvidenceKind.WINDOWS_EXE,
+                    false,
+                    "WiX host unavailable",
+                    Instant.parse("2026-05-26T20:11:00Z"),
+                ),
+            ),
+        )
+
+        assertEquals(1, state.acceptedEvidenceRecords.size)
+        assertEquals(1, state.pendingEvidenceRecords.size)
+        assertTrue(state.packagingEvidenceSummary.contains("1 packaging evidence records validated"))
+        assertTrue(state.packagingEvidenceCopyText.contains("desktop-build=validated"))
+        assertTrue(state.validationReport.copyText.contains("WiX host unavailable"))
+    }
+
+    @Test
+    fun shouldKeepPackagingPromotionBlockedUntilExplicitApproval() {
+        val validatedButNotApproved = ComposePackagingReadinessState(
+            desktopTestsPassed = true,
+            desktopBuildPassed = true,
+            composeRuntimeSmokePassed = true,
+            portableZipValidated = true,
+            windowsExeValidated = true,
+            composePromotionApproved = false,
+            fullRuntimeRegressionValidated = true,
+        )
+        val approved = validatedButNotApproved.copy(composePromotionApproved = true)
+
+        assertEquals(false, validatedButNotApproved.canPromoteComposeLauncher)
+        assertEquals(true, validatedButNotApproved.releaseValidationReady)
+        assertEquals(ComposeLauncherDecisionKind.KEEP_JAVAFX_FALLBACK, validatedButNotApproved.launcherDecision.recommendedOption.kind)
+        assertTrue(validatedButNotApproved.launcherDecision.blockerSummary.contains("approval"))
+        assertTrue(validatedButNotApproved.blockedGates.any { it.kind == ComposePackagingGateKind.LAUNCHER_DECISION })
+        assertTrue(validatedButNotApproved.promotionDecisionSteps.any {
+            it.kind == ComposePromotionDecisionStepKind.REQUIRE_APPROVAL && !it.satisfied
+        })
+        assertTrue(validatedButNotApproved.promotionDecisionSummary.contains("explicit approval"))
+        assertEquals(true, approved.canPromoteComposeLauncher)
+        assertEquals(ComposeLauncherDecisionKind.PROMOTE_COMPOSE_AFTER_ACCEPTANCE, approved.launcherDecision.recommendedOption.kind)
+        assertEquals(emptyList<ComposePackagingGate>(), approved.blockedGates)
+        assertTrue(approved.promotionDecisionSteps.all { it.satisfied })
+    }
+
+    @Test
+    fun shouldRequireFullRuntimeRegressionBeforeReleaseValidation() {
+        val missingRuntimeRegression = ComposePackagingReadinessState(
+            desktopTestsPassed = true,
+            desktopBuildPassed = true,
+            composeRuntimeSmokePassed = true,
+            portableZipValidated = true,
+            windowsExeValidated = true,
+            composePromotionApproved = true,
+            fullRuntimeRegressionValidated = false,
+        )
+        val complete = missingRuntimeRegression.copy(fullRuntimeRegressionValidated = true)
+
+        assertEquals(false, missingRuntimeRegression.releaseValidationReady)
+        assertEquals(false, missingRuntimeRegression.canPromoteComposeLauncher)
+        assertTrue(missingRuntimeRegression.promotionChecklistSummary.contains("runtime regression=false"))
+        assertTrue(missingRuntimeRegression.promotionDecisionSteps.any {
+            it.kind == ComposePromotionDecisionStepKind.COMPLETE_RUNTIME_REGRESSION && !it.satisfied
+        })
+        assertTrue(missingRuntimeRegression.promotionDecisionSummary.contains("Complete runtime regression"))
+        assertEquals(true, complete.releaseValidationReady)
+        assertEquals(true, complete.canPromoteComposeLauncher)
+    }
+
+    @Test
+    fun shouldKeepLauncherPromotionBlockedWhenFallbackIsUnavailable() {
+        val state = ComposePackagingReadinessState(
+            desktopTestsPassed = true,
+            desktopBuildPassed = true,
+            composeRuntimeSmokePassed = true,
+            portableZipValidated = true,
+            windowsExeValidated = true,
+            composePromotionApproved = true,
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals(false, state.releaseValidationReady)
+        assertEquals(false, state.canPromoteComposeLauncher)
+        assertEquals(ComposeLauncherDecisionKind.CONTINUE_VALIDATION, state.launcherDecision.recommendedOption.kind)
+        assertTrue(state.launcherDecision.blockerSummary.contains("fallback"))
+    }
+
+    @Test
+    fun shouldExposeSteganographyStateReadinessAndCapacityCopy() {
+        val state = ComposeSteganographyState(
+            coverPathText = "cover.bmp",
+            inputPathText = "cover-stego.bmp",
+            outputPathText = "out.bmp",
+            messageDraft = "secret",
+            passwordDraft = "pw",
+            encryptPayload = true,
+            encryptedExtract = true,
+            capacity = BmpCapacity(8, 8, 24, 192, 11, 22),
+            extractedMessage = "secret",
+        )
+
+        assertEquals("Steganography", state.title)
+        assertEquals(true, state.canInspectCover)
+        assertEquals(true, state.canHideMessage)
+        assertEquals(true, state.canExtractMessage)
+        assertTrue(state.capacityText.contains("22 bytes"))
+        assertTrue(state.extractedSummary.contains("6 characters"))
+        assertEquals(emptyList<String>(), state.blockedReasons)
+    }
+
+    @Test
+    fun shouldBlockSteganographyStateWhenInputsOrPasswordAreMissing() {
+        val state = ComposeSteganographyState(encryptPayload = true, encryptedExtract = true, javaFxFallbackAvailable = false)
+
+        assertEquals(false, state.canInspectCover)
+        assertEquals(false, state.canHideMessage)
+        assertEquals(false, state.canExtractMessage)
+        assertTrue(state.blockedReasons.any { it.contains("cover") })
+        assertTrue(state.blockedReasons.any { it.contains("password") })
+        assertTrue(state.blockedReasons.any { it.contains("fallback") })
+    }
+
+    @Test
+    fun shouldExposeMediaVoiceReadinessAndLabels() {
+        val peerState = ComposePeerListState(selectedPeerIndex = 0)
+        val state = ComposeMediaVoiceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = peerState,
+            microphones = listOf(MediaDeviceChoice.systemDefault("System default microphone")),
+            runtimeStatus = RtcRuntimeStatus("webrtc-java", true, "ready"),
+            currentSession = RtcSessionSnapshot("rtc-1", "Alice", "Astra Laptop", RtcSessionMode.AUDIO, "securelan-data", RtcSessionState.CONNECTED, "Connected"),
+            localAudioLevel = 0.42,
+            remoteAudioLevel = 0.12,
+        )
+
+        assertEquals("Media devices and voice", state.title)
+        assertEquals("webrtc-java ready", state.runtimeLabel)
+        assertEquals("In call with Astra Laptop", state.voiceStatusText)
+        assertEquals(true, state.canStartVoice)
+        assertEquals(true, state.canHangUp)
+        assertTrue(state.localAudioLabel.contains("42%"))
+        assertEquals(emptyList<String>(), state.blockedReasons)
+    }
+
+    @Test
+    fun shouldBlockMediaVoiceWithoutChatOrPeer() {
+        val state = ComposeMediaVoiceState(
+            statusState = ComposeStatusConnectionState(clientConnected = false),
+            peerListState = ComposePeerListState(peers = emptyList()),
+        )
+
+        assertEquals(false, state.canStartVoice)
+        assertEquals(false, state.canHangUp)
+        assertTrue(state.blockedReasons.any { it.contains("Connect to chat") })
+        assertTrue(state.blockedReasons.any { it.contains("Select an online peer") })
+    }
+
+    @Test
+    fun shouldExposeExperimentalVideoReadinessAndPreviewCopy() {
+        val state = ComposeExperimentalVideoState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(selectedPeerIndex = 0),
+            cameras = listOf(MediaDeviceChoice.systemDefault("System default camera")),
+            runtimeStatus = RtcRuntimeStatus("webrtc-java", true, "ready"),
+            currentSession = RtcSessionSnapshot("rtc-2", "Alice", "Astra Laptop", RtcSessionMode.AUDIO_VIDEO, "securelan-data", RtcSessionState.NEGOTIATING, "Preparing"),
+            previewRunning = true,
+        )
+
+        assertEquals("Experimental camera and video", state.title)
+        assertEquals("Video call with Astra Laptop", state.stageTitle)
+        assertEquals("Negotiating", state.stageBadge)
+        assertEquals("Audio + camera", state.mediaLabel)
+        assertEquals("Camera preview starting…", state.previewStatus)
+        assertEquals(true, state.canStartVideo)
+        assertEquals(true, state.canStopPreview)
+        assertEquals(true, state.canHangUp)
+        assertEquals(emptyList<String>(), state.blockedReasons)
+    }
+
+    @Test
+    fun shouldBlockExperimentalVideoWithoutConnectedPeer() {
+        val state = ComposeExperimentalVideoState(
+            statusState = ComposeStatusConnectionState(clientConnected = false),
+            peerListState = ComposePeerListState(peers = emptyList()),
+            javaFxFallbackAvailable = false,
+        )
+
+        assertEquals(false, state.canStartVideo)
+        assertEquals(false, state.canRefreshCameras)
+        assertTrue(state.blockedReasons.any { it.contains("Connect to chat") })
+        assertTrue(state.blockedReasons.any { it.contains("fallback") })
+    }
+
+    @Test
+    fun shouldExposeDefaultValidAdapterEventRoutingContract() {
+        val state = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20")
+        val routing = state.adapterEventRouting
+
+        assertEquals("Host runtime adapter event contract", routing.title)
+        assertTrue(routing.subtitle.contains("Side-effect-free"), "subtitle: ${routing.subtitle}")
+        assertEquals(10, routing.contracts.size)
+        assertEquals(10, routing.totalCount)
+        assertTrue(routing.readyCount > 0)
+        assertTrue(routing.fallbackAvailable)
+
+        val hostStarted = findContract(routing, ComposeAdapterEventKind.HOST_STARTED)
+        assertEquals(true, hostStarted.ready)
+        assertEquals("Host started", hostStarted.label)
+        assertEquals(emptyList<ComposeAdapterEventKind>(), hostStarted.cleanupAfter)
+        assertEquals("standalone", hostStarted.eventOrderNote)
+
+        val connected = findContract(routing, ComposeAdapterEventKind.CONNECTED)
+        assertEquals(false, connected.ready)
+        assertEquals(listOf(ComposeAdapterEventKind.CONNECT_STARTED), connected.cleanupAfter)
+
+        val runtimeError = findContract(routing, ComposeAdapterEventKind.RUNTIME_ERROR)
+        assertEquals(false, runtimeError.ready)
+        assertEquals(true, runtimeError.guarded)
+
+        assertTrue(routing.eventOrderLabel.startsWith("host-started"))
+        assertTrue(routing.eventOrderLabel.endsWith("cleanup-completed"))
+        assertTrue(routing.cleanupOrderSummary.contains("not yet applicable"))
+    }
+
+    @Test
+    fun shouldExposeHostedStateAdapterEventContract() {
+        val state = ComposeStatusConnectionState(localServerRunning = true, discoverable = false)
+        val routing = state.adapterEventRouting
+
+        assertEquals(true, routing.fallbackAvailable)
+        assertTrue(routing.readyCount >= 5)
+
+        val hostStarted = findContract(routing, ComposeAdapterEventKind.HOST_STARTED)
+        assertEquals(false, hostStarted.ready)
+
+        val hostStopped = findContract(routing, ComposeAdapterEventKind.HOST_STOPPED)
+        assertEquals(true, hostStopped.ready)
+
+        val discoveryVisibility = findContract(routing, ComposeAdapterEventKind.DISCOVERY_VISIBILITY_CHANGED)
+        assertEquals(true, discoveryVisibility.ready)
+
+        val cleanupStarted = findContract(routing, ComposeAdapterEventKind.CLEANUP_STARTED)
+        assertEquals(true, cleanupStarted.ready)
+
+        val cleanupCompleted = findContract(routing, ComposeAdapterEventKind.CLEANUP_COMPLETED)
+        assertEquals(true, cleanupCompleted.ready)
+        assertEquals(listOf(ComposeAdapterEventKind.CLEANUP_STARTED), cleanupCompleted.cleanupAfter)
+    }
+
+    @Test
+    fun shouldExposeConnectedStateAdapterEventContract() {
+        val state = ComposeStatusConnectionState(clientConnected = true)
+        val routing = state.adapterEventRouting
+
+        assertEquals(true, routing.fallbackAvailable)
+        assertTrue(routing.readyCount >= 3)
+
+        val connected = findContract(routing, ComposeAdapterEventKind.CONNECTED)
+        assertEquals(true, connected.ready)
+
+        val disconnected = findContract(routing, ComposeAdapterEventKind.DISCONNECTED)
+        assertEquals(true, disconnected.ready)
+        assertEquals(listOf(ComposeAdapterEventKind.CONNECTED), disconnected.cleanupAfter)
+
+        val hostStarted = findContract(routing, ComposeAdapterEventKind.HOST_STARTED)
+        // hostStarted may be ready or blocked depending on lifecycle gating;
+        // verify it has a contract with proper label and prerequisites.
+        assertEquals("Host started", hostStarted.label)
+        assertTrue(hostStarted.prerequisites.isNotEmpty())
+
+        val cleanupStarted = findContract(routing, ComposeAdapterEventKind.CLEANUP_STARTED)
+        assertEquals(true, cleanupStarted.ready)
+
+        val cleanupCompleted = findContract(routing, ComposeAdapterEventKind.CLEANUP_COMPLETED)
+        assertEquals(true, cleanupCompleted.ready)
+    }
+
+    @Test
+    fun shouldBlockAllAdapterEventsWhenFallbackUnavailable() {
+        val state = ComposeStatusConnectionState(javaFxFallbackAvailable = false)
+        val routing = state.adapterEventRouting
+
+        assertEquals(false, routing.fallbackAvailable)
+        assertEquals(0, routing.readyCount)
+        assertEquals(10, routing.blockedCount)
+        assertTrue(routing.readinessSummary.contains("All 10"))
+        assertTrue(routing.fallbackStatus.contains("unavailable"))
+
+        routing.contracts.forEach { contract ->
+            assertEquals(false, contract.ready, "Expected ${contract.kind} to be blocked when fallback unavailable")
+            assertTrue(
+                contract.blockedReason.contains("JavaFX fallback"),
+                "Expected ${contract.kind} blockedReason to mention fallback, got: ${contract.blockedReason}"
+            )
+        }
+        assertTrue(routing.cleanupOrderSummary.contains("not yet applicable"))
+    }
+
+    @Test
+    fun shouldBlockHostAndConnectEventsForInvalidInputs() {
+        val state = ComposeStatusConnectionState(
+            nickname = " ",
+            manualHost = " ",
+            serverChatPortText = "0",
+            serverFilePortText = "70000",
+            clientChatPortText = "abc",
+            clientFilePortText = "65536",
+            javaFxFallbackAvailable = true,
+        )
+        val routing = state.adapterEventRouting
+
+        assertEquals(0, routing.readyCount)
+        assertEquals(10, routing.blockedCount)
+
+        val hostStarted = findContract(routing, ComposeAdapterEventKind.HOST_STARTED)
+        assertEquals(false, hostStarted.ready)
+        assertTrue(
+            hostStarted.blockedReason.contains("blank") || hostStarted.blockedReason.contains("invalid") || hostStarted.blockedReason.contains(
+                "Nickname"
+            ) || hostStarted.blockedReason.contains("Room ports"),
+            "hostStarted blockedReason: ${hostStarted.blockedReason}"
+        )
+
+        val connectStarted = findContract(routing, ComposeAdapterEventKind.CONNECT_STARTED)
+        assertEquals(false, connectStarted.ready)
+        assertTrue(
+            connectStarted.blockedReason.contains("blank") || connectStarted.blockedReason.contains("invalid") || connectStarted.blockedReason.contains(
+                "Nickname"
+            ) || connectStarted.blockedReason.contains("Manual host"),
+            "connectStarted blockedReason: ${connectStarted.blockedReason}"
+        )
+
+        val runtimeError = findContract(routing, ComposeAdapterEventKind.RUNTIME_ERROR)
+        assertEquals(false, runtimeError.ready)
+        assertEquals(true, runtimeError.guarded)
+    }
+
+    private fun findContract(
+        routing: ComposeAdapterEventRouting,
+        kind: ComposeAdapterEventKind
+    ): ComposeAdapterEventContract =
+        routing.contracts.first { it.kind == kind }
+
+    @Test
+    fun shouldExposeDeterministicAdapterEventAndCleanupOrderingSummary() {
+        val hosted = ComposeStatusConnectionState(localServerRunning = true).adapterEventRouting
+        val connected = ComposeStatusConnectionState(clientConnected = true).adapterEventRouting
+        val idle = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20").adapterEventRouting
+
+        assertTrue(hosted.eventOrderLabel.startsWith("host-started"))
+        assertTrue(hosted.eventOrderLabel.endsWith("cleanup-completed"))
+        assertEquals(hosted.eventOrderLabel, connected.eventOrderLabel)
+        assertEquals(hosted.eventOrderLabel, idle.eventOrderLabel)
+
+        val hostedCleanup = hosted.contracts.first { it.kind == ComposeAdapterEventKind.CLEANUP_COMPLETED }
+        assertEquals(listOf(ComposeAdapterEventKind.CLEANUP_STARTED), hostedCleanup.cleanupAfter)
+
+        val hostedCleanupStarted = hosted.contracts.first { it.kind == ComposeAdapterEventKind.CLEANUP_STARTED }
+        assertEquals(true, hostedCleanupStarted.ready)
+        assertEquals(emptyList<ComposeAdapterEventKind>(), hostedCleanupStarted.cleanupAfter)
+        assertEquals("standalone", hostedCleanupStarted.eventOrderNote)
+
+        val connectedDisconnected = connected.contracts.first { it.kind == ComposeAdapterEventKind.DISCONNECTED }
+        assertEquals(listOf(ComposeAdapterEventKind.CONNECTED), connectedDisconnected.cleanupAfter)
+        assertTrue(connectedDisconnected.eventOrderNote.startsWith("after connected"))
+    }
+
+    @Test
+    fun shouldLinkAdapterEventRoutingToLifecycleAndTransitionPlans() {
+        val state = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20")
+        val routing = state.adapterEventRouting
+
+        assertEquals(state.lifecyclePlan.sideEffectContractSummary, routing.summary)
+        assertEquals(state.lifecyclePlan.fallbackAvailable, routing.fallbackAvailable)
+
+        val hostStarted = routing.contracts.first { it.kind == ComposeAdapterEventKind.HOST_STARTED }
+        assertEquals(state.lifecyclePlan.step(ComposeConnectionLifecyclePhase.HOSTING_READY).ready, hostStarted.ready)
+        assertTrue(hostStarted.prerequisites.contains("valid nickname"))
+        assertTrue(hostStarted.prerequisites.contains("valid room ports"))
+
+        val connectStarted = routing.contracts.first { it.kind == ComposeAdapterEventKind.CONNECT_STARTED }
+        assertEquals(
+            state.lifecyclePlan.step(ComposeConnectionLifecyclePhase.CONNECTING_READY).ready,
+            connectStarted.ready
+        )
+        assertTrue(connectStarted.description.contains("manual chat-client connection"))
+    }
+
+    @Test
+    fun shouldExposeDefaultPeerListLifecycleContract() {
+        val state = ComposePeerListState()
+        val lifecycle = state.peerListLifecyclePlan
+
+        assertEquals("Live peer-list binding contract", lifecycle.title)
+        assertEquals(ComposePeerListLifecyclePhase.PEER_TARGETED, lifecycle.currentPhase)
+        assertEquals(6, lifecycle.steps.size)
+        assertTrue(lifecycle.fallbackAvailable)
+        assertTrue(lifecycle.readinessSummary.contains("Peer targeted"))
+        assertTrue(lifecycle.fallbackStatus.contains("available"))
+    }
+
+    @Test
+    fun shouldBlockPeerListLifecycleWhenFallbackUnavailable() {
+        val state = ComposePeerListState(javaFxFallbackAvailable = false)
+        val lifecycle = state.peerListLifecyclePlan
+
+        assertEquals(ComposePeerListLifecyclePhase.BLOCKED_ERROR, lifecycle.currentPhase)
+        assertEquals(false, lifecycle.fallbackAvailable)
+        assertEquals(1, lifecycle.readySteps.size)
+        assertEquals("Blocked/error", lifecycle.readySteps.first().label)
+        assertTrue(lifecycle.blockedReasons.any { it.contains("JavaFX peer-list fallback") })
+    }
+
+    @Test
+    fun shouldExposeDiscoveringPeerListLifecycleForEmptyPeers() {
+        val state = ComposePeerListState(peers = emptyList(), selectedPeerIndex = 0)
+        val lifecycle = state.peerListLifecyclePlan
+
+        assertEquals(ComposePeerListLifecyclePhase.DISCOVERING, lifecycle.currentPhase)
+        assertTrue(lifecycle.blockedReasons.isEmpty(), "blockedReasons: ${lifecycle.blockedReasons}")
+        assertTrue(lifecycle.readySteps.any { it.phase == ComposePeerListLifecyclePhase.DISCOVERING })
+    }
+
+    @Test
+    fun shouldExposeDefaultPeerListTransitionIntents() {
+        val state = ComposePeerListState()
+        val transitions = state.peerListTransitionPlan
+
+        assertEquals("Peer-list transition intents", transitions.title)
+        assertEquals(8, transitions.transitions.size)
+        assertTrue(transitions.enabledTransitions.isNotEmpty())
+        assertTrue(transitions.enabledSummary.contains("Select peer"))
+    }
+
+    @Test
+    fun shouldExposeDefaultPeerListAdapterEventRouting() {
+        val state = ComposePeerListState()
+        val routing = state.peerListAdapterEventRouting
+
+        assertEquals("Peer-list adapter event contract", routing.title)
+        assertTrue(routing.subtitle.contains("Side-effect-free"), "subtitle: ${routing.subtitle}")
+        assertEquals(6, routing.contracts.size)
+        assertTrue(routing.fallbackAvailable)
+        assertTrue(routing.readyCount >= 3, "readyCount=${routing.readyCount}")
+        assertTrue(routing.eventOrderLabel.startsWith("peer-discovered"), "eventOrderLabel: ${routing.eventOrderLabel}")
+        assertTrue(routing.eventOrderLabel.endsWith("peer-list-refreshed"))
+    }
+
+    @Test
+    fun shouldBlockPeerListTransitionsWhenFallbackUnavailable() {
+        val state = ComposePeerListState(javaFxFallbackAvailable = false)
+        val transitions = state.peerListTransitionPlan
+
+        assertEquals(0, transitions.enabledTransitions.size)
+        assertEquals(8, transitions.blockedTransitions.size)
+        assertTrue(
+            transitions.blockedTransitions.any { it.kind == ComposePeerListTransitionKind.SELECT_PEER && !it.enabled },
+            "blockedSummary: ${transitions.blockedSummary}"
+        )
+    }
+
+    @Test
+    fun shouldBlockPeerListAdapterEventsWhenFallbackUnavailable() {
+        val state = ComposePeerListState(javaFxFallbackAvailable = false)
+        val routing = state.peerListAdapterEventRouting
+
+        assertEquals(false, routing.fallbackAvailable)
+        assertEquals(0, routing.readyCount)
+        assertEquals(6, routing.blockedCount)
+        assertTrue(routing.readinessSummary.contains("All 6"), "readinessSummary: ${routing.readinessSummary}")
+        routing.contracts.forEach { contract ->
+            assertTrue(
+                contract.blockedReason.contains("JavaFX fallback"),
+                "Expected ${contract.kind} to mention fallback, got: ${contract.blockedReason}"
+            )
+        }
+    }
+
+    @Test
+    fun shouldMapDiscoveredPeerIntoComposePeerListItem() {
+        val peer = DiscoveredPeer(
+            "peer-phone",
+            "Phone",
+            "192.168.1.42",
+            NetworkConstants.DEFAULT_CHAT_PORT,
+            NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
+            Instant.parse("2026-05-25T18:00:00Z"),
+        )
+
+        val item = ComposePeerListItem.fromDiscoveredPeer(peer)
+
+        assertEquals("Phone", item.nickname)
+        assertTrue(item.online)
+        assertTrue(item.discovered)
+        assertTrue(item.listMeta.contains("192.168.1.42"))
+        assertTrue(item.selectedMeta.contains("192.168.1.42"))
+    }
+
+    @Test
+    fun shouldPreservePeerSelectionByNicknameAfterRefreshSorting() {
+        val peers = listOf(
+            ComposePeerListItem("zeta", online = false, discovered = true, listMeta = "offline", selectedMeta = "offline"),
+            ComposePeerListItem("Beta", online = true, discovered = true, listMeta = "beta", selectedMeta = "beta"),
+            ComposePeerListItem("alpha", online = true, discovered = true, listMeta = "alpha", selectedMeta = "alpha"),
+        )
+
+        val state = ComposePeerListState(
+            peers = peers,
+            selectedPeerIndex = -1,
+            selectedPeerNickname = "Beta",
+        )
+
+        assertEquals(listOf("alpha", "Beta", "zeta"), state.visiblePeers.map { it.nickname })
+        assertEquals(1, state.resolvedSelectedPeerIndex)
+        assertEquals("Beta", state.selectedPeerTitle)
+        assertEquals("Beta", state.selectionKeyFor(1))
+    }
+
+    @Test
+    fun shouldExposeSelectedPeerTargetKindWithoutStartingRuntimeAction() {
+        val state = ComposePeerListState(
+            selectedPeerIndex = 0,
+            selectedTargetKind = ComposePeerTargetCommandKind.FILE_TARGET,
+        )
+
+        assertEquals("Astra Laptop", state.selectedPeerTitle)
+        assertTrue(state.actionSummary.contains("File target selected"), state.actionSummary)
+        assertTrue(
+            state.targetControlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).displayLabel.contains("selected"),
+            state.targetControlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).displayLabel,
+        )
+    }
+}
