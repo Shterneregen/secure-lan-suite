@@ -2,11 +2,15 @@ package com.shterneregen.securelan.desktop.ui
 
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.SocketException
 import java.nio.file.Path
 import java.util.Locale
 import javax.imageio.ImageIO
@@ -170,6 +174,40 @@ object DesktopMainViewHelpers {
     fun localNetworkInfoErrorMessage(message: String?): String = "[info] failed to determine local network IP: $message"
 
     @JvmStatic
+    @Throws(SocketException::class)
+    fun resolveLocalLanIps(): List<String> {
+        val siteLocalAddresses = mutableListOf<String>()
+        val otherNonLoopbackAddresses = mutableListOf<String>()
+
+        val networkInterfaces = NetworkInterface.getNetworkInterfaces()
+        while (networkInterfaces.hasMoreElements()) {
+            val networkInterface = networkInterfaces.nextElement()
+            if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) {
+                continue
+            }
+
+            val inetAddresses = networkInterface.inetAddresses
+            while (inetAddresses.hasMoreElements()) {
+                val inetAddress = inetAddresses.nextElement()
+                if (inetAddress !is Inet4Address || inetAddress.isLoopbackAddress) {
+                    continue
+                }
+
+                val hostAddress = inetAddress.hostAddress
+                if (inetAddress.isSiteLocalAddress) {
+                    siteLocalAddresses += hostAddress
+                } else {
+                    otherNonLoopbackAddresses += hostAddress
+                }
+            }
+        }
+
+        return (if (siteLocalAddresses.isNotEmpty()) siteLocalAddresses else otherNonLoopbackAddresses)
+            .distinct()
+            .sorted()
+    }
+
+    @JvmStatic
     fun hangUpAvailable(state: RtcSessionState?): Boolean = when (state) {
         null,
         RtcSessionState.IDLE,
@@ -185,10 +223,16 @@ object DesktopMainViewHelpers {
     }
 
     @JvmStatic
-    fun selectedPeerFileCapable(peer: PeerPresence?): Boolean = peer?.online() == true && peer.discovered()
+    fun selectedPeerFileCapable(peer: PeerPresence?): Boolean = peer?.online() == true && peer.hasFileEndpoint()
 
     @JvmStatic
-    fun selectedPeerCallable(peer: PeerPresence?): Boolean = peer?.online() == true
+    fun selectedPeerCallable(peer: PeerPresence?): Boolean {
+        if (peer?.online() != true) {
+            return false
+        }
+        val capabilities = peer.capabilities()
+        return capabilities == PeerCapabilities.unknown() || capabilities.supportsVoice() || capabilities.supportsVideo() || capabilities.supportsRtcDataChannel()
+    }
 
     private fun isBmpPath(path: Path): Boolean = path.toString().lowercase(Locale.ROOT).endsWith(".bmp")
 

@@ -17,6 +17,7 @@ import com.shterneregen.securelan.chat.event.ChatMessageSentEvent;
 import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent;
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent;
 import com.shterneregen.securelan.chat.event.ChatUserLeftEvent;
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities;
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest;
 import com.shterneregen.securelan.chat.service.ChatClientService;
 import com.shterneregen.securelan.chat.service.ChatEventPublisher;
@@ -110,17 +111,12 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -134,6 +130,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class MainViewDelegate {
+    private static final String APP_VERSION = "0.5.0";
     private static final boolean LOCAL_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.local.enabled", "true"));
     private static final boolean REMOTE_VIDEO_PREVIEW_ENABLED = Boolean.parseBoolean(System.getProperty("securelan.rtc.videoPreview.remote.enabled", "true"));
     private static final double TRANSFER_LIST_VISIBLE_ROWS = 3;
@@ -711,42 +708,10 @@ final class MainViewDelegate {
 
     private void publishLocalNetworkInfo() {
         try {
-            appendChat(DesktopMainViewHelpers.localNetworkInfoMessage(resolveLocalLanIps()));
+            appendChat(DesktopMainViewHelpers.localNetworkInfoMessage(DesktopMainViewHelpers.resolveLocalLanIps()));
         } catch (SocketException ex) {
             appendChat(DesktopMainViewHelpers.localNetworkInfoErrorMessage(ex.getMessage()));
         }
-    }
-
-    private List<String> resolveLocalLanIps() throws SocketException {
-        List<String> siteLocalAddresses = new ArrayList<>();
-        List<String> otherNonLoopbackAddresses = new ArrayList<>();
-
-        Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-        while (networkInterfaces.hasMoreElements()) {
-            NetworkInterface networkInterface = networkInterfaces.nextElement();
-            if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.isVirtual()) {
-                continue;
-            }
-
-            Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
-            while (inetAddresses.hasMoreElements()) {
-                InetAddress inetAddress = inetAddresses.nextElement();
-                if (!(inetAddress instanceof Inet4Address) || inetAddress.isLoopbackAddress()) {
-                    continue;
-                }
-
-                String hostAddress = inetAddress.getHostAddress();
-                if (inetAddress.isSiteLocalAddress()) {
-                    siteLocalAddresses.add(hostAddress);
-                } else {
-                    otherNonLoopbackAddresses.add(hostAddress);
-                }
-            }
-        }
-
-        List<String> result = !siteLocalAddresses.isEmpty() ? siteLocalAddresses : otherNonLoopbackAddresses;
-        result.sort(Comparator.naturalOrder());
-        return result.stream().distinct().toList();
     }
 
     private void syncSharedClientFields() {
@@ -1384,8 +1349,8 @@ final class MainViewDelegate {
             showError("Connect to chat before sending files");
             return;
         }
-        if (!peer.discovered()) {
-            showError("Selected peer does not advertise a file transfer endpoint yet");
+        if (!DesktopMainViewHelpers.selectedPeerFileCapable(peer)) {
+            showError("Selected peer does not have an available file transfer endpoint yet");
             return;
         }
 
@@ -1398,10 +1363,8 @@ final class MainViewDelegate {
 
         recipientField.setText(peer.nickname());
         rtcPeerField.setText(peer.nickname());
-        if (peer.discovered()) {
-            fileHostField.setText(peer.host());
-            clientFilePortField.setText(Integer.toString(peer.filePort()));
-        }
+        fileHostField.setText(peer.host());
+        clientFilePortField.setText(Integer.toString(peer.filePort()));
 
         try {
             int filePort = Integer.parseInt(clientFilePortField.getText().trim());
@@ -1944,12 +1907,13 @@ final class MainViewDelegate {
                         null,
                         host,
                         localChatPort(),
-                        inferredClientFilePort(),
-                        Instant.now()
+                        filePortFromCapabilities(event.capabilities(), inferredClientFilePort()),
+                        Instant.now(),
+                        event.capabilities()
                 );
             }
         }
-        return upsertPeer(event.nickname(), true);
+        return upsertPeer(event.nickname(), true, null, null, 0, filePortFromCapabilities(event.capabilities(), 0), null, event.capabilities());
     }
 
     private String hostFromRemoteAddress(String remoteAddress) {
@@ -1962,6 +1926,17 @@ final class MainViewDelegate {
                 NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
                 CLIENT_FILE_PORT_OFFSET
         );
+    }
+
+    private PeerCapabilities desktopCapabilities(int filePort) {
+        return PeerCapabilities.desktop(APP_VERSION, filePort);
+    }
+
+    private int filePortFromCapabilities(PeerCapabilities capabilities, int fallback) {
+        if (capabilities != null && capabilities.supportsFileReceive() && capabilities.fileReceivePort() > 0) {
+            return capabilities.fileReceivePort();
+        }
+        return fallback;
     }
 
     private void handleFileTransferEvent(FileTransferEvent event) {
@@ -2298,22 +2273,23 @@ final class MainViewDelegate {
                 discoveredPeer.host(),
                 discoveredPeer.chatPort(),
                 discoveredPeer.filePort(),
-                discoveredPeer.lastSeen()
+                discoveredPeer.lastSeen(),
+                PeerCapabilities.unknown()
         );
     }
 
     private PeerPresence upsertPeer(String nickname, boolean online) {
-        return upsertPeer(nickname, online, null, null, 0, 0, null);
+        return upsertPeer(nickname, online, null, null, 0, 0, null, PeerCapabilities.unknown());
     }
 
-    private PeerPresence upsertPeer(String nickname, boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen) {
+    private PeerPresence upsertPeer(String nickname, boolean online, String peerId, String host, int chatPort, int filePort, Instant lastSeen, PeerCapabilities capabilities) {
         if (nickname == null || nickname.isBlank() || isSystemSender(nickname) || nickname.equalsIgnoreCase(nicknameField.getText().trim())) {
             return null;
         }
 
         for (PeerPresence item : peerItems) {
             if (samePeer(item, nickname, peerId)) {
-                boolean changed = item.apply(online, peerId, host, chatPort, filePort, lastSeen);
+                boolean changed = item.apply(online, peerId, host, chatPort, filePort, lastSeen, capabilities);
                 if (changed) {
                     peerListView.refresh();
                     sortPeers();
@@ -2324,7 +2300,7 @@ final class MainViewDelegate {
             }
         }
 
-        PeerPresence created = new PeerPresence(nickname, online, peerId, host, chatPort, filePort, lastSeen);
+        PeerPresence created = new PeerPresence(nickname, online, peerId, host, chatPort, filePort, lastSeen, capabilities);
         peerItems.add(created);
         sortPeers();
         refreshSelectedPeerStatus();

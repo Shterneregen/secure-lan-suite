@@ -2,7 +2,9 @@ package com.shterneregen.securelan.desktop.ui
 
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState
+import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -119,6 +121,32 @@ class DesktopMainViewHelpersTest {
                 clientFilePortOffset = 1000,
             ),
         )
+    }
+
+    @Test
+    fun shouldBlockCallablePeerActionsForAndroidCapabilities() {
+        val androidPeer = PeerPresence(
+            "Android Phone",
+            true,
+            "android-peer",
+            "192.168.1.30",
+            5555,
+            7001,
+            Instant.parse("2026-05-22T09:00:00Z"),
+            PeerCapabilities.android("0.5.0", 7001),
+        )
+        val compatibilityPeer = PeerPresence(
+            "Compatibility Client",
+            true,
+            null,
+            null,
+            0,
+            0,
+            Instant.parse("2026-05-22T09:01:00Z"),
+        )
+
+        assertFalse(DesktopMainViewHelpers.selectedPeerCallable(androidPeer))
+        assertTrue(DesktopMainViewHelpers.selectedPeerCallable(compatibilityPeer))
     }
 
     @Test
@@ -279,6 +307,8 @@ class DesktopMainViewHelpersTest {
         assertFalse(DesktopMainViewHelpers.selectedPeerFileCapable(chatOnlyPeer()))
         assertFalse(DesktopMainViewHelpers.selectedPeerFileCapable(discoveredPeer(online = false)))
         assertTrue(DesktopMainViewHelpers.selectedPeerFileCapable(discoveredPeer()))
+        assertTrue(DesktopMainViewHelpers.selectedPeerFileCapable(inferredFilePeer()))
+        assertTrue(DesktopMainViewHelpers.selectedPeerFileCapable(desktopPeerWithLegacyFilePresence()))
     }
 
     @Test
@@ -307,6 +337,27 @@ class DesktopMainViewHelpersTest {
         0,
         0,
         Instant.parse("2026-05-22T09:00:00Z"),
+    )
+
+    private fun inferredFilePeer(): PeerPresence = PeerPresence(
+        "Android Phone",
+        true,
+        null,
+        "192.168.1.30",
+        5050,
+        6051,
+        Instant.parse("2026-05-22T09:00:00Z"),
+    )
+
+    private fun desktopPeerWithLegacyFilePresence(): PeerPresence = PeerPresence(
+        "Desktop Peer",
+        true,
+        null,
+        "192.168.1.40",
+        NetworkConstants.DEFAULT_CHAT_PORT,
+        NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
+        Instant.parse("2026-05-22T09:00:00Z"),
+        PeerCapabilities.desktop("0.5.0", NetworkConstants.DEFAULT_FILE_TRANSFER_PORT).withFileReceiver(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, enabled = false),
     )
 
     private fun discoveredPeer(online: Boolean = true): PeerPresence = PeerPresence(

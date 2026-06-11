@@ -1,12 +1,13 @@
 package com.shterneregen.securelan.chat.service
 
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.transport.ChatSocketSession
 
 interface ChatBroadcastService {
-    fun addClient(nickname: String, session: ChatSocketSession)
+    fun addClient(nickname: String, session: ChatSocketSession, capabilities: PeerCapabilities)
     fun removeClient(nickname: String)
     fun syncPeers(session: ChatSocketSession, excludeNickname: String?)
-    fun publishUserJoined(nickname: String)
+    fun publishUserJoined(nickname: String, capabilities: PeerCapabilities)
     fun publishUserLeft(nickname: String)
     fun publishMessage(senderNickname: String, text: String)
     fun publishSignal(senderNickname: String, payload: String)

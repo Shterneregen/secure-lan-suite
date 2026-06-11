@@ -73,9 +73,9 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
             }
             val nickname = response.nickname()
             broadcastService.syncPeers(session, nickname)
-            broadcastService.addClient(nickname, session)
-            broadcastService.publishUserJoined(nickname)
-            eventPublisher.publish(ChatUserJoinedEvent(nickname, session.remoteAddress()))
+            broadcastService.addClient(nickname, session, response.capabilities())
+            broadcastService.publishUserJoined(nickname, response.capabilities())
+            eventPublisher.publish(ChatUserJoinedEvent(nickname, session.remoteAddress(), response.capabilities()))
             ServerChatSessionHandler(session, nickname, broadcastService, nicknameRegistry, eventPublisher).run()
         } catch (e: IOException) {
             eventPublisher.publish(ChatErrorEvent("Error while handling client", e))

@@ -47,6 +47,7 @@ import com.shterneregen.securelan.webrtc.service.RtcSessionRequest
 import com.shterneregen.securelan.webrtc.service.RtcSessionService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.IOException
@@ -56,6 +57,9 @@ import java.util.function.Consumer
 import java.time.Duration
 import java.time.Instant
 import java.util.Optional
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class ComposeDesktopHostAdapterTest {
     @Test
@@ -73,6 +77,7 @@ class ComposeDesktopHostAdapterTest {
 
         assertEquals(
             listOf(
+                adapter.localNetworkInfo,
                 "[connected] Alice -> 127.0.0.1",
                 "Bob: hello",
                 "[join] Carol",
@@ -140,6 +145,30 @@ class ComposeDesktopHostAdapterTest {
     }
 
     @Test
+    fun shouldStartListenOnlyDiscoveryAndPublishLocalNetworkInfoOnStartupLikeJavaFx() {
+        val fixture = AdapterFixture()
+
+        assertTrue(fixture.discovery.running)
+        assertEquals(false, fixture.discovery.lastConfig?.announceEnabled)
+        assertEquals("Alice", fixture.discovery.lastConfig?.nickname)
+        assertEquals(NetworkConstants.DEFAULT_DISCOVERY_PORT, fixture.discovery.lastConfig?.discoveryPort)
+        assertTrue(fixture.adapter.statusState.discoveryStatus.contains("listen-only"))
+        assertTrue(fixture.adapter.localNetworkInfo.startsWith("[info] local network IP"))
+        assertTrue(fixture.adapter.chatTranscript.any { it.startsWith("[info] local network IP") })
+        assertTrue(fixture.adapter.peerListDiagnostics.any { it.contains("[discovery] listening on UDP") })
+    }
+
+    @Test
+    fun shouldSurfaceDiscoveryStartupFailureLikeJavaFx() {
+        val fixture = AdapterFixture(discoveryStartFailure = IllegalStateException("bind denied"))
+
+        assertFalse(fixture.discovery.running)
+        assertTrue(fixture.adapter.adapterEvents.any { it.message == "[discovery] Unable to start peer discovery" })
+        assertTrue(fixture.adapter.peerListDiagnostics.any { it.contains("[discovery-error] Unable to start peer discovery -> bind denied") })
+        assertEquals("Discovery not started", fixture.adapter.statusState.discoveryStatus)
+    }
+
+    @Test
     fun shouldUpdateStatusNicknameAndConnectRequestWhenManualClientConnects() {
         val fixture = AdapterFixture()
         val adapter = fixture.adapter
@@ -165,7 +194,7 @@ class ComposeDesktopHostAdapterTest {
 
         adapter.chatEventPublisher.publish(ChatSignalReceivedEvent(signal))
 
-        assertEquals(emptyList<String>(), adapter.chatTranscript)
+        assertEquals(listOf(adapter.localNetworkInfo), adapter.chatTranscript)
         assertTrue(adapter.peerListDiagnostics.last().contains("RTC signal preserved through chat-core"))
         assertTrue(adapter.peerListDiagnostics.last().contains("OFFER"))
     }
@@ -227,6 +256,26 @@ class ComposeDesktopHostAdapterTest {
     }
 
     @Test
+    fun shouldKeepSingleLatestProgressDiagnosticPerTransfer() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+
+        adapter.fileTransferEventPublisher.publish(FileTransferStartedEvent("tx-1", "demo.txt", 4096, false))
+        adapter.fileTransferEventPublisher.publish(
+            FileTransferProgressEvent("tx-1", FileTransferProgress("tx-1", 1024, 4096, TransferStatus.IN_PROGRESS), false),
+        )
+        adapter.fileTransferEventPublisher.publish(
+            FileTransferProgressEvent("tx-1", FileTransferProgress("tx-1", 2048, 4096, TransferStatus.IN_PROGRESS), false),
+        )
+        adapter.fileTransferEventPublisher.publish(
+            FileTransferProgressEvent("tx-1", FileTransferProgress("tx-1", 3072, 4096, TransferStatus.IN_PROGRESS), false),
+        )
+
+        val progressDiagnostics = adapter.transferDiagnostics.filter { it.startsWith("Transfer progress: demo.txt") }
+        assertEquals(listOf("Transfer progress: demo.txt 75%."), progressDiagnostics)
+    }
+
+    @Test
     fun shouldCaptureIncomingTransferPromptsAndGuardAcceptance() {
         val fixture = AdapterFixture()
         val adapter = fixture.adapter
@@ -239,14 +288,41 @@ class ComposeDesktopHostAdapterTest {
         assertTrue(adapter.acceptIncomingFileTransfer(metadata, "192.168.1.20", autoAccept = true))
         adapter.recordIncomingFileDecision("rx-1", accepted = false)
 
-        assertEquals(2, adapter.incomingTransferPrompts.size)
+        assertEquals(1, adapter.incomingTransferPrompts.size)
+        assertEquals(ComposeIncomingTransferPromptStatus.REJECTED, adapter.incomingTransferPrompts.first().status)
         assertTrue(adapter.incomingTransferPrompts.last().header.contains("Beta"))
         assertTrue(adapter.chatTranscript.any { it.contains("auto-accepted incoming.txt") })
         assertTrue(adapter.chatTranscript.any { it.contains("rejected incoming.txt") })
     }
 
     @Test
-    fun shouldSendOutgoingFileToSelectedPeerThroughComposeAdapter() {
+    fun shouldWaitForManualIncomingFileDecisionBeforeReturningAcceptance() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        fixture.chatClient.connected = true
+        adapter.addManualPeer("Beta", "192.168.1.20", NetworkConstants.DEFAULT_CHAT_PORT, NetworkConstants.DEFAULT_FILE_TRANSFER_PORT)
+
+        val accepted = CompletableFuture.supplyAsync {
+            adapter.acceptIncomingFileTransfer(
+                FileTransferMetadata("rx-manual", "Beta", "Alice", "manual.txt", 64),
+                "/192.168.1.20:41472",
+            )
+        }
+
+        while (adapter.incomingTransferPrompts.none { it.id == "rx-manual" && it.waitingForDecision }) {
+            Thread.sleep(10)
+        }
+        assertFalse(accepted.isDone)
+
+        adapter.recordIncomingFileDecision("rx-manual", accepted = true)
+
+        assertTrue(accepted.get(1, TimeUnit.SECONDS))
+        assertEquals(ComposeIncomingTransferPromptStatus.ACCEPTED, adapter.incomingTransferPrompts.first { it.id == "rx-manual" }.status)
+        assertTrue(adapter.chatTranscript.any { it.contains("accepted manual.txt from Beta") })
+    }
+
+    @Test
+    fun shouldSendOutgoingFileToSelectedPeerThroughComposeAdapterAsynchronously() {
         val fixture = AdapterFixture()
         val adapter = fixture.adapter
         val file = Files.createTempFile("securelan-compose-send", ".txt")
@@ -254,7 +330,8 @@ class ComposeDesktopHostAdapterTest {
         fixture.chatClient.connected = true
         val peer = DiscoveredPeer("peer-beta", "Beta", "192.168.1.20", NetworkConstants.DEFAULT_CHAT_PORT, NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, Instant.now())
 
-        val transferId = adapter.sendFileToPeer(file, " Alice ", peer, "secret")
+        val transfer = adapter.sendFileToPeer(file, " Alice ", peer, "secret")
+        val transferId = transfer.get(1, TimeUnit.SECONDS)
 
         assertEquals("tx-1", transferId)
         assertEquals(1, fixture.fileTransferClient.requests.size)
@@ -262,7 +339,90 @@ class ComposeDesktopHostAdapterTest {
         assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, fixture.fileTransferClient.requests.first().port)
         assertEquals("Alice", fixture.fileTransferClient.requests.first().senderId)
         assertEquals("Beta", fixture.fileTransferClient.requests.first().recipientId)
-        assertTrue(adapter.transferDiagnostics.any { it.contains("Outgoing file send started") })
+        assertTrue(adapter.transferDiagnostics.any { it.contains("Outgoing file send queued") })
+        assertTrue(adapter.transferDiagnostics.any { it.contains("Outgoing file send finished") })
+    }
+
+    @Test
+    fun shouldNotBlockUiStateWhenOutgoingFileTransferIsStillRunning() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        val file = Files.createTempFile("securelan-compose-send-blocking", ".txt")
+        Files.writeString(file, "hello")
+        fixture.chatClient.connected = true
+        fixture.fileTransferClient.blockUntilReleased = true
+        val peer = DiscoveredPeer("peer-beta", "Beta", "192.168.1.20", NetworkConstants.DEFAULT_CHAT_PORT, NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, Instant.now())
+
+        val transfer = adapter.sendFileToPeer(file, " Alice ", peer, "secret")
+
+        assertTrue(fixture.fileTransferClient.sendEntered.await(1, TimeUnit.SECONDS))
+        assertFalse(transfer.isDone)
+        adapter.updateAutoAcceptIncomingFiles(true)
+        assertTrue(adapter.autoAcceptIncomingFiles)
+
+        fixture.fileTransferClient.releaseSend.countDown()
+        assertEquals("tx-1", transfer.get(1, TimeUnit.SECONDS))
+    }
+
+    @Test
+    fun shouldResolveVisiblePeerForAttachAndApplyAutoAcceptCheckbox() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        fixture.chatClient.connected = true
+        adapter.addManualPeer("Beta", "192.168.1.20", NetworkConstants.DEFAULT_CHAT_PORT, NetworkConstants.DEFAULT_FILE_TRANSFER_PORT)
+        val resolved = adapter.discoveredPeerFor("Beta")
+
+        assertEquals("192.168.1.20", resolved?.host)
+
+        adapter.updateAutoAcceptIncomingFiles(true)
+        val accepted = adapter.acceptIncomingFileTransfer(
+            FileTransferMetadata("tx-accept", "Beta", "Alice", "demo.txt", 5),
+            "192.168.1.20",
+        )
+
+        assertEquals(true, accepted)
+        assertEquals(true, adapter.autoAcceptIncomingFiles)
+        assertTrue(adapter.chatTranscript.any { it.contains("auto-accepted demo.txt from Beta") })
+    }
+
+    @Test
+    fun shouldResolveServerSideAndroidChatClientFileReceiverWithoutLanDiscovery() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+
+        adapter.openRoom("Mallory", "secret", NetworkConstants.DEFAULT_CHAT_PORT, NetworkConstants.DEFAULT_FILE_TRANSFER_PORT, discoverable = true)
+        adapter.chatEventPublisher.publish(ChatUserJoinedEvent("Android", "/192.168.1.149:48112"))
+
+        val peer = adapter.visiblePeerItems.first { it.nickname() == "Android" }
+        assertEquals(true, peer.online())
+        assertNull(peer.peerId())
+        assertEquals("192.168.1.149", peer.host())
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + 1000, peer.filePort())
+        assertTrue(com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers.selectedPeerFileCapable(peer))
+
+        val resolved = adapter.discoveredPeerFor("Android")
+        assertEquals("Android", resolved?.nickname)
+        assertEquals("192.168.1.149", resolved?.host)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT + 1000, resolved?.filePort)
+    }
+
+    @Test
+    fun shouldAutoAcceptIncomingFileWhenAndroidSenderUsesDeviceIdAndKnownHost() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        fixture.chatClient.connected = true
+        adapter.addManualPeer("Neo", "192.168.1.149", NetworkConstants.DEFAULT_CHAT_PORT, NetworkConstants.DEFAULT_FILE_TRANSFER_PORT)
+        adapter.updateAutoAcceptIncomingFiles(true)
+
+        val accepted = adapter.acceptIncomingFileTransfer(
+            FileTransferMetadata("tx-android", "android-neo-device", "Peggy", "photo.jpg", 512),
+            "/192.168.1.149:41472",
+        )
+
+        assertTrue(accepted)
+        assertEquals(1, adapter.incomingTransferPrompts.size)
+        assertEquals(ComposeIncomingTransferPromptStatus.AUTO_ACCEPTED, adapter.incomingTransferPrompts.first().status)
+        assertTrue(adapter.chatTranscript.any { it.contains("auto-accepted photo.jpg from android-neo-device") })
     }
 
     @Test
@@ -294,13 +454,16 @@ class ComposeDesktopHostAdapterTest {
 
         adapter.refreshMediaDevices()
         adapter.testMicrophone("mic-1")
+        adapter.testSpeaker("speaker-1")
         adapter.testCamera("cam-1")
         adapter.rtcEventPublisher.publish(RtcAudioLevelEvent("rtc-1", "Alice", true, 0.55, true))
         adapter.rtcEventPublisher.publish(RtcStateChangedEvent("rtc-1", "Beta", RtcSessionMode.AUDIO, RtcSessionState.CONNECTED, "Connected"))
 
         assertEquals(listOf("System default microphone", "USB Microphone"), adapter.mediaVoiceState.microphones.map { it.label })
+        assertEquals(listOf("System default speaker", "USB Speakers"), adapter.mediaVoiceState.outputDevices.map { it.label })
         assertEquals(listOf("System default camera", "USB Camera"), adapter.experimentalVideoState.cameras.map { it.label })
         assertEquals("Microphone is available: mic-1", adapter.mediaVoiceState.microphoneTestStatus)
+        assertEquals("Speaker output is available: speaker-1", adapter.mediaVoiceState.speakerTestStatus)
         assertEquals("Camera is available: cam-1", adapter.experimentalVideoState.cameraTestStatus)
         assertEquals(0.55, adapter.mediaVoiceState.localAudioLevel)
         assertTrue(adapter.realtimeDiagnostics.any { it.contains("AUDIO session CONNECTED") })
@@ -338,6 +501,20 @@ class ComposeDesktopHostAdapterTest {
         adapter.closeCameraPreview()
         assertEquals(false, adapter.experimentalVideoState.previewRunning)
         assertEquals(true, fixture.mediaDevice.previewClosed)
+    }
+
+    @Test
+    fun shouldSurfaceCameraPreviewFailuresWithoutLeavingPreviewRunning() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        fixture.mediaDevice.previewFailure = true
+
+        adapter.startCameraPreview("cam-1")
+
+        assertEquals(false, adapter.experimentalVideoState.previewRunning)
+        assertNull(adapter.experimentalVideoState.latestPreviewFrame)
+        assertTrue(adapter.experimentalVideoState.cameraTestStatus.contains("Camera preview failed"))
+        assertTrue(adapter.realtimeDiagnostics.any { it.contains("Camera preview failed") })
     }
 
     @Test
@@ -401,6 +578,7 @@ class ComposeDesktopHostAdapterTest {
             desktopBuildPassed = true,
             composeRuntimeSmokePassed = true,
             portableZipValidated = true,
+            composePortableZipValidated = true,
             windowsExeValidated = true,
             fullRuntimeRegressionValidated = true,
         )
@@ -436,11 +614,13 @@ class ComposeDesktopHostAdapterTest {
 
         adapter.recordPackagingArtifactEvidence(ComposePackagingArtifactKind.COMPOSE_ENTRYPOINT)
         adapter.recordPackagingArtifactEvidence(ComposePackagingArtifactKind.PORTABLE_ZIP)
+        adapter.recordPackagingArtifactEvidence(ComposePackagingArtifactKind.COMPOSE_PORTABLE_ZIP)
 
         assertEquals(true, adapter.packagingReadinessState.composeRuntimeSmokePassed)
         assertEquals(true, adapter.packagingReadinessState.portableZipValidated)
+        assertEquals(true, adapter.packagingReadinessState.composePortableZipValidated)
         assertEquals(false, adapter.packagingReadinessState.windowsExeValidated)
-        assertTrue(adapter.packagingReadinessState.artifactSummary.contains("3 of 4"))
+        assertTrue(adapter.packagingReadinessState.artifactSummary.contains("4 of 5"))
         assertTrue(adapter.packagingReadinessState.pendingArtifactSummary.contains("WiX 5.0.2"))
         assertTrue(adapter.packagingReadinessState.artifactRequirements.any {
             it.kind == ComposePackagingArtifactKind.JAVAFX_LAUNCHER && it.validated
@@ -520,13 +700,15 @@ class ComposeDesktopHostAdapterTest {
         assertTrue(adapter.packagingReadinessState.validationReport.copyText.contains("WiX validation pending"))
     }
 
-    private class AdapterFixture {
+    private class AdapterFixture(
+        discoveryStartFailure: Throwable? = null,
+    ) {
         val chatServer = FakeChatServerService()
         val chatClient = FakeChatClientService()
         val fileTransferServer = FakeFileTransferServerService()
         val fileTransferClient = FakeFileTransferClientService()
         val quickShare = FakeQuickShareService()
-        val discovery = FakePeerDiscoveryService()
+        val discovery = FakePeerDiscoveryService(discoveryStartFailure)
         val rtcSession = FakeRtcSessionService()
         val mediaDevice = FakeRtcMediaDeviceService()
         val adapter = ComposeDesktopHostAdapter(
@@ -541,14 +723,22 @@ class ComposeDesktopHostAdapterTest {
             fileTransferClientService = fileTransferClient,
             rtcSessionService = rtcSession,
             rtcMediaDeviceService = mediaDevice,
+            uiStateDispatcher = { action -> action() },
         )
     }
 
     private class FakeFileTransferClientService : FileTransferClientService {
         val requests = mutableListOf<FileTransferClientRequest>()
+        var blockUntilReleased = false
+        val sendEntered = CountDownLatch(1)
+        val releaseSend = CountDownLatch(1)
 
         override fun sendFile(request: FileTransferClientRequest): String {
             requests += request
+            sendEntered.countDown()
+            if (blockUntilReleased) {
+                releaseSend.await(1, TimeUnit.SECONDS)
+            }
             return "tx-${requests.size}"
         }
     }
@@ -671,16 +861,28 @@ class ComposeDesktopHostAdapterTest {
         override fun landingUrls(): List<String> = if (running) listOf("http://127.0.0.1:$port/") else emptyList()
     }
 
-    private class FakePeerDiscoveryService : PeerDiscoveryService {
-        private var running = false
+    private class FakePeerDiscoveryService(
+        private val startFailure: Throwable? = null,
+    ) : PeerDiscoveryService {
+        var running = false
+            private set
         private var announceEnabled = false
         private var listener: PeerDiscoveryListener? = null
+        var lastConfig: PeerDiscoveryConfig? = null
+            private set
         private val peers = mutableListOf<DiscoveredPeer>()
 
         override fun start(config: PeerDiscoveryConfig, listener: PeerDiscoveryListener) {
+            lastConfig = config
+            this.listener = listener
+            val failure = startFailure
+            if (failure != null) {
+                running = false
+                listener.onDiscoveryError("Unable to start peer discovery", failure)
+                return
+            }
             running = true
             announceEnabled = config.announceEnabled
-            this.listener = listener
         }
 
         override fun stop() {
@@ -738,16 +940,30 @@ class ComposeDesktopHostAdapterTest {
 
     private class FakeRtcMediaDeviceService : RtcMediaDeviceService {
         var previewClosed = false
+        var previewFailure = false
 
         override fun audioCaptureDevices(): List<RtcMediaDevice> = listOf(RtcMediaDevice("mic-1", "USB Microphone", true))
+
+        override fun audioRenderDevices(): List<RtcMediaDevice> = listOf(RtcMediaDevice("speaker-1", "USB Speakers", true))
 
         override fun videoCaptureDevices(): List<RtcMediaDevice> = listOf(RtcMediaDevice("cam-1", "USB Camera", true))
 
         override fun testAudioCaptureDevice(deviceId: String?): String = "Microphone is available: ${deviceId.orEmpty()}"
 
+        override fun testAudioRenderDevice(deviceId: String?): String = "Speaker output is available: ${deviceId.orEmpty()}"
+
         override fun testVideoCaptureDevice(deviceId: String?): String = "Camera is available: ${deviceId.orEmpty()}"
 
         override fun startVideoPreview(deviceId: String?, frameConsumer: Consumer<com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent>): RtcMediaDeviceService.CameraPreviewSession {
+            if (previewFailure) {
+                return object : RtcMediaDeviceService.CameraPreviewSession {
+                    override fun statusMessage(): String = "Camera preview failed: fake camera busy"
+
+                    override fun close() {
+                        previewClosed = true
+                    }
+                }
+            }
             frameConsumer.accept(com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent("preview", "local", true, 2, 2, 0, ByteArray(16)))
             return object : RtcMediaDeviceService.CameraPreviewSession {
                 override fun statusMessage(): String = "Camera preview started: ${deviceId.orEmpty()}"

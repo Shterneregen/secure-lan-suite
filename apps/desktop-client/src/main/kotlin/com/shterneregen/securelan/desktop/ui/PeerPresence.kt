@@ -1,9 +1,10 @@
 package com.shterneregen.securelan.desktop.ui
 
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import java.time.Instant
 import java.util.Objects
 
-class PeerPresence(
+class PeerPresence @JvmOverloads constructor(
     private val nickname: String,
     online: Boolean,
     peerId: String?,
@@ -11,6 +12,7 @@ class PeerPresence(
     chatPort: Int,
     filePort: Int,
     lastSeen: Instant?,
+    capabilities: PeerCapabilities = PeerCapabilities.unknown(),
 ) {
     private var online: Boolean = online
     private var peerId: String? = peerId
@@ -18,7 +20,9 @@ class PeerPresence(
     private var chatPort: Int = chatPort
     private var filePort: Int = filePort
     private var lastSeen: Instant? = lastSeen
+    private var capabilities: PeerCapabilities = capabilities
 
+    @JvmOverloads
     fun apply(
         online: Boolean,
         peerId: String?,
@@ -26,6 +30,7 @@ class PeerPresence(
         chatPort: Int,
         filePort: Int,
         lastSeen: Instant?,
+        capabilities: PeerCapabilities = PeerCapabilities.unknown(),
     ): Boolean {
         var changed = this.online != online
         this.online = online
@@ -44,6 +49,13 @@ class PeerPresence(
         if (filePort > 0 && this.filePort != filePort) {
             this.filePort = filePort
             changed = true
+        }
+        if (capabilities != PeerCapabilities.unknown() && !Objects.equals(this.capabilities, capabilities)) {
+            this.capabilities = capabilities
+            changed = true
+            if (capabilities.supportsFileReceive() && capabilities.fileReceivePort() > 0 && this.filePort != capabilities.fileReceivePort()) {
+                this.filePort = capabilities.fileReceivePort()
+            }
         }
         if (lastSeen != null && !Objects.equals(this.lastSeen, lastSeen)) {
             this.lastSeen = lastSeen
@@ -72,5 +84,14 @@ class PeerPresence(
 
     fun lastSeen(): Instant? = lastSeen
 
+    fun capabilities(): PeerCapabilities = capabilities
+
+    fun hasFileEndpoint(): Boolean = !host.isNullOrBlank() && filePort > 0 &&
+        (
+            capabilities == PeerCapabilities.unknown() ||
+                capabilities.supportsFileReceive() ||
+                capabilities.platformKind() == PeerCapabilities.PlatformKind.DESKTOP
+            )
+
     fun discovered(): Boolean = !host.isNullOrBlank() && chatPort > 0 && filePort > 0
-}
+} 

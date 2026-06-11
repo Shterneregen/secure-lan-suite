@@ -2,6 +2,9 @@ import static java.io.File.pathSeparator
 
 import org.gradle.api.file.DuplicatesStrategy
 
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
 plugins {
     id 'org.jetbrains.kotlin.jvm'
     id 'org.jetbrains.kotlin.plugin.compose'
@@ -33,10 +36,13 @@ dependencies {
     implementation project(':modules:audio-core')
     implementation project(':modules:webrtc-core')
     implementation project(':modules:stego-core')
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
     implementation compose.desktop.currentOs
 }
 
 def appName = 'SecureLanSuite'
+def composeAppName = 'SecureLanSuiteCompose'
+def composeMainClass = 'com.shterneregen.securelan.desktop.compose.ComposeDesktopMainKt'
 def rawProjectVersion = project.version.toString()
 def appVersion = rawProjectVersion.replaceAll(/-SNAPSHOT$/, '')
 def mainJarName = "${project.name}-${project.version}.jar"
@@ -44,12 +50,48 @@ def mainJarName = "${project.name}-${project.version}.jar"
 def packageInputDir = layout.buildDirectory.dir('package-input')
 def packageOutputDir = layout.buildDirectory.dir('packaging')
 def appImageDir = packageOutputDir.map { it.dir(appName) }
+def composePackageInputDir = layout.buildDirectory.dir('compose-package-input')
+def composePackageOutputDir = layout.buildDirectory.dir('compose-packaging')
+def composeAppImageDir = composePackageOutputDir.map { it.dir(composeAppName) }
+
+def sanitizePackageFilePart = { String value ->
+    value.replaceAll(/[^A-Za-z0-9_.-]/, '-')
+}
+
+def runtimeArtifactFileName = { artifact ->
+    def id = artifact.moduleVersion.id
+    def classifier = artifact.classifier ? "-${sanitizePackageFilePart(artifact.classifier)}" : ''
+    "${sanitizePackageFilePart(id.group)}-${sanitizePackageFilePart(artifact.name)}-${sanitizePackageFilePart(id.version)}${classifier}.${artifact.extension}"
+}
+
+def prepareJpackageDirectory = { targetDirectoryProvider ->
+    def targetDir = targetDirectoryProvider.get().asFile
+    if (targetDir.exists()) {
+        delete(targetDir)
+    }
+    mkdir(targetDir)
+
+    def mainJarFile = tasks.named('jar').get().archiveFile.get().asFile
+    Files.copy(
+            mainJarFile.toPath(),
+            new File(targetDir, mainJarName).toPath(),
+            StandardCopyOption.REPLACE_EXISTING
+    )
+
+    configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+        Files.copy(
+                artifact.file.toPath(),
+                new File(targetDir, runtimeArtifactFileName(artifact)).toPath(),
+                StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
 
 tasks.register('runComposeShell', JavaExec) {
     group = 'application'
     description = 'Run the experimental Compose Multiplatform desktop shell without replacing the JavaFX launcher.'
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'com.shterneregen.securelan.desktop.compose.ComposeDesktopMainKt'
+    mainClass = composeMainClass
     jvmArgs = application.applicationDefaultJvmArgs
 }
 
@@ -73,12 +115,24 @@ tasks.named('jar') {
     }
 }
 
-tasks.register('prepareJpackageInput', Copy) {
+tasks.register('prepareJpackageInput') {
     dependsOn tasks.named('jar')
+    inputs.files(tasks.named('jar'), configurations.runtimeClasspath)
+    outputs.dir(packageInputDir)
 
-    from(tasks.named('jar'))
-    from(configurations.runtimeClasspath)
-    into(packageInputDir)
+    doLast {
+        prepareJpackageDirectory(packageInputDir)
+    }
+}
+
+tasks.register('prepareComposeJpackageInput') {
+    dependsOn tasks.named('jar')
+    inputs.files(tasks.named('jar'), configurations.runtimeClasspath)
+    outputs.dir(composePackageInputDir)
+
+    doLast {
+        prepareJpackageDirectory(composePackageInputDir)
+    }
 }
 
 tasks.register('createAppImage', Exec) {
@@ -123,10 +177,59 @@ tasks.register('portableDistZip', Zip) {
     archiveFileName.set("${appName}-${appVersion}-portable.zip")
 }
 
+tasks.register('createComposeAppImage', Exec) {
+    dependsOn tasks.named('prepareComposeJpackageInput')
+
+    doFirst {
+        def outDir = composePackageOutputDir.get().asFile
+
+        if (outDir.exists()) {
+            delete(outDir)
+        }
+        mkdir(outDir)
+
+        if (!appVersion || appVersion.isBlank()) {
+            throw new GradleException("Resolved appVersion is empty.")
+        }
+
+        def mainJarFile = new File(composePackageInputDir.get().asFile, mainJarName)
+        if (!mainJarFile.exists()) {
+            throw new GradleException("Main jar was not found: ${mainJarFile.absolutePath}")
+        }
+    }
+
+    commandLine(
+            'jpackage',
+            '--type', 'app-image',
+            '--name', composeAppName,
+            '--app-version', appVersion,
+            '--input', composePackageInputDir.get().asFile.absolutePath,
+            '--main-jar', mainJarName,
+            '--main-class', composeMainClass,
+            '--dest', composePackageOutputDir.get().asFile.absolutePath,
+            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath
+    )
+}
+
+tasks.register('composePortableDistZip', Zip) {
+    dependsOn tasks.named('createComposeAppImage')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from(composeAppImageDir)
+    destinationDirectory.set(layout.buildDirectory.dir('distributions'))
+    archiveFileName.set("${appName}-Compose-${appVersion}-portable.zip")
+}
+
 tasks.register('buildPortable') {
     group = 'distribution'
     description = 'Build portable ZIP distribution for the desktop client.'
     dependsOn tasks.named('portableDistZip')
+}
+
+tasks.register('buildComposePortable') {
+    group = 'distribution'
+    description = 'Build portable ZIP distribution for the experimental Compose desktop shell.'
+    dependsOn tasks.named('composePortableDistZip')
 }
 
 def isWindows = System.getProperty('os.name').toLowerCase().contains('win')

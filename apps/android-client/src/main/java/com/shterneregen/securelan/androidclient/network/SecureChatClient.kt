@@ -4,6 +4,7 @@ import com.shterneregen.securelan.androidclient.protocol.ChatSession
 import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.WireMessage
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.Socket
@@ -14,7 +15,13 @@ class SecureChatClient {
     private var session: ChatSession? = null
     private var nickname: String = ""
 
-    suspend fun connect(host: String, port: Int, requestedNickname: String, sessionPassword: String): String = withContext(Dispatchers.IO) {
+    suspend fun connect(
+        host: String,
+        port: Int,
+        requestedNickname: String,
+        sessionPassword: String,
+        capabilities: PeerCapabilities,
+    ): String = withContext(Dispatchers.IO) {
         val createdSession = ChatSession(Socket(host, port))
         createdSession.writeMessage(WireMessage(WireMessageType.HELLO, requestedNickname, SECURE_PROTOCOL))
         val serverKeyMessage = requireNotNull(createdSession.readMessage()) { "No handshake response from server" }
@@ -26,7 +33,8 @@ class SecureChatClient {
         val serverPublicKey = CryptoCompat.decodePublicKey(Base64.getDecoder().decode(serverKeyMessage.payload))
         val aesKey = CryptoCompat.generateAesKey()
         val payload = requestedNickname + "\n" + sessionPassword + "\n" +
-            Base64.getEncoder().encodeToString(CryptoCompat.encodeSecretKey(aesKey))
+            Base64.getEncoder().encodeToString(CryptoCompat.encodeSecretKey(aesKey)) + "\n" +
+            capabilities.encode()
         val encryptedPayload = CryptoCompat.rsaEncrypt(payload.toByteArray(StandardCharsets.UTF_8), serverPublicKey)
         createdSession.writeMessage(WireMessage(WireMessageType.CLIENT_KEY, requestedNickname, Base64.getEncoder().encodeToString(encryptedPayload)))
         createdSession.enableTransportEncryption(aesKey)

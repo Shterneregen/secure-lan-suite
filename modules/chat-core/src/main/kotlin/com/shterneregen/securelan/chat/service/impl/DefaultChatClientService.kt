@@ -41,7 +41,7 @@ class DefaultChatClientService @JvmOverloads constructor(
         try {
             val activeSession = ChatSocketSession(clientSocketFactory.connect(TransportEndpoint.of(request.host, request.port)))
             session = activeSession
-            val response = handshakeService.performClientHandshake(activeSession, HandshakeRequest(request.nickname, request.sessionPassword))
+            val response = handshakeService.performClientHandshake(activeSession, HandshakeRequest(request.nickname, request.sessionPassword, request.capabilities))
             if (!response.accepted()) {
                 eventPublisher.publish(ChatErrorEvent(response.reason(), null))
                 disconnect()
@@ -49,7 +49,7 @@ class DefaultChatClientService @JvmOverloads constructor(
             }
             nickname = response.nickname()
             connected.set(true)
-            eventPublisher.publish(ChatConnectedEvent(nickname, activeSession.remoteAddress()))
+            eventPublisher.publish(ChatConnectedEvent(nickname, activeSession.remoteAddress(), request.capabilities))
             receiverThread = Thread(ClientReceiveLoop(activeSession, nickname, connected, eventPublisher), "chat-client-receive-loop").also { it.start() }
             return true
         } catch (e: IOException) {

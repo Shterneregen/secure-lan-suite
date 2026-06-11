@@ -7,8 +7,7 @@ This file is a concise rule set for assistant decisions. It must not duplicate f
 For detailed human-readable project docs, use:
 - [`README.md`](../../README.md)
 - [`docs/development.md`](../../docs/development.md)
-- [`docs/kotlin-migration.md`](../../docs/kotlin-migration.md)
-- [`docs/desktop-client-kotlin-migration.md`](../../docs/desktop-client-kotlin-migration.md)
+- [`docs/kotlin-migration/kotlin-migration.md`](../../docs/kotlin-migration/kotlin-migration.md)
 - [`docs/migration-roadmap.md`](../../docs/migration-roadmap.md)
 - [`docs/webrtc-architecture.md`](../../docs/webrtc-architecture.md)
 - [`docs/wix-installation.md`](../../docs/wix-installation.md)
@@ -21,8 +20,8 @@ For detailed human-readable project docs, use:
 - Kotlin baseline: **Kotlin 2.2.21** for Android, migrated JVM modules, desktop helpers, and the experimental desktop Compose shell.
 - Kotlin JVM modules currently compile with JVM target **24** while the Java toolchain remains **25**; keep target validation ignored until Kotlin supports JVM target 25.
 - Build: **Gradle multi-project**; Gradle **9.1+** is recommended.
-- Desktop UI: **JavaFX 25.0.2** remains the packaged launcher/runtime baseline in `apps/desktop-client`.
-- Desktop Compose: **Compose Multiplatform 1.9.0** is enabled only in `apps/desktop-client` as an experimental shell via `:apps:desktop-client:runComposeShell`; it must not replace JavaFX packaging until runtime and packaging validation are complete.
+- Desktop UI: **Compose Multiplatform 1.9.0** is the Compose-first target for new desktop UI/UX work in `apps/desktop-client`.
+- Deprecated desktop fallback: **JavaFX 25.0.2** remains the packaged launcher/runtime fallback only for rollback and critical fixes until explicit Compose promotion/removal is accepted.
 - Android UI: experimental native Android client in `apps/android-client` uses Android Gradle Plugin **8.13.2**, Android SDK **35**, Kotlin **2.2.21**, and Jetpack Compose Material 3.
 - Realtime: **webrtc-java 0.14.0** in `modules/webrtc-core`.
 - Packaging: `jpackage`; WiX **5.0.2** for Windows EXE installers.
@@ -56,11 +55,20 @@ Allowed internal dependency directions:
 - `webcam-core` may depend on `common-model`.
 - `stego-core` may depend on `common-model`, `crypto-core`.
 
+## Current UI Priority
+
+Current priority: user-friendly Compose Desktop UI hardening and JavaFX deprecation.
+
+When the task is about improving the interface, UX, usability, layout clarity, or user-friendly Compose UI, use JavaFX as a behavioral reference rather than a strict visual target. Preserve protocols, features, service boundaries, diagnostics availability, and JavaFX fallback, but improve information architecture, layout hierarchy, navigation, labels, validation, empty/error/loading states, accessibility, and desktop responsiveness.
+
+Do not let JavaFX parity block useful UX improvements when the user explicitly wants a better Compose interface. For pure migration/parity tasks, keep JavaFX as the visual and behavioral source of truth.
+
 ## Kotlin and UI Migration Rules
 
 - The reusable core-module Java-to-Kotlin migration is completed; preserve public API compatibility and Java-callable contracts when changing migrated modules.
 - Do not start large whole-repository rewrites. Keep each Java/Kotlin migration or UI replacement as a small, independently validated slice.
-- Keep `Main.java`, `ChatApplication.java`, `MainView.kt`, and `MainViewDelegate.java` as the JavaFX fallback boundary until Compose runtime, feature parity, portable ZIP, and WiX EXE validation justify replacement.
+- Keep `Main.java`, `ChatApplication.java`, `MainView.kt`, and `MainViewDelegate.java` as deprecated JavaFX fallback boundaries until Compose runtime, feature parity, portable ZIP, and WiX EXE validation justify replacement.
+- Do not add new JavaFX UI features or non-critical JavaFX UX polish. New desktop UI/UX improvements belong in Compose; JavaFX changes should be limited to critical fixes and fallback preservation.
 - Compose Multiplatform work must stay under `apps/desktop-client` and must not move Compose runtime dependencies into reusable modules.
 - Use `:apps:desktop-client:runComposeShell` for the experimental Compose shell; do not change `application.mainClass`, JAR manifest, or `jpackage` main class unless explicitly promoting Compose after validation.
 - Preserve discovery, chat, file transfer, quick share, steganography, RTC signaling, voice, and experimental video behavior during UI migration.
@@ -150,7 +158,7 @@ When changing architecture, supported Java/Kotlin versions, module responsibilit
 
 1. Update the relevant public docs in [`README.md`](../../README.md) or [`docs`](../../docs).
 2. Keep this file short and rule-focused.
-3. Do not duplicate full roadmap or how-to content here.
+3. Do not duplicate full planning or how-to content here.
 4. Add only constraints that should affect future assistant decisions.
 
 ## Compose UI Quality Rules
@@ -166,3 +174,8 @@ When changing architecture, supported Java/Kotlin versions, module responsibilit
 - Even though Compose shell is experimental, Compose UI slices must be implemented with production-level visual quality and feature parity goals.
 - Do not remove JavaFX fallback boundaries, but Compose code may introduce clean independent screen structure, reusable composables, state holders, and UI abstractions.
 - For UI migration, each slice must still preserve the full screen composition and visual hierarchy.
+## Code Artifact Planning-Status Rule
+
+- Do not add phase numbers, active-phase statements, roadmap/status-plan wording, migration-stage labels, launcher-stage labels, or temporary work-stage notes to source code, tests, resources, comments, metadata, or user-facing strings.
+- Code artifacts must describe only the current technical behavior, state, constraints, and service boundaries.
+- Keep historical planning, roadmap status, migration status, and future work sequencing only in documentation or task trackers.

@@ -21,6 +21,7 @@ import com.shterneregen.securelan.androidclient.network.SecureChatClient
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.androidclient.network.SecureFileSender
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -185,7 +186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
         viewModelScope.launch {
             runCatching {
-                chatClient.connect(peer.host, peer.chatPort, state.nickname.trim(), state.sessionPassword)
+                chatClient.connect(peer.host, peer.chatPort, state.nickname.trim(), state.sessionPassword, androidCapabilities(localFileReceiverPort(state)))
             }.onSuccess { acceptedNickname ->
                 _uiState.update {
                     it.copy(
@@ -385,6 +386,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun androidCapabilities(fileReceivePort: Int): PeerCapabilities = PeerCapabilities.android(
+        APP_VERSION,
+        fileReceivePort,
+        android.os.Build.MODEL ?: "Android device",
+    )
+
     private fun resolveSelectedFile(uri: Uri): SelectedFile {
         val resolver = getApplication<Application>().contentResolver
         var name = uri.lastPathSegment ?: "selected-file"
@@ -439,6 +446,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
+        private const val APP_VERSION = "0.5.0"
         private const val CLIENT_FILE_PORT_OFFSET = 1000
         private const val MAX_LOG_ENTRIES = 300
     }

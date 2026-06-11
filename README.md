@@ -1,12 +1,13 @@
 # Secure LAN Suite
 
-Secure LAN Suite is a local-network secure communication suite with a JavaFX desktop client and an experimental Android client. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, Android, and future feature modules separated.
+Secure LAN Suite is a local-network secure communication suite with a Compose-first desktop client, a deprecated JavaFX desktop fallback, and an experimental Android client. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, Android, and future feature modules separated.
 
 ## Tech stack
 - Java 25
 - Kotlin 2.2.21 for the Android client and migrated JVM core modules
 - Gradle 9.1+ recommended
-- JavaFX 25.0.2
+- Compose Multiplatform 1.9.0 for the desktop Compose shell
+- JavaFX 25.0.2 as the deprecated packaged desktop fallback until explicit Compose promotion/removal
 - Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3 for the experimental Android client
 - `webrtc-java` 0.14.0 for realtime data, voice, and experimental video transport
 - `jpackage` for native application images and installers
@@ -15,7 +16,7 @@ Secure LAN Suite is a local-network secure communication suite with a JavaFX des
 ## Project structure
 
 ### Applications
-- `apps/desktop-client` — JavaFX desktop client and application packaging tasks
+- `apps/desktop-client` — Compose-first desktop client, deprecated JavaFX fallback, and application packaging tasks
 - `apps/android-client` — experimental native Android client for LAN discovery, secure chat, and encrypted file transfer interoperability with the desktop client
 
 ### Modules
@@ -60,7 +61,7 @@ Secure LAN Suite is a local-network secure communication suite with a JavaFX des
   - actions, media status, transfers, and advanced tools on the right
 
 ### Current UI layout
-The desktop client uses a **messenger-style workspace**.
+The desktop client uses a **messenger-style workspace**. New desktop UI/UX work targets the Compose UI. The JavaFX UI is deprecated and remains only for critical fixes, packaging continuity, and rollback until a separate accepted removal or Compose-promotion task.
 
 - **Top status bar** — compact colored indicators for server, connection, selected peer, voice state, and file transfers
 - **Header** — local profile/hosting controls and manual connection fallback
@@ -128,7 +129,7 @@ Development, build, run, smoke-test, and packaging details are intentionally kep
 - LAN discovery is implemented with UDP broadcast and may still require hardening for complex networks, firewalls, VPNs, and multi-adapter setups
 - key management and advanced transfer controls are not fully exposed in the desktop UI yet
 - video calls and preview are experimental and may fail on some Windows/JDK/camera combinations
-- microphone and camera capture selection is exposed, but audio output device selection is not yet exposed
+- microphone, speaker output, and camera device selection/testing are exposed, but cross-device media validation remains open
 - desktop steganography currently targets text workflows over uncompressed 24-bit/32-bit BMP images; arbitrary binary payload UI is not exposed yet
 - Android remains an experimental interoperability client and does not yet implement room hosting, voice, WebRTC data channels, camera/video, steganography tools, screen sharing, or no-auth browser quick share
 - chunked large file transfer over `RTCDataChannel` is not implemented yet

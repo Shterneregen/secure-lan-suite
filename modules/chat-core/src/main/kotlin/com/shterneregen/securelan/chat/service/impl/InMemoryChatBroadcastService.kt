@@ -2,6 +2,7 @@ package com.shterneregen.securelan.chat.service.impl
 
 import com.shterneregen.securelan.chat.protocol.WireMessage
 import com.shterneregen.securelan.chat.protocol.WireMessageType
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.ChatBroadcastService
 import com.shterneregen.securelan.chat.service.ChatHistoryService
 import com.shterneregen.securelan.chat.transport.ChatSocketSession
@@ -10,13 +11,16 @@ import java.util.concurrent.ConcurrentHashMap
 
 class InMemoryChatBroadcastService(private val historyService: ChatHistoryService) : ChatBroadcastService {
     private val clients = ConcurrentHashMap<String, ChatSocketSession>()
+    private val clientCapabilities = ConcurrentHashMap<String, PeerCapabilities>()
 
-    override fun addClient(nickname: String, session: ChatSocketSession) {
+    override fun addClient(nickname: String, session: ChatSocketSession, capabilities: PeerCapabilities) {
         clients[nickname] = session
+        clientCapabilities[nickname] = capabilities
     }
 
     override fun removeClient(nickname: String) {
         clients.remove(nickname)
+        clientCapabilities.remove(nickname)
     }
 
     override fun syncPeers(session: ChatSocketSession, excludeNickname: String?) {
@@ -24,13 +28,16 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
             .asSequence()
             .filter { nickname -> excludeNickname == null || !nickname.equals(excludeNickname, ignoreCase = true) }
             .sortedWith(String.CASE_INSENSITIVE_ORDER)
-            .forEach { nickname -> writeQuietly(session, WireMessage(WireMessageType.USER_JOINED, nickname, "")) }
+            .forEach { nickname ->
+                val capabilities = clientCapabilities[nickname] ?: PeerCapabilities.unknown()
+                writeQuietly(session, WireMessage(WireMessageType.USER_JOINED, nickname, capabilities.encode()))
+            }
     }
 
-    override fun publishUserJoined(nickname: String) {
+    override fun publishUserJoined(nickname: String, capabilities: PeerCapabilities) {
         val line = "[system] $nickname joined the chat"
         historyService.append(line)
-        broadcast(WireMessage(WireMessageType.USER_JOINED, nickname, ""))
+        broadcast(WireMessage(WireMessageType.USER_JOINED, nickname, capabilities.encode()))
         broadcast(WireMessage(WireMessageType.SYSTEM, "system", line))
     }
 

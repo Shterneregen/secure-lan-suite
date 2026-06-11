@@ -27,14 +27,32 @@ Use desktop-oriented UI principles:
 
 For migrations from JavaFX/FXML/CSS:
 1. Inspect existing JavaFX, FXML, CSS, controllers, and screenshots first.
-2. Treat JavaFX as the visual and behavioral baseline.
+2. Treat JavaFX as the visual and behavioral baseline for parity tasks, or as a behavioral reference for UX modernization tasks.
 3. Summarize the existing screen structure before editing.
 4. Map JavaFX containers and controls to Compose composables.
-5. Preserve hierarchy, grouping, spacing, colors, icons, window behavior, and disabled states.
+5. Preserve hierarchy, grouping, spacing, colors, icons, window behavior, and disabled states in parity mode; intentionally improve them in UX modernization mode when it makes the screen clearer.
 6. Implement the Compose version using small stateless composables and explicit state.
 7. Compare the Compose result against the JavaFX baseline after coding.
 
-Never redesign an existing JavaFX screen unless the user explicitly asks for a redesign.
+Use UX modernization mode when the user asks for a user-friendly interface, better UX, clearer Compose UI, modernization, simplification, or redesign. In that mode, preserve behavior and feature availability, but improve information architecture, hierarchy, wording, navigation, states, accessibility, and desktop responsiveness.
+
+Never redesign an existing JavaFX screen during a strict parity task.
+
+
+## User-Friendly Compose UI Checklist
+
+For user-facing Compose screens, optimize for real user workflows, not only framework correctness:
+
+- Make the primary action and next step obvious.
+- Group related controls into sections with clear headings.
+- Prefer human-readable labels over internal names, raw IDs, protocol names, and status codes.
+- Provide empty, loading, error, disabled, success, validation, and progress states.
+- Keep advanced logs and diagnostics available, but move non-critical details into expandable panels or details areas.
+- Separate destructive actions from normal actions and require clear confirmation where appropriate.
+- Design for desktop: compact density, keyboard navigation, focus indicators, hover states, resizing, split panes, and status bars.
+- Avoid Android-looking mobile layouts in Compose Desktop unless the user explicitly asks for Android/mobile UI.
+- Avoid walls of text, duplicated status messages, and visually equal competing buttons.
+- Prefer small reusable stateless composables backed by explicit immutable state.
 
 ## Existing Project Policy
 

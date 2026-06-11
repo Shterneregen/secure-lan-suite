@@ -15,6 +15,7 @@ import com.shterneregen.securelan.chat.event.ChatMessageSentEvent
 import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
 import com.shterneregen.securelan.chat.event.ChatUserLeftEvent
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
 import com.shterneregen.securelan.chat.service.ChatClientService
 import com.shterneregen.securelan.chat.service.ChatEventPublisher
@@ -58,15 +59,24 @@ import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus
 import com.shterneregen.securelan.webrtc.service.RtcMediaDeviceService
 import com.shterneregen.securelan.webrtc.service.RtcSessionRequest
 import com.shterneregen.securelan.webrtc.service.RtcSessionService
-import java.nio.file.Path
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.net.InetSocketAddress
 import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.SwingUtilities
 
 /**
- * Live desktop host adapter for Phase 9 status/connection, peer-list, and chat workspace wiring.
+ * Live desktop host adapter for status/connection, peer-list, and chat workspace wiring.
  *
  * Wraps [ChatServerService], [ChatClientService], [PeerDiscoveryService], and optional [ChatEventPublisher]
  * to manage room hosting, manual connection, discovery visibility, peer snapshots, and shared-room chat.
@@ -87,12 +97,20 @@ class ComposeDesktopHostAdapter(
     private val rtcSessionService: RtcSessionService? = null,
     private val rtcMediaDeviceService: RtcMediaDeviceService? = null,
     private val downloadsPath: Path = Path.of("downloads").toAbsolutePath().normalize(),
+    private val uiStateDispatcher: (((() -> Unit)) -> Unit)? = null,
 ) : AutoCloseable {
-
     /** Live status/connection state, updated after each action. */
     var statusState: ComposeStatusConnectionState by mutableStateOf(
         ComposeStatusConnectionState(nickname = randomNicknameService.generate()),
     )
+        private set
+
+    /** Last room password used by hosting/manual connect; reused by encrypted file send UI. */
+    var currentRoomPassword: String by mutableStateOf(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.roomPasswordPlaceholder)
+        private set
+
+    /** Mirrors the transfer checkbox used by the listener acceptance callback. */
+    var autoAcceptIncomingFiles: Boolean by mutableStateOf(false)
         private set
 
     /** Adapter events since the last clear, in chronological order. */
@@ -126,7 +144,8 @@ class ComposeDesktopHostAdapter(
                 merged[peerKey(peer)] = peer
             }
             visiblePeers.forEach { peer ->
-                val presence = PeerPresence(peer.nickname, true, peer.peerId, peer.host, peer.chatPort, peer.filePort, peer.lastSeen)
+                val existing = chatPeers.firstOrNull { DesktopMainViewHelpers.samePeer(it, peer.nickname, peer.peerId) }
+                val presence = existing ?: PeerPresence(peer.nickname, true, peer.peerId, peer.host, peer.chatPort, peer.filePort, peer.lastSeen)
                 merged[peerKey(presence)] = presence
             }
             return merged.values
@@ -136,15 +155,15 @@ class ComposeDesktopHostAdapter(
                 )
         }
 
-    /** Runtime peer-list diagnostics for Phase 9.4 validation. */
+    /** Runtime peer-list diagnostics for discovery and targeting validation. */
     var peerListDiagnostics: List<String> by mutableStateOf(listOf("Peer discovery has not started."))
         private set
 
-    /** Chat transcript lines for Phase 9.5 workspace wiring. */
+    /** Chat transcript lines for workspace wiring. */
     var chatTranscript: List<String> by mutableStateOf(emptyList())
         private set
 
-    /** File transfer rows for Phase 9.6 encrypted-transfer workspace wiring. */
+    /** File transfer rows for encrypted-transfer workspace wiring. */
     var transferEntries: List<TransferEntry> by mutableStateOf(emptyList())
         private set
 
@@ -152,11 +171,16 @@ class ComposeDesktopHostAdapter(
     var incomingTransferPrompts: List<ComposeIncomingTransferPrompt> by mutableStateOf(emptyList())
         private set
 
+    private val pendingIncomingTransferDecisions = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
+
+    /** Dedicated coroutine scope for blocking desktop file-transfer client work. */
+    private val fileTransferIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** File-transfer diagnostics for the Compose shell. */
     var transferDiagnostics: List<String> by mutableStateOf(listOf("File transfer listener has not started."))
         private set
 
-    /** Quick-share rows for Phase 9.7 browser-link workspace wiring. */
+    /** Quick-share rows for browser-link workspace wiring. */
     var quickShareEntries: List<QuickShareEntry> by mutableStateOf(emptyList())
         private set
 
@@ -172,17 +196,17 @@ class ComposeDesktopHostAdapter(
     var quickShareDiagnostics: List<String> by mutableStateOf(listOf("Quick share is stopped."))
         private set
 
-    /** Steganography UI state for Phase 9.8 Compose wiring. */
+    /** Steganography UI state for Compose wiring. */
     var stegoState: ComposeSteganographyState by mutableStateOf(ComposeSteganographyState())
         private set
 
-    /** Media/voice UI state for Phase 9.9 Compose wiring. */
+    /** Media/voice UI state for Compose wiring. */
     var mediaVoiceState: ComposeMediaVoiceState by mutableStateOf(
         ComposeMediaVoiceState(statusState = statusState, peerListState = ComposePeerListState(peers = emptyList())),
     )
         private set
 
-    /** Experimental camera/video UI state for Phase 9.10 Compose wiring. */
+    /** Experimental camera/video UI state for Compose wiring. */
     var experimentalVideoState: ComposeExperimentalVideoState by mutableStateOf(
         ComposeExperimentalVideoState(statusState = statusState, peerListState = ComposePeerListState(peers = emptyList())),
     )
@@ -192,17 +216,17 @@ class ComposeDesktopHostAdapter(
     var realtimeDiagnostics: List<String> by mutableStateOf(listOf("RTC runtime not checked."))
         private set
 
-    /** Manual/runtime evidence records captured for Phase 9.11 regression review. */
+    /** Manual/runtime evidence records captured for regression review. */
     private var runtimeEvidenceRecords: List<ComposeRuntimeEvidenceRecord> by mutableStateOf(emptyList())
 
-    /** Build/package evidence records captured for Phase 9.11/9.12 release review. */
+    /** Build/package evidence records captured for release review. */
     private var packagingEvidenceRecords: List<ComposePackagingEvidenceRecord> by mutableStateOf(emptyList())
 
-    /** Full-regression readiness state for Phase 9.11 diagnostics. */
+    /** Full-regression readiness state for diagnostics. */
     var regressionReadinessState: ComposeRegressionReadinessState by mutableStateOf(buildRegressionReadinessState())
         private set
 
-    /** Packaging readiness state for Phase 9.11/9.12 promotion gates. */
+    /** Packaging readiness state for promotion gates. */
     var packagingReadinessState: ComposePackagingReadinessState by mutableStateOf(ComposeShellMetadata.DEFAULT_PACKAGING_STATE)
         private set
 
@@ -218,6 +242,10 @@ class ComposeDesktopHostAdapter(
     /** Live diagnostics state aggregated from all Compose adapter channels. */
     val diagnosticsState: ComposeDiagnosticsState
         get() = buildDiagnosticsState()
+
+    /** Local LAN addresses shown by the Compose profile card, matching the JavaFX startup info line. */
+    var localNetworkInfo: String by mutableStateOf(DesktopMainViewHelpers.localNetworkInfoMessage(emptyList()))
+        private set
 
     /** Send an RTC signaling payload through the connected chat transport. */
     fun chatClientServiceSendSignal(signal: com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope?) {
@@ -276,7 +304,7 @@ class ComposeDesktopHostAdapter(
     }
 
     val fileTransferEventPublisher = com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher { event ->
-        handleFileTransferEvent(event)
+        dispatchUiStateUpdate { handleFileTransferEvent(event) }
     }
 
     val quickShareEventPublisher = com.shterneregen.securelan.filetransfer.quickshare.QuickShareEventPublisher { event ->
@@ -290,18 +318,29 @@ class ComposeDesktopHostAdapter(
     private val discoveryListener = object : PeerDiscoveryListener {
         override fun onPeerDiscovered(peer: DiscoveredPeer) {
             discoveredPeers = discoveryService.snapshot()
-            publishPeerListDiagnostic("Peer discovered: ${peer.nickname}@${peer.host}; snapshot=${discoveredPeers.size}.")
+            publishPeerListDiagnostic(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+            refreshMigrationReadinessState()
         }
 
         override fun onPeerExpired(peer: DiscoveredPeer) {
             discoveredPeers = discoveryService.snapshot()
-            publishPeerListDiagnostic("Peer expired: ${peer.nickname}@${peer.host}; snapshot=${discoveredPeers.size}.")
+            publishPeerListDiagnostic(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+            refreshMigrationReadinessState()
         }
 
         override fun onDiscoveryError(message: String, cause: Throwable) {
-            publish(ComposeConnectionEventKind.ERROR, "Discovery error: $message")
-            publishPeerListDiagnostic("Discovery error: $message (${cause.javaClass.simpleName}).")
+            publishPeerListDiagnostic(DesktopMainViewHelpers.discoveryErrorDiagnostics(message, cause))
+            if (!discoveryService.isRunning()) {
+                publish(ComposeConnectionEventKind.ERROR, DesktopMainViewHelpers.discoveryChatMessage(message))
+            }
+            refreshState()
         }
+    }
+
+    init {
+        publishLocalNetworkInfo()
+        startPeerDiscoveryListener()
+        refreshState()
     }
 
     // ---- public actions ----
@@ -330,6 +369,7 @@ class ComposeDesktopHostAdapter(
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Preparing to open room.")
 
         try {
+            currentRoomPassword = password
             statusState = statusState.copy(
                 nickname = trimmedNick,
                 serverChatPortText = chatPort.toString(),
@@ -422,13 +462,14 @@ class ComposeDesktopHostAdapter(
         publishEventKind(ComposeAdapterEventKind.CONNECT_STARTED, "Connecting to $trimmedHost")
 
         try {
+            currentRoomPassword = password
             statusState = statusState.copy(
                 nickname = trimmedNick,
                 manualHost = trimmedHost,
                 clientChatPortText = chatPort.toString(),
                 clientFilePortText = filePort.toString(),
             )
-            val request = ChatClientConnectRequest(trimmedHost, chatPort, trimmedNick, password)
+            val request = ChatClientConnectRequest(trimmedHost, chatPort, trimmedNick, password, desktopCapabilities(filePort))
             val connected = chatClientService.connect(request)
             if (connected) {
                 startFileTransferListener(filePort, password)
@@ -492,7 +533,7 @@ class ComposeDesktopHostAdapter(
         refreshState()
     }
 
-    /** Add a manual peer target when UDP discovery is unavailable during Phase 9.4 validation. */
+    /** Add a manual peer target when UDP discovery is unavailable during validation. */
     fun addManualPeer(
         nickname: String,
         host: String,
@@ -514,6 +555,25 @@ class ComposeDesktopHostAdapter(
         publishPeerListDiagnostic("Manual peer added: ${peer.nickname}@${peer.host}; visible=${visiblePeers.size}.")
     }
 
+    /** Resolve a selected Compose peer row to its advertised LAN file endpoint. */
+    fun discoveredPeerFor(nickname: String): DiscoveredPeer? {
+        val discovered = (discoveredPeers + manualPeers).firstOrNull { it.nickname.equals(nickname, ignoreCase = true) }
+        if (discovered != null) {
+            return discovered
+        }
+        return visiblePeerItems.firstOrNull { it.nickname().equals(nickname, ignoreCase = true) && DesktopMainViewHelpers.selectedPeerFileCapable(it) }
+            ?.let { peer ->
+                DiscoveredPeer(
+                    peer.peerId() ?: "peer-${peer.nickname().lowercase()}",
+                    peer.nickname(),
+                    peer.host().orEmpty(),
+                    peer.chatPort(),
+                    peer.filePort(),
+                    peer.lastSeen() ?: Instant.now(),
+                )
+            }
+    }
+
     /** Clear manually added Compose peer targets. */
     fun clearManualPeers() {
         manualPeers = emptyList()
@@ -522,6 +582,13 @@ class ComposeDesktopHostAdapter(
 
     /** Generate a default random nickname. */
     fun generateNickname(): String = randomNicknameService.generate()
+
+    /** Restart JavaFX-parity UDP discovery listener using the current hosting state. */
+    fun refreshPeerDiscovery() {
+        if (shuttingDown.get()) return
+        startPeerDiscoveryListener()
+        refreshState()
+    }
 
     /** Send a chat message through the connected client. */
     fun sendMessage(text: String) {
@@ -552,35 +619,116 @@ class ComposeDesktopHostAdapter(
         autoAccept: Boolean = false,
     ): Boolean {
         if (shuttingDown.get()) return false
-        val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress)
-        incomingTransferPrompts = (incomingTransferPrompts + prompt).takeLast(20)
 
-        if (!chatClientService.isConnected()) {
-            appendChatTranscript(DesktopTransferFormatters.fileRejectedDisconnectedMessage(metadata.fileName, metadata.senderId))
-            publishTransferDiagnostic("Incoming file rejected because chat is not connected: ${metadata.fileName}.")
+        var immediateDecision: Boolean? = null
+        var pendingDecision: CompletableFuture<Boolean>? = null
+        var pendingPromptId: String? = null
+        runUiStateUpdateAndWait {
+            if (!chatClientService.isConnected()) {
+                val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
+                incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
+                appendChatTranscript(DesktopTransferFormatters.fileRejectedDisconnectedMessage(metadata.fileName, metadata.senderId))
+                publishTransferDiagnostic("Incoming file rejected because chat is not connected: ${metadata.fileName}.")
+                immediateDecision = false
+                return@runUiStateUpdateAndWait
+            }
+            val knownPeer = findPeerForIncomingFile(metadata, remoteAddress) != null
+            if (!knownPeer) {
+                val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
+                incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
+                appendChatTranscript(DesktopTransferFormatters.fileRejectedUnknownPeerMessage(metadata.fileName, metadata.senderId))
+                publishTransferDiagnostic("Incoming file rejected from unknown/offline peer ${metadata.senderId}.")
+                immediateDecision = false
+                return@runUiStateUpdateAndWait
+            }
+            if (autoAccept || autoAcceptIncomingFiles) {
+                val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.AUTO_ACCEPTED)
+                incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
+                appendChatTranscript(DesktopTransferFormatters.fileAutoAcceptedMessage(metadata.fileName, metadata.senderId))
+                publishTransferDiagnostic("Incoming file auto-accepted: ${metadata.fileName} from ${metadata.senderId}.")
+                immediateDecision = true
+                return@runUiStateUpdateAndWait
+            }
+
+            val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.WAITING)
+            incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
+            publishTransferDiagnostic("Incoming file prompt waiting for user decision: ${prompt.header}.")
+            val decision = CompletableFuture<Boolean>()
+            pendingIncomingTransferDecisions[prompt.id] = decision
+            pendingPromptId = prompt.id
+            pendingDecision = decision
+        }
+        immediateDecision?.let { return it }
+        val decision = pendingDecision ?: return false
+        if (SwingUtilities.isEventDispatchThread()) {
+            publishTransferDiagnostic("Incoming file prompt rejected because waiting on the UI thread would freeze the Compose event loop.")
+            pendingPromptId?.let { pendingIncomingTransferDecisions.remove(it) }
             return false
         }
-        val knownPeer = visiblePeerItems.any { it.nickname().equals(metadata.senderId, ignoreCase = true) || it.peerId() == metadata.senderId }
-        if (!knownPeer) {
-            appendChatTranscript(DesktopTransferFormatters.fileRejectedUnknownPeerMessage(metadata.fileName, metadata.senderId))
-            publishTransferDiagnostic("Incoming file rejected from unknown/offline peer ${metadata.senderId}.")
-            return false
+        return try {
+            decision.get()
+        } catch (e: Exception) {
+            dispatchUiStateUpdate { publishTransferDiagnostic(DesktopTransferFormatters.fileConfirmationFailedDiagnostics(e.message)) }
+            false
+        } finally {
+            pendingPromptId?.let { pendingIncomingTransferDecisions.remove(it) }
         }
-        if (autoAccept) {
-            appendChatTranscript(DesktopTransferFormatters.fileAutoAcceptedMessage(metadata.fileName, metadata.senderId))
-            publishTransferDiagnostic("Incoming file auto-accepted: ${metadata.fileName} from ${metadata.senderId}.")
-            return true
-        }
-
-        publishTransferDiagnostic("Incoming file prompt waiting for user decision: ${prompt.header}.")
-        return false
     }
 
     /** Record an explicit Compose receive-prompt decision. */
     fun recordIncomingFileDecision(promptId: String, accepted: Boolean) {
         val prompt = incomingTransferPrompts.firstOrNull { it.id == promptId } ?: return
+        pendingIncomingTransferDecisions[promptId]?.complete(accepted)
+        incomingTransferPrompts = incomingTransferPrompts.map {
+            if (it.id == promptId) {
+                it.withStatus(
+                    if (accepted) {
+                        ComposeIncomingTransferPromptStatus.ACCEPTED
+                    } else {
+                        ComposeIncomingTransferPromptStatus.REJECTED
+                    },
+                )
+            } else {
+                it
+            }
+        }
         appendChatTranscript(DesktopTransferFormatters.fileConfirmationResultMessage(accepted, prompt.fileName, prompt.senderId))
         publishTransferDiagnostic("Incoming file ${if (accepted) "accepted" else "rejected"}: ${prompt.fileName} from ${prompt.senderId}.")
+    }
+
+    private fun upsertIncomingTransferPrompt(prompt: ComposeIncomingTransferPrompt): List<ComposeIncomingTransferPrompt> =
+        (incomingTransferPrompts.filterNot { it.id == prompt.id } + prompt).takeLast(20)
+
+    private fun findPeerForIncomingFile(metadata: FileTransferMetadata, remoteAddress: String): PeerPresence? {
+        val remoteHost = remoteHostOnly(remoteAddress)
+        return visiblePeerItems.firstOrNull { peer ->
+            peer.online() &&
+                (
+                    peer.nickname().equals(metadata.senderId, ignoreCase = true) ||
+                        peer.peerId() == metadata.senderId ||
+                        (!peer.host().isNullOrBlank() && peer.host() == remoteHost)
+                    )
+        }
+    }
+
+    private fun remoteHostOnly(remoteAddress: String): String? =
+        runCatching {
+            val socketAddress = InetSocketAddress.createUnresolved(remoteAddress.substringBeforeLast(':'), 0)
+            socketAddress.hostString
+                .removePrefix("/")
+                .takeIf { it.isNotBlank() && it != remoteAddress }
+        }.getOrNull()
+            ?: remoteAddress
+                .removePrefix("/")
+                .substringBeforeLast(':')
+                .takeIf { it.isNotBlank() && it != remoteAddress }
+
+    /** Mirror the JavaFX auto-accept checkbox into the live file-transfer listener callback. */
+    fun updateAutoAcceptIncomingFiles(enabled: Boolean) {
+        if (autoAcceptIncomingFiles == enabled) {
+            return
+        }
+        autoAcceptIncomingFiles = enabled
     }
 
     /** Record manual/runtime validation evidence gathered outside deterministic unit tests. */
@@ -636,6 +784,7 @@ class ComposeDesktopHostAdapter(
         desktopBuildPassed: Boolean = packagingReadinessState.desktopBuildPassed,
         composeRuntimeSmokePassed: Boolean = packagingReadinessState.composeRuntimeSmokePassed,
         portableZipValidated: Boolean = packagingReadinessState.portableZipValidated,
+        composePortableZipValidated: Boolean = packagingReadinessState.composePortableZipValidated,
         windowsExeValidated: Boolean = packagingReadinessState.windowsExeValidated,
         composePromotionApproved: Boolean = packagingReadinessState.composePromotionApproved,
         fullRuntimeRegressionValidated: Boolean = packagingReadinessState.fullRuntimeRegressionValidated,
@@ -645,6 +794,7 @@ class ComposeDesktopHostAdapter(
             desktopBuildPassed = desktopBuildPassed,
             composeRuntimeSmokePassed = composeRuntimeSmokePassed,
             portableZipValidated = portableZipValidated,
+            composePortableZipValidated = composePortableZipValidated,
             windowsExeValidated = windowsExeValidated,
             composePromotionApproved = composePromotionApproved,
             fullRuntimeRegressionValidated = fullRuntimeRegressionValidated,
@@ -667,6 +817,7 @@ class ComposeDesktopHostAdapter(
             desktopBuildPassed = if (kind == ComposePackagingEvidenceKind.DESKTOP_BUILD) validated else packagingReadinessState.desktopBuildPassed,
             composeRuntimeSmokePassed = if (kind == ComposePackagingEvidenceKind.COMPOSE_RUNTIME_SMOKE) validated else packagingReadinessState.composeRuntimeSmokePassed,
             portableZipValidated = if (kind == ComposePackagingEvidenceKind.PORTABLE_ZIP) validated else packagingReadinessState.portableZipValidated,
+            composePortableZipValidated = if (kind == ComposePackagingEvidenceKind.COMPOSE_PORTABLE_ZIP) validated else packagingReadinessState.composePortableZipValidated,
             windowsExeValidated = if (kind == ComposePackagingEvidenceKind.WINDOWS_EXE) validated else packagingReadinessState.windowsExeValidated,
             composePromotionApproved = if (kind == ComposePackagingEvidenceKind.PROMOTION_APPROVAL) validated else packagingReadinessState.composePromotionApproved,
             fullRuntimeRegressionValidated = if (kind == ComposePackagingEvidenceKind.FULL_RUNTIME_REGRESSION) validated else packagingReadinessState.fullRuntimeRegressionValidated,
@@ -678,6 +829,7 @@ class ComposeDesktopHostAdapter(
         updatePackagingValidationEvidence(
             composeRuntimeSmokePassed = if (kind == ComposePackagingArtifactKind.COMPOSE_ENTRYPOINT) validated else packagingReadinessState.composeRuntimeSmokePassed,
             portableZipValidated = if (kind == ComposePackagingArtifactKind.PORTABLE_ZIP) validated else packagingReadinessState.portableZipValidated,
+            composePortableZipValidated = if (kind == ComposePackagingArtifactKind.COMPOSE_PORTABLE_ZIP) validated else packagingReadinessState.composePortableZipValidated,
             windowsExeValidated = if (kind == ComposePackagingArtifactKind.WINDOWS_EXE) validated else packagingReadinessState.windowsExeValidated,
         )
     }
@@ -688,41 +840,52 @@ class ComposeDesktopHostAdapter(
         updatePackagingValidationEvidence(fullRuntimeRegressionValidated = validated)
     }
 
-    fun sendFileToPeer(filePath: Path, senderId: String, recipient: DiscoveredPeer, sessionPassword: String): String? {
-        if (shuttingDown.get()) return null
+    fun sendFileToPeer(filePath: Path, senderId: String, recipient: DiscoveredPeer, sessionPassword: String): CompletableFuture<String?> {
+        if (shuttingDown.get()) return CompletableFuture.completedFuture(null)
+        val completion = CompletableFuture<String?>()
         val client = fileTransferClientService
         if (client == null) {
             publishTransferDiagnostic("Outgoing file send unavailable: file-transfer client service is not configured.")
-            return null
+            completion.complete(null)
+            return completion
         }
         if (!chatClientService.isConnected()) {
             publishTransferDiagnostic("Outgoing file send blocked: connect to chat before sending files.")
-            return null
+            completion.complete(null)
+            return completion
         }
-        val normalizedFile = filePath.toAbsolutePath().normalize()
-        if (!Files.isRegularFile(normalizedFile)) {
-            publishTransferDiagnostic("Outgoing file send blocked: file does not exist: $normalizedFile.")
-            return null
+
+        publishTransferDiagnostic("Outgoing file send queued for ${recipient.nickname}; file checks and transfer will run on the IO dispatcher.")
+        fileTransferIoScope.launch {
+            val normalizedFile = filePath.toAbsolutePath().normalize()
+            if (!Files.isRegularFile(normalizedFile)) {
+                dispatchUiStateUpdate { publishTransferDiagnostic("Outgoing file send blocked: file does not exist: $normalizedFile.") }
+                completion.complete(null)
+                return@launch
+            }
+            try {
+                val transferId = client.sendFile(
+                    FileTransferClientRequest(
+                        recipient.host,
+                        recipient.filePort,
+                        senderId.trim(),
+                        recipient.nickname,
+                        sessionPassword,
+                        normalizedFile,
+                    ),
+                )
+                dispatchUiStateUpdate { publishTransferDiagnostic("Outgoing file send finished: ${normalizedFile.fileName} to ${recipient.nickname}.") }
+                completion.complete(transferId)
+            } catch (e: Exception) {
+                val message = "Outgoing file send failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
+                dispatchUiStateUpdate {
+                    publishTransferDiagnostic(message)
+                    publish(ComposeConnectionEventKind.ERROR, message)
+                }
+                completion.complete(null)
+            }
         }
-        return try {
-            val transferId = client.sendFile(
-                FileTransferClientRequest(
-                    recipient.host,
-                    recipient.filePort,
-                    senderId.trim(),
-                    recipient.nickname,
-                    sessionPassword,
-                    normalizedFile,
-                ),
-            )
-            publishTransferDiagnostic("Outgoing file send started: ${normalizedFile.fileName} to ${recipient.nickname}.")
-            transferId
-        } catch (e: Exception) {
-            val message = "Outgoing file send failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
-            publishTransferDiagnostic(message)
-            publish(ComposeConnectionEventKind.ERROR, message)
-            null
-        }
+        return completion
     }
 
     fun startQuickShare(port: Int) {
@@ -919,10 +1082,16 @@ class ComposeDesktopHostAdapter(
             return
         }
         val microphones = buildMediaChoices(mediaService.audioCaptureDevices(), "System default microphone")
+        val outputDevices = buildMediaChoices(mediaService.audioRenderDevices(), "System default speaker")
         val cameras = buildMediaChoices(mediaService.videoCaptureDevices(), "System default camera")
-        mediaVoiceState = mediaVoiceState.copy(microphones = microphones, microphoneTestStatus = "Microphones refreshed: ${microphones.size}")
+        mediaVoiceState = mediaVoiceState.copy(
+            microphones = microphones,
+            outputDevices = outputDevices,
+            microphoneTestStatus = "Microphones refreshed: ${microphones.size}",
+            speakerTestStatus = "Speakers refreshed: ${outputDevices.size}",
+        )
         experimentalVideoState = experimentalVideoState.copy(cameras = cameras, cameraTestStatus = "Cameras refreshed: ${cameras.size}")
-        publishRealtimeDiagnostic("Media devices refreshed: ${microphones.size} microphones, ${cameras.size} cameras.")
+        publishRealtimeDiagnostic("Media devices refreshed: ${microphones.size} microphones, ${outputDevices.size} speakers, ${cameras.size} cameras.")
         refreshRealtimeState()
     }
 
@@ -941,6 +1110,23 @@ class ComposeDesktopHostAdapter(
     fun selectMicrophone(deviceId: String?) {
         mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty())
         publishRealtimeDiagnostic("Microphone selected: ${mediaVoiceState.selectedMicrophone}.")
+    }
+
+    fun testSpeaker(deviceId: String? = mediaVoiceState.selectedOutputDevice.deviceId): String {
+        val mediaService = rtcMediaDeviceService
+        val result = if (mediaService == null) {
+            "Speaker test unavailable: RTC media device service is not configured."
+        } else {
+            mediaService.testAudioRenderDevice(deviceId)
+        }
+        mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty(), speakerTestStatus = result)
+        publishRealtimeDiagnostic(result)
+        return result
+    }
+
+    fun selectSpeaker(deviceId: String?) {
+        mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty())
+        publishRealtimeDiagnostic("Speaker output selected: ${mediaVoiceState.selectedOutputDevice}.")
     }
 
     fun testCamera(deviceId: String? = experimentalVideoState.selectedCamera.deviceId): String {
@@ -1016,21 +1202,55 @@ class ComposeDesktopHostAdapter(
         if (shuttingDown.get()) return
         val mediaService = rtcMediaDeviceService
         if (mediaService == null) {
-            publishRealtimeDiagnostic("Camera preview unavailable: RTC media device service is not configured.")
+            val message = "Camera preview unavailable: RTC media device service is not configured."
+            experimentalVideoState = experimentalVideoState.copy(
+                previewRunning = false,
+                latestPreviewFrame = null,
+                cameraTestStatus = message,
+            )
+            publishRealtimeDiagnostic(message)
             return
         }
         closeCameraPreview()
-        val session = mediaService.startVideoPreview(deviceId) { event ->
-            experimentalVideoState = experimentalVideoState.copy(latestPreviewFrame = event, previewRunning = true)
-            publishRealtimeDiagnostic(DesktopRealtimeFormatters.cameraPreviewLiveStatus(event.width(), event.height()))
+        experimentalVideoState = experimentalVideoState.copy(
+            selectedCameraId = deviceId.orEmpty(),
+            previewRunning = true,
+            latestPreviewFrame = null,
+            cameraTestStatus = "Starting camera preview…",
+        )
+        val session = try {
+            mediaService.startVideoPreview(deviceId) { event ->
+                experimentalVideoState = experimentalVideoState.copy(latestPreviewFrame = event, previewRunning = true)
+                publishRealtimeDiagnostic(DesktopRealtimeFormatters.cameraPreviewLiveStatus(event.width(), event.height()))
+            }
+        } catch (error: Throwable) {
+            val message = "Camera preview failed: ${error::class.java.simpleName}: ${error.message.orEmpty()}"
+            experimentalVideoState = experimentalVideoState.copy(
+                previewRunning = false,
+                latestPreviewFrame = null,
+                cameraTestStatus = message,
+            )
+            publishRealtimeDiagnostic(message)
+            return
+        }
+        val status = session.statusMessage()
+        if (status.startsWith("Camera preview failed", ignoreCase = true)) {
+            runCatching { session.close() }
+            experimentalVideoState = experimentalVideoState.copy(
+                previewRunning = false,
+                latestPreviewFrame = null,
+                cameraTestStatus = status,
+            )
+            publishRealtimeDiagnostic(status)
+            return
         }
         cameraPreviewSession = session
         experimentalVideoState = experimentalVideoState.copy(
             selectedCameraId = deviceId.orEmpty(),
             previewRunning = true,
-            cameraTestStatus = session.statusMessage(),
+            cameraTestStatus = status,
         )
-        publishRealtimeDiagnostic(session.statusMessage())
+        publishRealtimeDiagnostic(status)
     }
 
     fun closeCameraPreview() {
@@ -1039,7 +1259,11 @@ class ComposeDesktopHostAdapter(
         try {
             session?.close()
         } catch (_: Exception) { /* best-effort */ }
-        experimentalVideoState = experimentalVideoState.copy(previewRunning = false)
+        experimentalVideoState = experimentalVideoState.copy(
+            previewRunning = false,
+            latestPreviewFrame = null,
+            cameraTestStatus = "Camera preview stopped.",
+        )
     }
 
     // ---- lifecycle ----
@@ -1048,6 +1272,9 @@ class ComposeDesktopHostAdapter(
     fun shutdown() {
         if (!shuttingDown.compareAndSet(false, true)) return
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Adapter shutdown initiated.")
+        pendingIncomingTransferDecisions.values.forEach { it.complete(false) }
+        pendingIncomingTransferDecisions.clear()
+        fileTransferIoScope.cancel()
 
         try {
             if (chatClientService.isConnected()) {
@@ -1126,12 +1353,58 @@ class ComposeDesktopHostAdapter(
         adapterEvents = adapterEvents + ComposeConnectionEvent(kind, message)
     }
 
+    private fun dispatchUiStateUpdate(action: () -> Unit) {
+        if (shuttingDown.get()) return
+        val customDispatcher = uiStateDispatcher
+        if (customDispatcher != null) {
+            customDispatcher(action)
+            return
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            action()
+        } else {
+            SwingUtilities.invokeLater {
+                if (!shuttingDown.get()) {
+                    action()
+                }
+            }
+        }
+    }
+
+    private fun runUiStateUpdateAndWait(action: () -> Unit) {
+        val customDispatcher = uiStateDispatcher
+        if (customDispatcher != null) {
+            customDispatcher(action)
+            return
+        }
+        if (SwingUtilities.isEventDispatchThread()) {
+            action()
+        } else {
+            SwingUtilities.invokeAndWait {
+                if (!shuttingDown.get()) {
+                    action()
+                }
+            }
+        }
+    }
+
     private fun publishPeerListDiagnostic(message: String) {
         peerListDiagnostics = (peerListDiagnostics + message).takeLast(8)
     }
 
     private fun publishTransferDiagnostic(message: String) {
-        transferDiagnostics = (transferDiagnostics + message).takeLast(8)
+        val normalized = message.trim()
+        if (normalized.isEmpty()) {
+            return
+        }
+        val progressPrefix = "Transfer progress: "
+        transferDiagnostics = if (normalized.startsWith(progressPrefix)) {
+            val target = normalized.substringAfter(progressPrefix).substringBeforeLast(' ').trim()
+            val retained = transferDiagnostics.filterNot { it.startsWith(progressPrefix) && it.substringAfter(progressPrefix).substringBeforeLast(' ').trim() == target }
+            (retained + normalized).takeLast(8)
+        } else {
+            (transferDiagnostics + normalized).takeLast(8)
+        }
     }
 
     private fun publishQuickShareDiagnostic(message: String) {
@@ -1147,6 +1420,16 @@ class ComposeDesktopHostAdapter(
         refreshMigrationReadinessState()
     }
 
+    private fun publishLocalNetworkInfo() {
+        localNetworkInfo = try {
+            DesktopMainViewHelpers.localNetworkInfoMessage(DesktopMainViewHelpers.resolveLocalLanIps())
+        } catch (e: Exception) {
+            DesktopMainViewHelpers.localNetworkInfoErrorMessage(e.message)
+        }
+        appendChatTranscript(localNetworkInfo)
+        publishPeerListDiagnostic(localNetworkInfo)
+    }
+
     private fun startFileTransferListener(filePort: Int, password: String) {
         if (fileTransferServerService.isRunning()) {
             return
@@ -1156,6 +1439,7 @@ class ComposeDesktopHostAdapter(
                 filePort,
                 downloadsPath,
                 password,
+                this::acceptIncomingFileTransfer,
             ),
         )
         publish(ComposeConnectionEventKind.SUCCESS, "File transfer listener started on port $filePort.")
@@ -1357,6 +1641,7 @@ class ComposeDesktopHostAdapter(
                 chatPort,
                 nickname,
                 password,
+                desktopCapabilities(statusState.serverFilePort ?: NetworkConstants.DEFAULT_FILE_TRANSFER_PORT),
             ),
         )
         if (connected) {
@@ -1368,14 +1653,36 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    private fun startPeerDiscoveryListener() {
+        if (chatServerService.isRunning()) {
+            val chatPort = statusState.serverChatPort ?: NetworkConstants.DEFAULT_CHAT_PORT
+            val filePort = statusState.serverFilePort ?: NetworkConstants.DEFAULT_FILE_TRANSFER_PORT
+            startPeerDiscovery(PeerDiscoveryConfig.defaults(localPeerId, statusState.nickname.trim(), chatPort, filePort, statusState.discoverable), hosting = true)
+        } else {
+            startPeerDiscovery(PeerDiscoveryConfig.listenOnly(localPeerId, statusState.nickname.trim()), hosting = false)
+        }
+    }
+
     private fun startPeerDiscoveryListenOnly(nickname: String) {
         val trimmedNick = nickname.trim().ifBlank { statusState.nickname.trim() }
         if (trimmedNick.isBlank()) return
-        val discoveryConfig = PeerDiscoveryConfig.listenOnly(localPeerId, trimmedNick)
+        startPeerDiscovery(PeerDiscoveryConfig.listenOnly(localPeerId, trimmedNick), hosting = false)
+    }
+
+    private fun startPeerDiscovery(discoveryConfig: PeerDiscoveryConfig, hosting: Boolean) {
+        if (discoveryConfig.nickname.isBlank()) return
         currentConfig = discoveryConfig
         discoveryService.start(discoveryConfig, discoveryListener)
         discoveredPeers = discoveryService.snapshot()
-        publishPeerListDiagnostic("Discovery listening on port ${discoveryConfig.discoveryPort}; snapshot=${discoveredPeers.size}.")
+        if (discoveryService.isRunning()) {
+            val message = if (hosting) {
+                DesktopMainViewHelpers.discoveryStartedMessage(discoveryConfig)
+            } else {
+                DesktopMainViewHelpers.discoveryListeningMessage(discoveryConfig.discoveryPort)
+            }
+            publish(ComposeConnectionEventKind.INFO, message)
+            publishPeerListDiagnostic("$message; snapshot=${discoveredPeers.size}.")
+        }
     }
 
     private fun upsertJoinedPeer(event: ChatUserJoinedEvent): PeerPresence? {
@@ -1389,13 +1696,19 @@ class ComposeDesktopHostAdapter(
                     peerId = null,
                     host = host,
                     chatPort = statusState.serverChatPort ?: NetworkConstants.DEFAULT_CHAT_PORT,
-                    filePort = inferredClientFilePort(),
+                    filePort = filePortFromCapabilities(event.capabilities, inferredClientFilePort()),
                     lastSeen = Instant.now(),
+                    capabilities = event.capabilities,
                 )
             }
         }
-        return upsertChatPeer(nickname, online = true)
+        return upsertChatPeer(nickname, online = true, filePort = filePortFromCapabilities(event.capabilities, 0), capabilities = event.capabilities)
     }
+
+    private fun desktopCapabilities(filePort: Int): PeerCapabilities = PeerCapabilities.desktop(APP_VERSION, filePort)
+
+    private fun filePortFromCapabilities(capabilities: PeerCapabilities, fallback: Int): Int =
+        if (capabilities.supportsFileReceive() && capabilities.fileReceivePort() > 0) capabilities.fileReceivePort() else fallback
 
     private fun upsertChatPeer(
         nickname: String?,
@@ -1405,17 +1718,18 @@ class ComposeDesktopHostAdapter(
         chatPort: Int = 0,
         filePort: Int = 0,
         lastSeen: Instant? = null,
+        capabilities: PeerCapabilities = PeerCapabilities.unknown(),
     ): PeerPresence? {
         if (nickname.isNullOrBlank() || isSystemSender(nickname) || isLocalNickname(nickname)) {
             return null
         }
         val existing = chatPeers.firstOrNull { DesktopMainViewHelpers.samePeer(it, nickname, peerId) }
         if (existing != null) {
-            existing.apply(online, peerId, host, chatPort, filePort, lastSeen)
+            existing.apply(online, peerId, host, chatPort, filePort, lastSeen, capabilities)
             refreshChatPeers()
             return existing
         }
-        val created = PeerPresence(nickname, online, peerId, host, chatPort, filePort, lastSeen)
+        val created = PeerPresence(nickname, online, peerId, host, chatPort, filePort, lastSeen, capabilities)
         chatPeers = (chatPeers + created).sortedWith(
             Comparator.comparing(PeerPresence::online).reversed()
                 .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
@@ -1476,6 +1790,7 @@ class ComposeDesktopHostAdapter(
     }
 
     private companion object {
+        private const val APP_VERSION = "0.5.0"
         const val COMPOSE_CLIENT_FILE_PORT_OFFSET: Int = 1000
     }
 }

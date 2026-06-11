@@ -5,6 +5,7 @@ import com.shterneregen.securelan.chat.protocol.WireMessageType
 import com.shterneregen.securelan.chat.protocol.handshake.HandshakeRequest
 import com.shterneregen.securelan.chat.protocol.handshake.HandshakeResponse
 import com.shterneregen.securelan.chat.protocol.handshake.HandshakeStatus
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.NicknameRegistryService
 import com.shterneregen.securelan.chat.service.SecureHandshakeService
 import com.shterneregen.securelan.chat.transport.ChatSocketSession
@@ -32,7 +33,8 @@ class SimpleHandshakeService @JvmOverloads constructor(
         val sessionKey = cryptoServices.keyGenerationService().generateAesKey()
         val clientPayload = request.nickname + FIELD_SEPARATOR +
             request.sessionPassword + FIELD_SEPARATOR +
-            Base64.getEncoder().encodeToString(cryptoServices.keyEncodingService().encodeSecretKey(sessionKey))
+            Base64.getEncoder().encodeToString(cryptoServices.keyEncodingService().encodeSecretKey(sessionKey)) + FIELD_SEPARATOR +
+            request.capabilities.encode()
         val encryptedPayload = cryptoServices.rsaCryptoService().encrypt(clientPayload.toByteArray(StandardCharsets.UTF_8), serverPublicKey)
         session.writeMessage(WireMessage(WireMessageType.CLIENT_KEY, request.nickname, Base64.getEncoder().encodeToString(encryptedPayload)))
 
@@ -76,8 +78,8 @@ class SimpleHandshakeService @JvmOverloads constructor(
             cryptoServices.rsaCryptoService().decrypt(Base64.getDecoder().decode(clientKeyMessage.payload()), serverKeyPair.private),
             StandardCharsets.UTF_8,
         )
-        val parts = decryptedPayload.split(FIELD_SEPARATOR, limit = 3).toTypedArray()
-        if (parts.size != 3) {
+        val parts = decryptedPayload.split(FIELD_SEPARATOR, limit = 4).toTypedArray()
+        if (parts.size !in 3..4) {
             session.writeMessage(WireMessage(WireMessageType.REJECTED, "server", "Malformed secure handshake payload"))
             return HandshakeResponse(HandshakeStatus.REJECTED, hello.sender(), "Malformed secure handshake payload")
         }
@@ -85,6 +87,7 @@ class SimpleHandshakeService @JvmOverloads constructor(
         val nickname = parts[0].trim()
         val password = parts[1]
         val sessionKey = cryptoServices.keyEncodingService().decodeAesKey(Base64.getDecoder().decode(parts[2]))
+        val capabilities = if (parts.size >= 4) PeerCapabilities.decode(parts[3]) else PeerCapabilities.unknown()
         session.enableTransportEncryption(sessionKey, cryptoServices.aesGcmCryptoService())
 
         if (nickname.isBlank()) {
@@ -101,7 +104,7 @@ class SimpleHandshakeService @JvmOverloads constructor(
         }
 
         session.writeMessage(WireMessage(WireMessageType.ACCEPTED, "server", nickname))
-        return HandshakeResponse(HandshakeStatus.ACCEPTED, nickname, "")
+        return HandshakeResponse(HandshakeStatus.ACCEPTED, nickname, "", capabilities)
     }
 
     private fun normalizeReason(value: String?, fallback: String): String = if (value.isNullOrBlank()) fallback else value

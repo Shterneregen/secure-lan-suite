@@ -45,6 +45,14 @@ class DesktopPeerFormattersTest {
     }
 
     @Test
+    fun shouldFormatSelectedInferredFilePeerWhileConnected() {
+        assertEquals(
+            "Online via chat — file receiver inferred at 192.168.1.30:6051 for Android/client peers.",
+            DesktopPeerFormatters.formatSelectedPeerMeta(inferredFilePeer(), clientConnected = true),
+        )
+    }
+
+    @Test
     fun shouldFormatSelectedDiscoveredPeerBeforeChatConnection() {
         assertEquals(
             "Discovered via LAN — connect to chat before sending files or starting calls.",
@@ -85,6 +93,16 @@ class DesktopPeerFormattersTest {
         "192.168.1.20",
         5555,
         5556,
+        Instant.parse("2026-05-22T09:00:00Z"),
+    )
+
+    private fun inferredFilePeer(): PeerPresence = PeerPresence(
+        "Android Phone",
+        true,
+        null,
+        "192.168.1.30",
+        5050,
+        6051,
         Instant.parse("2026-05-22T09:00:00Z"),
     )
 }

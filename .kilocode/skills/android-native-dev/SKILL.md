@@ -12,6 +12,13 @@ metadata:
     - WCAG Accessibility Guidelines
 ---
 
+
+## Compose Desktop Boundary
+
+This skill is Android-first. Do not apply Android mobile layout density, touch-first navigation, Material-only assumptions, or mobile screen structure to Compose Desktop unless the task is specifically about Android.
+
+For SecureLanSuite desktop Compose work, prefer compact desktop density, keyboard and mouse interactions, hover/focus states, resizable panes, status bars, and desktop-native workflows. Use Android Material 3 guidance only when it improves clarity without making the desktop UI feel like a phone app.
+
 ## 1. Project Scenario Assessment
 
 Before starting development, assess the current project state:

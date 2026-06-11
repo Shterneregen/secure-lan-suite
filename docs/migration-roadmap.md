@@ -16,7 +16,7 @@ Use it to:
 - Current runtime target: Java 25
 - Current Android build target: Android SDK 35 with Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3
 - Current product direction: secure chat + encrypted files + LAN discovery + voice-first realtime, experimental video, and Android desktop-interoperability MVP
-- Current desktop UX: messenger-style JavaFX workspace with peers, chat/activity feed, transfers, RTC controls, diagnostics, and inline video stage
+- Current desktop UX: Compose-first messenger-style workspace under active hardening; JavaFX is deprecated and remains only as packaged launcher, rollback fallback, and critical-fix path until explicit removal/promotion
 - Current Android UX: native Compose MVP with peer discovery, secure chat, encrypted file send/receive, transfer progress, dark theme toggle, and diagnostics logs
 
 ---
@@ -246,7 +246,8 @@ Source repository:
 | [ ] | Phase 7 | Stable webcam/media support | Video exists experimentally but is not yet stable enough to call complete |
 | [x] | Phase 8 | Hidden-message workflows | `stego-core` + crypto integration |
 | [x] | Phase 9 | Android interoperability MVP | Android app can discover desktop peers, connect to secure chat, send files, receive files, and build signed release APKs |
-| [ ] | Phase 10 | Stabilization | tests, packaging polish, documentation, UX hardening, cross-device validation |
+| [x] | Phase 10 | Stabilization | Compose runtime/readiness baseline closed; capability-aware peer targeting, deterministic tests, documentation, packaging gates, and JavaFX-deprecated fallback decision recorded |
+| [ ] | Phase 11 | Compose-first desktop UX hardening | JavaFX deprecated for new UI work; improve Compose navigation, peer states, chat, file transfer, settings, diagnostics, error handling, runtime evidence, and packaging validation |
 
 ---
 
@@ -266,7 +267,7 @@ Source repository:
 | [ ] | 10 | Stabilize video and output device selection | Needed before positioning video as a normal feature |
 | [x] | 11 | Migrate `stego-core` | Advanced security feature |
 | [x] | 12 | Add Android desktop-interoperability MVP | Enables mobile LAN chat/file-transfer testing against the desktop client |
-| [ ] | 13 | Refine UX, packaging, tests | Productization |
+| [ ] | 13 | Refine Compose UX, packaging, tests | Productization now targets Compose UI first; JavaFX receives only critical fixes until final removal |
 
 ---
 
@@ -303,7 +304,7 @@ Source repository:
 | [x] | Documentation | Add architecture overview to repository | Include messenger UI and realtime notes |
 | [x] | Documentation | Add migration notes for realtime layer | Track current WebRTC-first direction |
 | [x] | Documentation | Add Android client build and interoperability notes | Android README covers SDK setup, release APK signing, verification, install, permissions, and LAN scenarios |
-| [ ] | UX | Improve desktop usability and error feedback | Continue polishing peer handling, discovery edge cases, and advanced flows |
+| [ ] | UX | Improve Compose desktop usability and error feedback | Phase 11 owns Compose-first navigation, peer-list states, chat, file transfer, settings, diagnostics, and recovery copy; JavaFX is deprecated for new UI work |
 | [ ] | UX | Improve Android usability and error feedback | Continue polishing permission rationale, discovery edge cases, file receive setup, and LAN diagnostics |
 
 ---
@@ -312,6 +313,7 @@ Source repository:
 
 - Prefer **incremental migration** over large rewrites.
 - The current product direction is **chat + secure files + discovery + voice-first realtime**.
+- New desktop UI/UX improvements target Compose first. JavaFX is deprecated and should receive only critical fixes until explicit removal or promotion work is accepted.
 - Keep video **experimental** until capture, preview, and remote video behavior are stable across machines.
 - UDP LAN discovery is implemented, but complex-network hardening remains a stabilization task.
 - Audio, webcam, and steganography migrations can be revisited after the messenger-style MVP is more stable.

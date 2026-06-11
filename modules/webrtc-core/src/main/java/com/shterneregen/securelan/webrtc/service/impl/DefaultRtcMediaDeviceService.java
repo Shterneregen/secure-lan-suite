@@ -61,6 +61,15 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
+    public List<RtcMediaDevice> audioRenderDevices() {
+        return callOnMediaDeviceThread(
+                () -> mapDevices(MediaDevices.getAudioRenderDevices(), MediaDevices.getDefaultAudioRenderDevice()),
+                "Failed to enumerate RTC audio render devices",
+                List.of()
+        );
+    }
+
+    @Override
     public List<RtcMediaDevice> videoCaptureDevices() {
         return callOnMediaDeviceThread(
                 () -> mapDevices(MediaDevices.getVideoCaptureDevices(), null),
@@ -72,7 +81,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     @Override
     public String testAudioCaptureDevice(String deviceId) {
         return callOnMediaDeviceThread(() -> {
-                    AudioDevice device = selectAudioDevice(deviceId);
+                    AudioDevice device = selectAudioCaptureDevice(deviceId);
                     if (device == null) {
                         return "Microphone test failed: no audio capture devices detected";
                     }
@@ -80,6 +89,20 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
                 },
                 "RTC microphone test failed",
                 "Microphone test failed: media device thread error"
+        );
+    }
+
+    @Override
+    public String testAudioRenderDevice(String deviceId) {
+        return callOnMediaDeviceThread(() -> {
+                    AudioDevice device = selectAudioRenderDevice(deviceId);
+                    if (device == null) {
+                        return "Speaker test failed: no audio output devices detected";
+                    }
+                    return "Speaker output is available: " + name(device);
+                },
+                "RTC speaker test failed",
+                "Speaker test failed: media device thread error"
         );
     }
 
@@ -360,7 +383,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
         }
     }
 
-    private AudioDevice selectAudioDevice(String deviceId) {
+    private AudioDevice selectAudioCaptureDevice(String deviceId) {
         List<AudioDevice> devices = MediaDevices.getAudioCaptureDevices();
         if (devices == null || devices.isEmpty()) {
             return null;
@@ -374,6 +397,23 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
             }
         }
         AudioDevice defaultDevice = MediaDevices.getDefaultAudioCaptureDevice();
+        return defaultDevice == null ? devices.getFirst() : defaultDevice;
+    }
+
+    private AudioDevice selectAudioRenderDevice(String deviceId) {
+        List<AudioDevice> devices = MediaDevices.getAudioRenderDevices();
+        if (devices == null || devices.isEmpty()) {
+            return null;
+        }
+        String normalized = deviceId == null ? "" : deviceId.trim();
+        if (!normalized.isBlank()) {
+            for (AudioDevice device : devices) {
+                if (normalized.equals(descriptor(device))) {
+                    return device;
+                }
+            }
+        }
+        AudioDevice defaultDevice = MediaDevices.getDefaultAudioRenderDevice();
         return defaultDevice == null ? devices.getFirst() : defaultDevice;
     }
 

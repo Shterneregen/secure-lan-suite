@@ -7,6 +7,7 @@ import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
 import com.shterneregen.securelan.chat.event.ChatUserLeftEvent
 import com.shterneregen.securelan.chat.protocol.WireMessageType
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.ChatEventPublisher
 import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
 import java.io.IOException
@@ -24,7 +25,7 @@ class ClientReceiveLoop(
                 val message = session.readMessage() ?: break
                 when (message.type()) {
                     WireMessageType.CHAT, WireMessageType.SYSTEM -> eventPublisher.publish(ChatMessageReceivedEvent(message.sender(), message.payload()))
-                    WireMessageType.USER_JOINED -> eventPublisher.publish(ChatUserJoinedEvent(message.sender()))
+                    WireMessageType.USER_JOINED -> eventPublisher.publish(ChatUserJoinedEvent(message.sender(), "", PeerCapabilities.decode(message.payload())))
                     WireMessageType.USER_LEFT -> eventPublisher.publish(ChatUserLeftEvent(message.sender()))
                     WireMessageType.SIGNAL -> eventPublisher.publish(ChatSignalReceivedEvent(RtcSignalCodec.deserialize(message.payload())))
                     else -> Unit

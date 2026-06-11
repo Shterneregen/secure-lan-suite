@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
+import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
 import com.shterneregen.securelan.chat.service.ChatServerConfig
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
@@ -19,11 +20,14 @@ import com.shterneregen.securelan.desktop.ui.PeerPresence
 import com.shterneregen.securelan.desktop.ui.QuickShareEntry
 import com.shterneregen.securelan.desktop.ui.TransferEntry
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareStatus
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareType
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus
 import com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot
 import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.time.Instant
 
 object ComposeShellMetadata {
@@ -548,12 +552,12 @@ data class ComposeConnectionRuntimePlan(
             return ComposeConnectionRuntimePlan(
                 chatServerConfig = if (canBuildHostingPlan) ChatServerConfig(serverChatPort, roomPassword) else null,
                 localHostConnectRequest = if (canBuildHostingPlan) {
-                    ChatClientConnectRequest("127.0.0.1", serverChatPort, trimmedNickname, roomPassword)
+                    ChatClientConnectRequest("127.0.0.1", serverChatPort, trimmedNickname, roomPassword, PeerCapabilities.desktop("0.5.0", serverFilePort))
                 } else {
                     null
                 },
                 manualConnectRequest = if (canBuildManualPlan) {
-                    ChatClientConnectRequest(state.manualHost.trim(), clientChatPort, trimmedNickname, roomPassword)
+                    ChatClientConnectRequest(state.manualHost.trim(), clientChatPort, trimmedNickname, roomPassword, PeerCapabilities.desktop("0.5.0", localFilePort))
                 } else {
                     null
                 },
@@ -585,7 +589,7 @@ data class ComposeConnectionRuntimePlan(
     }
 }
 
-enum class ComposeConnectionLifecyclePhase {
+enum class ComposeConnectionLifecycleState {
     IDLE,
     HOSTING_READY,
     HOSTED,
@@ -595,7 +599,7 @@ enum class ComposeConnectionLifecyclePhase {
 }
 
 data class ComposeConnectionLifecycleStep(
-    val phase: ComposeConnectionLifecyclePhase,
+    val state: ComposeConnectionLifecycleState,
     val ready: Boolean,
     val label: String,
     val sideEffectContract: String,
@@ -604,7 +608,7 @@ data class ComposeConnectionLifecycleStep(
 }
 
 data class ComposeConnectionLifecyclePlan(
-    val currentPhase: ComposeConnectionLifecyclePhase,
+    val currentState: ComposeConnectionLifecycleState,
     val steps: List<ComposeConnectionLifecycleStep>,
     val blockedReasons: List<String>,
     val fallbackAvailable: Boolean,
@@ -612,7 +616,7 @@ data class ComposeConnectionLifecyclePlan(
     val cleanupOrder: List<String>,
 ) {
     val title: String = "Live status/connection binding contract"
-    val phaseLabel: String = currentPhase.name.lowercase().replace('_', '/')
+    val stateLabel: String = currentState.name.lowercase().replace('_', '/')
     val readySteps: List<ComposeConnectionLifecycleStep> = steps.filter(ComposeConnectionLifecycleStep::ready)
     val readinessSummary: String = if (readySteps.isEmpty()) {
         "No live lifecycle steps are ready for Compose wiring in the current preview state."
@@ -632,7 +636,7 @@ data class ComposeConnectionLifecyclePlan(
     val cleanupOrderSummary: String = cleanupOrder.joinToString(" → ")
     val sideEffectContractSummary: String = steps.joinToString(" · ") { "${it.label}: ${it.sideEffectContract}" }
 
-    fun step(phase: ComposeConnectionLifecyclePhase): ComposeConnectionLifecycleStep = steps.first { it.phase == phase }
+    fun step(state: ComposeConnectionLifecycleState): ComposeConnectionLifecycleStep = steps.first { it.state == state }
 
     companion object {
         fun from(
@@ -641,45 +645,45 @@ data class ComposeConnectionLifecyclePlan(
         ): ComposeConnectionLifecyclePlan {
             val fallbackAvailable = state.javaFxFallbackAvailable
             val blockers = blockedReasonsFor(state, fallbackAvailable)
-            val currentPhase = when {
-                blockers.isNotEmpty() -> ComposeConnectionLifecyclePhase.BLOCKED_ERROR
-                state.clientConnected -> ComposeConnectionLifecyclePhase.CONNECTED
-                state.localServerRunning -> ComposeConnectionLifecyclePhase.HOSTED
-                else -> ComposeConnectionLifecyclePhase.IDLE
+            val currentState = when {
+                blockers.isNotEmpty() -> ComposeConnectionLifecycleState.BLOCKED_ERROR
+                state.clientConnected -> ComposeConnectionLifecycleState.CONNECTED
+                state.localServerRunning -> ComposeConnectionLifecycleState.HOSTED
+                else -> ComposeConnectionLifecycleState.IDLE
             }
             val steps = listOf(
                 ComposeConnectionLifecycleStep(
-                    phase = ComposeConnectionLifecyclePhase.IDLE,
-                    ready = currentPhase == ComposeConnectionLifecyclePhase.IDLE && blockers.isEmpty(),
+                    state = ComposeConnectionLifecycleState.IDLE,
+                    ready = currentState == ComposeConnectionLifecycleState.IDLE && blockers.isEmpty(),
                     label = "Idle",
                     sideEffectContract = "observe validated preview state only; do not start sockets or subscribe to discovery",
                 ),
                 ComposeConnectionLifecycleStep(
-                    phase = ComposeConnectionLifecyclePhase.HOSTING_READY,
+                    state = ComposeConnectionLifecycleState.HOSTING_READY,
                     ready = fallbackAvailable && runtimePlan.hostingReady,
                     label = "Hosting-ready",
                     sideEffectContract = "prepare host, local self-connect, file listener, and discovery announcement inputs without invoking services",
                 ),
                 ComposeConnectionLifecycleStep(
-                    phase = ComposeConnectionLifecyclePhase.HOSTED,
+                    state = ComposeConnectionLifecycleState.HOSTED,
                     ready = fallbackAvailable && state.localServerRunning,
                     label = "Hosted",
                     sideEffectContract = "reflect hosted-room status and discovery visibility while JavaFX remains runtime owner",
                 ),
                 ComposeConnectionLifecycleStep(
-                    phase = ComposeConnectionLifecyclePhase.CONNECTING_READY,
+                    state = ComposeConnectionLifecycleState.CONNECTING_READY,
                     ready = fallbackAvailable && runtimePlan.manualConnectionReady,
                     label = "Connecting-ready",
                     sideEffectContract = "prepare manual connect and client file-listener inputs without opening sockets",
                 ),
                 ComposeConnectionLifecycleStep(
-                    phase = ComposeConnectionLifecyclePhase.CONNECTED,
+                    state = ComposeConnectionLifecycleState.CONNECTED,
                     ready = fallbackAvailable && state.clientConnected,
                     label = "Connected",
                     sideEffectContract = "reflect connected-client status while chat, file-transfer, and RTC signaling stay JavaFX-owned",
                 ),
                 ComposeConnectionLifecycleStep(
-                    phase = ComposeConnectionLifecyclePhase.BLOCKED_ERROR,
+                    state = ComposeConnectionLifecycleState.BLOCKED_ERROR,
                     ready = blockers.isNotEmpty(),
                     label = "Blocked/error",
                     sideEffectContract = "surface validation or fallback blockers before any live binding can run",
@@ -687,12 +691,12 @@ data class ComposeConnectionLifecyclePlan(
             )
 
             return ComposeConnectionLifecyclePlan(
-                currentPhase = currentPhase,
+                currentState = currentState,
                 steps = steps,
                 blockedReasons = blockers,
                 fallbackAvailable = fallbackAvailable,
                 rollbackFallbackRequired = true,
-                cleanupOrder = cleanupOrderFor(currentPhase, state.localServerRunning),
+                cleanupOrder = cleanupOrderFor(currentState, state.localServerRunning),
             )
         }
 
@@ -718,15 +722,15 @@ data class ComposeConnectionLifecyclePlan(
         }
 
         private fun cleanupOrderFor(
-            phase: ComposeConnectionLifecyclePhase,
+            state: ComposeConnectionLifecycleState,
             hostingActive: Boolean,
-        ): List<String> = when (phase) {
-            ComposeConnectionLifecyclePhase.IDLE,
-            ComposeConnectionLifecyclePhase.HOSTING_READY,
-            ComposeConnectionLifecyclePhase.CONNECTING_READY,
+        ): List<String> = when (state) {
+            ComposeConnectionLifecycleState.IDLE,
+            ComposeConnectionLifecycleState.HOSTING_READY,
+            ComposeConnectionLifecycleState.CONNECTING_READY,
                 -> listOf("No runtime cleanup is planned while Compose stays side-effect free")
 
-            ComposeConnectionLifecyclePhase.HOSTED -> listOf(
+            ComposeConnectionLifecycleState.HOSTED -> listOf(
                 "Stop discovery announcement",
                 "Disconnect local self-client if attached",
                 "Stop hosted chat server",
@@ -734,7 +738,7 @@ data class ComposeConnectionLifecyclePlan(
                 "Return to listen-only discovery",
             )
 
-            ComposeConnectionLifecyclePhase.CONNECTED -> buildList {
+            ComposeConnectionLifecycleState.CONNECTED -> buildList {
                 add("Disconnect chat client")
                 add("Stop client-only local file listener")
                 if (hostingActive) {
@@ -743,7 +747,7 @@ data class ComposeConnectionLifecyclePlan(
                 add("Return to listen-only discovery")
             }
 
-            ComposeConnectionLifecyclePhase.BLOCKED_ERROR -> listOf(
+            ComposeConnectionLifecycleState.BLOCKED_ERROR -> listOf(
                 "Do not invoke runtime services",
                 "Keep JavaFX fallback path active",
                 "Fix blockers before retrying live Compose binding",
@@ -763,8 +767,8 @@ enum class ComposeConnectionTransitionKind {
 data class ComposeConnectionTransitionIntent(
     val kind: ComposeConnectionTransitionKind,
     val label: String,
-    val sourcePhase: ComposeConnectionLifecyclePhase,
-    val targetPhase: ComposeConnectionLifecyclePhase,
+    val sourceState: ComposeConnectionLifecycleState,
+    val targetState: ComposeConnectionLifecycleState,
     val enabled: Boolean,
     val guardSummary: String,
     val blockedReason: String,
@@ -773,7 +777,7 @@ data class ComposeConnectionTransitionIntent(
 ) {
     val displayLabel: String = if (enabled) label else "$label blocked"
     val statusText: String = if (enabled) guardSummary else blockedReason
-    val routeSummary: String = "${sourcePhase.name.lowercase()} -> ${targetPhase.name.lowercase()}"
+    val routeSummary: String = "${sourceState.name.lowercase()} -> ${targetState.name.lowercase()}"
     val queuedEvent: ComposeConnectionEvent = ComposeConnectionEvent(
         ComposeConnectionEventKind.INFO,
         "Queued ${
@@ -812,13 +816,13 @@ data class ComposeConnectionTransitionPlan(
             lifecyclePlan: ComposeConnectionLifecyclePlan = state.lifecyclePlan,
             controlPlan: ComposeConnectionControlPlan = state.controlPlan,
         ): ComposeConnectionTransitionPlan {
-            val source = lifecyclePlan.currentPhase
+            val source = lifecyclePlan.currentState
             val fallbackBlock = "JavaFX fallback is unavailable; transition intents must remain local and blocked."
             fun blocked(command: ComposeConnectionCommand): String =
                 if (!lifecyclePlan.fallbackAvailable) fallbackBlock else command.blockedReason
 
-            fun cleanupPreviewFor(target: ComposeConnectionLifecyclePhase): String = when (target) {
-                ComposeConnectionLifecyclePhase.HOSTED -> listOf(
+            fun cleanupPreviewFor(target: ComposeConnectionLifecycleState): String = when (target) {
+                ComposeConnectionLifecycleState.HOSTED -> listOf(
                     "Stop discovery announcement",
                     "Disconnect local self-client if attached",
                     "Stop hosted chat server",
@@ -826,7 +830,7 @@ data class ComposeConnectionTransitionPlan(
                     "Return to listen-only discovery",
                 ).joinToString(" → ")
 
-                ComposeConnectionLifecyclePhase.CONNECTED -> buildList {
+                ComposeConnectionLifecycleState.CONNECTED -> buildList {
                     add("Disconnect chat client")
                     add("Stop client-only local file listener")
                     if (state.localServerRunning) {
@@ -835,15 +839,15 @@ data class ComposeConnectionTransitionPlan(
                     add("Return to listen-only discovery")
                 }.joinToString(" → ")
 
-                ComposeConnectionLifecyclePhase.BLOCKED_ERROR -> listOf(
+                ComposeConnectionLifecycleState.BLOCKED_ERROR -> listOf(
                     "Do not invoke runtime services",
                     "Keep JavaFX fallback path active",
                     "Fix blockers before retrying live Compose binding",
                 ).joinToString(" → ")
 
-                ComposeConnectionLifecyclePhase.IDLE,
-                ComposeConnectionLifecyclePhase.HOSTING_READY,
-                ComposeConnectionLifecyclePhase.CONNECTING_READY,
+                ComposeConnectionLifecycleState.IDLE,
+                ComposeConnectionLifecycleState.HOSTING_READY,
+                ComposeConnectionLifecycleState.CONNECTING_READY,
                     -> "No runtime cleanup is planned while Compose stays side-effect free"
             }
 
@@ -858,21 +862,21 @@ data class ComposeConnectionTransitionPlan(
                     ComposeConnectionTransitionIntent(
                         kind = ComposeConnectionTransitionKind.START_HOSTING,
                         label = "Start hosting transition",
-                        sourcePhase = source,
-                        targetPhase = ComposeConnectionLifecyclePhase.HOSTED,
-                        enabled = source == ComposeConnectionLifecyclePhase.IDLE && openRoom.enabled && lifecyclePlan.step(
-                            ComposeConnectionLifecyclePhase.HOSTING_READY
+                        sourceState = source,
+                        targetState = ComposeConnectionLifecycleState.HOSTED,
+                        enabled = source == ComposeConnectionLifecycleState.IDLE && openRoom.enabled && lifecyclePlan.step(
+                            ComposeConnectionLifecycleState.HOSTING_READY
                         ).ready,
                         guardSummary = "Host inputs, local self-connect, file listener, and discovery config are prepared for a future live host transition.",
                         blockedReason = blocked(openRoom),
-                        cleanupPreview = cleanupPreviewFor(ComposeConnectionLifecyclePhase.HOSTED),
+                        cleanupPreview = cleanupPreviewFor(ComposeConnectionLifecycleState.HOSTED),
                         sideEffectContract = "future implementation may start host services only after this local intent is accepted by a runtime adapter",
                     ),
                     ComposeConnectionTransitionIntent(
                         kind = ComposeConnectionTransitionKind.STOP_HOSTING,
                         label = "Stop hosting transition",
-                        sourcePhase = source,
-                        targetPhase = ComposeConnectionLifecyclePhase.IDLE,
+                        sourceState = source,
+                        targetState = ComposeConnectionLifecycleState.IDLE,
                         enabled = stopHosting.enabled,
                         guardSummary = "Hosted-room cleanup order is explicit before any future runtime stop call is allowed.",
                         blockedReason = blocked(stopHosting),
@@ -882,21 +886,21 @@ data class ComposeConnectionTransitionPlan(
                     ComposeConnectionTransitionIntent(
                         kind = ComposeConnectionTransitionKind.START_MANUAL_CONNECT,
                         label = "Manual connect transition",
-                        sourcePhase = source,
-                        targetPhase = ComposeConnectionLifecyclePhase.CONNECTED,
-                        enabled = source == ComposeConnectionLifecyclePhase.IDLE && connect.enabled && lifecyclePlan.step(
-                            ComposeConnectionLifecyclePhase.CONNECTING_READY
+                        sourceState = source,
+                        targetState = ComposeConnectionLifecycleState.CONNECTED,
+                        enabled = source == ComposeConnectionLifecycleState.IDLE && connect.enabled && lifecyclePlan.step(
+                            ComposeConnectionLifecycleState.CONNECTING_READY
                         ).ready,
                         guardSummary = "Manual host, chat port, nickname, password, and local file listener are prepared for a future live connect transition.",
                         blockedReason = blocked(connect),
-                        cleanupPreview = cleanupPreviewFor(ComposeConnectionLifecyclePhase.CONNECTED),
+                        cleanupPreview = cleanupPreviewFor(ComposeConnectionLifecycleState.CONNECTED),
                         sideEffectContract = "future implementation may connect only through chat-core service boundaries after this intent is accepted",
                     ),
                     ComposeConnectionTransitionIntent(
                         kind = ComposeConnectionTransitionKind.DISCONNECT_CLIENT,
                         label = "Disconnect transition",
-                        sourcePhase = source,
-                        targetPhase = if (state.localServerRunning) ComposeConnectionLifecyclePhase.HOSTED else ComposeConnectionLifecyclePhase.IDLE,
+                        sourceState = source,
+                        targetState = if (state.localServerRunning) ComposeConnectionLifecycleState.HOSTED else ComposeConnectionLifecycleState.IDLE,
                         enabled = disconnect.enabled,
                         guardSummary = "Client disconnect cleanup is separated from hosted-room cleanup when hosting remains active.",
                         blockedReason = blocked(disconnect),
@@ -906,8 +910,8 @@ data class ComposeConnectionTransitionPlan(
                     ComposeConnectionTransitionIntent(
                         kind = ComposeConnectionTransitionKind.CHANGE_DISCOVERY_VISIBILITY,
                         label = "Discovery visibility transition",
-                        sourcePhase = source,
-                        targetPhase = ComposeConnectionLifecyclePhase.HOSTED,
+                        sourceState = source,
+                        targetState = ComposeConnectionLifecycleState.HOSTED,
                         enabled = discoverability.enabled,
                         guardSummary = "Discovery visibility change is local-intent only and keeps UDP payload format unchanged.",
                         blockedReason = blocked(discoverability),
@@ -995,11 +999,11 @@ data class ComposeAdapterEventRouting(
             fun block(reason: String): String = if (!fallbackAvailable) fallbackBlock else reason
 
             val hostingReady =
-                fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecyclePhase.HOSTING_READY).ready
-            val hosted = fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecyclePhase.HOSTED).ready
+                fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecycleState.HOSTING_READY).ready
+            val hosted = fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecycleState.HOSTED).ready
             val connectingReady =
-                fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecyclePhase.CONNECTING_READY).ready
-            val connected = fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecyclePhase.CONNECTED).ready
+                fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecycleState.CONNECTING_READY).ready
+            val connected = fallbackAvailable && lifecyclePlan.step(ComposeConnectionLifecycleState.CONNECTED).ready
 
             val hostStartedReady = hostingReady && !hosted
             val hostStartedBlocked = if (!fallbackAvailable) fallbackBlock
@@ -1010,7 +1014,7 @@ data class ComposeAdapterEventRouting(
 
             val hostStoppedReady = hosted
             val hostStoppedBlocked = if (!fallbackAvailable) fallbackBlock
-            else "Room is not currently hosted; host-stopped event can only fire after a hosted phase."
+            else "Room is not currently hosted; host-stopped event can only fire after a hosted state."
 
             val connectStartedReady = connectingReady && !state.clientConnected
             val connectStartedBlocked = if (!fallbackAvailable) fallbackBlock
@@ -1041,11 +1045,11 @@ data class ComposeAdapterEventRouting(
 
             val cleanupStartedReady = hosted || connected
             val cleanupStartedBlocked = if (!fallbackAvailable) fallbackBlock
-            else "No active runtime phase requires cleanup; cleanup-started event is guarded until hosting or connection is active."
+            else "No active runtime state requires cleanup; cleanup-started event is guarded until hosting or connection is active."
 
             val cleanupCompletedReady = hosted || connected
             val cleanupCompletedBlocked = if (!fallbackAvailable) fallbackBlock
-            else "No active runtime phase requires cleanup completion; cleanup-completed event is guarded until cleanup-started fires."
+            else "No active runtime state requires cleanup completion; cleanup-completed event is guarded until cleanup-started fires."
 
             val contracts = listOf(
                 ComposeAdapterEventContract(
@@ -1134,7 +1138,7 @@ data class ComposeAdapterEventRouting(
                     ready = cleanupStartedReady,
                     guarded = !cleanupStartedReady && fallbackAvailable,
                     description = "Future runtime adapter fires this when the documented cleanup order begins executing.",
-                    prerequisites = listOf("active runtime phase (hosted or connected)"),
+                    prerequisites = listOf("active runtime state (hosted or connected)"),
                     blockedReason = block(cleanupStartedBlocked),
                     cleanupAfter = emptyList(),
                 ),
@@ -1154,7 +1158,7 @@ data class ComposeAdapterEventRouting(
             val blockedEvents = contracts.filterNot { it.ready }
             val cleanupOrderSummary =
                 if (contracts.none { it.ready && it.kind == ComposeAdapterEventKind.CLEANUP_COMPLETED }) {
-                    "Cleanup event order is not yet applicable; no active runtime phase requires cleanup."
+                    "Cleanup event order is not yet applicable; no active runtime state requires cleanup."
                 } else {
                     "Cleanup events fire in deterministic order: cleanup-started → cleanup-completed after hosted/connected events are resolved."
                 }
@@ -1330,7 +1334,7 @@ data class ComposePeerTargetControlPlan(
                         kind = ComposePeerTargetCommandKind.FILE_TARGET,
                         label = label(ComposePeerTargetCommandKind.FILE_TARGET, "Use for files"),
                         enabled = javaFxFallbackAvailable && targetActions.fileReady,
-                        summary = "Prepare $peerName as the encrypted file-transfer target using its discovered LAN endpoint.",
+                        summary = "Prepare $peerName as the encrypted file-transfer target using its available file receiver endpoint.",
                         blockedReason = blocked(firstBlockedReason()),
                     ),
                     ComposePeerTargetCommand(
@@ -1384,21 +1388,27 @@ data class ComposePeerTargetActions(
     companion object {
         fun from(peer: ComposePeerListItem?): ComposePeerTargetActions {
             val online = peer?.online == true
-            val discovered = peer?.discovered == true
+            val fileCapable = peer?.fileCapable == true
+            val voiceCapable = peer?.voiceCapable == true
+            val videoCapable = peer?.videoCapable == true
+            val dataChannelCapable = peer?.dataChannelCapable == true
             return ComposePeerTargetActions(
                 chatReady = online,
-                fileReady = online && discovered,
-                voiceReady = online,
-                videoReady = online,
-                dataChannelReady = online,
-                blockedReasons = blockedReasonsFor(peer, online, discovered),
+                fileReady = online && fileCapable,
+                voiceReady = online && voiceCapable,
+                videoReady = online && videoCapable,
+                dataChannelReady = online && dataChannelCapable,
+                blockedReasons = blockedReasonsFor(peer, online, fileCapable, voiceCapable, videoCapable, dataChannelCapable),
             )
         }
 
         private fun blockedReasonsFor(
             peer: ComposePeerListItem?,
             online: Boolean,
-            discovered: Boolean,
+            fileCapable: Boolean,
+            voiceCapable: Boolean,
+            videoCapable: Boolean,
+            dataChannelCapable: Boolean,
         ): List<String> = buildList {
             if (peer == null) {
                 add("Select an online peer before enabling chat, file, voice, video, or RTC data actions.")
@@ -1407,8 +1417,14 @@ data class ComposePeerTargetActions(
             if (!online) {
                 add("Selected peer is offline; wait for chat presence or discovery refresh.")
             }
-            if (online && !discovered) {
-                add("Encrypted file transfer is blocked until the peer advertises a LAN file endpoint.")
+            if (online && !fileCapable) {
+                add("Encrypted file transfer is blocked until the peer has an available file receiver endpoint.")
+            }
+            if (online && (!voiceCapable || !videoCapable)) {
+                add("Voice and video are blocked because the selected peer does not advertise RTC media support.")
+            }
+            if (online && !dataChannelCapable) {
+                add("RTC data is blocked because the selected peer does not advertise data-channel support.")
             }
         }
     }
@@ -1432,12 +1448,14 @@ data class ComposeSelectedPeerQuickActionsState(
     val meta: String = peerListState.selectedPeerMeta
     val selectedPeer: ComposePeerListItem? = peerListState.selectedPeer
     val selectedPeerStatus: String = peerListState.peerStatus
-    val fileTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.discovered
-    val callableTargetReady: Boolean = selectedPeer?.online == true
+    val fileTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.fileCapable
+    val voiceTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.voiceCapable
+    val videoTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.videoCapable
+    val realtimeTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.realtimeCapable
     val attachEnabled: Boolean = clientConnected && fileTargetReady && javaFxFallbackAvailable
-    val voiceEnabled: Boolean = clientConnected && callableTargetReady && voiceRuntimeReady && javaFxFallbackAvailable
-    val videoEnabled: Boolean = clientConnected && callableTargetReady && videoRuntimeReady && javaFxFallbackAvailable
-    val hangUpEnabled: Boolean = hangUpReady && javaFxFallbackAvailable
+    val voiceEnabled: Boolean = clientConnected && voiceTargetReady && voiceRuntimeReady && javaFxFallbackAvailable
+    val videoEnabled: Boolean = clientConnected && videoTargetReady && videoRuntimeReady && javaFxFallbackAvailable
+    val hangUpEnabled: Boolean = hangUpReady && realtimeTargetReady && javaFxFallbackAvailable
     val attachLabel: String = if (attachEnabled) "Attach ready" else "Attach blocked"
     val voiceLabel: String = if (voiceEnabled) "Voice call ready" else "Voice call blocked"
     val videoLabel: String = if (videoEnabled) "Video call ready" else "Video call blocked"
@@ -1467,17 +1485,23 @@ data class ComposeSelectedPeerQuickActionsState(
             if (!selectedPeer.online) {
                 add("Selected peer is offline; quick actions wait for discovery or chat presence refresh.")
             }
-            if (selectedPeer.online && !selectedPeer.discovered) {
-                add("Attach is blocked until the peer advertises a LAN file endpoint.")
+            if (selectedPeer.online && !selectedPeer.fileCapable) {
+                add("Attach is blocked until a file receiver endpoint is available.")
+            }
+            if (selectedPeer.online && !selectedPeer.voiceCapable) {
+                add("Voice call is blocked because the selected peer does not advertise voice support.")
+            }
+            if (selectedPeer.online && !selectedPeer.videoCapable) {
+                add("Video call is blocked because the selected peer does not advertise video support.")
             }
         }
         if (!clientConnected) {
             add("Connect to chat before sending files or starting calls.")
         }
-        if (clientConnected && callableTargetReady && !voiceRuntimeReady) {
+        if (clientConnected && voiceTargetReady && !voiceRuntimeReady) {
             add("Voice runtime is not ready; keep Voice call disabled.")
         }
-        if (clientConnected && callableTargetReady && !videoRuntimeReady) {
+        if (clientConnected && videoTargetReady && !videoRuntimeReady) {
             add("Video runtime is not ready; keep Video call disabled.")
         }
         if (!javaFxFallbackAvailable) {
@@ -1498,22 +1522,41 @@ data class ComposePeerListItem(
     val discovered: Boolean,
     val listMeta: String,
     val selectedMeta: String,
+    val filePort: Int = 0,
+    val voiceCapable: Boolean = true,
+    val videoCapable: Boolean = true,
+    val dataChannelCapable: Boolean = true,
+    val fileCapableOverride: Boolean? = null,
 ) {
+    val fileCapable: Boolean = fileCapableOverride ?: (discovered || filePort > 0)
+    val realtimeCapable: Boolean = voiceCapable || videoCapable || dataChannelCapable
     val availabilityLabel: String = if (online) "Online" else "Offline"
     val actionSummary: String = when {
         !online -> "Offline target; wait for chat or discovery refresh before enabling actions."
+        !realtimeCapable && fileCapable -> "Chat and encrypted file transfer can target this peer after connection; voice, video, and RTC data are unavailable for this client."
+        !realtimeCapable -> "Chat can target this peer after connection; voice, video, RTC data, and encrypted file transfer are unavailable for this client."
         discovered -> "Chat, encrypted file transfer, voice, and experimental video can target this peer after connection."
-        else -> "Chat, voice, and experimental video can target this peer after connection; encrypted file transfer needs LAN discovery."
+        filePort > 0 -> "Chat, encrypted file transfer, voice, and experimental video can target this peer after connection; file receiver was inferred from chat."
+        else -> "Chat, voice, and experimental video can target this peer after connection; encrypted file transfer needs a file receiver endpoint."
     }
 
     companion object {
-        fun fromPeer(peer: PeerPresence, clientConnected: Boolean): ComposePeerListItem = ComposePeerListItem(
-            nickname = peer.nickname(),
-            online = peer.online(),
-            discovered = peer.discovered(),
-            listMeta = DesktopPeerFormatters.formatListMeta(peer),
-            selectedMeta = DesktopPeerFormatters.formatSelectedPeerMeta(peer, clientConnected),
-        )
+        fun fromPeer(peer: PeerPresence, clientConnected: Boolean): ComposePeerListItem {
+            val capabilities = peer.capabilities()
+            val unknownCapabilities = capabilities == PeerCapabilities.unknown()
+            return ComposePeerListItem(
+                nickname = peer.nickname(),
+                online = peer.online(),
+                discovered = peer.discovered() && !peer.peerId().isNullOrBlank(),
+                listMeta = DesktopPeerFormatters.formatListMeta(peer),
+                selectedMeta = DesktopPeerFormatters.formatSelectedPeerMeta(peer, clientConnected),
+                filePort = peer.filePort(),
+                voiceCapable = unknownCapabilities || capabilities.supportsVoice(),
+                videoCapable = unknownCapabilities || capabilities.supportsVideo(),
+                dataChannelCapable = unknownCapabilities || capabilities.supportsRtcDataChannel(),
+                fileCapableOverride = DesktopMainViewHelpers.selectedPeerFileCapable(peer),
+            )
+        }
 
         fun fromDiscoveredPeer(peer: DiscoveredPeer): ComposePeerListItem = fromPeer(
             PeerPresence(
@@ -1628,22 +1671,39 @@ data class ComposeIncomingTransferPrompt(
     val fileName: String,
     val fileSize: Long,
     val remoteAddress: String,
+    val status: ComposeIncomingTransferPromptStatus = ComposeIncomingTransferPromptStatus.WAITING,
 ) {
     val title: String = DesktopTransferFormatters.incomingFileTitle()
     val header: String = DesktopTransferFormatters.incomingFileHeader(senderId)
     val content: String = DesktopTransferFormatters.incomingFileContent(fileName, fileSize, remoteAddress)
     val sizeLabel: String = DesktopTransferFormatters.formatMegabytes(fileSize)
+    val statusLabel: String = status.label
+    val waitingForDecision: Boolean = status == ComposeIncomingTransferPromptStatus.WAITING
+
+    fun withStatus(nextStatus: ComposeIncomingTransferPromptStatus): ComposeIncomingTransferPrompt = copy(status = nextStatus)
 
     companion object {
-        fun from(metadata: FileTransferMetadata, remoteAddress: String): ComposeIncomingTransferPrompt =
+        fun from(
+            metadata: FileTransferMetadata,
+            remoteAddress: String,
+            status: ComposeIncomingTransferPromptStatus = ComposeIncomingTransferPromptStatus.WAITING,
+        ): ComposeIncomingTransferPrompt =
             ComposeIncomingTransferPrompt(
                 id = metadata.transferId,
                 senderId = metadata.senderId,
                 fileName = metadata.fileName,
                 fileSize = metadata.fileSize,
                 remoteAddress = remoteAddress,
+                status = status,
             )
     }
+}
+
+enum class ComposeIncomingTransferPromptStatus(val label: String) {
+    WAITING("Needs your decision"),
+    ACCEPTED("Accepted"),
+    AUTO_ACCEPTED("Auto-accepted"),
+    REJECTED("Rejected"),
 }
 
 data class ComposeFileTransferState(
@@ -1663,18 +1723,76 @@ data class ComposeFileTransferState(
     val hasSelectedFile: Boolean = selectedFilePath.trim().isNotEmpty()
     val senderReady: Boolean = senderId.trim().isNotEmpty()
     val passwordReady: Boolean = sessionPassword.isNotEmpty()
-    val sendTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.discovered
+    val sendTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.fileCapable
     val listenerReady: Boolean = statusState.resolvedLocalFilePort != null
     val canSendSelectedFile: Boolean = sendTargetReady && hasSelectedFile && senderReady && passwordReady && javaFxFallbackAvailable
     val activeCount: Long = entries.count { it.active() }.toLong()
+    val completedCount: Int = entries.count { it.status == "Completed" }
+    val failedCount: Int = entries.count { it.status == "Failed" }
+    val waitingPromptCount: Int = incomingPrompts.count { it.waitingForDecision }
     val hint: String = DesktopTransferFormatters.formatTransferHint(activeCount, entries.isNotEmpty())
+    val heroTitle: String = when {
+        activeCount > 0 -> DesktopTransferFormatters.formatActiveTransferSummary(activeCount)
+        waitingPromptCount > 0 -> "$waitingPromptCount incoming file${if (waitingPromptCount == 1) "" else "s"} waiting"
+        entries.isNotEmpty() -> "Transfers are idle"
+        else -> "Ready when you need to send a file"
+    }
+    val heroSubtitle: String = when {
+        activeCount > 0 -> "Keep this panel open to watch encrypted file progress."
+        waitingPromptCount > 0 -> "Review incoming files from known online peers before saving."
+        entries.isNotEmpty() -> "Recent completed or failed transfers remain below for troubleshooting."
+        else -> "Choose an online discovered peer, pick a file, and enter the shared file password."
+    }
     val activeSummary: String = DesktopTransferFormatters.formatActiveTransferSummary(activeCount)
     val entryRows: List<String> = entries.map(DesktopTransferFormatters::formatTransferListMeta)
+    val recentEntries: List<TransferEntry> = entries.takeLast(4)
+    val recentEntryRows: List<ComposeTransferRow> = recentEntries.map(ComposeTransferRow::from)
     val promptSummary: String = if (incomingPrompts.isEmpty()) {
         "No incoming receive prompts."
     } else {
-        "Incoming prompts: ${incomingPrompts.size}; latest ${incomingPrompts.last().fileName} from ${incomingPrompts.last().senderId}."
+        val waitingCount = incomingPrompts.count { it.waitingForDecision }
+        "Incoming files: ${incomingPrompts.size}; $waitingCount waiting for review."
     }
+    val receiveModeLabel: String = if (autoAcceptFiles) {
+        "Auto-accept is on for known online peers"
+    } else {
+        "Ask before saving incoming files"
+    }
+    val receiveModeDescription: String = if (autoAcceptFiles) {
+        "Known online peers can send files without an extra prompt. Unknown or offline senders are still rejected."
+    } else {
+        "Incoming files from known online peers require your confirmation before they are saved."
+    }
+    val receiveModeShortLabel: String = if (autoAcceptFiles) "Known peers auto-save" else "Ask before saving"
+    val transferCountSummary: String = buildList {
+        add("$activeCount active")
+        add("$completedCount completed")
+        if (failedCount > 0) add("$failedCount failed")
+        if (waitingPromptCount > 0) add("$waitingPromptCount needs review")
+    }.joinToString(" · ")
+    val targetSummary: String = if (sendTargetReady) {
+        if (selectedPeer?.discovered == true) {
+            "Sending to $selectedPeerName over its discovered LAN file endpoint."
+        } else {
+            "Sending to $selectedPeerName over the file receiver inferred from its chat connection."
+        }
+    } else {
+        selectedPeer?.let { peer ->
+            when {
+                !statusState.clientConnected -> "Connect to chat before sending to ${peer.nickname}."
+                !peer.online -> "${peer.nickname} is offline. Wait until the peer is online."
+                !peer.fileCapable -> "${peer.nickname} is online, but no file receiver endpoint is available."
+                else -> "Select an online peer before sending."
+            }
+        } ?: "Select an online peer from the Peers list."
+    }
+    val selectedFileName: String = selectedFilePath.trim()
+        .takeIf(String::isNotEmpty)
+        ?.let { runCatching { Paths.get(it).fileName?.toString() ?: it }.getOrDefault(it) }
+        ?: "No file selected"
+    val selectedFileSummary: String = if (hasSelectedFile) selectedFileName else "Choose a local file before sending."
+    val passwordSummary: String = if (passwordReady) "Using the current room password" else "Reconnect with a room password before sending files."
+    val senderSummary: String = if (senderReady) "Sending as ${senderId.trim()}" else "Reconnect with your name before sending files."
     val sendLabel: String = if (canSendSelectedFile) "Send file ready" else "Send file blocked"
     val receiveLabel: String = if (listenerReady) "Receive listener ready" else "Receive listener blocked"
     val fallbackLabel: String =
@@ -1684,11 +1802,11 @@ data class ComposeFileTransferState(
             add("Connect to chat before sending encrypted files.")
         }
         if (selectedPeer == null) {
-            add("Select a discovered peer before sending files.")
+            add("Select an online peer before sending files.")
         } else if (!selectedPeer.online) {
             add("Selected peer is offline; wait for discovery or chat presence refresh.")
-        } else if (!selectedPeer.discovered) {
-            add("Selected peer does not advertise a LAN file endpoint.")
+        } else if (!selectedPeer.fileCapable) {
+            add("Selected peer does not have an available file receiver endpoint.")
         }
         if (!hasSelectedFile) {
             add("Choose a local file before sending.")
@@ -1706,10 +1824,45 @@ data class ComposeFileTransferState(
             add("JavaFX fallback is unavailable; keep live Compose file-transfer actions disabled.")
         }
     }
+    val nextStepSummary: String = blockedReasons.firstOrNull() ?: "Ready to send encrypted file to $selectedPeerName."
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
         "Encrypted file-transfer send/receive controls are ready for Compose wiring."
     } else {
         blockedReasons.joinToString(" · ")
+    }
+}
+
+data class ComposeTransferRow(
+    val fileName: String,
+    val directionLabel: String,
+    val status: String,
+    val percent: Int,
+    val sizeLabel: String?,
+    val speedLabel: String?,
+    val active: Boolean,
+    val failed: Boolean,
+) {
+    val title: String = "$directionLabel · $fileName"
+    val progressLabel: String = when {
+        active -> "$status · $percent%"
+        status == "Completed" -> "Completed · 100%"
+        failed -> "Failed"
+        percent > 0 -> "$status · $percent%"
+        else -> status
+    }
+    val detail: String = listOfNotNull(sizeLabel, speedLabel).joinToString(" · ").ifBlank { "Size not reported yet" }
+
+    companion object {
+        fun from(entry: TransferEntry): ComposeTransferRow = ComposeTransferRow(
+            fileName = entry.fileName,
+            directionLabel = entry.directionLabel(),
+            status = entry.status,
+            percent = entry.percent.coerceIn(0, 100),
+            sizeLabel = entry.totalBytes.takeIf { it > 0 }?.let(DesktopTransferFormatters::formatMegabytes),
+            speedLabel = entry.speedBytesPerSecond.takeIf { entry.active() && it > 0 }?.let(DesktopTransferFormatters::formatTransferSpeed),
+            active = entry.active(),
+            failed = entry.status == "Failed",
+        )
     }
 }
 
@@ -1724,33 +1877,112 @@ data class ComposeQuickShareState(
     val landingUrls: List<String> = emptyList(),
     val javaFxFallbackAvailable: Boolean = true,
 ) {
-    val title: String = "No-auth LAN browser quick share"
+    val title: String = "Share by browser link"
+    val subtitle: String = "Create temporary file or text links that people on this trusted LAN can open in a browser."
     val port: Int? = portText.trim().toIntOrNull()?.takeIf { it in 1..65_535 }
     val expirationMinutes: Long? = expirationMinutesText.trim().toLongOrNull()?.takeIf { it >= 1 }
     val accessLimit: Int? = accessLimitText.trim().toIntOrNull()?.takeIf { it >= 1 }
     val hasSelectedFile: Boolean = selectedFilePath.trim().isNotEmpty()
     val hasText: Boolean = textDraft.trim().isNotEmpty()
     val activeEntries: List<QuickShareEntry> = entries.filter { it.active() }
-    val statusText: String = if (running && port != null) DesktopQuickShareFormatters.formatServerStatus(port) else "Quick share idle"
+    val inactiveEntries: List<QuickShareEntry> = entries.filterNot { it.active() }
+    val statusText: String = if (running && port != null) DesktopQuickShareFormatters.formatServerStatus(port) else "Share server is stopped"
+    val statusDetail: String = if (running) {
+        "Links are available until their time or access limit is reached."
+    } else {
+        "Start the share server first, then create a file or text link."
+    }
     val landingText: String = DesktopQuickShareFormatters.formatLandingValue(landingUrls)
     val trustedLanWarning: String =
-        "Trusted LAN only: browser quick-share links have no login and should be stopped when finished."
+        "Trusted LAN only. These links have no login, so stop shares when everyone has downloaded them."
     val canStartServer: Boolean = !running && port != null && javaFxFallbackAvailable
     val canStopServer: Boolean = running && javaFxFallbackAvailable
     val canCreateFileShare: Boolean = hasSelectedFile && expirationMinutes != null && accessLimit != null && javaFxFallbackAvailable
     val canCreateTextShare: Boolean = hasText && expirationMinutes != null && accessLimit != null && javaFxFallbackAvailable
     val canCopyIndex: Boolean = running && landingUrls.isNotEmpty() && javaFxFallbackAvailable
     val shareRows: List<String> = entries.map { DesktopQuickShareFormatters.formatSnapshotMeta(it.snapshot()) }
-    val readinessSummary: String = buildList {
-        if (port == null) add("Quick-share port must be valid.")
-        if (expirationMinutes == null) add("Expiration must be at least 1 minute.")
-        if (accessLimit == null) add("Access limit must be at least 1.")
-        if (!hasSelectedFile) add("Choose a file before creating a file quick-share.")
-        if (!hasText) add("Enter text before creating a text quick-share.")
-        if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; keep live Compose quick-share actions disabled.")
-    }.ifEmpty {
-        listOf("Quick-share controls are ready for trusted-LAN browser-link workflows.")
+    val activeShareCountLabel: String = when (activeEntries.size) {
+        0 -> "No active links"
+        1 -> "1 active link"
+        else -> "${activeEntries.size} active links"
+    }
+    val inactiveShareCountLabel: String = when (inactiveEntries.size) {
+        0 -> "No stopped or expired links"
+        1 -> "1 stopped or expired link"
+        else -> "${inactiveEntries.size} stopped or expired links"
+    }
+    val serverActionLabel: String = if (running) "Server running" else "Start share server"
+    val fileShareActionLabel: String = if (hasSelectedFile) "Create file link" else "Choose a file first"
+    val textShareActionLabel: String = if (hasText) "Create text link" else "Enter text first"
+    val selectedFileLabel: String = selectedFilePath.trim().ifBlank { "No file selected" }
+    val policySummary: String = buildList {
+        add(expirationMinutes?.let { "expires after $it min" } ?: "set expiration")
+        add(accessLimit?.let { "$it opens max" } ?: "set access limit")
+        add(port?.let { "port $it" } ?: "fix port")
     }.joinToString(" · ")
+    val readinessSummary: String = buildList {
+        if (port == null) add("Enter a valid port from 1 to 65535.")
+        if (expirationMinutes == null) add("Set expiration to at least 1 minute.")
+        if (accessLimit == null) add("Set access limit to at least 1 open.")
+        if (!hasSelectedFile && !hasText) add("Choose a file or enter text to create a link.")
+        if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; live quick-share actions stay disabled.")
+    }.ifEmpty {
+        listOf("Ready to create trusted-LAN browser links.")
+    }.joinToString(" · ")
+    val emptySharesTitle: String = if (running) "No links created yet" else "Share server is idle"
+    val emptySharesDetail: String = if (running) {
+        "Choose a file or enter text, then create a browser link. New links are copied after creation."
+    } else {
+        "Start the server to create temporary browser links for this LAN."
+    }
+    val quickStartSteps: List<String> = listOf(
+        "1. Start the share server.",
+        "2. Choose a file or type text.",
+        "3. Create a link and send it to trusted LAN peers.",
+    )
+    val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map(ComposeQuickShareRow::from)
+}
+
+data class ComposeQuickShareRow(
+    val id: String,
+    val title: String,
+    val typeLabel: String,
+    val statusLabel: String,
+    val detail: String,
+    val url: String,
+    val active: Boolean,
+) {
+    companion object {
+        fun from(entry: QuickShareEntry): ComposeQuickShareRow {
+            val snapshot = entry.snapshot()
+            val typeLabel = when (snapshot.type()) {
+                QuickShareType.FILE -> "File link"
+                QuickShareType.TEXT -> "Text link"
+            }
+            val statusLabel = when (snapshot.status()) {
+                QuickShareStatus.ACTIVE -> "Active"
+                QuickShareStatus.STOPPED -> "Stopped"
+                QuickShareStatus.EXPIRED -> "Expired"
+                QuickShareStatus.LIMIT_REACHED -> "Limit reached"
+            }
+            val title = snapshot.displayName().ifBlank { snapshot.fileName() }.ifBlank { snapshot.id() }
+            val sizeLabel = snapshot.fileSize().takeIf { it > 0 }?.let(DesktopTransferFormatters::formatMegabytes)
+            val detail = buildList {
+                add("${snapshot.accessCount()}/${snapshot.accessLimit()} opens")
+                add("expires ${snapshot.expiresAt()}")
+                if (sizeLabel != null) add(sizeLabel)
+            }.joinToString(" · ")
+            return ComposeQuickShareRow(
+                id = entry.id(),
+                title = title,
+                typeLabel = typeLabel,
+                statusLabel = statusLabel,
+                detail = detail,
+                url = entry.url(),
+                active = entry.active(),
+            )
+        }
+    }
 }
 
 data class ComposeSteganographyState(
@@ -1805,12 +2037,15 @@ data class ComposeMediaVoiceState(
     val statusState: ComposeStatusConnectionState,
     val peerListState: ComposePeerListState,
     val microphones: List<MediaDeviceChoice> = listOf(MediaDeviceChoice.systemDefault("System default microphone")),
+    val outputDevices: List<MediaDeviceChoice> = listOf(MediaDeviceChoice.systemDefault("System default speaker")),
     val selectedMicrophoneId: String = "",
+    val selectedOutputDeviceId: String = "",
     val runtimeStatus: RtcRuntimeStatus? = null,
     val currentSession: RtcSessionSnapshot? = null,
     val localAudioLevel: Double = 0.0,
     val remoteAudioLevel: Double = 0.0,
     val microphoneTestStatus: String = "Not tested",
+    val speakerTestStatus: String = "Not tested",
     val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Media devices and voice"
@@ -1819,22 +2054,44 @@ data class ComposeMediaVoiceState(
     val selectedMicrophone: MediaDeviceChoice = microphones.firstOrNull { it.matches(selectedMicrophoneId) }
         ?: microphones.firstOrNull()
         ?: MediaDeviceChoice.systemDefault("System default microphone")
+    val selectedOutputDevice: MediaDeviceChoice = outputDevices.firstOrNull { it.matches(selectedOutputDeviceId) }
+        ?: outputDevices.firstOrNull()
+        ?: MediaDeviceChoice.systemDefault("System default speaker")
+    val physicalMicrophoneCount: Int = microphones.count { !it.systemDefault }
+    val physicalOutputDeviceCount: Int = outputDevices.count { !it.systemDefault }
     val runtimeLabel: String = DesktopRealtimeFormatters.formatRuntimeStatus(runtimeStatus)
+    val permissionStatusLabel: String = when {
+        runtimeStatus?.available == true -> "Microphone permission: ready to test"
+        runtimeStatus == null -> "Microphone permission: not checked yet"
+        else -> "Microphone permission: unavailable"
+    }
+    val microphoneEmptyState: String = if (physicalMicrophoneCount == 0) {
+        "No microphones found. Connect a microphone, allow OS/browser access, then refresh devices."
+    } else {
+        "$physicalMicrophoneCount microphone option${if (physicalMicrophoneCount == 1) "" else "s"} available."
+    }
+    val outputEmptyState: String = if (physicalOutputDeviceCount == 0) {
+        "No speaker list is available. Calls and tests will use the system default output."
+    } else {
+        "$physicalOutputDeviceCount speaker option${if (physicalOutputDeviceCount == 1) "" else "s"} available."
+    }
     val voiceState: RtcSessionState = currentSession?.state ?: RtcSessionState.IDLE
     val voiceStatusText: String = DesktopRealtimeFormatters.voiceStatusText(voiceState, currentSession?.remotePeer ?: selectedPeer?.nickname)
     val localAudioLabel: String = DesktopRealtimeFormatters.formatAudioLevel(localAudioLevel > 0.01, true, selectedPeer?.nickname, localAudioLevel)
     val remoteAudioLabel: String = DesktopRealtimeFormatters.formatAudioLevel(remoteAudioLevel > 0.01, false, selectedPeer?.nickname, remoteAudioLevel)
-    val voiceTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true
+    val localAudioPercent: Int = (localAudioLevel.coerceIn(0.0, 1.0) * 100).toInt()
+    val voiceTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.voiceCapable
     val canRefreshDevices: Boolean = javaFxFallbackAvailable
     val canTestMicrophone: Boolean = microphones.isNotEmpty() && javaFxFallbackAvailable
+    val canTestSpeaker: Boolean = outputDevices.isNotEmpty() && javaFxFallbackAvailable
     val canStartVoice: Boolean = voiceTargetReady && javaFxFallbackAvailable
     val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state) && javaFxFallbackAvailable
-    val startVoiceLabel: String = if (canStartVoice) "Voice call ready" else "Voice call blocked"
+    val startVoiceLabel: String = if (canStartVoice) "Start voice call" else "Voice call blocked"
     val fallbackLabel: String =
         if (javaFxFallbackAvailable) "JavaFX voice workspace remains production fallback" else "JavaFX voice fallback unavailable"
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) add("Connect to chat before starting a voice call.")
-        if (selectedPeer == null) add("Select an online peer before starting voice.") else if (!selectedPeer.online) add("Selected peer is offline; voice must remain blocked.")
+        if (selectedPeer == null) add("Select an online peer before starting voice.") else if (!selectedPeer.online) add("Selected peer is offline; voice must remain blocked.") else if (!selectedPeer.voiceCapable) add("Selected peer does not advertise voice support; voice must remain blocked.")
         if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; keep live Compose voice actions disabled.")
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
@@ -1864,7 +2121,18 @@ data class ComposeExperimentalVideoState(
     val selectedCamera: MediaDeviceChoice = cameras.firstOrNull { it.matches(selectedCameraId) }
         ?: cameras.firstOrNull()
         ?: MediaDeviceChoice.systemDefault("System default camera")
+    val physicalCameraCount: Int = cameras.count { !it.systemDefault }
     val runtimeLabel: String = DesktopRealtimeFormatters.formatRuntimeStatus(runtimeStatus)
+    val permissionStatusLabel: String = when {
+        runtimeStatus?.available == true -> "Camera permission: ready to test"
+        runtimeStatus == null -> "Camera permission: not checked yet"
+        else -> "Camera permission: unavailable"
+    }
+    val cameraEmptyState: String = if (physicalCameraCount == 0) {
+        "No cameras found. Connect a camera, allow OS/browser access, then refresh devices."
+    } else {
+        "$physicalCameraCount camera option${if (physicalCameraCount == 1) "" else "s"} available."
+    }
     val sessionMode: RtcSessionMode = currentSession?.mode ?: RtcSessionMode.AUDIO_VIDEO
     val sessionState: RtcSessionState = currentSession?.state ?: RtcSessionState.IDLE
     val stageTitle: String = DesktopRealtimeFormatters.videoStageTitle(sessionMode, currentSession?.remotePeer ?: selectedPeer?.nickname)
@@ -1875,20 +2143,35 @@ data class ComposeExperimentalVideoState(
     val frameCaption: String = latestPreviewFrame?.let { frame ->
         DesktopRealtimeFormatters.videoFrameCaption(frame.local(), frame.peer(), frame.width(), frame.height())
     } ?: "No preview frames yet."
-    val videoTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true
+    val previewStateLabel: String = when {
+        cameraTestStatus.startsWith("Camera preview failed", ignoreCase = true) -> "Preview failed"
+        latestPreviewFrame != null -> "Preview is live"
+        previewRunning -> "Preview is starting"
+        else -> "Preview is off"
+    }
+    val previewActionHint: String = when {
+        cameraTestStatus.startsWith("Camera preview failed", ignoreCase = true) -> "Preview could not start. Check the message below, close other camera apps, then try again."
+        previewRunning && latestPreviewFrame == null -> "Waiting for the first camera frame. This can take a few seconds after granting access."
+        previewRunning -> "Preview is running. Use Stop preview before switching cameras."
+        physicalCameraCount == 0 -> "No camera has been confirmed yet. Refresh devices or try the system default camera."
+        else -> "Choose a camera, then start preview to check image and lighting."
+    }
+    val videoTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.videoCapable
     val canRefreshCameras: Boolean = javaFxFallbackAvailable
     val canTestCamera: Boolean = cameras.isNotEmpty() && javaFxFallbackAvailable
     val canStartPreview: Boolean = cameras.isNotEmpty() && !previewRunning && javaFxFallbackAvailable
     val canStopPreview: Boolean = previewRunning && javaFxFallbackAvailable
     val canStartVideo: Boolean = videoTargetReady && javaFxFallbackAvailable
     val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state) && javaFxFallbackAvailable
-    val startVideoLabel: String = if (canStartVideo) "Video call ready" else "Video call blocked"
+    val startVideoLabel: String = if (canStartVideo) "Start video call" else "Video call blocked"
+    val startPreviewLabel: String = if (canStartPreview) "Start camera preview" else "Preview unavailable"
+    val stopPreviewLabel: String = if (canStopPreview) "Stop camera preview" else "Stop preview unavailable"
     val previewConfigurationLabel: String = "Self preview ${if (localPreviewEnabled) "on" else "off"} • remote preview ${if (remotePreviewEnabled) "on" else "off"}"
     val fallbackLabel: String =
         if (javaFxFallbackAvailable) "JavaFX experimental video workspace remains production fallback" else "JavaFX video fallback unavailable"
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) add("Connect to chat before starting experimental video.")
-        if (selectedPeer == null) add("Select an online peer before starting video.") else if (!selectedPeer.online) add("Selected peer is offline; video must remain blocked.")
+        if (selectedPeer == null) add("Select an online peer before starting video.") else if (!selectedPeer.online) add("Selected peer is offline; video must remain blocked.") else if (!selectedPeer.videoCapable) add("Selected peer does not advertise video support; video must remain blocked.")
         if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; keep live Compose video actions disabled.")
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
@@ -1907,48 +2190,45 @@ data class ComposeDiagnosticsState(
     val realtimeDiagnostics: List<String> = emptyList(),
     val javaFxFallbackAvailable: Boolean = true,
 ) {
-    val title: String = "Compose migration diagnostics"
+    val title: String = "Runtime diagnostics"
     val fallbackStatus: String =
         if (javaFxFallbackAvailable) "JavaFX fallback is available" else "JavaFX fallback is unavailable"
     val statusAdapterSummary: String = statusState.validationSummary
     val connectionActionSummary: String = statusState.actionState.diagnosticSummary
     val selectedPeerSummary: String = "Selected peer: ${peerListState.selectedPeerTitle} · ${peerListState.peerStatus}"
     val visiblePeerSummary: String = "Visible peers: ${peerListState.visiblePeers.size}"
-    val warningMessages: List<String> = buildList {
+    val alerts: List<ComposeDiagnosticAlert> = buildList {
         if (!javaFxFallbackAvailable) {
-            add("Fallback unavailable: keep Compose shell isolated until JavaFX fallback is restored.")
+            add(ComposeDiagnosticAlert(ComposeDiagnosticAlertKind.ERROR, "Fallback unavailable", "Restore the JavaFX fallback before changing runtime or packaging settings."))
         }
         if (!statusState.nicknameValid) {
-            add("Name is required before Compose can wire hosting or manual connection actions.")
+            add(ComposeDiagnosticAlert(ComposeDiagnosticAlertKind.WARNING, "Profile name required", "Enter your name before opening a room or connecting manually."))
         }
         if (statusState.serverChatPort == null || statusState.serverFilePort == null) {
-            add("Room ports are invalid; hosting must remain blocked.")
+            add(ComposeDiagnosticAlert(ComposeDiagnosticAlertKind.WARNING, "Room ports need attention", "Use valid chat and file-transfer ports before hosting a room."))
         }
         if (!statusState.manualHostValid || statusState.clientChatPort == null || statusState.clientFilePort == null) {
-            add("Manual connection target is incomplete; connect action must remain blocked.")
+            add(ComposeDiagnosticAlert(ComposeDiagnosticAlertKind.WARNING, "Manual connection incomplete", "Enter a host address and valid ports before connecting manually."))
         }
         if (peerListState.selectedPeer == null) {
-            add("No peer is selected; file, voice, video, and RTC data actions must remain blocked.")
+            add(ComposeDiagnosticAlert(ComposeDiagnosticAlertKind.INFO, "No peer selected", "Select an online peer to enable file, voice, video, and realtime actions."))
         } else if (peerListState.selectedPeer?.online != true) {
-            add("Selected peer is offline; peer-targeted actions must remain blocked.")
-        }
-        if (chatDiagnostics.isEmpty()) {
-            add("Chat runtime diagnostics are empty; run desktop-to-desktop and desktop-to-Android chat smoke checks before promotion.")
-        }
-        if (fileTransferDiagnostics.isEmpty()) {
-            add("File-transfer diagnostics are empty; encrypted transfer runtime coverage is still pending.")
-        }
-        if (quickShareDiagnostics.isEmpty()) {
-            add("Quick-share diagnostics are empty; remote LAN browser validation is still pending.")
-        }
-        if (realtimeDiagnostics.isEmpty()) {
-            add("Realtime diagnostics are empty; voice and camera/video runtime checks are still pending.")
+            add(ComposeDiagnosticAlert(ComposeDiagnosticAlertKind.WARNING, "Selected peer is offline", "Choose an online peer before starting peer-targeted actions."))
         }
     }
+    val warningMessages: List<String> = alerts.map(ComposeDiagnosticAlert::summary)
     val warningSummary: String = if (warningMessages.isEmpty()) {
-        "No Compose diagnostics warnings. Runtime wiring and migration evidence are ready for the next Phase 9 gate."
+        "No runtime alerts. Diagnostics will update as chat, transfer, quick-share, and realtime events arrive."
     } else {
-        warningMessages.joinToString(" · ")
+        alerts.joinToString(" · ") { it.summary }
+    }
+    val hasErrors: Boolean = alerts.any { it.kind == ComposeDiagnosticAlertKind.ERROR }
+    val hasWarnings: Boolean = alerts.any { it.kind == ComposeDiagnosticAlertKind.WARNING }
+    val statusLabel: String = when {
+        hasErrors -> "Needs attention"
+        hasWarnings -> "Check settings"
+        alerts.isNotEmpty() -> "Ready for activity"
+        else -> "Healthy"
     }
     val diagnosticChannels: List<String> = listOf(
         "chat=${chatDiagnostics.size}",
@@ -1957,7 +2237,49 @@ data class ComposeDiagnosticsState(
         "realtime=${realtimeDiagnostics.size}",
     )
     val diagnosticChannelSummary: String = "Diagnostic channels: ${diagnosticChannels.joinToString(" · ")}"
+    val channelCards: List<ComposeDiagnosticChannel> = listOf(
+        ComposeDiagnosticChannel(
+            kind = ComposeDiagnosticChannelKind.CHAT,
+            title = "Chat",
+            description = "Room connection, messages, joins, leaves, and chat errors.",
+            messages = chatDiagnostics,
+            emptyState = "Chat events will appear after you open or join a room.",
+        ),
+        ComposeDiagnosticChannel(
+            kind = ComposeDiagnosticChannelKind.FILE_TRANSFER,
+            title = "File transfer",
+            description = "Encrypted send/receive progress, confirmations, and failures.",
+            messages = fileTransferDiagnostics,
+            emptyState = "File-transfer activity will appear when a listener starts or a file is sent.",
+        ),
+        ComposeDiagnosticChannel(
+            kind = ComposeDiagnosticChannelKind.QUICK_SHARE,
+            title = "Quick share",
+            description = "Trusted-LAN browser links, server status, and share access events.",
+            messages = quickShareDiagnostics,
+            emptyState = "Quick-share events will appear after the local sharing server starts.",
+        ),
+        ComposeDiagnosticChannel(
+            kind = ComposeDiagnosticChannelKind.REALTIME,
+            title = "Realtime media",
+            description = "Voice, camera, device, and RTC session diagnostics.",
+            messages = realtimeDiagnostics,
+            emptyState = "Realtime diagnostics will appear after refreshing devices or starting a call.",
+        ),
+    )
+    val activeChannelCount: Int = channelCards.count { it.hasMessages }
+    val totalDiagnosticMessages: Int = channelCards.sumOf { it.messageCount }
+    val runtimeOverview: String = when {
+        totalDiagnosticMessages == 0 -> "No runtime events yet. Start a room, send a file, share a link, or refresh media devices to populate diagnostics."
+        hasErrors -> "Runtime events are available, but one or more settings need attention."
+        hasWarnings -> "Runtime events are available. Review the highlighted setup notes before starting peer actions."
+        else -> "Runtime diagnostics are up to date across active channels."
+    }
+    val recentMessages: List<String> = channelCards.flatMap { channel -> channel.recentMessages.map { "${channel.title}: $it" } }.takeLast(6)
     val summaryLines: List<String> = listOf(
+        title,
+        statusLabel,
+        runtimeOverview,
         fallbackStatus,
         statusAdapterSummary,
         connectionActionSummary,
@@ -1966,6 +2288,41 @@ data class ComposeDiagnosticsState(
         diagnosticChannelSummary,
         warningSummary,
     )
+}
+
+enum class ComposeDiagnosticChannelKind {
+    CHAT,
+    FILE_TRANSFER,
+    QUICK_SHARE,
+    REALTIME,
+}
+
+data class ComposeDiagnosticChannel(
+    val kind: ComposeDiagnosticChannelKind,
+    val title: String,
+    val description: String,
+    val messages: List<String>,
+    val emptyState: String,
+) {
+    val messageCount: Int = messages.size
+    val hasMessages: Boolean = messages.isNotEmpty()
+    val recentMessages: List<String> = messages.takeLast(3)
+    val stateLabel: String = if (hasMessages) "$messageCount event${if (messageCount == 1) "" else "s"}" else "Waiting"
+    val latestMessage: String = recentMessages.lastOrNull() ?: emptyState
+}
+
+enum class ComposeDiagnosticAlertKind {
+    INFO,
+    WARNING,
+    ERROR,
+}
+
+data class ComposeDiagnosticAlert(
+    val kind: ComposeDiagnosticAlertKind,
+    val title: String,
+    val message: String,
+) {
+    val summary: String = "$title: $message"
 }
 
 enum class ComposeRegressionGateKind {
@@ -2281,6 +2638,7 @@ enum class ComposePackagingGateKind {
     DESKTOP_BUILD,
     COMPOSE_RUNTIME_SMOKE,
     PORTABLE_ZIP,
+    COMPOSE_PORTABLE_ZIP,
     WINDOWS_EXE,
     LAUNCHER_DECISION,
 }
@@ -2290,6 +2648,7 @@ enum class ComposePackagingEvidenceKind {
     DESKTOP_BUILD,
     COMPOSE_RUNTIME_SMOKE,
     PORTABLE_ZIP,
+    COMPOSE_PORTABLE_ZIP,
     WINDOWS_EXE,
     FULL_RUNTIME_REGRESSION,
     PROMOTION_APPROVAL,
@@ -2330,6 +2689,7 @@ data class ComposePackagingGate(
 
 enum class ComposePackagingArtifactKind {
     PORTABLE_ZIP,
+    COMPOSE_PORTABLE_ZIP,
     WINDOWS_EXE,
     JAVAFX_LAUNCHER,
     COMPOSE_ENTRYPOINT,
@@ -2433,6 +2793,7 @@ data class ComposePackagingReadinessState(
     val desktopBuildPassed: Boolean = false,
     val composeRuntimeSmokePassed: Boolean = false,
     val portableZipValidated: Boolean = false,
+    val composePortableZipValidated: Boolean = false,
     val windowsExeValidated: Boolean = false,
     val composePromotionApproved: Boolean = false,
     val javaFxFallbackAvailable: Boolean = true,
@@ -2440,8 +2801,10 @@ data class ComposePackagingReadinessState(
     val applicationMainClass: String = "com.shterneregen.securelan.desktop.Main",
     val composeMainClass: String = "com.shterneregen.securelan.desktop.compose.ComposeDesktopMainKt",
     val portableTask: String = ":apps:desktop-client:buildPortable",
+    val composePortableTask: String = ":apps:desktop-client:buildComposePortable",
     val exeTask: String = ":apps:desktop-client:buildExe",
     val packagingOutputPath: Path = Path.of("apps", "desktop-client", "build", "packaging"),
+    val composePackagingOutputPath: Path = Path.of("apps", "desktop-client", "build", "compose-packaging"),
     val portableOutputPath: Path = Path.of("apps", "desktop-client", "build", "distributions"),
     val evidenceRecords: List<ComposePackagingEvidenceRecord> = emptyList(),
 ) {
@@ -2456,14 +2819,21 @@ data class ComposePackagingReadinessState(
     } else {
         "JavaFX fallback unavailable; packaging promotion must remain blocked"
     }
-    val packagingTasksSummary: String = "Portable ZIP: $portableTask -> $portableOutputPath · Windows EXE: $exeTask -> $packagingOutputPath"
+    val packagingTasksSummary: String = "JavaFX portable ZIP: $portableTask -> $portableOutputPath · Compose portable ZIP: $composePortableTask -> $portableOutputPath · Windows EXE: $exeTask -> $packagingOutputPath"
     val artifactRequirements: List<ComposePackagingArtifactRequirement> = listOf(
         ComposePackagingArtifactRequirement(
             kind = ComposePackagingArtifactKind.PORTABLE_ZIP,
-            label = "Portable ZIP artifact",
+            label = "JavaFX portable ZIP artifact",
             pathText = portableOutputPath.toString(),
             validated = portableZipValidated,
             validationAction = "Run $portableTask and verify the generated portable archive launches with JavaFX fallback intact.",
+        ),
+        ComposePackagingArtifactRequirement(
+            kind = ComposePackagingArtifactKind.COMPOSE_PORTABLE_ZIP,
+            label = "Compose portable ZIP artifact",
+            pathText = portableOutputPath.toString(),
+            validated = composePortableZipValidated,
+            validationAction = "Run $composePortableTask and verify the generated portable archive launches the experimental Compose shell without replacing JavaFX packaging.",
         ),
         ComposePackagingArtifactRequirement(
             kind = ComposePackagingArtifactKind.WINDOWS_EXE,
@@ -2518,11 +2888,19 @@ data class ComposePackagingReadinessState(
         ),
         ComposePackagingGate(
             kind = ComposePackagingGateKind.PORTABLE_ZIP,
-            label = "Portable ZIP",
+            label = "JavaFX portable ZIP",
             ready = portableZipValidated,
             taskName = portableTask,
             evidence = "Portable image contains JavaFX baseline and Compose runtime dependencies without duplicate archive failures.",
             blocker = "Validate portable ZIP from apps/desktop-client/build/distributions.",
+        ),
+        ComposePackagingGate(
+            kind = ComposePackagingGateKind.COMPOSE_PORTABLE_ZIP,
+            label = "Compose portable ZIP",
+            ready = composePortableZipValidated,
+            taskName = composePortableTask,
+            evidence = "Separate Compose portable image launches through the experimental Compose main class while JavaFX portable packaging remains unchanged.",
+            blocker = "Validate Compose portable ZIP from apps/desktop-client/build/distributions and app image from apps/desktop-client/build/compose-packaging.",
         ),
         ComposePackagingGate(
             kind = ComposePackagingGateKind.WINDOWS_EXE,
@@ -2549,6 +2927,7 @@ data class ComposePackagingReadinessState(
         composeRuntimeSmokePassed &&
         fullRuntimeRegressionValidated &&
         portableZipValidated &&
+        composePortableZipValidated &&
         windowsExeValidated
     val launcherDecision: ComposeLauncherDecisionState = ComposeLauncherDecisionState(
         applicationMainClass = applicationMainClass,
@@ -2577,7 +2956,8 @@ data class ComposePackagingReadinessState(
         "desktop build=${desktopBuildPassed}",
         "Compose smoke=${composeRuntimeSmokePassed}",
         "runtime regression=${fullRuntimeRegressionValidated}",
-        "portable ZIP=${portableZipValidated}",
+        "JavaFX portable ZIP=${portableZipValidated}",
+        "Compose portable ZIP=${composePortableZipValidated}",
         "Windows EXE=${windowsExeValidated}",
         "fallback=${javaFxFallbackAvailable}",
         "approval=${composePromotionApproved}",
@@ -2606,8 +2986,8 @@ data class ComposePackagingReadinessState(
         ComposePromotionDecisionStep(
             kind = ComposePromotionDecisionStepKind.VALIDATE_PACKAGING,
             label = "Validate packaging",
-            satisfied = desktopTestsPassed && desktopBuildPassed && composeRuntimeSmokePassed && portableZipValidated && windowsExeValidated,
-            action = "Pass desktop tests/build, runComposeShell smoke, portable ZIP, and WiX EXE validation.",
+            satisfied = desktopTestsPassed && desktopBuildPassed && composeRuntimeSmokePassed && portableZipValidated && composePortableZipValidated && windowsExeValidated,
+            action = "Pass desktop tests/build, runComposeShell smoke, JavaFX portable ZIP, Compose portable ZIP, and WiX EXE validation.",
         ),
         ComposePromotionDecisionStep(
             kind = ComposePromotionDecisionStepKind.REQUIRE_APPROVAL,
@@ -2637,7 +3017,7 @@ data class ComposePackagingReadinessState(
     )
 }
 
-enum class ComposePeerListLifecyclePhase {
+enum class ComposePeerListLifecycleState {
     IDLE,
     DISCOVERING,
     PEERS_VISIBLE,
@@ -2647,7 +3027,7 @@ enum class ComposePeerListLifecyclePhase {
 }
 
 data class ComposePeerListLifecycleStep(
-    val phase: ComposePeerListLifecyclePhase,
+    val state: ComposePeerListLifecycleState,
     val ready: Boolean,
     val label: String,
     val sideEffectContract: String,
@@ -2656,14 +3036,14 @@ data class ComposePeerListLifecycleStep(
 }
 
 data class ComposePeerListLifecyclePlan(
-    val currentPhase: ComposePeerListLifecyclePhase,
+    val currentState: ComposePeerListLifecycleState,
     val steps: List<ComposePeerListLifecycleStep>,
     val blockedReasons: List<String>,
     val fallbackAvailable: Boolean,
     val selectedPeerLabel: String,
 ) {
     val title: String = "Live peer-list binding contract"
-    val phaseLabel: String = currentPhase.name.lowercase().replace('_', '/')
+    val stateLabel: String = currentState.name.lowercase().replace('_', '/')
     val readySteps: List<ComposePeerListLifecycleStep> = steps.filter { it.ready }
     val readinessSummary: String = if (readySteps.isEmpty()) {
         "No live peer-list lifecycle steps are ready for Compose wiring."
@@ -2696,48 +3076,48 @@ data class ComposePeerListLifecyclePlan(
                 }
             }
 
-            val currentPhase = when {
-                blockers.isNotEmpty() -> ComposePeerListLifecyclePhase.BLOCKED_ERROR
-                hasOnlinePeer && state.targetActions.chatReady -> ComposePeerListLifecyclePhase.PEER_TARGETED
-                hasOnlinePeer -> ComposePeerListLifecyclePhase.PEER_SELECTED
-                hasPeers -> ComposePeerListLifecyclePhase.PEERS_VISIBLE
-                fallbackAvailable -> ComposePeerListLifecyclePhase.DISCOVERING
-                else -> ComposePeerListLifecyclePhase.BLOCKED_ERROR
+            val currentState = when {
+                blockers.isNotEmpty() -> ComposePeerListLifecycleState.BLOCKED_ERROR
+                hasOnlinePeer && state.targetActions.chatReady -> ComposePeerListLifecycleState.PEER_TARGETED
+                hasOnlinePeer -> ComposePeerListLifecycleState.PEER_SELECTED
+                hasPeers -> ComposePeerListLifecycleState.PEERS_VISIBLE
+                fallbackAvailable -> ComposePeerListLifecycleState.DISCOVERING
+                else -> ComposePeerListLifecycleState.BLOCKED_ERROR
             }
 
             val steps = listOf(
                 ComposePeerListLifecycleStep(
-                    phase = ComposePeerListLifecyclePhase.IDLE,
-                    ready = currentPhase == ComposePeerListLifecyclePhase.IDLE && blockers.isEmpty(),
+                    state = ComposePeerListLifecycleState.IDLE,
+                    ready = currentState == ComposePeerListLifecycleState.IDLE && blockers.isEmpty(),
                     label = "Idle",
                     sideEffectContract = "observe peer-list preview state only; do not subscribe to discovery or chat events",
                 ),
                 ComposePeerListLifecycleStep(
-                    phase = ComposePeerListLifecyclePhase.DISCOVERING,
+                    state = ComposePeerListLifecycleState.DISCOVERING,
                     ready = fallbackAvailable && blockers.isEmpty() && !hasOnlinePeer,
                     label = "Discovering",
                     sideEffectContract = "reflect discovery/listening state; an empty peer list is normal while JavaFX remains discovery owner",
                 ),
                 ComposePeerListLifecycleStep(
-                    phase = ComposePeerListLifecyclePhase.PEERS_VISIBLE,
+                    state = ComposePeerListLifecycleState.PEERS_VISIBLE,
                     ready = fallbackAvailable && hasPeers,
                     label = "Peers visible",
                     sideEffectContract = "display visible peer list without subscribing to discovery refresh",
                 ),
                 ComposePeerListLifecycleStep(
-                    phase = ComposePeerListLifecyclePhase.PEER_SELECTED,
+                    state = ComposePeerListLifecycleState.PEER_SELECTED,
                     ready = fallbackAvailable && hasOnlinePeer,
                     label = "Peer selected",
                     sideEffectContract = "reflect selected-peer metadata and target-action readiness; do not connect or start RTC",
                 ),
                 ComposePeerListLifecycleStep(
-                    phase = ComposePeerListLifecyclePhase.PEER_TARGETED,
+                    state = ComposePeerListLifecycleState.PEER_TARGETED,
                     ready = fallbackAvailable && hasOnlinePeer && state.targetActions.chatReady,
                     label = "Peer targeted",
                     sideEffectContract = "peer is selected and target actions are ready; JavaFX still owns live targeting and runtime actions",
                 ),
                 ComposePeerListLifecycleStep(
-                    phase = ComposePeerListLifecyclePhase.BLOCKED_ERROR,
+                    state = ComposePeerListLifecycleState.BLOCKED_ERROR,
                     ready = blockers.isNotEmpty(),
                     label = "Blocked/error",
                     sideEffectContract = "surface validation or fallback blockers before any live peer-list binding can run",
@@ -2745,7 +3125,7 @@ data class ComposePeerListLifecyclePlan(
             )
 
             return ComposePeerListLifecyclePlan(
-                currentPhase = currentPhase,
+                currentState = currentState,
                 steps = steps,
                 blockedReasons = blockers,
                 fallbackAvailable = fallbackAvailable,
@@ -2769,15 +3149,15 @@ enum class ComposePeerListTransitionKind {
 data class ComposePeerListTransitionIntent(
     val kind: ComposePeerListTransitionKind,
     val label: String,
-    val sourcePhase: ComposePeerListLifecyclePhase,
-    val targetPhase: ComposePeerListLifecyclePhase,
+    val sourceState: ComposePeerListLifecycleState,
+    val targetState: ComposePeerListLifecycleState,
     val enabled: Boolean,
     val guardSummary: String,
     val blockedReason: String,
     val sideEffectContract: String,
 ) {
     val displayLabel: String = if (enabled) label else "$label blocked"
-    val routeSummary: String = "${sourcePhase.name.lowercase()} -> ${targetPhase.name.lowercase()}"
+    val routeSummary: String = "${sourceState.name.lowercase()} -> ${targetState.name.lowercase()}"
 }
 
 data class ComposePeerListTransitionPlan(
@@ -2804,7 +3184,7 @@ data class ComposePeerListTransitionPlan(
             lifecyclePlan: ComposePeerListLifecyclePlan = state.peerListLifecyclePlan,
             controlPlan: ComposePeerTargetControlPlan = state.targetControlPlan,
         ): ComposePeerListTransitionPlan {
-            val source = lifecyclePlan.currentPhase
+            val source = lifecyclePlan.currentState
             val fallbackBlock = "JavaFX peer-list fallback is unavailable; transition intents must remain blocked."
             fun blocked(reason: String): String = if (!lifecyclePlan.fallbackAvailable) fallbackBlock else reason
 
@@ -2813,8 +3193,8 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.SELECT_PEER,
                         label = "Select peer",
-                        sourcePhase = source,
-                        targetPhase = ComposePeerListLifecyclePhase.PEER_SELECTED,
+                        sourceState = source,
+                        targetState = ComposePeerListLifecycleState.PEER_SELECTED,
                         enabled = lifecyclePlan.fallbackAvailable && state.visiblePeers.isNotEmpty(),
                         guardSummary = "Peer selection requires at least one visible peer in the list.",
                         blockedReason = blocked("No visible peers; select-peer transition must remain blocked."),
@@ -2823,18 +3203,18 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.DESELECT_PEER,
                         label = "Deselect peer",
-                        sourcePhase = source,
-                        targetPhase = if (state.visiblePeers.isNotEmpty()) ComposePeerListLifecyclePhase.PEERS_VISIBLE else ComposePeerListLifecyclePhase.IDLE,
+                        sourceState = source,
+                        targetState = if (state.visiblePeers.isNotEmpty()) ComposePeerListLifecycleState.PEERS_VISIBLE else ComposePeerListLifecycleState.IDLE,
                         enabled = lifecyclePlan.fallbackAvailable && state.selectedPeer != null,
-                        guardSummary = "Deselection clears the selected peer and returns to the visible-peers or idle phase.",
+                        guardSummary = "Deselection clears the selected peer and returns to the visible-peers or idle state.",
                         blockedReason = blocked("No peer is currently selected; deselect transition must remain blocked."),
                         sideEffectContract = "future implementation may clear selected-peer index without affecting discovery",
                     ),
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.TARGET_PEER_FOR_CHAT,
                         label = "Target peer for chat",
-                        sourcePhase = source,
-                        targetPhase = ComposePeerListLifecyclePhase.PEER_TARGETED,
+                        sourceState = source,
+                        targetState = ComposePeerListLifecycleState.PEER_TARGETED,
                         enabled = lifecyclePlan.fallbackAvailable && state.targetActions.chatReady,
                         guardSummary = "Chat targeting requires an online selected peer.",
                         blockedReason = blocked(controlPlan.command(ComposePeerTargetCommandKind.CHAT_TARGET).blockedReason),
@@ -2843,8 +3223,8 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.TARGET_PEER_FOR_FILE,
                         label = "Target peer for file transfer",
-                        sourcePhase = source,
-                        targetPhase = ComposePeerListLifecyclePhase.PEER_TARGETED,
+                        sourceState = source,
+                        targetState = ComposePeerListLifecycleState.PEER_TARGETED,
                         enabled = lifecyclePlan.fallbackAvailable && state.targetActions.fileReady,
                         guardSummary = "File transfer targeting requires an online discovered peer.",
                         blockedReason = blocked(controlPlan.command(ComposePeerTargetCommandKind.FILE_TARGET).blockedReason),
@@ -2853,8 +3233,8 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.TARGET_PEER_FOR_VOICE,
                         label = "Target peer for voice",
-                        sourcePhase = source,
-                        targetPhase = ComposePeerListLifecyclePhase.PEER_TARGETED,
+                        sourceState = source,
+                        targetState = ComposePeerListLifecycleState.PEER_TARGETED,
                         enabled = lifecyclePlan.fallbackAvailable && state.targetActions.voiceReady,
                         guardSummary = "Voice targeting requires an online selected peer.",
                         blockedReason = blocked(controlPlan.command(ComposePeerTargetCommandKind.VOICE_TARGET).blockedReason),
@@ -2863,8 +3243,8 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.TARGET_PEER_FOR_VIDEO,
                         label = "Target peer for video",
-                        sourcePhase = source,
-                        targetPhase = ComposePeerListLifecyclePhase.PEER_TARGETED,
+                        sourceState = source,
+                        targetState = ComposePeerListLifecycleState.PEER_TARGETED,
                         enabled = lifecyclePlan.fallbackAvailable && state.targetActions.videoReady,
                         guardSummary = "Experimental video targeting requires an online selected peer.",
                         blockedReason = blocked(controlPlan.command(ComposePeerTargetCommandKind.VIDEO_TARGET).blockedReason),
@@ -2873,8 +3253,8 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.TARGET_PEER_FOR_DATA,
                         label = "Target peer for RTC data",
-                        sourcePhase = source,
-                        targetPhase = ComposePeerListLifecyclePhase.PEER_TARGETED,
+                        sourceState = source,
+                        targetState = ComposePeerListLifecycleState.PEER_TARGETED,
                         enabled = lifecyclePlan.fallbackAvailable && state.targetActions.dataChannelReady,
                         guardSummary = "RTC data-channel targeting requires an online selected peer.",
                         blockedReason = blocked(controlPlan.command(ComposePeerTargetCommandKind.DATA_TARGET).blockedReason),
@@ -2883,8 +3263,8 @@ data class ComposePeerListTransitionPlan(
                     ComposePeerListTransitionIntent(
                         kind = ComposePeerListTransitionKind.REFRESH_PEER_LIST,
                         label = "Refresh peer list",
-                        sourcePhase = source,
-                        targetPhase = if (state.visiblePeers.isNotEmpty()) ComposePeerListLifecyclePhase.PEERS_VISIBLE else ComposePeerListLifecyclePhase.DISCOVERING,
+                        sourceState = source,
+                        targetState = if (state.visiblePeers.isNotEmpty()) ComposePeerListLifecycleState.PEERS_VISIBLE else ComposePeerListLifecycleState.DISCOVERING,
                         enabled = lifecyclePlan.fallbackAvailable,
                         guardSummary = "Peer-list refresh re-evaluates visible peers without starting discovery.",
                         blockedReason = blocked("JavaFX fallback is unavailable; peer-list refresh must remain blocked."),

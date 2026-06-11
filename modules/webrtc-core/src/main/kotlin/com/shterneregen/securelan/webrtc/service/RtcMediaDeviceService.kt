@@ -6,9 +6,13 @@ import java.util.function.Consumer
 interface RtcMediaDeviceService : AutoCloseable {
     fun audioCaptureDevices(): List<RtcMediaDevice>
 
+    fun audioRenderDevices(): List<RtcMediaDevice>
+
     fun videoCaptureDevices(): List<RtcMediaDevice>
 
     fun testAudioCaptureDevice(deviceId: String?): String
+
+    fun testAudioRenderDevice(deviceId: String?): String
 
     fun testVideoCaptureDevice(deviceId: String?): String
 

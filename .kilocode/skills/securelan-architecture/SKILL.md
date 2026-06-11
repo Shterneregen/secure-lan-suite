@@ -17,8 +17,8 @@ Use this skill for changes or analysis that affect the SecureLanSuite module gra
 1. Read the current project rules in [`rules.md`](../../rules/rules.md).
 2. Read only the relevant public docs before proposing broad changes:
    - [`README.md`](../../../README.md) for current stack and module responsibilities.
-   - [`docs/kotlin-migration.md`](../../../docs/kotlin-migration.md) for Kotlin migration state.
-   - [`docs/desktop-client-kotlin-migration.md`](../../../docs/desktop-client-kotlin-migration.md) for desktop interop and Compose migration status.
+   - [`docs/kotlin-migration.md`](../../../docs/kotlin-migration/kotlin-migration.md) for Kotlin migration state.
+   - [`docs/desktop-client-kotlin-migration.md`](../../../docs/kotlin-migration/desktop-client-kotlin-migration.md) for desktop interop and Compose migration status.
    - [`docs/development.md`](../../../docs/development.md) for build and validation tasks.
 3. Inspect the actual module build file before editing a module dependency.
 
