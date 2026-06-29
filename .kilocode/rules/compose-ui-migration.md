@@ -15,6 +15,8 @@ In UX modernization mode, JavaFX is a functional and behavioral reference, not a
 
 Do not change discovery, chat, file-transfer, quick-share, stego, RTC, voice, video, or Android interoperability protocols as part of UI modernization unless the user explicitly asks for protocol changes.
 
+When a task references Phase 11 UI/UX redesign or `docs/kotlin-migration/phase-11.md`, use UX modernization mode. Phase 11 is not JavaFX parity. The old dashboard must be treated as a behavioral reference and rollback baseline only; the visual target is the messenger-first Phase 11 checklist.
+
 New desktop UI/UX improvements must target Compose UI. Do not add new JavaFX screens or non-critical JavaFX polish.
 
 ## UI work modes
@@ -43,9 +45,9 @@ For every screen or runtime UI area:
 1. Read the existing JavaFX code, CSS, resources, screenshots, and current Compose implementation.
 2. Summarize the current JavaFX and Compose structure.
 3. Identify reusable UI components, state holders, adapter logic, diagnostics, and formatter helpers.
-4. Map JavaFX controls and states to Compose components and explicit immutable UI state.
+4. For parity work, map JavaFX controls and states to Compose components. For Phase 11 modernization, map JavaFX/runtime behavior into the new product modes and explicit immutable UI state without recreating old panels.
 5. Implement the Compose change inside `apps/desktop-client` without moving UI dependencies into reusable modules.
-6. Compare the result against JavaFX for parity work, or against the accepted Compose modernization baseline.
+6. Compare the result against JavaFX for parity work, or against the accepted Compose modernization baseline such as the Phase 11 checklist.
 7. Refactor into smaller composables and keep business logic in adapters/services/helpers.
 8. Update the desktop checklist when migration status, validation status, launcher strategy, or JavaFX fallback assumptions change.
 

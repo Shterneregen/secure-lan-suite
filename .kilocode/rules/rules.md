@@ -61,6 +61,8 @@ Current priority: user-friendly Compose Desktop UI hardening and JavaFX deprecat
 
 When the task is about improving the interface, UX, usability, layout clarity, or user-friendly Compose UI, use JavaFX as a behavioral reference rather than a strict visual target. Preserve protocols, features, service boundaries, diagnostics availability, and JavaFX fallback, but improve information architecture, layout hierarchy, navigation, labels, validation, empty/error/loading states, accessibility, and desktop responsiveness.
 
+For tasks that explicitly reference Phase 11 UI/UX redesign, `docs/kotlin-migration/phase-11.md`, or the messenger-first redesign checklist, Phase 11 is the accepted modernization baseline. In that mode, do not preserve the old `Room connection + Peers + Chat + Actions` dashboard layout. JavaFX and old screenshots are behavioral/rollback references only, not visual acceptance criteria.
+
 Do not let JavaFX parity block useful UX improvements when the user explicitly wants a better Compose interface. For pure migration/parity tasks, keep JavaFX as the visual and behavioral source of truth.
 
 ## Kotlin and UI Migration Rules
@@ -72,7 +74,7 @@ Do not let JavaFX parity block useful UX improvements when the user explicitly w
 - Compose Multiplatform work must stay under `apps/desktop-client` and must not move Compose runtime dependencies into reusable modules.
 - Use `:apps:desktop-client:runComposeShell` for the experimental Compose shell; do not change `application.mainClass`, JAR manifest, or `jpackage` main class unless explicitly promoting Compose after validation.
 - Preserve discovery, chat, file transfer, quick share, steganography, RTC signaling, voice, and experimental video behavior during UI migration.
-- Maintain visible diagnostics before retiring JavaFX equivalents in Compose slices.
+- Maintain an obvious Diagnostics entry point before retiring JavaFX equivalents in Compose slices; raw logs and technical details may move behind Advanced/Diagnostics in UX modernization work.
 
 ## Current Product Constraints
 
@@ -163,17 +165,17 @@ When changing architecture, supported Java/Kotlin versions, module responsibilit
 
 ## Compose UI Quality Rules
 
-- JavaFX UI, CSS, screenshots, and existing layout structure are the visual source of truth during Compose migration.
+- JavaFX UI, CSS, screenshots, and existing layout structure are the visual source of truth only during strict parity migration. During explicit UX modernization or Phase 11 redesign work, the accepted modernization checklist and approved redesign screenshots are the visual source of truth.
 - Do not redesign screens unless explicitly requested.
 - Compose slices must aim for production-level visual quality, even while the Compose shell is experimental.
-- Preserve visual hierarchy, spacing, colors, grouping, toolbar/sidebar/status-area structure, disabled states, loading states, and diagnostics.
+- Preserve visual hierarchy, spacing, colors, grouping, toolbar/sidebar/status-area structure, disabled states, loading states, and diagnostics in parity mode. In Phase 11 redesign mode, preserve behavior and feature availability, but replace the old dashboard hierarchy with the messenger-first screen model.
 - Compose Desktop UI must look like a desktop application, not an Android/mobile screen.
 - Prefer compact desktop spacing, resizable layouts, desktop navigation patterns, hover states, split panes, sidebars, and clear information density.
 - Before implementing a Compose screen, inspect the corresponding JavaFX/FXML/CSS/controller code and summarize the current layout.
-- After implementation, compare the Compose result against the JavaFX baseline.
+- After implementation, compare the Compose result against the JavaFX baseline for parity tasks, or against the Phase 11 checklist/design baseline for redesign tasks.
 - Even though Compose shell is experimental, Compose UI slices must be implemented with production-level visual quality and feature parity goals.
 - Do not remove JavaFX fallback boundaries, but Compose code may introduce clean independent screen structure, reusable composables, state holders, and UI abstractions.
-- For UI migration, each slice must still preserve the full screen composition and visual hierarchy.
+- For strict parity UI migration, each slice must still preserve the full screen composition and visual hierarchy. For Phase 11 redesign, each slice must preserve functional behavior while following the new messenger-first composition.
 ## Code Artifact Planning-Status Rule
 
 - Do not add phase numbers, active-phase statements, roadmap/status-plan wording, migration-stage labels, launcher-stage labels, or temporary work-stage notes to source code, tests, resources, comments, metadata, or user-facing strings.

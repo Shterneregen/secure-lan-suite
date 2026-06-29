@@ -32,28 +32,38 @@ Use this skill for SecureLanSuite-specific Compose Multiplatform work in `apps/d
 
 ## Recommended migration order
 
-1. App shell, theme, resources, and layout scaffolding.
-2. Status and connection controls.
-3. Peer list.
-4. Chat workspace.
-5. File transfer.
-6. Quick share.
-7. Steganography panel.
-8. Media devices and voice controls.
-9. Experimental camera and video last.
-10. Runtime validation, portable ZIP validation, and Windows EXE validation.
+For generic Compose parity/migration work, keep changes small and preserve the existing behavior.
+
+For Phase 11 messenger-first redesign work, use this order:
+
+1. Theme tokens, resources, density, focus/hover states.
+2. Product mode state: Welcome, HostSetup, JoinSetup, Messenger, Settings, Diagnostics.
+3. App shell and one compact global status indicator.
+4. Full desktop welcome screen.
+5. Separate HostSetup and JoinSetup flows.
+6. Messenger layout without connection setup panels.
+7. Left sidebar for room conversation, online peers, nearby peers, recent peers.
+8. Conversation header, timeline, and composer.
+9. Attach menu entry points for file transfer, Quick Share, encryption, and steganography.
+10. Inline transfer cards in the chat timeline.
+11. Contextual right panel for peer, room, transfer, call, diagnostics, or advanced connection.
+12. Voice call banner and experimental video surface.
+13. Advanced Connection, Diagnostics, Settings, and final QA.
+14. Runtime validation, portable ZIP validation, and Windows EXE validation when launcher/packaging changes require it.
+
+Do not create permanent Quick Share, Steganography, Audio Devices, or Transfers dashboard panels in Phase 11. Those features must be contextual: Attach, More, Settings, Diagnostics, or active transfer/call state.
 
 ## Visual migration contract
 
-For each strict parity migration, JavaFX is the source of truth. For UX modernization tasks, JavaFX is the accepted behavioral baseline, not a strict visual target.
+For each strict parity migration, JavaFX is the source of truth. For UX modernization tasks, JavaFX is the accepted behavioral baseline, not a strict visual target. For Phase 11 redesign, the Phase 11 checklist is the visual/product baseline; JavaFX is only a behavior, protocol, diagnostics, and rollback reference.
 
 Before writing Compose code:
 - inspect the relevant JavaFX classes, FXML if present, CSS, resource files, and current screenshots;
 - identify the screen shell, sidebars, panels, cards, toolbars, lists, forms, dialogs, and status indicators;
-- write a short mapping table from JavaFX elements to Compose composables.
+- write a short mapping table from existing behavior/runtime state to the new Compose product modes; only map JavaFX elements directly when the task is strict parity.
 
 Compose implementation must:
-- preserve existing layout hierarchy and desktop UX in parity mode; improve hierarchy and workflows in UX modernization mode;
+- preserve existing layout hierarchy and desktop UX in parity mode; replace the old dashboard hierarchy with the messenger-first Phase 11 hierarchy in redesign mode;
 - preserve colors, typography, icons, spacing, and visual grouping where possible in parity mode; intentionally refine them in UX modernization mode using project tokens;
 - use shared design tokens instead of ad-hoc dp/color values;
 - avoid Android-looking mobile layouts;

@@ -163,6 +163,10 @@ class ComposeDesktopHostAdapter(
     var chatTranscript: List<String> by mutableStateOf(emptyList())
         private set
 
+    /** Chat transcript messages with UI-only receive timestamps; wire-format text stays unchanged. */
+    var chatMessages: List<ComposeChatMessage> by mutableStateOf(emptyList())
+        private set
+
     /** File transfer rows for encrypted-transfer workspace wiring. */
     var transferEntries: List<TransferEntry> by mutableStateOf(emptyList())
         private set
@@ -261,7 +265,7 @@ class ComposeDesktopHostAdapter(
     val chatEventPublisher: ChatEventPublisher = ChatEventPublisher { event ->
         when (event) {
             is ChatConnectedEvent -> {
-                appendChatTranscript("[connected] ${event.nickname ?: "unknown"} -> ${event.remoteAddress ?: "unknown"}")
+                appendChatTranscript("[connected] ${event.nickname ?: "unknown"} -> ${formatEndpoint(event.remoteAddress)}")
                 clearChatPeers()
             }
             is ChatDisconnectedEvent -> {
@@ -271,11 +275,11 @@ class ComposeDesktopHostAdapter(
             }
             is ChatMessageReceivedEvent -> {
                 val sender = event.senderNickname ?: "unknown"
-                val text = event.text ?: ""
+                val text = normalizeChatText(event.text, sender)
                 if (!isSystemSender(sender)) {
                     upsertChatPeer(sender, online = true)
                 }
-                appendChatTranscript("$sender: $text")
+                appendChatTranscript(formatChatMessage(sender, text))
             }
             is ChatMessageSentEvent -> {
                 // JavaFX shows the message through the normal chat receive flow; keep Compose parity and avoid duplicates.
@@ -283,7 +287,7 @@ class ComposeDesktopHostAdapter(
             is ChatUserJoinedEvent -> {
                 val peer = upsertJoinedPeer(event)
                 if (peer != null && peer.online()) {
-                    appendChatTranscript("[join] ${event.nickname}")
+                    appendChatTranscript("[join] ${normalizeChatText(event.nickname, "join")}")
                 }
             }
             is ChatUserLeftEvent -> {
@@ -573,6 +577,11 @@ class ComposeDesktopHostAdapter(
                 )
             }
     }
+
+    /** Resolve a selected Compose peer row to the address fields used by the Join room form. */
+    fun joinTargetFor(nickname: String): ComposeConnectionJoinTarget? = discoveredPeerFor(nickname)
+        ?.takeIf { it.host.isNotBlank() && it.chatPort > 0 && it.filePort > 0 }
+        ?.let(ComposeConnectionJoinTarget::fromDiscoveredPeer)
 
     /** Clear manually added Compose peer targets. */
     fun clearManualPeers() {
@@ -1416,8 +1425,53 @@ class ComposeDesktopHostAdapter(
     }
 
     private fun appendChatTranscript(line: String) {
-        chatTranscript = (chatTranscript + line).takeLast(200)
+        val normalized = normalizeTranscriptLine(line)
+        if (normalized.isBlank()) {
+            return
+        }
+        val timestamp = Instant.now()
+        chatTranscript = (chatTranscript + normalized).takeLast(200)
+        chatMessages = (chatMessages + ComposeChatMessage.fromTranscriptLine(normalized, timestamp)).takeLast(200)
         refreshMigrationReadinessState()
+    }
+
+    private fun formatChatMessage(sender: String, text: String): String {
+        val normalizedSender = sender.trim().ifEmpty { "unknown" }
+        val normalizedText = normalizeChatText(text, normalizedSender)
+        return if (isSystemSender(normalizedSender)) {
+            "[system] $normalizedText"
+        } else {
+            "$normalizedSender: $normalizedText"
+        }
+    }
+
+    private fun normalizeTranscriptLine(line: String): String = line.trim()
+        .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "[system] ")
+        .replace(Regex("^\\[system]\\s*system:\\s*", RegexOption.IGNORE_CASE), "[system] ")
+        .replace(Regex("^\\[join]\\s*\\[join]\\s*", RegexOption.IGNORE_CASE), "[join] ")
+        .replace(Regex("^\\[left]\\s*\\[left]\\s*", RegexOption.IGNORE_CASE), "[left] ")
+        .replace(Regex("^\\[connected]\\s*([^>]+)->\\s*/([^\\s]+)"), "[connected] $1-> $2")
+
+    private fun normalizeChatText(text: String?, sender: String): String {
+        var normalized = text?.trim().orEmpty()
+        val normalizedSender = Regex.escape(sender.trim())
+        if (normalizedSender.isNotEmpty()) {
+            normalized = normalized.replace(Regex("^(?:$normalizedSender):\\s*", RegexOption.IGNORE_CASE), "")
+        }
+        normalized = normalized
+            .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^\\[system]\\s*system:\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^\\[system]\\s*", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^\\[join]\\s*", RegexOption.IGNORE_CASE), "")
+        return normalized
+    }
+
+    private fun formatEndpoint(value: Any?): String {
+        val raw = value?.toString()?.trim().orEmpty()
+        if (raw.isBlank()) {
+            return "unknown"
+        }
+        return raw.removePrefix("/")
     }
 
     private fun publishLocalNetworkInfo() {
@@ -1561,7 +1615,7 @@ class ComposeDesktopHostAdapter(
             chatState = ComposeChatWorkspaceState(
                 statusState = statusState,
                 peerListState = peerState,
-                messages = chatTranscript.map { ComposeChatMessage("runtime", it) },
+                messages = chatMessages.ifEmpty { chatTranscript.map { ComposeChatMessage.fromTranscriptLine(it) } },
             ),
             fileTransferState = ComposeFileTransferState(
                 statusState = statusState,

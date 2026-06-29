@@ -2,8 +2,10 @@ package com.shterneregen.securelan.desktop.compose
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
 import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
@@ -71,14 +74,42 @@ private fun ComposeShellContent(
         if (hostAdapter != null) {
             LiveComposeShellContent(hostAdapter, darkTheme, onThemeToggle)
         } else {
-            val previewPeerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
-            val previewChatState = ComposeShellMetadata.DEFAULT_CHAT_WORKSPACE_STATE
-            ComposeStatusBar(
-                state = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE,
+            PreviewComposeShellContent(darkTheme, onThemeToggle)
+        }
+    }
+}
+
+@Composable
+private fun PreviewComposeShellContent(
+    darkTheme: Boolean,
+    onThemeToggle: () -> Unit,
+) {
+    var requestedAppMode by remember { mutableStateOf(AppMode.WELCOME) }
+    val previewProductState = ComposeProductScreenState.from(
+        statusState = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE,
+        requestedAppMode = requestedAppMode,
+        connectionHubMode = if (requestedAppMode == AppMode.JOIN_SETUP) ComposeConnectionHubMode.JOIN else ComposeConnectionHubMode.HOST,
+    )
+    SecureLanAppShell(
+        shellState = ComposeAppShellState(
+            productState = previewProductState,
+            statusState = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE,
+        ),
+        darkTheme = darkTheme,
+        onThemeToggle = onThemeToggle,
+    ) {
+        if (previewProductState.appMode == AppMode.WELCOME) {
+            ComposeOnboardingScreen(
+                state = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE,
                 darkTheme = darkTheme,
                 onThemeToggle = onThemeToggle,
+                onHostRoom = { requestedAppMode = AppMode.HOST_SETUP },
+                onJoinRoom = { requestedAppMode = AppMode.JOIN_SETUP },
             )
-            ComposeConnectionHeaderPreview(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE)
+        } else {
+            val previewPeerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
+            val previewChatState = ComposeShellMetadata.DEFAULT_CHAT_WORKSPACE_STATE
+            ConnectionHubPreview(ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE)
             MainWorkspaceRow(
                 parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
                 peersTooltip = previewPeerState.hint,
@@ -102,6 +133,51 @@ private fun LiveComposeShellContent(
     darkTheme: Boolean,
     onThemeToggle: () -> Unit,
 ) {
+    var requestedConnectionMode by remember { mutableStateOf(ComposeConnectionHubMode.HOST) }
+    var requestedAppMode by remember { mutableStateOf(AppMode.WELCOME) }
+    val inMessengerMode = hostAdapter.statusState.localServerRunning || hostAdapter.statusState.clientConnected
+    val productState = ComposeProductScreenState.from(
+        statusState = hostAdapter.statusState,
+        requestedAppMode = requestedAppMode,
+        connectionHubMode = requestedConnectionMode,
+    )
+    if (productState.appMode == AppMode.WELCOME) {
+        SecureLanAppShell(
+            shellState = ComposeAppShellState(productState = productState, statusState = hostAdapter.statusState),
+            darkTheme = darkTheme,
+            onThemeToggle = onThemeToggle,
+        ) {
+            ComposeOnboardingScreen(
+                state = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE,
+                darkTheme = darkTheme,
+                onThemeToggle = onThemeToggle,
+                onHostRoom = {
+                    requestedConnectionMode = ComposeConnectionHubMode.HOST
+                    requestedAppMode = AppMode.HOST_SETUP
+                },
+                onJoinRoom = {
+                    requestedConnectionMode = ComposeConnectionHubMode.JOIN
+                    requestedAppMode = AppMode.JOIN_SETUP
+                },
+            )
+        }
+        return
+    }
+    if (!inMessengerMode && productState.connectionFlowActive) {
+        SecureLanAppShell(
+            shellState = ComposeAppShellState(productState = productState, statusState = hostAdapter.statusState),
+            darkTheme = darkTheme,
+            onThemeToggle = onThemeToggle,
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.widthIn(min = 720.dp, max = 920.dp)) {
+                    ConnectionHub(hostAdapter, initialMode = requestedConnectionMode)
+                }
+            }
+        }
+        return
+    }
+
     var selectedPeerKey by remember { mutableStateOf<String?>(null) }
     var selectedTargetKind by remember { mutableStateOf<ComposePeerTargetCommandKind?>(null) }
     val peers = hostAdapter.visiblePeerItems.map { peer -> ComposePeerListItem.fromPeer(peer, hostAdapter.chatConnected) }
@@ -123,41 +199,199 @@ private fun LiveComposeShellContent(
     val chatTooltip = peerState.selectedPeer?.let { "Actions on the right will target “${it.nickname}”. Text chat remains shared for now." }
         ?: "Connect to chat, then select a peer on the left for voice, video, and file actions."
 
-    ComposeStatusBar(
-        state = hostAdapter.statusState,
-        peerStatus = peerState.peerStatus,
+    val messengerProductState = ComposeProductScreenState.from(
+        statusState = hostAdapter.statusState,
+        requestedAppMode = requestedAppMode,
+        connectionHubMode = requestedConnectionMode,
+        selectedPeer = peerState.selectedPeer,
+    )
+    SecureLanAppShell(
+        shellState = ComposeAppShellState(
+            productState = messengerProductState,
+            statusState = hostAdapter.statusState,
+            peerStatus = peerState.peerStatus,
+        ),
         darkTheme = darkTheme,
         onThemeToggle = onThemeToggle,
-    )
-    ComposeConnectionHeader(hostAdapter)
-    MainWorkspaceRow(
-        parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
-        peersTooltip = peerState.hint,
-        chatTooltip = chatTooltip,
-        chatActions = {
-            ChatCallActions(
-                hostAdapter = hostAdapter,
-                selectedPeer = peerState.selectedPeer,
+    ) {
+        MainWorkspaceRow(
+            parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
+            peersTooltip = peerState.hint,
+            chatTooltip = chatTooltip,
+            chatActions = {
+                ChatCallActions(
+                    hostAdapter = hostAdapter,
+                    selectedPeer = peerState.selectedPeer,
+                )
+            },
+            peersColumn = {
+                LivePeerListCard(
+                    hostAdapter = hostAdapter,
+                    peerState = peerState,
+                    onPeerSelected = { key ->
+                        selectedPeerKey = key
+                        selectedTargetKind = null
+                    },
+                    onTargetKindSelected = { kind -> selectedTargetKind = kind },
+                    onManualPeersCleared = {
+                        selectedPeerKey = null
+                        selectedTargetKind = null
+                    },
+                )
+            },
+            chatColumn = { LiveChatWorkspaceCard(hostAdapter, peerState) },
+            actionsColumn = { LiveActionsColumn(hostAdapter, peerState) },
+        )
+    }
+}
+
+@Composable
+private fun ComposeOnboardingScreen(
+    state: ComposeOnboardingState,
+    darkTheme: Boolean,
+    onThemeToggle: () -> Unit,
+    onHostRoom: () -> Unit,
+    onJoinRoom: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 34.dp, vertical = 28.dp),
+        horizontalArrangement = Arrangement.spacedBy(28.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1.15f).fillMaxHeight(),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(1.dp, sectionBorderColor()),
+                color = fieldBackgroundColor(),
+            ) {
+                Text(
+                    text = state.brandGlyph,
+                    modifier = Modifier.padding(horizontal = 30.dp, vertical = 18.dp),
+                    style = MaterialTheme.typography.h4,
+                    color = MaterialTheme.colors.primary,
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(state.headline, style = MaterialTheme.typography.h4, color = MaterialTheme.colors.onSurface)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = state.body,
+                style = MaterialTheme.typography.body1,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                modifier = Modifier.widthIn(max = 620.dp),
             )
-        },
-        peersColumn = {
-            LivePeerListCard(
-                hostAdapter = hostAdapter,
-                peerState = peerState,
-                onPeerSelected = { key ->
-                    selectedPeerKey = key
-                    selectedTargetKind = null
-                },
-                onTargetKindSelected = { kind -> selectedTargetKind = kind },
-                onManualPeersCleared = {
-                    selectedPeerKey = null
-                    selectedTargetKind = null
-                },
-            )
-        },
-        chatColumn = { LiveChatWorkspaceCard(hostAdapter, peerState) },
-        actionsColumn = { LiveActionsColumn(hostAdapter, peerState) },
-    )
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                state.benefitChips.forEach { chip -> StatusChip(chip) }
+            }
+        }
+        Card(
+            modifier = Modifier.weight(0.85f).widthIn(min = 360.dp, max = 520.dp),
+            shape = PanelShape,
+            border = BorderStroke(1.dp, panelBorderColor()),
+            elevation = 0.dp,
+            backgroundColor = MaterialTheme.colors.surface,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text("Start nearby", style = MaterialTheme.typography.h6)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Button(
+                        onClick = onHostRoom,
+                        modifier = Modifier.widthIn(min = 180.dp, max = 240.dp).heightIn(min = 40.dp),
+                        shape = ButtonShape,
+                    ) { Text(state.hostActionLabel) }
+                    OutlinedButton(
+                        onClick = onJoinRoom,
+                        modifier = Modifier.widthIn(min = 180.dp, max = 240.dp).heightIn(min = 40.dp),
+                        shape = ButtonShape,
+                    ) { Text(state.joinActionLabel) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    state.secondaryLinks.forEach { link ->
+                        Text(
+                            text = link,
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                }
+                Divider(color = sectionBorderColor())
+                Text(state.discoveryStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.66f))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = SectionShape,
+                    border = BorderStroke(1.dp, sectionBorderColor()),
+                    color = fieldBackgroundColor(),
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text(state.emptyNearbyTitle, style = MaterialTheme.typography.subtitle2)
+                        Text(
+                            text = state.emptyNearbyDetail,
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecureLanAppShell(
+    shellState: ComposeAppShellState,
+    darkTheme: Boolean,
+    onThemeToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp, max = 56.dp),
+            shape = PanelShape,
+            border = BorderStroke(1.dp, panelBorderColor()),
+            elevation = 0.dp,
+            backgroundColor = MaterialTheme.colors.surface,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        text = shellState.currentContextLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.subtitle2,
+                    )
+                    Text(
+                        text = shellState.primaryStatusDetail,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+                StatusChip(shellState.globalStatusLabel)
+                CompactButton(onClick = {}, enabled = false) { Text("Search") }
+                CompactButton(onClick = {}, enabled = false) { Text("Settings") }
+                if (shellState.rightActions.contains("Diagnostics")) {
+                    CompactButton(onClick = {}, enabled = false) { Text("Diagnostics") }
+                }
+                ThemeToggleButton(darkTheme = darkTheme, onThemeToggle = onThemeToggle)
+            }
+        }
+        content()
+    }
 }
 
 @Composable
@@ -181,12 +415,21 @@ private fun ComposeStatusBar(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StatusChip(state.serverStatus)
-            StatusChip(state.connectionStatus)
-            StatusChip(peerStatus)
-            StatusChip(voiceStatus)
-            StatusChip(transferStatus)
-            Box(modifier = Modifier.weight(1f))
+            val globalState = ComposeGlobalStatusIndicatorState(
+                statusState = state,
+                peerStatus = peerStatus,
+                voiceStatus = voiceStatus,
+                transferStatus = transferStatus,
+            )
+            StatusChip(globalState.label)
+            Text(
+                text = globalState.detailText,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+            )
             ThemeToggleButton(darkTheme = darkTheme, onThemeToggle = onThemeToggle)
         }
     }
@@ -290,25 +533,137 @@ private fun HelpTooltip(text: String) {
 }
 
 @Composable
-private fun ComposeConnectionHeader(hostAdapter: ComposeDesktopHostAdapter) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(modifier = Modifier.weight(1f)) { ServerQuickPanel(hostAdapter) }
-        Box(modifier = Modifier.weight(0.85f)) { ManualConnectionPanel(hostAdapter) }
+private fun ConnectionHub(
+    hostAdapter: ComposeDesktopHostAdapter,
+    initialMode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
+) {
+    var mode by remember(initialMode) { mutableStateOf(initialMode) }
+    var nickname by remember { mutableStateOf(hostAdapter.statusState.nickname) }
+    var password by remember { mutableStateOf(hostAdapter.currentRoomPassword) }
+    var serverChatPort by remember { mutableStateOf(hostAdapter.statusState.serverChatPortText) }
+    var serverFilePort by remember { mutableStateOf(hostAdapter.statusState.serverFilePortText) }
+    var discoverable by remember { mutableStateOf(hostAdapter.statusState.discoverable) }
+    var manualHost by remember { mutableStateOf(hostAdapter.statusState.manualHost) }
+    var clientChatPort by remember { mutableStateOf(hostAdapter.statusState.clientChatPortText) }
+    var clientFilePort by remember { mutableStateOf(hostAdapter.statusState.clientFilePortText) }
+
+    LaunchedEffect(hostAdapter.statusState.localServerRunning, hostAdapter.statusState.clientConnected) {
+        nickname = hostAdapter.statusState.nickname
+        password = hostAdapter.currentRoomPassword
+        serverChatPort = hostAdapter.statusState.serverChatPortText
+        serverFilePort = hostAdapter.statusState.serverFilePortText
+        discoverable = hostAdapter.statusState.discoverable
+        manualHost = hostAdapter.statusState.manualHost
+        clientChatPort = hostAdapter.statusState.clientChatPortText
+        clientFilePort = hostAdapter.statusState.clientFilePortText
     }
+
+    val statusState = hostAdapter.statusState.copy(
+        nickname = nickname,
+        roomPasswordPlaceholder = password,
+        serverChatPortText = serverChatPort,
+        serverFilePortText = serverFilePort,
+        discoverable = discoverable,
+        manualHost = manualHost,
+        clientChatPortText = clientChatPort,
+        clientFilePortText = clientFilePort,
+    )
+    val hubState = ComposeConnectionHubState(
+        statusState = statusState,
+        mode = mode,
+        localNetworkInfo = hostAdapter.localNetworkInfo,
+    )
+
+    ConnectionHubContent(
+        state = hubState,
+        nickname = nickname,
+        onNicknameChange = { nickname = it },
+        password = password,
+        onPasswordChange = { password = it },
+        mode = mode,
+        onModeChange = { mode = it },
+        serverChatPort = serverChatPort,
+        onServerChatPortChange = { serverChatPort = it },
+        serverFilePort = serverFilePort,
+        onServerFilePortChange = { serverFilePort = it },
+        discoverable = discoverable,
+        onDiscoverableChange = { discoverable = it },
+        manualHost = manualHost,
+        onManualHostChange = { manualHost = it },
+        clientChatPort = clientChatPort,
+        onClientChatPortChange = { clientChatPort = it },
+        clientFilePort = clientFilePort,
+        onClientFilePortChange = { clientFilePort = it },
+        onOpenRoom = {
+            statusState.serverChatPort?.let { chat ->
+                statusState.serverFilePort?.let { file ->
+                    hostAdapter.openRoom(nickname, password, chat, file, discoverable)
+                }
+            }
+        },
+        onStopHosting = { hostAdapter.stopHosting() },
+        onConnect = {
+            statusState.clientChatPort?.let { chat ->
+                statusState.clientFilePort?.let { file ->
+                    hostAdapter.connect(manualHost, nickname, password, chat, file)
+                }
+            }
+        },
+        onDisconnect = { hostAdapter.disconnect() },
+        onSetDiscoverable = { hostAdapter.setDiscoverable(it) },
+    )
 }
 
 @Composable
-private fun ComposeConnectionHeaderPreview(state: ComposeStatusConnectionState) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(modifier = Modifier.weight(1f)) { ServerQuickPanelPreview(state) }
-        Box(modifier = Modifier.weight(0.85f)) { ManualConnectionPanelPreview(state) }
-    }
+private fun ConnectionHubPreview(state: ComposeConnectionHubState) {
+    var mode by remember { mutableStateOf(state.mode) }
+    var nickname by remember { mutableStateOf(state.nickname) }
+    var password by remember { mutableStateOf(state.password) }
+    var serverChatPort by remember { mutableStateOf(state.statusState.serverChatPortText) }
+    var serverFilePort by remember { mutableStateOf(state.statusState.serverFilePortText) }
+    var discoverable by remember { mutableStateOf(state.statusState.discoverable) }
+    var manualHost by remember { mutableStateOf(state.statusState.manualHost) }
+    var clientChatPort by remember { mutableStateOf(state.statusState.clientChatPortText) }
+    var clientFilePort by remember { mutableStateOf(state.statusState.clientFilePortText) }
+
+    val statusState = state.statusState.copy(
+        nickname = nickname,
+        roomPasswordPlaceholder = password,
+        serverChatPortText = serverChatPort,
+        serverFilePortText = serverFilePort,
+        discoverable = discoverable,
+        manualHost = manualHost,
+        clientChatPortText = clientChatPort,
+        clientFilePortText = clientFilePort,
+    )
+    val hubState = state.copy(statusState = statusState, mode = mode)
+
+    ConnectionHubContent(
+        state = hubState,
+        nickname = nickname,
+        onNicknameChange = { nickname = it },
+        password = password,
+        onPasswordChange = { password = it },
+        mode = mode,
+        onModeChange = { mode = it },
+        serverChatPort = serverChatPort,
+        onServerChatPortChange = { serverChatPort = it },
+        serverFilePort = serverFilePort,
+        onServerFilePortChange = { serverFilePort = it },
+        discoverable = discoverable,
+        onDiscoverableChange = { discoverable = it },
+        manualHost = manualHost,
+        onManualHostChange = { manualHost = it },
+        clientChatPort = clientChatPort,
+        onClientChatPortChange = { clientChatPort = it },
+        clientFilePort = clientFilePort,
+        onClientFilePortChange = { clientFilePort = it },
+        onOpenRoom = {},
+        onStopHosting = {},
+        onConnect = {},
+        onDisconnect = {},
+        onSetDiscoverable = {},
+    )
 }
 
 @Composable
@@ -402,8 +757,12 @@ private fun LiveActionsColumn(hostAdapter: ComposeDesktopHostAdapter, peerState:
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SelectedPeerSummary(state = quickActions)
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.TRANSFERS)) {
-            LiveFileTransferCard(hostAdapter, peerState)
+        if (peerState.selectedPeer == null) {
+            PeerActionReadinessCard(peerState = peerState, hostAdapter = hostAdapter)
+        } else {
+            ActionsColumnSection(presentation.section(ComposeActionsSectionKind.TRANSFERS)) {
+                LiveFileTransferCard(hostAdapter, peerState)
+            }
         }
         ActionsColumnSection(presentation.section(ComposeActionsSectionKind.QUICK_SHARE)) {
             LiveQuickShareCard(hostAdapter)
@@ -608,13 +967,35 @@ private fun PeerListContentSurface(
 }
 
 @Composable
-private fun PeerListEmptyState() {
-    Box(modifier = Modifier.fillMaxSize().padding(14.dp), contentAlignment = Alignment.BottomStart) {
-        Text(
-            text = "Peers will appear here when they join the chat.",
-            style = MaterialTheme.typography.body2,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-        )
+private fun PeerListEmptyState(peerState: ComposePeerListState) {
+    Box(modifier = Modifier.fillMaxSize().padding(14.dp), contentAlignment = Alignment.Center) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = peerState.emptyStateTitle,
+                style = MaterialTheme.typography.subtitle1,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.82f),
+            )
+            Text(
+                text = peerState.emptyStateDetail,
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+            )
+            Surface(
+                shape = FieldShape,
+                border = BorderStroke(1.dp, sectionBorderColor()),
+                color = fieldBackgroundColor(),
+            ) {
+                Text(
+                    text = peerState.emptyStateActionLabel,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+                )
+            }
+        }
     }
 }
 
@@ -729,9 +1110,7 @@ private fun PreviewActionsColumn() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SelectedPeerSummary(state = ComposeShellMetadata.DEFAULT_SELECTED_PEER_QUICK_ACTIONS_STATE)
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.TRANSFERS)) {
-            FileTransferPreviewCard(ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE)
-        }
+        PeerActionReadinessPreviewCard(ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE)
         ActionsColumnSection(presentation.section(ComposeActionsSectionKind.QUICK_SHARE)) {
             QuickSharePreviewCard(ComposeShellMetadata.DEFAULT_QUICK_SHARE_STATE)
         }
@@ -761,6 +1140,38 @@ private fun FileTransferPreviewCard(state: ComposeFileTransferState) {
             style = MaterialTheme.typography.caption,
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
         )
+    }
+}
+
+@Composable
+private fun PeerActionReadinessCard(peerState: ComposePeerListState, hostAdapter: ComposeDesktopHostAdapter) {
+    val transferState = ComposeFileTransferState(
+        statusState = hostAdapter.statusState,
+        peerListState = peerState,
+        senderId = hostAdapter.statusState.nickname,
+        sessionPassword = hostAdapter.currentRoomPassword,
+        entries = hostAdapter.transferEntries,
+        incomingPrompts = hostAdapter.incomingTransferPrompts,
+        autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
+    )
+    PeerActionReadinessPreviewCard(transferState)
+}
+
+@Composable
+private fun PeerActionReadinessPreviewCard(transferState: ComposeFileTransferState) {
+    SubtleContentSurface(modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(transferState.peerListState.noPeerActionTitle, style = MaterialTheme.typography.subtitle2)
+            Text(
+                text = transferState.peerListState.noPeerActionDetail,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TransferInfoChip(transferState.transferCountSummary)
+                TransferInfoChip(transferState.receiveModeShortLabel)
+            }
+        }
     }
 }
 
@@ -832,34 +1243,47 @@ private fun SelectedPeerQuickActions(
 private fun ChatWorkspacePreviewCard(initialState: ComposeChatWorkspaceState) {
     var draftMessage by remember { mutableStateOf(initialState.draftMessage) }
     val previewState = initialState.copy(draftMessage = draftMessage)
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(previewState.transcriptLines.size) {
+        if (previewState.transcriptLines.isNotEmpty()) {
+            listState.animateScrollToItem(previewState.transcriptLines.lastIndex)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SubtleContentSurface(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            previewState.transcriptLines.forEach { line ->
-                Text(
-                    text = line,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                )
+            if (previewState.transcriptLines.isEmpty()) {
+                ChatTranscriptEmptyState(previewState, connected = false)
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    items(previewState.messages.size) { index ->
+                        ChatTranscriptLine(previewState.messages[index])
+                    }
+                }
             }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
-                value = draftMessage,
-                onValueChange = { draftMessage = it },
-                label = { Text("Shared chat message") },
+            CompactButton(onClick = {}, enabled = false) { Text("Attach") }
+            CompactTextField(
+                draftMessage,
+                { draftMessage = it },
+                label = "",
                 modifier = Modifier.weight(1f),
+                placeholder = "Type a message for the shared chat...",
             )
-            Button(onClick = {}, enabled = false) {
-                Text(previewState.sendLabel)
-            }
+            CompactButton(onClick = {}, enabled = false) { Text(previewState.sendLabel) }
         }
         Text(
             text = "${previewState.transcriptSummary} · ${previewState.readinessSummary}",
@@ -870,88 +1294,392 @@ private fun ChatWorkspacePreviewCard(initialState: ComposeChatWorkspaceState) {
 }
 
 @Composable
-private fun ServerQuickPanel(hostAdapter: ComposeDesktopHostAdapter) {
-    var nickname by remember { mutableStateOf(hostAdapter.generateNickname()) }
-    var roomPassword by remember { mutableStateOf(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.roomPasswordPlaceholder) }
-    var serverChatPort by remember { mutableStateOf(hostAdapter.statusState.serverChatPortText) }
-    var serverFilePort by remember { mutableStateOf(hostAdapter.statusState.serverFilePortText) }
-    var discoverable by remember { mutableStateOf(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.discoverable) }
-    val state = hostAdapter.statusState.copy(
-        nickname = nickname,
-        roomPasswordPlaceholder = roomPassword,
-        serverChatPortText = serverChatPort,
-        serverFilePortText = serverFilePort,
-        discoverable = discoverable,
-    )
-    HeaderCard(
-        title = "My profile",
-        tooltip = "Set your name and shared room password. Then open a room. Keep Discoverable enabled if peers should find it automatically on the LAN.",
+private fun ConnectionHubContent(
+    state: ComposeConnectionHubState,
+    nickname: String,
+    onNicknameChange: (String) -> Unit,
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    mode: ComposeConnectionHubMode,
+    onModeChange: (ComposeConnectionHubMode) -> Unit,
+    serverChatPort: String,
+    onServerChatPortChange: (String) -> Unit,
+    serverFilePort: String,
+    onServerFilePortChange: (String) -> Unit,
+    discoverable: Boolean,
+    onDiscoverableChange: (Boolean) -> Unit,
+    manualHost: String,
+    onManualHostChange: (String) -> Unit,
+    clientChatPort: String,
+    onClientChatPortChange: (String) -> Unit,
+    clientFilePort: String,
+    onClientFilePortChange: (String) -> Unit,
+    onOpenRoom: () -> Unit,
+    onStopHosting: () -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onSetDiscoverable: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 224.dp),
+        shape = PanelShape,
+        border = BorderStroke(1.dp, panelBorderColor()),
+        elevation = 0.dp,
+        backgroundColor = MaterialTheme.colors.surface,
     ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                CompactTextField(nickname, { nickname = it }, label = "Your name", modifier = Modifier.weight(1f))
-                CompactTextField(roomPassword, { roomPassword = it }, label = "Room password", modifier = Modifier.weight(1f), visualTransformation = PasswordVisualTransformation())
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                CompactButton(onClick = { state.serverChatPort?.let { chat -> state.serverFilePort?.let { file -> hostAdapter.openRoom(nickname, roomPassword, chat, file, discoverable) } } }, enabled = state.canOpenRoom) { Text("Open room") }
-                CompactButton(onClick = { hostAdapter.stopHosting() }, enabled = state.localServerRunning) { Text("Stop hosting") }
-                Checkbox(discoverable, {
-                    discoverable = it
-                    if (state.localServerRunning) {
-                        hostAdapter.setDiscoverable(it)
-                    }
-                })
-                Text("Discoverable", style = MaterialTheme.typography.body2)
-            }
-            ComposeAdvancedPane("Advanced network settings") {
-                Text(
-                    text = "Change these only if another app already uses the default ports.",
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TitleWithHelp(
+                    title = state.title,
+                    tooltip = "Set your name and the shared room password, then open a room on this computer or join one on another computer.",
+                    titleStyle = MaterialTheme.typography.subtitle2,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CompactTextField(serverChatPort, { serverChatPort = it }, label = "Chat port", modifier = Modifier.weight(1f))
-                    CompactTextField(serverFilePort, { serverFilePort = it }, label = "File port", modifier = Modifier.weight(1f))
+                ConnectionStatusBadge(label = state.activeBadgeLabel ?: state.modeHint)
+                Box(modifier = Modifier.weight(1f))
+                if (state.copyRoomAddressEnabled) {
+                    CompactButton(onClick = { copyToSystemClipboard(state.copyRoomAddressText) }) { Text("Copy room address") }
                 }
-                Text(state.validationSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
             }
+
+            ConnectionModeChooser(
+                mode = mode,
+                hostLabel = state.hostTabLabel,
+                hostSubtitle = state.hostChoiceSubtitle,
+                joinLabel = state.joinTabLabel,
+                joinSubtitle = state.joinChoiceSubtitle,
+                onModeChange = onModeChange,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CompactTextField(nickname, onNicknameChange, label = "Your name", modifier = Modifier.weight(1f))
+                CompactTextField(
+                    password,
+                    onPasswordChange,
+                    label = "Room password",
+                    modifier = Modifier.weight(1f),
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+            }
+
+            ConnectionModeDetailsSurface(
+                title = state.activeModeTitle,
+                detail = state.activeModeDetail,
+                summary = state.joinTargetSummary,
+            ) {
+                if (mode == ComposeConnectionHubMode.HOST) {
+                    Text(
+                        text = "Your display name and room password are set above. Discovery controls whether nearby trusted peers can find this room.",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.body2,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Switch(
+                            checked = discoverable,
+                            onCheckedChange = {
+                                onDiscoverableChange(it)
+                                if (state.statusState.localServerRunning) {
+                                    onSetDiscoverable(it)
+                                }
+                            },
+                            enabled = state.discoverableToggleEnabled,
+                        )
+                        Text(state.discoverableLabel, style = MaterialTheme.typography.body2)
+                    }
+                } else {
+                    Text(
+                        text = "Nearby rooms will appear in the peer list. Use Advanced manual connection when a room is hidden or discovery is blocked.",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.body2,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                    )
+                }
+            }
+
+            ComposeAdvancedPane(state.advancedSettingsTitle) {
+                if (mode == ComposeConnectionHubMode.HOST) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CompactTextField(serverChatPort, onServerChatPortChange, label = "Chat port", modifier = Modifier.weight(1f))
+                        CompactTextField(serverFilePort, onServerFilePortChange, label = "File port", modifier = Modifier.weight(1f))
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CompactTextField(manualHost, onManualHostChange, label = "Host address", modifier = Modifier.weight(1.3f))
+                        CompactTextField(clientChatPort, onClientChatPortChange, label = "Chat port", modifier = Modifier.weight(1f))
+                        CompactTextField(clientFilePort, onClientFilePortChange, label = "File port", modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = when (mode) {
+                        ComposeConnectionHubMode.HOST -> onOpenRoom
+                        ComposeConnectionHubMode.JOIN -> onConnect
+                    },
+                    enabled = state.primaryActionEnabled,
+                    shape = ButtonShape,
+                    modifier = Modifier.widthIn(min = 140.dp),
+                ) {
+                    Text(state.primaryActionLabel)
+                }
+                OutlinedButton(
+                    onClick = when (mode) {
+                        ComposeConnectionHubMode.HOST -> onStopHosting
+                        ComposeConnectionHubMode.JOIN -> onDisconnect
+                    },
+                    enabled = state.secondaryActionEnabled,
+                    shape = ButtonShape,
+                    modifier = Modifier.widthIn(min = 120.dp),
+                ) {
+                    Text(state.secondaryActionLabel)
+                }
+                Box(modifier = Modifier.weight(1f))
+                Text(
+                    text = state.networkInfoSummary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                )
+            }
+
+            Box(modifier = Modifier.fillMaxWidth().height(38.dp), contentAlignment = Alignment.CenterStart) {
+                if (state.statusMessage != null) {
+                    ConnectionHubStatusMessage(
+                        text = state.statusMessage,
+                        tone = state.statusMessageTone,
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun ManualConnectionPanel(hostAdapter: ComposeDesktopHostAdapter) {
-    var nickname by remember { mutableStateOf(hostAdapter.statusState.nickname) }
-    var roomPassword by remember { mutableStateOf(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.roomPasswordPlaceholder) }
-    var manualHost by remember { mutableStateOf(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.manualHost) }
-    var clientChatPort by remember { mutableStateOf(hostAdapter.statusState.clientChatPortText) }
-    var clientFilePort by remember { mutableStateOf(hostAdapter.statusState.clientFilePortText) }
-    val state = hostAdapter.statusState.copy(
-        nickname = nickname,
-        roomPasswordPlaceholder = roomPassword,
-        manualHost = manualHost,
-        clientChatPortText = clientChatPort,
-        clientFilePortText = clientFilePort,
-    )
-    HeaderCard(
-        title = "Manual connection",
-        tooltip = "Use this when a room was not discovered automatically. Usually you will select a discovered peer from the list.",
+private fun ConnectionModeChooser(
+    mode: ComposeConnectionHubMode,
+    hostLabel: String,
+    hostSubtitle: String,
+    joinLabel: String,
+    joinSubtitle: String,
+    onModeChange: (ComposeConnectionHubMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-            CompactTextField(manualHost, { manualHost = it }, label = "Host address", modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactButton(onClick = { state.clientChatPort?.let { chat -> state.clientFilePort?.let { file -> hostAdapter.connect(manualHost, nickname, roomPassword, chat, file) } } }, enabled = state.canConnect) { Text("Connect") }
-                CompactButton(onClick = { hostAdapter.disconnect() }, enabled = state.clientConnected) { Text("Disconnect") }
-            }
-            ComposeAdvancedPane("Advanced network settings") {
+        ConnectionModeChoiceCard(
+            title = hostLabel,
+            subtitle = hostSubtitle,
+            selected = mode == ComposeConnectionHubMode.HOST,
+            onClick = { onModeChange(ComposeConnectionHubMode.HOST) },
+            modifier = Modifier.weight(1f),
+        )
+        ConnectionModeChoiceCard(
+            title = joinLabel,
+            subtitle = joinSubtitle,
+            selected = mode == ComposeConnectionHubMode.JOIN,
+            onClick = { onModeChange(ComposeConnectionHubMode.JOIN) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun ConnectionModeChoiceCard(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val border = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.72f) else sectionBorderColor()
+    val background = if (selected) MaterialTheme.colors.primary.copy(alpha = if (MaterialTheme.colors.isLight) 0.10f else 0.18f) else fieldBackgroundColor()
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = SectionShape,
+        border = BorderStroke(1.dp, border),
+        color = background,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (selected) "●" else "○",
+                style = MaterialTheme.typography.subtitle2,
+                color = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = 0.42f),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.button, color = MaterialTheme.colors.onSurface.copy(alpha = 0.88f))
                 Text(
-                    text = "Use custom ports only when the host changed them in advanced settings.",
+                    subtitle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CompactTextField(clientChatPort, { clientChatPort = it }, label = "Chat port", modifier = Modifier.weight(1f))
-                    CompactTextField(clientFilePort, { clientFilePort = it }, label = "File port", modifier = Modifier.weight(1f))
-                }
-                Text(state.portSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
             }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionModeDetailsSurface(
+    title: String,
+    detail: String,
+    summary: String,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = SectionShape,
+        border = BorderStroke(1.dp, sectionBorderColor()),
+        color = fieldBackgroundColor().copy(alpha = 0.62f),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.subtitle2)
+                    Text(
+                        detail,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                ConnectionStatusBadge(summary)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConnectionStatusBadge(label: String) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        border = BorderStroke(1.dp, sectionBorderColor()),
+        color = fieldBackgroundColor(),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+        )
+    }
+}
+
+@Composable
+private fun ConnectionHubStatusMessage(
+    text: String,
+    tone: ComposeConnectionHubMessageTone,
+) {
+    val accent = when (tone) {
+        ComposeConnectionHubMessageTone.INFO -> MaterialTheme.colors.primary
+        ComposeConnectionHubMessageTone.SUCCESS -> Color(0xFF7FB4FF)
+        ComposeConnectionHubMessageTone.ERROR -> MaterialTheme.colors.error
+    }
+    val backgroundAlpha = when (tone) {
+        ComposeConnectionHubMessageTone.INFO -> if (MaterialTheme.colors.isLight) 0.08f else 0.12f
+        ComposeConnectionHubMessageTone.SUCCESS -> if (MaterialTheme.colors.isLight) 0.09f else 0.13f
+        ComposeConnectionHubMessageTone.ERROR -> if (MaterialTheme.colors.isLight) 0.08f else 0.14f
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = FieldShape,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f)),
+        color = accent.copy(alpha = backgroundAlpha),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.caption,
+            color = accent,
+        )
+    }
+}
+
+@Composable
+private fun ConnectionModeSelector(
+    mode: ComposeConnectionHubMode,
+    hostLabel: String,
+    joinLabel: String,
+    onModeChange: (ComposeConnectionHubMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = FieldShape,
+        border = BorderStroke(1.dp, sectionBorderColor()),
+        color = fieldBackgroundColor(),
+    ) {
+        Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            ConnectionModeSegment(
+                label = hostLabel,
+                selected = mode == ComposeConnectionHubMode.HOST,
+                onClick = { onModeChange(ComposeConnectionHubMode.HOST) },
+                modifier = Modifier.weight(1f),
+            )
+            ConnectionModeSegment(
+                label = joinLabel,
+                selected = mode == ComposeConnectionHubMode.JOIN,
+                onClick = { onModeChange(ComposeConnectionHubMode.JOIN) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConnectionModeSegment(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.92f) else Color.Transparent
+    val contentColor = if (selected) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = background,
+    ) {
+        Text(label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.button, color = contentColor)
     }
 }
 
@@ -1006,39 +1734,6 @@ private fun ComposeAdvancedPane(
 }
 
 @Composable
-private fun ServerQuickPanelPreview(state: ComposeStatusConnectionState) {
-    HeaderCard(
-        title = "My profile",
-        tooltip = "Set your name and shared room password. Then open a room. Keep Discoverable enabled if peers should find it automatically on the LAN.",
-    ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                CompactTextField(state.nickname, {}, label = "Your name", modifier = Modifier.weight(1f))
-                CompactTextField(state.roomPasswordPlaceholder, {}, label = "Room password", modifier = Modifier.weight(1f), visualTransformation = PasswordVisualTransformation())
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                CompactButton(onClick = {}, enabled = state.canOpenRoom) { Text("Open room") }
-                CompactButton(onClick = {}, enabled = state.localServerRunning) { Text("Stop hosting") }
-                Checkbox(state.discoverable, {})
-                Text("Discoverable", style = MaterialTheme.typography.body2)
-            }
-    }
-}
-
-@Composable
-private fun ManualConnectionPanelPreview(state: ComposeStatusConnectionState) {
-    HeaderCard(
-        title = "Manual connection",
-        tooltip = "Use this when a room was not discovered automatically. Usually you will select a discovered peer from the list.",
-    ) {
-            CompactTextField(state.manualHost, {}, label = "Host address", modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompactButton(onClick = {}, enabled = state.canConnect) { Text("Connect") }
-                CompactButton(onClick = {}, enabled = state.clientConnected) { Text("Disconnect") }
-            }
-    }
-}
-
-@Composable
 private fun LivePeerListCard(
     hostAdapter: ComposeDesktopHostAdapter,
     peerState: ComposePeerListState,
@@ -1046,23 +1741,59 @@ private fun LivePeerListCard(
     onTargetKindSelected: (ComposePeerTargetCommandKind?) -> Unit,
     onManualPeersCleared: () -> Unit,
 ) {
-    val visiblePeerItems = peerState.visiblePeers
-
     PeerListContentSurface(modifier = Modifier.fillMaxSize()) {
-        if (visiblePeerItems.isEmpty()) {
-            PeerListEmptyState()
+        if (!peerState.hasAnyPeers) {
+            PeerListEmptyState(peerState)
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                visiblePeerItems.forEachIndexed { index, peer ->
-                    PeerPreviewRow(
-                        peer = peer,
-                        selected = index == peerState.resolvedSelectedPeerIndex,
-                        onSelect = { onPeerSelected(peer.nickname) },
-                    )
-                }
+            val scrollState = rememberScrollState()
+            Column(modifier = Modifier.verticalScroll(scrollState)) {
+                PeerListGroup(
+                    peers = peerState.onlinePeers,
+                    sectionTitle = "Online",
+                    peerState = peerState,
+                    onPeerSelected = onPeerSelected,
+                )
+                PeerListGroup(
+                    peers = peerState.offlinePeers,
+                    sectionTitle = "Offline",
+                    peerState = peerState,
+                    onPeerSelected = onPeerSelected,
+                )
             }
         }
     }
+}
+
+@Composable
+private fun PeerListGroup(
+    peers: List<ComposePeerListItem>,
+    sectionTitle: String,
+    peerState: ComposePeerListState,
+    onPeerSelected: (String?) -> Unit,
+) {
+    if (peers.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        PeerListSectionHeader(title = sectionTitle)
+        peers.forEach { peer ->
+            val index = peerState.visiblePeers.indexOfFirst { it.nickname == peer.nickname }
+            PeerPreviewRow(
+                peer = peer,
+                selected = index == peerState.resolvedSelectedPeerIndex,
+                onSelect = { onPeerSelected(peer.nickname) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeerListSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.caption,
+        color = MaterialTheme.colors.onSurface.copy(alpha = 0.54f),
+        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 internal fun resolveAttachCandidatePeer(
@@ -1075,9 +1806,26 @@ internal fun resolveAttachCandidatePeer(
 @Composable
 private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerState: ComposePeerListState) {
     var draftMessage by remember { mutableStateOf("") }
-    val transcript = hostAdapter.chatTranscript.takeLast(20)
+    val transcript = hostAdapter.chatMessages
     val selectedPeer = peerState.selectedPeer
     val selectedFilePeer = resolveAttachCandidatePeer(selectedPeer, hostAdapter::discoveredPeerFor)
+    val attachmentTools = ComposeAttachmentToolsState(
+        peerSelected = selectedPeer != null,
+        fileTargetReady = selectedFilePeer != null,
+    )
+    val chatState = ComposeChatWorkspaceState(
+        statusState = hostAdapter.statusState,
+        peerListState = peerState,
+        draftMessage = draftMessage,
+    )
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(transcript.size) {
+        if (transcript.isNotEmpty()) {
+            listState.animateScrollToItem(transcript.lastIndex)
+        }
+    }
+
     fun sendDraftMessage() {
         if (draftMessage.isNotBlank() && hostAdapter.chatConnected) {
             hostAdapter.sendMessage(draftMessage.trim())
@@ -1098,19 +1846,27 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
             ComposeVideoStage(hostAdapter.experimentalVideoState.copy(peerListState = peerState))
         }
         SubtleContentSurface(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            if (transcript.isEmpty()) {
-                Text(
-                    text = "No messages yet. Connect to a room to send and receive chat messages.",
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-                )
+            val transferState = ComposeFileTransferState(
+                statusState = hostAdapter.statusState,
+                peerListState = peerState,
+                entries = hostAdapter.transferEntries,
+                incomingPrompts = hostAdapter.incomingTransferPrompts,
+                autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
+            )
+            if (transcript.isEmpty() && transferState.chatAttachmentCards.isEmpty()) {
+                ChatTranscriptEmptyState(chatState, hostAdapter.chatConnected)
             } else {
-                transcript.forEach { line ->
-                    Text(
-                        text = line,
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
-                    )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    items(transcript.size) { index ->
+                        ChatTranscriptLine(transcript[index], hostAdapter.statusState.nickname)
+                    }
+                    items(transferState.chatAttachmentCards.size) { index ->
+                        ChatAttachmentCardRow(transferState.chatAttachmentCards[index])
+                    }
                 }
             }
         }
@@ -1122,7 +1878,7 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
             CompactButton(
                 onClick = ::attachSelectedFile,
                 enabled = hostAdapter.chatConnected && selectedFilePeer != null,
-            ) { Text("Attach") }
+            ) { Text(attachmentTools.title) }
             CompactTextField(
                 draftMessage,
                 { draftMessage = it },
@@ -1137,6 +1893,120 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
             ) {
                 Text("Send")
             }
+        }
+    }
+}
+
+@Composable
+private fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: String = "") {
+    val presentation = ComposeChatTranscriptLinePresentation.from(message.displayText, localNickname, message.timestamp)
+    val accent = when (presentation.kind) {
+        ComposeChatTranscriptLineKind.LOCAL -> MaterialTheme.colors.primary
+        ComposeChatTranscriptLineKind.REMOTE -> MaterialTheme.colors.onSurface.copy(alpha = 0.82f)
+        ComposeChatTranscriptLineKind.PRESENCE -> Color(0xFF8FB7FF)
+        ComposeChatTranscriptLineKind.WARNING -> MaterialTheme.colors.error
+        ComposeChatTranscriptLineKind.DIAGNOSTIC -> MaterialTheme.colors.onSurface.copy(alpha = 0.54f)
+    }
+    val bubbleColor = when (presentation.kind) {
+        ComposeChatTranscriptLineKind.LOCAL -> MaterialTheme.colors.primary.copy(alpha = if (MaterialTheme.colors.isLight) 0.14f else 0.18f)
+        ComposeChatTranscriptLineKind.REMOTE -> MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.06f else 0.08f)
+        ComposeChatTranscriptLineKind.PRESENCE -> accent.copy(alpha = 0.08f)
+        ComposeChatTranscriptLineKind.WARNING -> MaterialTheme.colors.error.copy(alpha = 0.10f)
+        ComposeChatTranscriptLineKind.DIAGNOSTIC -> fieldBackgroundColor().copy(alpha = 0.36f)
+    }
+    val alignment = when (presentation.kind) {
+        ComposeChatTranscriptLineKind.LOCAL -> Alignment.CenterEnd
+        ComposeChatTranscriptLineKind.REMOTE -> Alignment.CenterStart
+        else -> Alignment.Center
+    }
+    val bubbleWidth = when (presentation.kind) {
+        ComposeChatTranscriptLineKind.LOCAL, ComposeChatTranscriptLineKind.REMOTE -> 0.82f
+        else -> 0.96f
+    }
+
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(bubbleWidth),
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = if (presentation.kind == ComposeChatTranscriptLineKind.REMOTE) 0.48f else 0.28f)),
+            color = bubbleColor,
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SelectionContainer(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = presentation.label,
+                            style = MaterialTheme.typography.caption,
+                            color = accent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = presentation.displayTime,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.46f),
+                    )
+                }
+                SelectionContainer {
+                    Text(
+                        text = presentation.body,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = if (presentation.kind == ComposeChatTranscriptLineKind.REMOTE || presentation.kind == ComposeChatTranscriptLineKind.LOCAL) MaterialTheme.typography.body2 else MaterialTheme.typography.caption,
+                        color = if (presentation.kind == ComposeChatTranscriptLineKind.WARNING) MaterialTheme.colors.error else MaterialTheme.colors.onSurface.copy(alpha = 0.80f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatAttachmentCardRow(card: ComposeChatAttachmentCard) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = SectionShape,
+        border = BorderStroke(1.dp, sectionBorderColor()),
+        color = if (card.needsDecision) MaterialTheme.colors.primary.copy(alpha = 0.10f) else fieldBackgroundColor().copy(alpha = 0.72f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(card.title, style = MaterialTheme.typography.body2, modifier = Modifier.weight(1f))
+                Text(card.progressLabel, style = MaterialTheme.typography.caption, color = if (card.failed) MaterialTheme.colors.error else MaterialTheme.colors.primary)
+            }
+            Text(card.subtitle, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+            if (!card.needsDecision) {
+                LinearProgressIndicator(
+                    progress = card.progressPercent.coerceIn(0, 100) / 100f,
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    color = if (card.failed) MaterialTheme.colors.error else MaterialTheme.colors.primary,
+                    backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.10f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState, connected: Boolean) {
+    Box(modifier = Modifier.fillMaxSize().padding(14.dp), contentAlignment = Alignment.Center) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = chatState.transcriptEmptyTitle,
+                style = MaterialTheme.typography.subtitle1,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
+            )
+            Text(
+                text = if (connected) chatState.transcriptEmptyDetailConnected else chatState.transcriptEmptyDetailDisconnected,
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+            )
         }
     }
 }
@@ -3222,17 +4092,27 @@ private fun PeerListPreviewCard(initialState: ComposePeerListState) {
     val previewState = initialState.copy(selectedPeerIndex = selectedPeerIndex)
 
     PeerListContentSurface(modifier = Modifier.fillMaxSize()) {
-        if (previewState.visiblePeers.isEmpty()) {
-            PeerListEmptyState()
+        if (!previewState.hasAnyPeers) {
+            PeerListEmptyState(previewState)
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                previewState.visiblePeers.forEachIndexed { index, peer ->
-                    PeerPreviewRow(
-                        peer = peer,
-                        selected = index == selectedPeerIndex,
-                        onSelect = { selectedPeerIndex = index },
-                    )
-                }
+            val scrollState = rememberScrollState()
+            Column(modifier = Modifier.verticalScroll(scrollState)) {
+                PeerListGroup(
+                    peers = previewState.onlinePeers,
+                    sectionTitle = "Online",
+                    peerState = previewState,
+                    onPeerSelected = { nickname ->
+                        selectedPeerIndex = previewState.visiblePeers.indexOfFirst { it.nickname == nickname }
+                    },
+                )
+                PeerListGroup(
+                    peers = previewState.offlinePeers,
+                    sectionTitle = "Offline",
+                    peerState = previewState,
+                    onPeerSelected = { nickname ->
+                        selectedPeerIndex = previewState.visiblePeers.indexOfFirst { it.nickname == nickname }
+                    },
+                )
             }
         }
     }

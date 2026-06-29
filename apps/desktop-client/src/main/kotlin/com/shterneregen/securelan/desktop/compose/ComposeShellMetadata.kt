@@ -29,6 +29,12 @@ import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val ComposeChatTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+
+internal fun formatComposeChatTimestamp(timestamp: Instant): String = ComposeChatTimeFormatter.format(timestamp)
 
 object ComposeShellMetadata {
     const val WINDOW_TITLE: String = "SecureLanSuite Chat"
@@ -39,6 +45,9 @@ object ComposeShellMetadata {
     val DEFAULT_WINDOW_WIDTH: Dp = 1360.dp
     val DEFAULT_WINDOW_HEIGHT: Dp = 860.dp
     val DEFAULT_STATUS_ADAPTER_STATE: ComposeStatusConnectionState = ComposeStatusConnectionState()
+    val DEFAULT_CONNECTION_HUB_STATE: ComposeConnectionHubState = ComposeConnectionHubState(
+        statusState = DEFAULT_STATUS_ADAPTER_STATE,
+    )
     val DEFAULT_PEER_LIST_STATE: ComposePeerListState = ComposePeerListState()
     val DEFAULT_CHAT_WORKSPACE_STATE: ComposeChatWorkspaceState = ComposeChatWorkspaceState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
@@ -80,6 +89,189 @@ object ComposeShellMetadata {
     val DEFAULT_PACKAGING_STATE: ComposePackagingReadinessState = ComposePackagingReadinessState()
     val DEFAULT_WORKSPACE_PARITY_STATE: ComposeJavaFxWorkspaceParityState = ComposeJavaFxWorkspaceParityState()
     val DEFAULT_ACTIONS_PRESENTATION_STATE: ComposeActionsColumnPresentationState = ComposeActionsColumnPresentationState()
+    val DEFAULT_ONBOARDING_STATE: ComposeOnboardingState = ComposeOnboardingState()
+    val DEFAULT_PRODUCT_SCREEN_STATE: ComposeProductScreenState = ComposeProductScreenState()
+    val DEFAULT_APP_SHELL_STATE: ComposeAppShellState = ComposeAppShellState(
+        productState = DEFAULT_PRODUCT_SCREEN_STATE,
+        statusState = DEFAULT_STATUS_ADAPTER_STATE,
+    )
+}
+
+enum class AppMode {
+    WELCOME,
+    HOST_SETUP,
+    JOIN_SETUP,
+    MESSENGER,
+    SETTINGS,
+    DIAGNOSTICS,
+}
+
+enum class RoomState {
+    OFFLINE,
+    HOSTING,
+    WAITING_FOR_PEERS,
+    CONNECTED,
+    ISSUE,
+}
+
+enum class SelectionState {
+    NONE,
+    ROOM_CONVERSATION,
+    PEER,
+    TRANSFER,
+    CALL,
+}
+
+enum class RightPanelMode {
+    HIDDEN,
+    ROOM_INFO,
+    PEER_INFO,
+    TRANSFERS,
+    CALL,
+    DIAGNOSTICS,
+    ADVANCED_CONNECTION,
+}
+
+data class ComposeProductScreenState(
+    val appMode: AppMode = AppMode.WELCOME,
+    val roomState: RoomState = RoomState.OFFLINE,
+    val selectionState: SelectionState = SelectionState.NONE,
+    val rightPanelMode: RightPanelMode = RightPanelMode.HIDDEN,
+) {
+    val connectionFlowActive: Boolean = appMode == AppMode.HOST_SETUP || appMode == AppMode.JOIN_SETUP
+    val communicationFlowActive: Boolean = appMode == AppMode.MESSENGER
+    val connectionAndCommunicationSeparated: Boolean = !(connectionFlowActive && communicationFlowActive)
+    val primarySurfaceLabel: String = when (appMode) {
+        AppMode.WELCOME -> "Welcome"
+        AppMode.HOST_SETUP -> "Host setup"
+        AppMode.JOIN_SETUP -> "Join setup"
+        AppMode.MESSENGER -> "Messenger"
+        AppMode.SETTINGS -> "Settings"
+        AppMode.DIAGNOSTICS -> "Diagnostics"
+    }
+    val modeSummary: String = "$primarySurfaceLabel · $roomState · $selectionState · $rightPanelMode"
+
+    companion object {
+        fun from(
+            statusState: ComposeStatusConnectionState,
+            requestedAppMode: AppMode = AppMode.WELCOME,
+            connectionHubMode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
+            selectedPeer: ComposePeerListItem? = null,
+            activeTransfer: Boolean = false,
+            activeCall: Boolean = false,
+            diagnosticsRequested: Boolean = false,
+            settingsRequested: Boolean = false,
+            issueDetected: Boolean = false,
+            advancedConnectionRequested: Boolean = false,
+        ): ComposeProductScreenState {
+            val runtimeConnected = statusState.clientConnected || statusState.localServerRunning
+            val effectiveMode = when {
+                settingsRequested -> AppMode.SETTINGS
+                diagnosticsRequested -> AppMode.DIAGNOSTICS
+                runtimeConnected -> AppMode.MESSENGER
+                requestedAppMode == AppMode.HOST_SETUP || requestedAppMode == AppMode.JOIN_SETUP -> requestedAppMode
+                connectionHubMode == ComposeConnectionHubMode.HOST && requestedAppMode == AppMode.HOST_SETUP -> AppMode.HOST_SETUP
+                connectionHubMode == ComposeConnectionHubMode.JOIN && requestedAppMode == AppMode.JOIN_SETUP -> AppMode.JOIN_SETUP
+                else -> AppMode.WELCOME
+            }
+            val roomState = when {
+                issueDetected -> RoomState.ISSUE
+                statusState.clientConnected -> RoomState.CONNECTED
+                statusState.localServerRunning -> if (selectedPeer != null) RoomState.CONNECTED else RoomState.WAITING_FOR_PEERS
+                requestedAppMode == AppMode.HOST_SETUP -> RoomState.HOSTING
+                else -> RoomState.OFFLINE
+            }
+            val selectionState = when {
+                activeCall -> SelectionState.CALL
+                activeTransfer -> SelectionState.TRANSFER
+                selectedPeer != null -> SelectionState.PEER
+                effectiveMode == AppMode.MESSENGER -> SelectionState.ROOM_CONVERSATION
+                else -> SelectionState.NONE
+            }
+            val rightPanelMode = when {
+                diagnosticsRequested -> RightPanelMode.DIAGNOSTICS
+                advancedConnectionRequested -> RightPanelMode.ADVANCED_CONNECTION
+                activeCall -> RightPanelMode.CALL
+                activeTransfer -> RightPanelMode.TRANSFERS
+                selectedPeer != null -> RightPanelMode.PEER_INFO
+                effectiveMode == AppMode.MESSENGER -> RightPanelMode.ROOM_INFO
+                else -> RightPanelMode.HIDDEN
+            }
+            return ComposeProductScreenState(effectiveMode, roomState, selectionState, rightPanelMode)
+        }
+    }
+}
+
+data class ComposeAppShellState(
+    val productState: ComposeProductScreenState,
+    val statusState: ComposeStatusConnectionState,
+    val peerStatus: String = "No one selected",
+    val voiceStatus: String = "Calls idle",
+    val transferStatus: String = "Files idle",
+    val warningVisible: Boolean = false,
+) {
+    val topBarHeightMin: Int = 48
+    val topBarHeightMax: Int = 56
+    val currentContextLabel: String = when (productState.appMode) {
+        AppMode.WELCOME -> ComposeShellMetadata.APP_NAME
+        AppMode.HOST_SETUP -> "Host a secure room"
+        AppMode.JOIN_SETUP -> "Join a secure room"
+        AppMode.MESSENGER -> statusState.nickname.ifBlank { "Secure room" }
+        AppMode.SETTINGS -> "Settings"
+        AppMode.DIAGNOSTICS -> "Diagnostics"
+    }
+    val globalStatus: ComposeGlobalStatusIndicatorState = ComposeGlobalStatusIndicatorState(
+        statusState = statusState,
+        peerStatus = peerStatus,
+        voiceStatus = voiceStatus,
+        transferStatus = transferStatus,
+    )
+    val globalStatusLabel: String = globalStatus.label
+    val primaryStatusDetail: String = when (productState.roomState) {
+        RoomState.OFFLINE -> "Offline"
+        RoomState.HOSTING -> "Preparing room"
+        RoomState.WAITING_FOR_PEERS -> "Room ready"
+        RoomState.CONNECTED -> "Connected"
+        RoomState.ISSUE -> "Needs attention"
+    }
+    val technicalStatusDetail: String = globalStatus.detailText
+    val rightActions: List<String> = buildList {
+        add("Search")
+        add("Settings")
+        if (warningVisible || productState.appMode == AppMode.DIAGNOSTICS || productState.roomState == RoomState.ISSUE) {
+            add("Diagnostics")
+        }
+        add("Theme")
+    }
+    val lightweightShell: Boolean = productState.appMode in setOf(AppMode.WELCOME, AppMode.HOST_SETUP, AppMode.JOIN_SETUP)
+    val threeColumnShell: Boolean = productState.appMode == AppMode.MESSENGER
+    val avoidsLongPrimaryStatus: Boolean = !primaryStatusDetail.contains(" · ")
+    val hasOneGlobalStatusIndicator: Boolean = globalStatusLabel.isNotBlank()
+}
+
+data class ComposeOnboardingState(
+    val headline: String = "Secure chat for people nearby",
+    val body: String = "Private LAN messages, files, and calls without cloud accounts.",
+    val hostActionLabel: String = "Host secure room",
+    val joinActionLabel: String = "Join nearby room",
+    val secondaryLinks: List<String> = listOf("Advanced connection", "Settings"),
+    val benefitChips: List<String> = listOf("LAN only", "Encrypted", "Files", "Calls"),
+    val discoveryStatus: String = "Looking for nearby rooms…",
+    val emptyNearbyTitle: String = "No nearby rooms yet",
+    val emptyNearbyDetail: String = "Host a secure room or wait for trusted devices on this LAN.",
+    val brandGlyph: String = "◈⌁",
+) {
+    val title: String = ComposeShellMetadata.APP_NAME
+    val primaryActions: List<String> = listOf(hostActionLabel, joinActionLabel)
+    val showsOnlyPrimaryConnectionChoices: Boolean = primaryActions == listOf("Host secure room", "Join nearby room")
+    val hidesTechnicalDetails: Boolean = secondaryLinks.contains("Advanced connection")
+    val guidanceSummary: String = "$headline $body"
+    val hasFullDesktopComposition: Boolean = true
+    val primaryButtonWidthRange: IntRange = 180..240
+    val secondaryButtonWidthRange: IntRange = 180..240
+    val avoidsFirstRunTechnicalFields: Boolean = listOf("Your name", "Room password", "Hidden", "Ports").none { token ->
+        guidanceSummary.contains(token, ignoreCase = true) || primaryActions.any { it.contains(token, ignoreCase = true) }
+    }
 }
 
 enum class ComposeJavaFxWorkspaceRegion {
@@ -102,7 +294,7 @@ data class ComposeJavaFxWorkspaceColumn(
 
 data class ComposeJavaFxWorkspaceParityState(
     val statusChips: List<String> = listOf("Server", "Connection", "Peer", "Voice", "Transfers", "Theme"),
-    val headerCards: List<String> = listOf("My profile", "Manual connection"),
+    val headerCards: List<String> = listOf("Room connection"),
     val workspaceColumns: List<ComposeJavaFxWorkspaceColumn> = listOf(
         ComposeJavaFxWorkspaceColumn(
             region = ComposeJavaFxWorkspaceRegion.PEERS_COLUMN,
@@ -113,15 +305,15 @@ data class ComposeJavaFxWorkspaceParityState(
         ),
         ComposeJavaFxWorkspaceColumn(
             region = ComposeJavaFxWorkspaceRegion.CONVERSATION_COLUMN,
-            title = "Chat",
-            weight = 0.52f,
+            title = "Shared room chat",
+            weight = 0.60f,
             javaFxSource = "buildConversationColumn",
             composeScope = "LiveChatWorkspaceCard, video stage, and chat preview surfaces",
         ),
         ComposeJavaFxWorkspaceColumn(
             region = ComposeJavaFxWorkspaceRegion.ACTIONS_COLUMN,
             title = "Actions",
-            weight = 0.28f,
+            weight = 0.20f,
             javaFxSource = "buildActionsColumn",
             composeScope = "Transfers, quick share, stego, media, diagnostics, regression, and packaging cards",
         ),
@@ -137,9 +329,10 @@ data class ComposeJavaFxWorkspaceParityState(
     val quickActions: List<String> = listOf("Attach", "Voice call", "Video call", "End call"),
     val javaFxFallbackAvailable: Boolean = true,
 ) {
-    val title: String = "JavaFX workspace parity layout"
-    val dividerPositions: List<Double> = listOf(0.20, 0.72)
-    val splitSummary: String = "Peers 20% · Chat 52% · Actions 28%"
+    val title: String = "Messenger workspace layout"
+    val dividerPositions: List<Double> = listOf(0.20, 0.80)
+    val splitSummary: String = "Peers 20% · Chat 60% · Actions 20%"
+    val chatPrimary: Boolean = workspaceColumns.first { it.region == ComposeJavaFxWorkspaceRegion.CONVERSATION_COLUMN }.weight >= 0.60f
     val statusSummary: String = "Status chips: ${statusChips.joinToString(" · ")}"
     val headerSummary: String = "Connection header cards: ${headerCards.joinToString(" · ")}"
     val actionSectionSummary: String = "Actions column sections: ${actionSections.joinToString(" · ")}"
@@ -256,6 +449,28 @@ data class ComposeActionsColumnPresentationState(
 
     fun section(kind: ComposeActionsSectionKind): ComposeActionsSectionPresentation =
         sections.first { it.kind == kind }
+}
+
+data class ComposeGlobalStatusIndicatorState(
+    val statusState: ComposeStatusConnectionState,
+    val peerStatus: String = "Peer not selected",
+    val voiceStatus: String = "Voice idle",
+    val transferStatus: String = "Transfers idle",
+) {
+    val label: String = when {
+        statusState.serverStatus.contains("error", ignoreCase = true) ||
+            statusState.serverStatus.contains("failed", ignoreCase = true) ||
+            statusState.connectionStatus.contains("error", ignoreCase = true) ||
+            statusState.connectionStatus.contains("failed", ignoreCase = true) -> "Connection issue"
+        voiceStatus.contains("call", ignoreCase = true) && !voiceStatus.contains("idle", ignoreCase = true) -> "In call"
+        transferStatus.contains("active", ignoreCase = true) || transferStatus.contains("progress", ignoreCase = true) -> "File transfer active"
+        statusState.clientConnected && statusState.localServerRunning && peerStatus == "Peer not selected" -> "Waiting for peers"
+        statusState.clientConnected -> "Connected to secure room"
+        statusState.localServerRunning -> "Hosting secure room"
+        else -> "Offline"
+    }
+    val detailText: String = listOf(statusState.serverStatus, statusState.connectionStatus, peerStatus, voiceStatus, transferStatus)
+        .joinToString(" · ")
 }
 
 data class ComposeStatusConnectionState(
@@ -1207,6 +1422,227 @@ data class ComposeConnectionActionState(
     }
 }
 
+enum class ComposeConnectionHubMode {
+    HOST,
+    JOIN,
+}
+
+enum class ComposeConnectionHubMessageTone {
+    INFO,
+    SUCCESS,
+    ERROR,
+}
+
+enum class ComposeChatTranscriptLineKind {
+    LOCAL,
+    REMOTE,
+    PRESENCE,
+    WARNING,
+    DIAGNOSTIC,
+}
+
+data class ComposeChatTranscriptLinePresentation(
+    val kind: ComposeChatTranscriptLineKind,
+    val label: String,
+    val body: String,
+    val timestamp: Instant = Instant.now(),
+) {
+    val displayTime: String = formatComposeChatTimestamp(timestamp)
+
+    companion object {
+        fun from(line: String, localNickname: String = "", timestamp: Instant = Instant.now()): ComposeChatTranscriptLinePresentation {
+            val trimmed = line.trim()
+            val lower = trimmed.lowercase()
+            val normalizedLocal = localNickname.trim().lowercase()
+            val localPrefix = localNickname.trim()
+            val messageMatch = Regex("^([^:\\[][^:]*):\\s*(.*)$").matchEntire(trimmed)
+            val messageSender = messageMatch?.groupValues?.getOrNull(1)?.trim().orEmpty()
+            val messageBody = messageMatch?.groupValues?.getOrNull(2)?.trim().orEmpty()
+            val kind = when {
+                lower.startsWith("[error]") || lower.startsWith("[warning]") || lower.contains(" failed") || lower.contains(" error") ->
+                    ComposeChatTranscriptLineKind.WARNING
+                lower.startsWith("[join]") || lower.startsWith("[left]") || lower.contains(" joined the chat") || lower.contains(" left the chat") ->
+                    ComposeChatTranscriptLineKind.PRESENCE
+                lower.startsWith("[info]") || lower.startsWith("[connected]") || lower.startsWith("[disconnected]") || lower.startsWith("system:") ->
+                    ComposeChatTranscriptLineKind.DIAGNOSTIC
+                normalizedLocal.isNotEmpty() && lower.startsWith("$normalizedLocal:") -> ComposeChatTranscriptLineKind.LOCAL
+                normalizedLocal.isNotEmpty() && lower.startsWith("$normalizedLocal ->") -> ComposeChatTranscriptLineKind.LOCAL
+                else -> ComposeChatTranscriptLineKind.REMOTE
+            }
+            val label = when (kind) {
+                ComposeChatTranscriptLineKind.LOCAL -> "You"
+                ComposeChatTranscriptLineKind.REMOTE -> messageSender.ifBlank { "Message" }
+                ComposeChatTranscriptLineKind.PRESENCE -> "Presence"
+                ComposeChatTranscriptLineKind.WARNING -> "Attention"
+                ComposeChatTranscriptLineKind.DIAGNOSTIC -> "Diagnostic"
+            }
+            val body = when (kind) {
+                ComposeChatTranscriptLineKind.LOCAL -> trimmed
+                    .removePrefix("$localPrefix:")
+                    .removePrefix("$localPrefix ->")
+                    .trim()
+                ComposeChatTranscriptLineKind.REMOTE -> messageBody.ifBlank { trimmed }
+                ComposeChatTranscriptLineKind.PRESENCE -> trimmed
+                    .replace(Regex("^\\[join]\\s*", RegexOption.IGNORE_CASE), "joined: ")
+                    .replace(Regex("^\\[left]\\s*", RegexOption.IGNORE_CASE), "left: ")
+                    .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "system: ")
+                    .replace(Regex("^\\[system]\\s*", RegexOption.IGNORE_CASE), "system: ")
+                ComposeChatTranscriptLineKind.DIAGNOSTIC -> trimmed
+                    .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "[system] ")
+                else -> trimmed
+            }
+            return ComposeChatTranscriptLinePresentation(kind, label, body, timestamp)
+        }
+    }
+}
+
+/**
+ * Unified connection hub state that merges the legacy "My profile" and "Manual connection" cards
+ * into a single room-connection surface. Nickname and password are shared across host/join modes;
+ * mode-specific ports and addresses are kept inside [statusState].
+ */
+data class ComposeConnectionHubState(
+    val statusState: ComposeStatusConnectionState,
+    val mode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
+    val localNetworkInfo: String = "",
+) {
+    val isHostMode: Boolean = mode == ComposeConnectionHubMode.HOST
+    val title: String = "Room connection"
+    val hostTabLabel: String = "Host Room"
+    val joinTabLabel: String = "Join Room"
+    val hostChoiceSubtitle: String = if (statusState.localServerRunning) {
+        if (statusState.discoverable) "Room is discoverable" else "Hidden room is open"
+    } else {
+        "Create a trusted room on this computer"
+    }
+    val joinChoiceSubtitle: String = when {
+        statusState.clientConnected -> "Joined ${statusState.manualHost.trim()}"
+        statusState.manualHost.trim().isNotBlank() && statusState.manualHost.trim() != "127.0.0.1" ->
+            "Ready for ${statusState.manualHost.trim()}"
+        else -> "Choose a nearby room or use Advanced"
+    }
+    val activeModeTitle: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Host a secure room"
+        ComposeConnectionHubMode.JOIN -> "Join a secure room"
+    }
+    val activeModeDetail: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Set the room name, your display name, and a shared password. Keep discovery on if nearby peers should find it."
+        ComposeConnectionHubMode.JOIN -> "Choose a nearby room when one appears. Advanced manual connection keeps host and port fields available when discovery is not enough."
+    }
+    val nickname: String = statusState.nickname
+    val password: String = statusState.roomPasswordPlaceholder
+
+    val primaryActionEnabled: Boolean = statusState.javaFxFallbackAvailable && when (mode) {
+        ComposeConnectionHubMode.HOST -> statusState.canOpenRoom
+        ComposeConnectionHubMode.JOIN -> statusState.canConnect
+    }
+
+    val primaryActionLabel: String = when {
+        !statusState.javaFxFallbackAvailable -> when (mode) {
+            ComposeConnectionHubMode.HOST -> "Host Room unavailable"
+            ComposeConnectionHubMode.JOIN -> "Join Room unavailable"
+        }
+        mode == ComposeConnectionHubMode.HOST -> "Start secure room"
+        mode == ComposeConnectionHubMode.JOIN -> "Join Room"
+        else -> "Join Room"
+    }
+
+    val activeBadgeLabel: String? = when {
+        mode == ComposeConnectionHubMode.HOST && statusState.localServerRunning -> if (statusState.discoverable) "Room open" else "Hidden room open"
+        mode == ComposeConnectionHubMode.JOIN && statusState.clientConnected -> "Connected"
+        else -> null
+    }
+
+    val secondaryActionEnabled: Boolean = statusState.javaFxFallbackAvailable && when (mode) {
+        ComposeConnectionHubMode.HOST -> statusState.localServerRunning
+        ComposeConnectionHubMode.JOIN -> statusState.clientConnected
+    }
+
+    val secondaryActionLabel: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> if (statusState.localServerRunning) "Stop hosting" else "Stop hosting"
+        ComposeConnectionHubMode.JOIN -> if (statusState.clientConnected) "Disconnect" else "Disconnect"
+    }
+
+    val secondaryActionDestructive: Boolean = true
+
+    val modeHint: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Start a room for nearby trusted people."
+        ComposeConnectionHubMode.JOIN -> "Join a nearby trusted room."
+    }
+
+    val joinTargetSummary: String = when {
+        mode != ComposeConnectionHubMode.JOIN -> "Discovery can publish this room when enabled."
+        !statusState.manualHostValid -> "Choose a nearby room, or open Advanced manual connection."
+        statusState.clientChatPort != null && statusState.clientFilePort != null ->
+            "Manual target ${statusState.manualHost.trim()}:${statusState.clientChatPortText.trim()} · files ${statusState.clientFilePortText.trim()}"
+        else -> "Manual target is set; enter valid chat and file ports."
+    }
+
+    val networkInfoSummary: String = when {
+        mode == ComposeConnectionHubMode.HOST && localNetworkInfo.isNotBlank() -> localNetworkInfo
+        mode == ComposeConnectionHubMode.HOST -> "Connection details will appear after the room starts."
+        else -> "Nearby rooms appear in the peer list; use Advanced if discovery does not find one."
+    }
+
+    val blockedReason: String? = when {
+        !statusState.javaFxFallbackAvailable -> "JavaFX fallback is unavailable; keep live Compose connection actions disabled."
+        !statusState.nicknameValid -> "Enter your name before opening or joining a room."
+        mode == ComposeConnectionHubMode.HOST && statusState.serverChatPort == null -> "Room chat port must be a valid TCP port from 1 to 65535."
+        mode == ComposeConnectionHubMode.HOST && statusState.serverFilePort == null -> "Room file port must be a valid TCP port from 1 to 65535."
+        mode == ComposeConnectionHubMode.JOIN && !statusState.manualHostValid -> "Enter the host address of the room you want to join."
+        mode == ComposeConnectionHubMode.JOIN && statusState.clientChatPort == null -> "Manual chat port must be a valid TCP port from 1 to 65535."
+        mode == ComposeConnectionHubMode.JOIN && statusState.clientFilePort == null -> "Manual file port must be a valid TCP port from 1 to 65535."
+        else -> null
+    }
+
+    val statusMessage: String? = blockedReason ?: when {
+        mode == ComposeConnectionHubMode.HOST && statusState.localServerRunning ->
+            if (statusState.discoverable) {
+                "Room is open and discoverable on the local network."
+            } else {
+                "Room is open in hidden mode. Share the host address with trusted peers."
+            }
+        mode == ComposeConnectionHubMode.JOIN && statusState.clientConnected ->
+            "Connected to the room. Disconnect before joining a different room."
+        else -> null
+    }
+
+    val statusMessageTone: ComposeConnectionHubMessageTone = when {
+        blockedReason != null -> ComposeConnectionHubMessageTone.ERROR
+        statusMessage != null -> ComposeConnectionHubMessageTone.SUCCESS
+        else -> ComposeConnectionHubMessageTone.INFO
+    }
+
+    val primaryActionBlockedReason: String = blockedReason ?: "Action is not available in this state."
+    val copyRoomAddressEnabled: Boolean = mode == ComposeConnectionHubMode.HOST && statusState.localServerRunning && localNetworkInfo.isNotBlank()
+    val copyRoomAddressText: String = networkInfoSummary
+    val discoverableToggleEnabled: Boolean = statusState.javaFxFallbackAvailable
+    val discoverableLabel: String = statusState.discoverableLabel
+    val showAdvancedSettings: Boolean = true
+    val advancedSettingsTitle: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Advanced hosting settings"
+        ComposeConnectionHubMode.JOIN -> "Advanced manual connection"
+    }
+}
+
+data class ComposeConnectionJoinTarget(
+    val nickname: String,
+    val host: String,
+    val chatPortText: String,
+    val filePortText: String,
+) {
+    val endpointLabel: String = "$host:$chatPortText · files $filePortText"
+
+    companion object {
+        fun fromDiscoveredPeer(peer: DiscoveredPeer): ComposeConnectionJoinTarget = ComposeConnectionJoinTarget(
+            nickname = peer.nickname,
+            host = peer.host,
+            chatPortText = peer.chatPort.toString(),
+            filePortText = peer.filePort.toString(),
+        )
+    }
+}
+
 data class ComposePeerListState(
     val peers: List<ComposePeerListItem> = ComposePeerListItem.defaultPreviewItems(clientConnected = false),
     val selectedPeerIndex: Int = 0,
@@ -1221,6 +1657,13 @@ data class ComposePeerListState(
         compareByDescending<ComposePeerListItem> { it.online }
             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.nickname },
     )
+    val onlinePeers: List<ComposePeerListItem> = visiblePeers.filter { it.online }
+    val offlinePeers: List<ComposePeerListItem> = visiblePeers.filterNot { it.online }
+    val hasAnyPeers: Boolean = visiblePeers.isNotEmpty()
+    val emptyStateTitle: String = "No peers visible yet"
+    val emptyStateDetail: String =
+        "Open or join a room first. If a peer is on the same LAN but does not appear, use Manual connection in the Room connection panel."
+    val emptyStateActionLabel: String = "Open or join a room"
     val resolvedSelectedPeerIndex: Int = resolveSelectedPeerIndex()
     val selectedPeer: ComposePeerListItem? = visiblePeers.getOrNull(resolvedSelectedPeerIndex)
     val selectedPeerTitle: String = selectedPeer?.nickname ?: "No peer selected"
@@ -1228,6 +1671,9 @@ data class ComposePeerListState(
         selectedPeer?.selectedMeta ?: "Choose an online chat peer to send files or start a voice/video session."
     val peerStatus: String =
         selectedPeer?.let { if (it.online) "Peer ${it.nickname}" else "Peer offline" } ?: "Peer not selected"
+    val noPeerActionTitle: String = "Pick a peer to unlock actions"
+    val noPeerActionDetail: String =
+        "Voice, video, and encrypted file sending stay compact until you select an online peer. Receiving files and diagnostics remain available below."
     val actionSummary: String = selectedTargetKind?.let { kind ->
         selectedPeer?.let { "${kind.displayName} target selected for ${it.nickname}. Runtime action remains blocked until its feature slice is validated." }
     } ?: selectedPeer?.actionSummary ?: "Select an online peer before enabling chat, file, voice, or video actions."
@@ -1616,8 +2062,20 @@ data class ComposeChatMessage(
     val sender: String,
     val text: String,
     val system: Boolean = false,
+    val timestamp: Instant = Instant.now(),
+    val transcriptLine: String? = null,
 ) {
-    val displayText: String = if (system) "[$sender] $text" else "$sender: $text"
+    val displayText: String = transcriptLine ?: if (system) "[$sender] $text" else "$sender: $text"
+    val displayTime: String = formatComposeChatTimestamp(timestamp)
+
+    companion object {
+        fun fromTranscriptLine(line: String, timestamp: Instant = Instant.now()): ComposeChatMessage = ComposeChatMessage(
+            sender = "runtime",
+            text = line,
+            timestamp = timestamp,
+            transcriptLine = line,
+        )
+    }
 }
 
 data class ComposeChatWorkspaceState(
@@ -1627,13 +2085,25 @@ data class ComposeChatWorkspaceState(
     val messages: List<ComposeChatMessage> = defaultPreviewMessages(),
     val javaFxFallbackAvailable: Boolean = true,
 ) {
-    val title: String = "Shared room activity"
+    val title: String = "Shared room chat"
     val subtitle: String = peerListState.selectedPeer?.let { peer ->
-        "Actions on the right will target “${peer.nickname}”. Text chat remains shared for now."
+        "Actions on the right will target “${peer.nickname}”. Text chat is visible to everyone in this room."
     } ?: "Connect to chat, then select a peer on the left for voice, video, and file actions."
     val transcriptLines: List<String> = messages.map(ComposeChatMessage::displayText)
+    val transcriptMessageTimes: List<String> = messages.map(ComposeChatMessage::displayTime)
     val transcriptSummary: String =
         if (messages.isEmpty()) "No chat messages yet." else "Preview transcript lines: ${messages.size}"
+    val transcriptEmptyTitle: String = if (statusState.clientConnected && peerListState.selectedPeer == null) {
+        "Choose someone to start"
+    } else {
+        "No messages yet"
+    }
+    val transcriptEmptyDetailConnected: String = if (peerListState.selectedPeer == null) {
+        "Select a person on the left to chat, send files, or start a call."
+    } else {
+        "Say hello to the room. Messages will appear here."
+    }
+    val transcriptEmptyDetailDisconnected: String = "Host or join a trusted LAN room first. Then your messages and room events will appear here."
     val draftValid: Boolean = draftMessage.trim().isNotEmpty()
     val canSendMessage: Boolean = statusState.clientConnected && draftValid
     val sendLabel: String = if (canSendMessage) "Send ready" else "Send blocked"
@@ -1658,9 +2128,9 @@ data class ComposeChatWorkspaceState(
 
     companion object {
         fun defaultPreviewMessages(): List<ComposeChatMessage> = listOf(
-            ComposeChatMessage("connected", "Compose Preview -> 127.0.0.1", system = true),
-            ComposeChatMessage("Astra Laptop", "Desktop chat transcript preview"),
-            ComposeChatMessage("join", "Beta Phone", system = true),
+            ComposeChatMessage("connected", "Compose Preview -> 127.0.0.1", system = true, timestamp = Instant.parse("2026-05-26T20:00:00Z")),
+            ComposeChatMessage("Astra Laptop", "Desktop chat transcript preview", timestamp = Instant.parse("2026-05-26T20:01:00Z")),
+            ComposeChatMessage("join", "Beta Phone", system = true, timestamp = Instant.parse("2026-05-26T20:02:00Z")),
         )
     }
 }
@@ -1825,10 +2295,81 @@ data class ComposeFileTransferState(
         }
     }
     val nextStepSummary: String = blockedReasons.firstOrNull() ?: "Ready to send encrypted file to $selectedPeerName."
+    val chatAttachmentCards: List<ComposeChatAttachmentCard> = buildList {
+        incomingPrompts.filter { it.waitingForDecision }.forEach { prompt ->
+            add(ComposeChatAttachmentCard.incoming(prompt))
+        }
+        recentEntryRows.forEach { row ->
+            add(ComposeChatAttachmentCard.transfer(row))
+        }
+    }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
         "Encrypted file-transfer send/receive controls are ready for Compose wiring."
     } else {
         blockedReasons.joinToString(" · ")
+    }
+}
+
+data class ComposeAttachmentToolsState(
+    val peerSelected: Boolean,
+    val fileTargetReady: Boolean,
+    val quickShareAvailable: Boolean = true,
+    val steganographyAvailable: Boolean = true,
+) {
+    val title: String = "Attach"
+    val primaryItems: List<String> = buildList {
+        add("Send secure file")
+        if (quickShareAvailable) add("Share on LAN temporarily")
+        add("Send encrypted text or file")
+        if (steganographyAvailable) {
+            add("Hide message in image")
+            add("Extract hidden message")
+        }
+    }
+    val summary: String = if (peerSelected && fileTargetReady) {
+        "Attachment tools are ready for the selected peer."
+    } else {
+        "Select an online peer to send secure files; LAN sharing and privacy tools stay available from Attach."
+    }
+    val keepsAdvancedToolsContextual: Boolean = primaryItems.contains("Share on LAN temporarily") &&
+        primaryItems.contains("Hide message in image") &&
+        primaryItems.contains("Extract hidden message")
+}
+
+data class ComposeChatAttachmentCard(
+    val title: String,
+    val subtitle: String,
+    val progressPercent: Int,
+    val active: Boolean,
+    val failed: Boolean,
+    val needsDecision: Boolean,
+) {
+    val progressLabel: String = when {
+        needsDecision -> "Needs review"
+        active -> "Transferring · $progressPercent%"
+        failed -> "Failed"
+        progressPercent >= 100 -> "Complete"
+        else -> "$progressPercent%"
+    }
+
+    companion object {
+        fun incoming(prompt: ComposeIncomingTransferPrompt): ComposeChatAttachmentCard = ComposeChatAttachmentCard(
+            title = "Incoming file · ${prompt.fileName}",
+            subtitle = "${prompt.senderId} wants to send ${prompt.sizeLabel}",
+            progressPercent = 0,
+            active = false,
+            failed = false,
+            needsDecision = true,
+        )
+
+        fun transfer(row: ComposeTransferRow): ComposeChatAttachmentCard = ComposeChatAttachmentCard(
+            title = row.title,
+            subtitle = row.detail,
+            progressPercent = row.percent,
+            active = row.active,
+            failed = row.failed,
+            needsDecision = false,
+        )
     }
 }
 

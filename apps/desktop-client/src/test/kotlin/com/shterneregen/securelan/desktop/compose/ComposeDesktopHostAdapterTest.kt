@@ -70,7 +70,7 @@ class ComposeDesktopHostAdapterTest {
         adapter.chatEventPublisher.publish(ChatConnectedEvent("Alice", "127.0.0.1"))
         adapter.chatEventPublisher.publish(ChatMessageReceivedEvent("Bob", "hello"))
         adapter.chatEventPublisher.publish(ChatMessageSentEvent("Alice", "hello back"))
-        adapter.chatEventPublisher.publish(ChatUserJoinedEvent("Carol", "127.0.0.2"))
+        adapter.chatEventPublisher.publish(ChatUserJoinedEvent("[join] Carol", "127.0.0.2"))
         adapter.chatEventPublisher.publish(ChatUserLeftEvent("Bob"))
         adapter.chatEventPublisher.publish(ChatDisconnectedEvent("Alice", "closed"))
         adapter.chatEventPublisher.publish(ChatErrorEvent("boom", IllegalStateException("details")))
@@ -87,6 +87,28 @@ class ComposeDesktopHostAdapterTest {
             ),
             adapter.chatTranscript,
         )
+        assertEquals(adapter.chatTranscript, adapter.chatMessages.map(ComposeChatMessage::displayText))
+        assertTrue(adapter.chatMessages.all { it.displayTime.matches(Regex("\\d{2}:\\d{2}")) })
+    }
+
+    @Test
+    fun shouldNormalizeChatTranscriptPrefixesAndEndpointFormatting() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+
+        adapter.chatEventPublisher.publish(ChatConnectedEvent("Mallory", "/127.0.0.1:5050"))
+        adapter.chatEventPublisher.publish(ChatMessageReceivedEvent("system", "[system] Mallory joined the chat"))
+        adapter.chatEventPublisher.publish(ChatMessageReceivedEvent("Mallory", "Mallory: hello"))
+        adapter.chatEventPublisher.publish(ChatUserJoinedEvent("[join] Uma", "127.0.0.2"))
+
+        assertTrue(adapter.chatTranscript.contains("[connected] Mallory -> 127.0.0.1:5050"))
+        assertTrue(adapter.chatTranscript.contains("[system] Mallory joined the chat"))
+        assertTrue(adapter.chatTranscript.contains("Mallory: hello"))
+        assertTrue(adapter.chatTranscript.contains("[join] Uma"))
+        assertFalse(adapter.chatTranscript.any { it.contains("system: [system]") })
+        assertFalse(adapter.chatTranscript.any { it.contains("[join] [join]") })
+        assertFalse(adapter.chatTranscript.any { it.contains("Mallory: Mallory:") })
+        assertEquals(adapter.chatTranscript, adapter.chatMessages.map(ComposeChatMessage::displayText))
     }
 
     @Test
@@ -178,6 +200,31 @@ class ComposeDesktopHostAdapterTest {
         assertEquals("New Compose Client", adapter.statusState.nickname)
         assertEquals("New Compose Client", fixture.chatClient.requests.single().nickname)
         assertEquals("127.0.0.1", adapter.statusState.manualHost)
+    }
+
+    @Test
+    fun shouldResolveDiscoveredPeerIntoJoinTargetForComposeAutofill() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+
+        fixture.discovery.discover(
+            DiscoveredPeer(
+                "peer-beta",
+                "Beta",
+                "192.168.1.20",
+                NetworkConstants.DEFAULT_CHAT_PORT,
+                NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
+                Instant.now(),
+            ),
+        )
+
+        val target = adapter.joinTargetFor("beta")
+
+        assertEquals("Beta", target?.nickname)
+        assertEquals("192.168.1.20", target?.host)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT.toString(), target?.chatPortText)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT.toString(), target?.filePortText)
+        assertEquals("192.168.1.20:${NetworkConstants.DEFAULT_CHAT_PORT} · files ${NetworkConstants.DEFAULT_FILE_TRANSFER_PORT}", target?.endpointLabel)
     }
 
     @Test

@@ -42,12 +42,13 @@ class ComposeShellMetadataTest {
     fun shouldExposeJavaFxWorkspaceParityLayoutContract() {
         val state = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE
 
-        assertEquals("JavaFX workspace parity layout", state.title)
-        assertEquals(listOf(0.20, 0.72), state.dividerPositions)
-        assertEquals(listOf("Peers", "Chat", "Actions"), state.workspaceColumns.map { it.title })
-        assertEquals(listOf(0.20f, 0.52f, 0.28f), state.workspaceColumns.map { it.weight })
+        assertEquals("Messenger workspace layout", state.title)
+        assertEquals(listOf(0.20, 0.80), state.dividerPositions)
+        assertEquals(listOf("Peers", "Shared room chat", "Actions"), state.workspaceColumns.map { it.title })
+        assertEquals(listOf(0.20f, 0.60f, 0.20f), state.workspaceColumns.map { it.weight })
+        assertEquals(true, state.chatPrimary)
         assertTrue(state.statusSummary.contains("Transfers"))
-        assertTrue(state.headerSummary.contains("Manual connection"))
+        assertTrue(state.headerSummary.contains("Room connection"))
         assertTrue(state.actionSectionSummary.contains("Runtime / Diagnostics"))
         assertTrue(state.quickActionSummary.contains("Voice call"))
         assertTrue(state.javaFxMappingSummary.contains("buildWorkspace") || state.javaFxMappingSummary.contains("buildPeersColumn"))
@@ -103,13 +104,164 @@ class ComposeShellMetadataTest {
     }
 
     @Test
+    fun shouldExposeFirstLaunchOnboardingWithoutTechnicalDetails() {
+        val state = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE
+
+        assertEquals("SecureLanSuite", state.title)
+        assertEquals("Secure chat for people nearby", state.headline)
+        assertEquals("Private LAN messages, files, and calls without cloud accounts.", state.body)
+        assertEquals(listOf("Host secure room", "Join nearby room"), state.primaryActions)
+        assertEquals(listOf("Advanced connection", "Settings"), state.secondaryLinks)
+        assertEquals(listOf("LAN only", "Encrypted", "Files", "Calls"), state.benefitChips)
+        assertEquals("Looking for nearby rooms…", state.discoveryStatus)
+        assertEquals("No nearby rooms yet", state.emptyNearbyTitle)
+        assertEquals(true, state.showsOnlyPrimaryConnectionChoices)
+        assertEquals(true, state.hidesTechnicalDetails)
+        assertEquals(true, state.hasFullDesktopComposition)
+        assertEquals(180..240, state.primaryButtonWidthRange)
+        assertEquals(180..240, state.secondaryButtonWidthRange)
+        assertEquals(true, state.avoidsFirstRunTechnicalFields)
+        assertFalse(state.guidanceSummary.contains("port", ignoreCase = true))
+        assertFalse(state.guidanceSummary.contains("adapter", ignoreCase = true))
+    }
+
+    @Test
+    fun shouldExposePhaseElevenDesignTokens() {
+        val dark = SecureLanThemeTokens.Dark
+        val light = SecureLanThemeTokens.Light
+
+        assertEquals(4f, dark.spacing.xxs.value)
+        assertEquals(8f, dark.spacing.xs.value)
+        assertEquals(12f, dark.spacing.sm.value)
+        assertEquals(16f, dark.spacing.md.value)
+        assertEquals(20f, dark.spacing.lg.value)
+        assertEquals(24f, dark.spacing.xl.value)
+        assertEquals(32f, dark.spacing.xxl.value)
+        assertEquals(40f, dark.spacing.xxxl.value)
+        assertEquals(8f, dark.radius.small.value)
+        assertEquals(12f, dark.radius.medium.value)
+        assertEquals(20f, dark.radius.large.value)
+        assertEquals(36f, dark.density.buttonMinHeight.value)
+        assertEquals(38f, dark.density.inputMinHeight.value)
+        assertEquals(48f, dark.density.sidebarRowMinHeight.value)
+        assertEquals(60f, dark.density.sidebarRowMaxHeight.value)
+        assertEquals(52f, dark.density.composerMinHeight.value)
+        assertEquals(24f, dark.typography.titleMin.value)
+        assertEquals(32f, dark.typography.titleMax.value)
+        assertEquals(13f, dark.typography.bodySmall.value)
+        assertEquals(15f, dark.typography.bodyLarge.value)
+        assertEquals(SecureLanThemeTokens.DarkColors, dark.colors)
+        assertEquals(SecureLanThemeTokens.LightColors, light.colors)
+        assertNotEquals(dark.colors.background, light.colors.background)
+        assertNotEquals(androidx.compose.ui.graphics.Color.Black, dark.colors.background)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFF60A5FA), dark.colors.borderFocus)
+    }
+
+    @Test
+    fun shouldExposePhaseElevenProductScreenModel() {
+        val defaultState = ComposeShellMetadata.DEFAULT_PRODUCT_SCREEN_STATE
+        val hostSetup = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(),
+            requestedAppMode = AppMode.HOST_SETUP,
+            connectionHubMode = ComposeConnectionHubMode.HOST,
+        )
+        val joinSetup = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(),
+            requestedAppMode = AppMode.JOIN_SETUP,
+            connectionHubMode = ComposeConnectionHubMode.JOIN,
+        )
+        val connectedPeer = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            requestedAppMode = AppMode.HOST_SETUP,
+            selectedPeer = ComposePeerListItem.defaultPreviewItems(clientConnected = true).first(),
+        )
+        val transfer = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            activeTransfer = true,
+        )
+        val call = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            activeCall = true,
+        )
+        val diagnostics = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            diagnosticsRequested = true,
+        )
+        val settings = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            settingsRequested = true,
+        )
+        val advanced = ComposeProductScreenState.from(
+            statusState = ComposeStatusConnectionState(),
+            advancedConnectionRequested = true,
+        )
+
+        assertEquals(AppMode.WELCOME, defaultState.appMode)
+        assertEquals(RoomState.OFFLINE, defaultState.roomState)
+        assertEquals(SelectionState.NONE, defaultState.selectionState)
+        assertEquals(RightPanelMode.HIDDEN, defaultState.rightPanelMode)
+        assertEquals(AppMode.HOST_SETUP, hostSetup.appMode)
+        assertEquals(AppMode.JOIN_SETUP, joinSetup.appMode)
+        assertEquals(true, hostSetup.connectionFlowActive)
+        assertEquals(true, joinSetup.connectionAndCommunicationSeparated)
+        assertEquals(AppMode.MESSENGER, connectedPeer.appMode)
+        assertEquals(RoomState.CONNECTED, connectedPeer.roomState)
+        assertEquals(SelectionState.PEER, connectedPeer.selectionState)
+        assertEquals(RightPanelMode.PEER_INFO, connectedPeer.rightPanelMode)
+        assertEquals(SelectionState.TRANSFER, transfer.selectionState)
+        assertEquals(RightPanelMode.TRANSFERS, transfer.rightPanelMode)
+        assertEquals(SelectionState.CALL, call.selectionState)
+        assertEquals(RightPanelMode.CALL, call.rightPanelMode)
+        assertEquals(AppMode.DIAGNOSTICS, diagnostics.appMode)
+        assertEquals(RightPanelMode.DIAGNOSTICS, diagnostics.rightPanelMode)
+        assertEquals(AppMode.SETTINGS, settings.appMode)
+        assertEquals(RightPanelMode.HIDDEN, settings.rightPanelMode)
+        assertEquals(RightPanelMode.ADVANCED_CONNECTION, advanced.rightPanelMode)
+        assertTrue(connectedPeer.modeSummary.contains("Messenger"))
+    }
+
+    @Test
+    fun shouldExposePhaseElevenAppShellTopBarState() {
+        val welcome = ComposeShellMetadata.DEFAULT_APP_SHELL_STATE
+        val messenger = ComposeAppShellState(
+            productState = ComposeProductScreenState.from(
+                statusState = ComposeStatusConnectionState(clientConnected = true, nickname = "Astra"),
+            ),
+            statusState = ComposeStatusConnectionState(clientConnected = true, nickname = "Astra"),
+            peerStatus = "Peer Victor",
+        )
+        val warning = messenger.copy(warningVisible = true)
+
+        assertEquals(48, welcome.topBarHeightMin)
+        assertEquals(56, welcome.topBarHeightMax)
+        assertEquals("SecureLanSuite", welcome.currentContextLabel)
+        assertEquals("Offline", welcome.primaryStatusDetail)
+        assertEquals(true, welcome.lightweightShell)
+        assertEquals(false, welcome.threeColumnShell)
+        assertEquals(true, welcome.hasOneGlobalStatusIndicator)
+        assertEquals(true, welcome.avoidsLongPrimaryStatus)
+        assertEquals(listOf("Search", "Settings", "Theme"), welcome.rightActions)
+        assertEquals("Astra", messenger.currentContextLabel)
+        assertEquals("Connected", messenger.primaryStatusDetail)
+        assertEquals(false, messenger.lightweightShell)
+        assertEquals(true, messenger.threeColumnShell)
+        assertTrue(messenger.technicalStatusDetail.contains("Peer Victor"), messenger.technicalStatusDetail)
+        assertEquals(listOf("Search", "Settings", "Diagnostics", "Theme"), warning.rightActions)
+    }
+
+    @Test
     fun shouldExposeDefaultChatWorkspaceStateWithoutRuntimeSideEffects() {
         val state = ComposeShellMetadata.DEFAULT_CHAT_WORKSPACE_STATE
 
-        assertEquals("Shared room activity", state.title)
+        assertEquals("Shared room chat", state.title)
         assertTrue(state.subtitle.contains("Astra Laptop"))
         assertEquals(3, state.transcriptLines.size)
+        assertEquals(3, state.transcriptMessageTimes.size)
+        assertTrue(state.transcriptMessageTimes.all { it.matches(Regex("\\d{2}:\\d{2}")) })
         assertTrue(state.transcriptLines.first().contains("[connected]"))
+        assertTrue(state.transcriptEmptyTitle == "No messages yet" || state.transcriptEmptyTitle == "Choose someone to start")
+        assertTrue(state.transcriptEmptyDetailDisconnected.contains("Host or join"))
+        assertTrue(state.transcriptEmptyDetailConnected.contains("Say hello") || state.transcriptEmptyDetailConnected.contains("Select a person"))
         assertEquals(true, state.draftValid)
         assertEquals(false, state.canSendMessage)
         assertEquals("Send blocked", state.sendLabel)
@@ -152,6 +304,48 @@ class ComposeShellMetadataTest {
         assertEquals(false, state.canSendMessage)
         assertTrue(state.blockedReasons.any { it.contains("non-empty message") })
         assertTrue(state.blockedReasons.any { it.contains("JavaFX fallback") })
+    }
+
+    @Test
+    fun shouldSurfaceSharedRoomSemanticsInChatWorkspaceState() {
+        val connected = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(selectedPeerIndex = 0),
+            draftMessage = "hi",
+        )
+        val disconnected = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = false),
+            peerListState = ComposePeerListState(peers = emptyList()),
+            messages = emptyList(),
+        )
+
+        assertEquals("Shared room chat", connected.title)
+        assertTrue(connected.subtitle.contains("visible to everyone"))
+        assertEquals(true, connected.canSendMessage)
+        assertEquals("No messages yet", disconnected.transcriptEmptyTitle)
+        assertTrue(disconnected.transcriptEmptyDetailDisconnected.contains("Host or join"))
+        assertTrue(disconnected.transcriptEmptyDetailConnected.contains("Select a person"))
+    }
+
+    @Test
+    fun shouldExposeContextualAttachmentToolsFromComposer() {
+        val ready = ComposeAttachmentToolsState(peerSelected = true, fileTargetReady = true)
+        val blocked = ComposeAttachmentToolsState(peerSelected = false, fileTargetReady = false)
+
+        assertEquals("Attach", ready.title)
+        assertEquals(
+            listOf(
+                "Send secure file",
+                "Share on LAN temporarily",
+                "Send encrypted text or file",
+                "Hide message in image",
+                "Extract hidden message",
+            ),
+            ready.primaryItems,
+        )
+        assertEquals(true, ready.keepsAdvancedToolsContextual)
+        assertTrue(ready.summary.contains("selected peer"))
+        assertTrue(blocked.summary.contains("Select an online peer"))
     }
 
     @Test
@@ -198,6 +392,10 @@ class ComposeShellMetadataTest {
         assertEquals("demo.bin", state.selectedFileName)
         assertEquals("demo.bin", state.recentEntryRows.first().fileName)
         assertEquals("↑ Sent · demo.bin", state.recentEntryRows.first().title)
+        assertEquals(2, state.chatAttachmentCards.size)
+        assertEquals("Incoming file · in.txt", state.chatAttachmentCards.first().title)
+        assertEquals("Needs review", state.chatAttachmentCards.first().progressLabel)
+        assertEquals("Transferring · 50%", state.chatAttachmentCards.last().progressLabel)
         assertTrue(state.targetSummary.contains("Astra Laptop"))
         assertTrue(state.senderSummary.contains("Alice"))
         assertEquals("Using the current room password", state.passwordSummary)
@@ -329,6 +527,24 @@ class ComposeShellMetadataTest {
     }
 
     @Test
+    fun shouldCollapseStatusBarInputsIntoOneGlobalIndicator() {
+        val offline = ComposeGlobalStatusIndicatorState(ComposeStatusConnectionState())
+        val hosted = ComposeGlobalStatusIndicatorState(ComposeStatusConnectionState(localServerRunning = true, clientConnected = true))
+        val connected = ComposeGlobalStatusIndicatorState(ComposeStatusConnectionState(clientConnected = true), peerStatus = "Peer Astra")
+        val transfer = ComposeGlobalStatusIndicatorState(ComposeStatusConnectionState(clientConnected = true), transferStatus = "Transfer active")
+        val call = ComposeGlobalStatusIndicatorState(ComposeStatusConnectionState(clientConnected = true), voiceStatus = "Voice call active")
+        val issue = ComposeGlobalStatusIndicatorState(ComposeStatusConnectionState(connectionStatus = "Connection failed"))
+
+        assertEquals("Offline", offline.label)
+        assertEquals("Waiting for peers", hosted.label)
+        assertEquals("Connected to secure room", connected.label)
+        assertEquals("File transfer active", transfer.label)
+        assertEquals("In call", call.label)
+        assertEquals("Connection issue", issue.label)
+        assertTrue(connected.detailText.contains("Peer Astra"))
+    }
+
+    @Test
     fun shouldExposeDefaultStatusConnectionAdapterStateWithoutRuntimeSideEffects() {
         val state = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE
 
@@ -383,6 +599,27 @@ class ComposeShellMetadataTest {
         assertTrue(controlPlan.enabledSummary.contains("Connect"))
         assertTrue(controlPlan.disabledSummary.contains("Stop hosting"))
         assertTrue(controlPlan.command(ComposeConnectionCommandKind.OPEN_ROOM).queuedEvent.message.contains("open-room"))
+    }
+
+    @Test
+    fun shouldExposeUserFriendlyConnectionHubModeCopyAndJoinTargetSummary() {
+        val hostState = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(localServerRunning = true, discoverable = true),
+            mode = ComposeConnectionHubMode.HOST,
+            localNetworkInfo = "[info] local network IPs: 192.168.1.10",
+        )
+        val joinState = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(manualHost = "192.168.1.20"),
+            mode = ComposeConnectionHubMode.JOIN,
+        )
+
+        assertEquals("Room is discoverable", hostState.hostChoiceSubtitle)
+        assertEquals("Host a secure room", hostState.activeModeTitle)
+        assertTrue(hostState.activeModeDetail.contains("discovery"))
+        assertEquals("Ready for 192.168.1.20", joinState.joinChoiceSubtitle)
+        assertEquals("Join a secure room", joinState.activeModeTitle)
+        assertTrue(joinState.activeModeDetail.contains("Advanced manual connection"))
+        assertTrue(joinState.joinTargetSummary.contains("192.168.1.20:${NetworkConstants.DEFAULT_CHAT_PORT}"), joinState.joinTargetSummary)
     }
 
     @Test
@@ -768,6 +1005,179 @@ class ComposeShellMetadataTest {
     }
 
     @Test
+    fun shouldExposeUnifiedConnectionHubStateForHostMode() {
+        val state = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(nickname = "Alice"),
+            mode = ComposeConnectionHubMode.HOST,
+            localNetworkInfo = "LAN: 192.168.1.10",
+        )
+
+        assertEquals("Room connection", state.title)
+        assertEquals("Host Room", state.hostTabLabel)
+        assertEquals("Join Room", state.joinTabLabel)
+        assertEquals("Alice", state.nickname)
+        assertEquals(true, state.primaryActionEnabled)
+        assertEquals("Start secure room", state.primaryActionLabel)
+        assertEquals(false, state.secondaryActionEnabled)
+        assertEquals("Stop hosting", state.secondaryActionLabel)
+        assertEquals(null, state.activeBadgeLabel)
+        assertTrue(state.modeHint.contains("nearby trusted people"))
+        assertTrue(state.networkInfoSummary.contains("192.168.1.10"))
+        assertEquals("Advanced hosting settings", state.advancedSettingsTitle)
+        assertEquals(null, state.blockedReason)
+        assertEquals(null, state.statusMessage)
+        assertEquals(true, state.discoverableToggleEnabled)
+        assertEquals(false, state.copyRoomAddressEnabled)
+    }
+
+    @Test
+    fun shouldExposeUnifiedConnectionHubStateForJoinMode() {
+        val state = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20"),
+            mode = ComposeConnectionHubMode.JOIN,
+        )
+
+        assertEquals(true, state.primaryActionEnabled)
+        assertEquals("Join Room", state.primaryActionLabel)
+        assertEquals(false, state.secondaryActionEnabled)
+        assertEquals("Disconnect", state.secondaryActionLabel)
+        assertEquals(null, state.activeBadgeLabel)
+        assertTrue(state.modeHint.contains("nearby trusted room"))
+        assertTrue(state.networkInfoSummary.contains("Nearby rooms"))
+        assertEquals("Advanced manual connection", state.advancedSettingsTitle)
+        assertEquals(null, state.blockedReason)
+        assertEquals(null, state.statusMessage)
+    }
+
+    @Test
+    fun shouldBlockConnectionHubPrimaryActionAndShowRecoveryReason() {
+        val blankNickname = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(nickname = " "),
+            mode = ComposeConnectionHubMode.HOST,
+        )
+        val badHost = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(nickname = "Alice", manualHost = " "),
+            mode = ComposeConnectionHubMode.JOIN,
+        )
+        val noFallback = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(javaFxFallbackAvailable = false),
+            mode = ComposeConnectionHubMode.HOST,
+        )
+
+        assertEquals(false, blankNickname.primaryActionEnabled)
+        assertTrue(blankNickname.blockedReason?.contains("Enter your name") == true)
+        assertEquals(false, badHost.primaryActionEnabled)
+        assertTrue(badHost.blockedReason?.contains("host address") == true)
+        assertEquals(false, noFallback.primaryActionEnabled)
+        assertTrue(noFallback.blockedReason?.contains("JavaFX fallback") == true)
+        assertEquals(ComposeConnectionHubMessageTone.ERROR, blankNickname.statusMessageTone)
+    }
+
+    @Test
+    fun shouldUpdateConnectionHubPrimaryLabelForActiveConnectionWithoutErrorBanner() {
+        val hosted = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(localServerRunning = true),
+            mode = ComposeConnectionHubMode.HOST,
+        )
+        val connected = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            mode = ComposeConnectionHubMode.JOIN,
+        )
+
+        assertEquals("Start secure room", hosted.primaryActionLabel)
+        assertEquals(true, hosted.secondaryActionEnabled)
+        assertEquals("Room open", hosted.activeBadgeLabel)
+        assertEquals(null, hosted.blockedReason)
+        assertTrue(hosted.statusMessage?.contains("Room is open") == true)
+        assertEquals(ComposeConnectionHubMessageTone.SUCCESS, hosted.statusMessageTone)
+        assertEquals("Join Room", connected.primaryActionLabel)
+        assertEquals(true, connected.secondaryActionEnabled)
+        assertEquals("Connected", connected.activeBadgeLabel)
+        assertEquals(null, connected.blockedReason)
+        assertTrue(connected.statusMessage?.contains("Connected") == true)
+        assertEquals(ComposeConnectionHubMessageTone.SUCCESS, connected.statusMessageTone)
+    }
+
+    @Test
+    fun shouldSurfaceHiddenHostedRoomAsNormalStatus() {
+        val state = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(localServerRunning = true, discoverable = false),
+            mode = ComposeConnectionHubMode.HOST,
+        )
+
+        assertEquals("Start secure room", state.primaryActionLabel)
+        assertEquals("Hidden room open", state.activeBadgeLabel)
+        assertEquals(null, state.blockedReason)
+        assertTrue(state.statusMessage?.contains("hidden mode") == true)
+        assertEquals(ComposeConnectionHubMessageTone.SUCCESS, state.statusMessageTone)
+    }
+
+    @Test
+    fun shouldEnableCopyRoomAddressForActiveHostedRoomWithNetworkInfo() {
+        val state = ComposeConnectionHubState(
+            statusState = ComposeStatusConnectionState(localServerRunning = true),
+            mode = ComposeConnectionHubMode.HOST,
+            localNetworkInfo = "[info] local network IPs: 192.168.1.10",
+        )
+
+        assertEquals(true, state.copyRoomAddressEnabled)
+        assertTrue(state.copyRoomAddressText.contains("192.168.1.10"))
+    }
+
+    @Test
+    fun shouldClassifyChatTranscriptLinesForVisualRendering() {
+        val fixedTime = Instant.parse("2026-05-26T20:15:00Z")
+        val local = ComposeChatTranscriptLinePresentation.from("Frank: hello", "Frank", fixedTime)
+        val remote = ComposeChatTranscriptLinePresentation.from("Uma: hi", "Frank", fixedTime)
+        val presence = ComposeChatTranscriptLinePresentation.from("[join] Uma", "Frank", fixedTime)
+        val warning = ComposeChatTranscriptLinePresentation.from("[error] Connection failed", "Frank", fixedTime)
+        val diagnostic = ComposeChatTranscriptLinePresentation.from("[info] local network IPs: 192.168.1.10", "Frank", fixedTime)
+        val normalizedSystem = ComposeChatTranscriptLinePresentation.from("system: [system] Uma joined the chat", "Frank", fixedTime)
+
+        assertEquals(ComposeChatTranscriptLineKind.LOCAL, local.kind)
+        assertEquals("hello", local.body)
+        assertEquals("You", local.label)
+        assertTrue(local.displayTime.matches(Regex("\\d{2}:\\d{2}")))
+        assertEquals(ComposeChatTranscriptLineKind.REMOTE, remote.kind)
+        assertEquals("Uma", remote.label)
+        assertEquals("hi", remote.body)
+        assertEquals(ComposeChatTranscriptLineKind.PRESENCE, presence.kind)
+        assertEquals("joined: Uma", presence.body)
+        assertEquals(ComposeChatTranscriptLineKind.WARNING, warning.kind)
+        assertEquals(ComposeChatTranscriptLineKind.DIAGNOSTIC, diagnostic.kind)
+        assertEquals("system: Uma joined the chat", normalizedSystem.body)
+    }
+
+    @Test
+    fun shouldKeepSharedRoomVisibilityOnlyInTooltipMetadata() {
+        val state = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(selectedPeerIndex = 0),
+        )
+
+        assertEquals("Shared room chat", state.title)
+        assertTrue(state.subtitle.contains("visible to everyone"))
+        assertFalse(state.transcriptLines.any { it.contains("Messages are visible to everyone in this room.") })
+    }
+
+    @Test
+    fun shouldExposeChatMessageTimeMetadataForRuntimeTranscriptLines() {
+        val message = ComposeChatMessage.fromTranscriptLine(
+            "Uma: a long message that can wrap without changing the transcript text",
+            Instant.parse("2026-05-26T20:16:00Z"),
+        )
+        val state = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = ComposePeerListState(selectedPeerIndex = 0),
+            messages = listOf(message),
+        )
+
+        assertEquals(listOf("Uma: a long message that can wrap without changing the transcript text"), state.transcriptLines)
+        assertEquals(1, state.transcriptMessageTimes.size)
+        assertTrue(state.transcriptMessageTimes.single().matches(Regex("\\d{2}:\\d{2}")))
+    }
+
+    @Test
     fun shouldExposeDefaultPeerListAdapterStateWithoutRuntimeSideEffects() {
         val state = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
 
@@ -787,6 +1197,28 @@ class ComposeShellMetadataTest {
         assertEquals(emptyList<String>(), state.targetActions.blockedReasons)
         assertEquals(5, state.targetControlPlan.enabledCommands.size)
         assertEquals(emptyList<ComposePeerTargetCommand>(), state.targetControlPlan.disabledCommands)
+    }
+
+    @Test
+    fun shouldGroupPeerListByOnlineAndOfflineForClearerScanning() {
+        val state = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
+
+        assertEquals(true, state.hasAnyPeers)
+        assertEquals(listOf("Astra Laptop", "Beta Phone"), state.onlinePeers.map { it.nickname })
+        assertEquals(listOf("Offline NAS"), state.offlinePeers.map { it.nickname })
+        assertTrue(state.emptyStateTitle.contains("No peers"))
+        assertTrue(state.emptyStateDetail.contains("Open or join"))
+    }
+
+    @Test
+    fun shouldExposePeerListEmptyStateWhenNoPeersAreVisible() {
+        val state = ComposePeerListState(peers = emptyList())
+
+        assertEquals(false, state.hasAnyPeers)
+        assertEquals(emptyList<ComposePeerListItem>(), state.onlinePeers)
+        assertEquals(emptyList<ComposePeerListItem>(), state.offlinePeers)
+        assertTrue(state.emptyStateTitle.contains("No peers"))
+        assertTrue(state.emptyStateDetail.contains("Manual connection"))
     }
 
     @Test
