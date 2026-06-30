@@ -174,7 +174,7 @@ class ComposeDesktopHostAdapterTest {
         assertEquals(false, fixture.discovery.lastConfig?.announceEnabled)
         assertEquals("Alice", fixture.discovery.lastConfig?.nickname)
         assertEquals(NetworkConstants.DEFAULT_DISCOVERY_PORT, fixture.discovery.lastConfig?.discoveryPort)
-        assertTrue(fixture.adapter.statusState.discoveryStatus.contains("listen-only"))
+        assertTrue(fixture.adapter.statusState.discoveryStatus.contains("Room hidden nearby"))
         assertTrue(fixture.adapter.localNetworkInfo.startsWith("[info] local network IP"))
         assertTrue(fixture.adapter.chatTranscript.any { it.startsWith("[info] local network IP") })
         assertTrue(fixture.adapter.peerListDiagnostics.any { it.contains("[discovery] listening on UDP") })
@@ -481,7 +481,7 @@ class ComposeDesktopHostAdapterTest {
         adapter.createTextQuickShare(" hello quick share ", 5, 2)
 
         assertTrue(adapter.quickShareRunning)
-        assertEquals("Quick share running on port ${NetworkConstants.DEFAULT_QUICK_SHARE_PORT}", adapter.quickShareStatus)
+        assertEquals("Quick share is active", adapter.quickShareStatus)
         assertEquals(1, adapter.quickShareEntries.size)
         assertTrue(adapter.quickShareEntries.first().url().contains("http://127.0.0.1"))
         assertTrue(adapter.chatTranscript.any { it.contains("[quick-share] text link copied") })

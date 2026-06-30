@@ -22,11 +22,11 @@ object DesktopQuickShareFormatters {
     }
 
     @JvmStatic
-    fun formatServerStatus(port: Int): String = "Quick share running on port $port"
+    fun formatServerStatus(port: Int): String = "Quick share is active"
 
     @JvmStatic
     fun formatLandingValue(landingUrls: List<String>): String =
-        if (landingUrls.isEmpty()) "No LAN URL detected. Check network adapter/firewall." else "Index: ${landingUrls.joinToString(" • ")}"
+        if (landingUrls.isEmpty()) "No local address detected. Check your network or firewall." else "Index: ${landingUrls.joinToString(" • ")}"
 
     @JvmStatic
     fun formatServerStartedMessage(port: Int): String = "[quick-share] server started on port $port"

@@ -58,13 +58,13 @@ class DesktopQuickShareFormattersTest {
 
     @Test
     fun shouldFormatRunningServerStatus() {
-        assertEquals("Quick share running on port 8090", DesktopQuickShareFormatters.formatServerStatus(8090))
+        assertEquals("Quick share is active", DesktopQuickShareFormatters.formatServerStatus(8090))
     }
 
     @Test
     fun shouldFormatEmptyLandingUrls() {
         assertEquals(
-            "No LAN URL detected. Check network adapter/firewall.",
+            "No local address detected. Check your network or firewall.",
             DesktopQuickShareFormatters.formatLandingValue(emptyList()),
         )
     }

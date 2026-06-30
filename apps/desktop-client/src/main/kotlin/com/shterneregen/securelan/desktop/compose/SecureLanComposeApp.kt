@@ -1,8 +1,15 @@
 package com.shterneregen.securelan.desktop.compose
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -10,26 +17,27 @@ import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
 import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
 import com.shterneregen.securelan.desktop.ui.MediaDeviceChoice
-import java.awt.Dialog
-import java.awt.FileDialog
-import java.awt.Frame
-import java.awt.KeyboardFocusManager
-import java.awt.Toolkit
+import java.awt.*
 import java.awt.datatransfer.StringSelection
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -37,25 +45,164 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import javax.imageio.ImageIO
 
-private val PanelShape = RoundedCornerShape(16.dp)
-private val SectionShape = RoundedCornerShape(12.dp)
-private val FieldShape = RoundedCornerShape(10.dp)
-private val ButtonShape = RoundedCornerShape(12.dp)
+
+private enum class AttachmentPanelMode {
+    NONE,
+    QUICK_SHARE,
+    STEGANOGRAPHY,
+}
+
+private enum class MicrointeractionTone {
+    NEUTRAL,
+    LOADING,
+    SUCCESS,
+    FAILURE,
+}
 
 @Composable
-fun SecureLanComposeApp(hostAdapter: ComposeDesktopHostAdapter? = null) {
+private fun rememberInteractiveSurfaceState(
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    tone: MicrointeractionTone = MicrointeractionTone.NEUTRAL,
+): Pair<MutableInteractionSource, InteractiveSurfaceState> {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val focused by interactionSource.collectIsFocusedAsState()
+    val pressed by interactionSource.collectIsPressedAsState()
+    return interactionSource to rememberInteractiveSurfaceState(
+        hovered = hovered,
+        focused = focused,
+        pressed = pressed,
+        selected = selected,
+        enabled = enabled,
+        tone = tone,
+    )
+}
+
+@Composable
+private fun rememberInteractiveSurfaceState(
+    hovered: Boolean,
+    focused: Boolean,
+    pressed: Boolean = false,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    tone: MicrointeractionTone = MicrointeractionTone.NEUTRAL,
+): InteractiveSurfaceState {
+    val tokens = LocalSecureLanDesignTokens.current
+    val accent = when (tone) {
+        MicrointeractionTone.NEUTRAL, MicrointeractionTone.LOADING -> tokens.colors.accent
+        MicrointeractionTone.SUCCESS -> tokens.colors.success
+        MicrointeractionTone.FAILURE -> tokens.colors.error
+    }
+    val baseColor = when {
+        !enabled -> tokens.colors.surfaceLevel2.copy(alpha = 0.48f)
+        selected -> accent.copy(alpha = if (MaterialTheme.colors.isLight) 0.11f else 0.16f)
+        tone == MicrointeractionTone.LOADING -> tokens.colors.warning.copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.12f)
+        tone == MicrointeractionTone.SUCCESS -> tokens.colors.success.copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.12f)
+        tone == MicrointeractionTone.FAILURE -> tokens.colors.error.copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.13f)
+        hovered -> tokens.colors.surfaceLevel3.copy(alpha = if (MaterialTheme.colors.isLight) 0.82f else 0.72f)
+        else -> tokens.colors.surfaceLevel2
+    }
+    val targetColor = when {
+        !enabled -> baseColor
+        pressed -> accent.copy(alpha = if (MaterialTheme.colors.isLight) 0.17f else 0.22f)
+        hovered && tone != MicrointeractionTone.NEUTRAL -> accent.copy(alpha = if (MaterialTheme.colors.isLight) 0.12f else 0.18f)
+        else -> baseColor
+    }
+    val targetBorder = when {
+        focused -> tokens.colors.borderFocus
+        selected || tone != MicrointeractionTone.NEUTRAL -> accent.copy(alpha = 0.62f)
+        hovered -> tokens.colors.borderFocus.copy(alpha = 0.45f)
+        else -> tokens.colors.borderSubtle
+    }
+    return InteractiveSurfaceState(
+        backgroundColor = animateColorAsState(
+            targetValue = targetColor,
+            animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+            label = "InteractiveSurfaceBackground",
+        ).value,
+        borderColor = animateColorAsState(
+            targetValue = targetBorder,
+            animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+            label = "InteractiveSurfaceBorder",
+        ).value,
+        contentColor = if (enabled) tokens.colors.textPrimary else tokens.colors.textTertiary,
+        pressed = pressed,
+        hovered = hovered,
+        focused = focused,
+    )
+}
+
+private data class InteractiveSurfaceState(
+    val backgroundColor: Color,
+    val borderColor: Color,
+    val contentColor: Color,
+    val pressed: Boolean,
+    val hovered: Boolean,
+    val focused: Boolean,
+)
+
+@Composable
+private fun MicroFeedbackPill(
+    text: String,
+    tone: MicrointeractionTone,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = LocalSecureLanDesignTokens.current
+    val accent = when (tone) {
+        MicrointeractionTone.NEUTRAL -> tokens.colors.textSecondary
+        MicrointeractionTone.LOADING -> tokens.colors.warning
+        MicrointeractionTone.SUCCESS -> tokens.colors.success
+        MicrointeractionTone.FAILURE -> tokens.colors.error
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(tokens.radius.pill),
+        border = BorderStroke(tokens.border.subtle, accent.copy(alpha = 0.34f)),
+        color = accent.copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.13f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatusDot(accent, tone == MicrointeractionTone.LOADING)
+            Text(text, style = MaterialTheme.typography.caption, color = accent)
+        }
+    }
+}
+
+@Composable
+private fun StatusDot(color: Color, loading: Boolean = false) {
+    val alpha by animateFloatAsState(
+        targetValue = if (loading) 0.48f else 1f,
+        animationSpec = motionTween<Float>(durationMillis = LocalSecureLanDesignTokens.current.motion.durationSlow),
+        label = "StatusDotAlpha",
+    )
+    Canvas(modifier = Modifier.size(7.dp)) {
+        drawCircle(color = color.copy(alpha = alpha), radius = size.minDimension / 2f, center = Offset(size.width / 2f, size.height / 2f))
+    }
+}
+
+@Composable
+fun SecureLanComposeApp(
+    hostAdapter: ComposeDesktopHostAdapter? = null,
+    reducedMotion: Boolean = false,
+) {
     var darkTheme by remember { mutableStateOf(true) }
 
-    SecureLanTheme(darkTheme = darkTheme) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colors.background,
-        ) {
-            ComposeShellContent(
-                hostAdapter = hostAdapter,
-                darkTheme = darkTheme,
-                onThemeToggle = { darkTheme = !darkTheme },
-            )
+    CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
+        SecureLanTheme(darkTheme = darkTheme) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colors.background,
+            ) {
+                ComposeShellContent(
+                    hostAdapter = hostAdapter,
+                    darkTheme = darkTheme,
+                    onThemeToggle = { darkTheme = !darkTheme },
+                )
+            }
         }
     }
 }
@@ -66,12 +213,13 @@ private fun ComposeShellContent(
     darkTheme: Boolean,
     onThemeToggle: () -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colors.background)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+            .padding(tokens.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         if (hostAdapter != null) {
             LiveComposeShellContent(hostAdapter, darkTheme, onThemeToggle)
@@ -82,51 +230,110 @@ private fun ComposeShellContent(
 }
 
 @Composable
+private fun WorkspaceWelcomeHeader(state: ComposeOnboardingState) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = state.brandGlyph,
+                modifier = Modifier
+                    .background(tokens.colors.surfaceLevel2, RoundedCornerShape(tokens.radius.medium))
+                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                style = MaterialTheme.typography.h5,
+                color = MaterialTheme.colors.primary,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+            ) {
+                Text(
+                    text = state.headline,
+                    style = MaterialTheme.typography.subtitle1,
+                    color = MaterialTheme.colors.onSurface,
+                )
+                Text(
+                    text = state.body,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+        ) {
+            state.benefitChips.forEach { chip -> StatusChip(chip) }
+        }
+    }
+}
+
+@Composable
 private fun PreviewComposeShellContent(
     darkTheme: Boolean,
     onThemeToggle: () -> Unit,
 ) {
-    var requestedAppMode by remember { mutableStateOf(AppMode.WELCOME) }
-    val previewProductState = ComposeProductScreenState.from(
-        statusState = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE,
-        requestedAppMode = requestedAppMode,
-        connectionHubMode = if (requestedAppMode == AppMode.JOIN_SETUP) ComposeConnectionHubMode.JOIN else ComposeConnectionHubMode.HOST,
-    )
+    val tokens = LocalSecureLanDesignTokens.current
+    val previewPeerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
+    val previewChatState = ComposeShellMetadata.DEFAULT_CHAT_WORKSPACE_STATE
+    val previewProductState = ComposeShellMetadata.DEFAULT_PRODUCT_SCREEN_STATE
+    val previewWorkspaceState = ComposeShellMetadata.DEFAULT_WORKSPACE_STATE
+    var connectionHubExpanded by remember { mutableStateOf(previewWorkspaceState.connectionHubExpandedByDefault) }
     SecureLanAppShell(
         shellState = ComposeAppShellState(
             productState = previewProductState,
             statusState = ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE,
+            workspaceState = previewWorkspaceState,
         ),
         darkTheme = darkTheme,
         onThemeToggle = onThemeToggle,
+        onDiagnosticsClick = {},
     ) {
-        if (previewProductState.appMode == AppMode.WELCOME) {
-            ComposeOnboardingScreen(
-                state = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE,
-                darkTheme = darkTheme,
-                onThemeToggle = onThemeToggle,
-                onHostRoom = { requestedAppMode = AppMode.HOST_SETUP },
-                onJoinRoom = { requestedAppMode = AppMode.JOIN_SETUP },
-            )
-        } else {
-            val previewPeerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
-            val previewChatState = ComposeShellMetadata.DEFAULT_CHAT_WORKSPACE_STATE
-            ConnectionHubPreview(ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE)
-            MainWorkspaceRow(
-                parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
-                peersTooltip = previewPeerState.hint,
-                chatTooltip = previewChatState.subtitle,
-                rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,
-                chatActions = {
+        MainWorkspaceRow(
+            workspaceState = previewWorkspaceState,
+            parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
+            peersTooltip = previewPeerState.hint,
+            chatTooltip = previewChatState.subtitle,
+            rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,
+            chatActions = {
+                if (previewPeerState.selectedPeer != null) {
                     CompactButton(onClick = {}, enabled = false) { Text("Voice call") }
                     CompactButton(onClick = {}, enabled = false) { Text("Video call") }
                     CompactButton(onClick = {}, enabled = false) { Text("End call") }
-                },
-                peersColumn = { PeerListPreviewCard(previewPeerState) },
-                chatColumn = { ChatWorkspacePreviewCard(previewChatState) },
-                actionsColumn = { responsiveState -> PreviewActionsColumn(responsiveState) },
-            )
-        }
+                }
+            },
+            peersColumn = { PeerListPreviewCard(previewPeerState) },
+            chatColumn = {
+                WorkspaceCenterColumn(
+                    workspaceState = previewWorkspaceState,
+                    connectionHubExpanded = connectionHubExpanded,
+                    onConnectionHubToggle = { connectionHubExpanded = !connectionHubExpanded },
+                    startupSurface = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                        ) {
+                            WorkspaceWelcomeHeader(ComposeShellMetadata.DEFAULT_ONBOARDING_STATE)
+                            ConnectionHubPreview(
+                                state = ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE,
+                                wrapInCard = false,
+                            )
+                        }
+                    },
+                    chatSurface = { ChatWorkspacePreviewCard(previewChatState) },
+                )
+            },
+            actionsColumn = { responsiveState -> PreviewActionsColumn(responsiveState) },
+        )
     }
 }
 
@@ -136,54 +343,19 @@ private fun LiveComposeShellContent(
     darkTheme: Boolean,
     onThemeToggle: () -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     var requestedConnectionMode by remember { mutableStateOf(ComposeConnectionHubMode.HOST) }
-    var requestedAppMode by remember { mutableStateOf(AppMode.WELCOME) }
     val inMessengerMode = hostAdapter.statusState.localServerRunning || hostAdapter.statusState.clientConnected
-    val productState = ComposeProductScreenState.from(
-        statusState = hostAdapter.statusState,
-        requestedAppMode = requestedAppMode,
-        connectionHubMode = requestedConnectionMode,
-    )
-    if (productState.appMode == AppMode.WELCOME) {
-        SecureLanAppShell(
-            shellState = ComposeAppShellState(productState = productState, statusState = hostAdapter.statusState),
-            darkTheme = darkTheme,
-            onThemeToggle = onThemeToggle,
-        ) {
-            ComposeOnboardingScreen(
-                state = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE,
-                darkTheme = darkTheme,
-                onThemeToggle = onThemeToggle,
-                onHostRoom = {
-                    requestedConnectionMode = ComposeConnectionHubMode.HOST
-                    requestedAppMode = AppMode.HOST_SETUP
-                },
-                onJoinRoom = {
-                    requestedConnectionMode = ComposeConnectionHubMode.JOIN
-                    requestedAppMode = AppMode.JOIN_SETUP
-                },
-            )
-        }
-        return
-    }
-    if (!inMessengerMode && productState.connectionFlowActive) {
-        SecureLanAppShell(
-            shellState = ComposeAppShellState(productState = productState, statusState = hostAdapter.statusState),
-            darkTheme = darkTheme,
-            onThemeToggle = onThemeToggle,
-        ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Box(modifier = Modifier.widthIn(min = 720.dp, max = 920.dp)) {
-                    ConnectionHub(hostAdapter, initialMode = requestedConnectionMode)
-                }
-            }
-        }
-        return
+    val requestedAppMode = when {
+        inMessengerMode -> AppMode.MESSENGER
+        requestedConnectionMode == ComposeConnectionHubMode.HOST -> AppMode.HOST_SETUP
+        else -> AppMode.JOIN_SETUP
     }
 
     var selectedPeerKey by remember { mutableStateOf<String?>(null) }
     var selectedTargetKind by remember { mutableStateOf<ComposePeerTargetCommandKind?>(null) }
-    val peers = hostAdapter.visiblePeerItems.map { peer -> ComposePeerListItem.fromPeer(peer, hostAdapter.chatConnected) }
+    val peers =
+        hostAdapter.visiblePeerItems.map { peer -> ComposePeerListItem.fromPeer(peer, hostAdapter.chatConnected) }
     val defaultSelectedPeerIndex = if (selectedPeerKey == null) {
         peers.indexOfFirst { it.online }.takeIf { it >= 0 } ?: peers.indices.firstOrNull() ?: -1
     } else {
@@ -199,34 +371,73 @@ private fun LiveComposeShellContent(
         selectedPeerKey = null
         selectedTargetKind = null
     }
-    val chatTooltip = peerState.selectedPeer?.let { "Actions on the right will target “${it.nickname}”. Text chat remains shared for now." }
-        ?: "Connect to chat, then select a peer on the left for voice, video, and file actions."
+    val chatTooltip =
+        peerState.selectedPeer?.let { "Actions on the right will target \"${it.nickname}\". Text chat remains shared for now." }
+            ?: "Connect to chat, then select a peer on the left for voice, video, and file actions."
 
-    val messengerProductState = ComposeProductScreenState.from(
+    val transferState = ComposeFileTransferState(
+        statusState = hostAdapter.statusState,
+        peerListState = peerState,
+        senderId = hostAdapter.statusState.nickname,
+        sessionPassword = hostAdapter.currentRoomPassword,
+        entries = hostAdapter.transferEntries,
+        incomingPrompts = hostAdapter.incomingTransferPrompts,
+        autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
+    )
+    val voiceState = hostAdapter.mediaVoiceState.copy(peerListState = peerState)
+    val videoState = hostAdapter.experimentalVideoState.copy(peerListState = peerState)
+    val workspaceState = ComposeWorkspaceState.from(
+        statusState = hostAdapter.statusState,
+        peerState = peerState,
+        transferState = transferState,
+        voiceState = voiceState,
+        videoState = videoState,
+    )
+    var connectionHubExpanded by remember { mutableStateOf(workspaceState.connectionHubExpandedByDefault) }
+    LaunchedEffect(workspaceState.mode) {
+        connectionHubExpanded = workspaceState.connectionHubExpandedByDefault
+    }
+    var diagnosticsRequested by remember { mutableStateOf(false) }
+    var attachmentPanelMode by remember { mutableStateOf(AttachmentPanelMode.NONE) }
+    LaunchedEffect(workspaceState.mode, peerState.selectedPeer) {
+        attachmentPanelMode = AttachmentPanelMode.NONE
+    }
+    val productState = ComposeProductScreenState.from(
         statusState = hostAdapter.statusState,
         requestedAppMode = requestedAppMode,
         connectionHubMode = requestedConnectionMode,
         selectedPeer = peerState.selectedPeer,
+        diagnosticsRequested = diagnosticsRequested,
     )
     SecureLanAppShell(
         shellState = ComposeAppShellState(
-            productState = messengerProductState,
+            productState = productState,
             statusState = hostAdapter.statusState,
             peerStatus = peerState.peerStatus,
+            workspaceState = workspaceState,
         ),
         darkTheme = darkTheme,
         onThemeToggle = onThemeToggle,
+        onDiagnosticsClick = { diagnosticsRequested = !diagnosticsRequested },
     ) {
+        val rightColumnTitle = when (attachmentPanelMode) {
+            AttachmentPanelMode.QUICK_SHARE -> "Quick Share"
+            AttachmentPanelMode.STEGANOGRAPHY -> "Steganography"
+            AttachmentPanelMode.NONE -> if (diagnosticsRequested) "Diagnostics" else ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title
+        }
         MainWorkspaceRow(
+            workspaceState = workspaceState,
             parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
             peersTooltip = peerState.hint,
             chatTooltip = chatTooltip,
-            rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,
+            rightColumnTitle = rightColumnTitle,
             chatActions = {
-                ChatCallActions(
-                    hostAdapter = hostAdapter,
-                    selectedPeer = peerState.selectedPeer,
-                )
+                if (peerState.selectedPeer != null) {
+                    ChatCallActions(
+                        hostAdapter = hostAdapter,
+                        selectedPeer = peerState.selectedPeer,
+                    )
+                }
             },
             peersColumn = {
                 LivePeerListCard(
@@ -243,107 +454,38 @@ private fun LiveComposeShellContent(
                     },
                 )
             },
-            chatColumn = { LiveChatWorkspaceCard(hostAdapter, peerState) },
-            actionsColumn = { responsiveState -> LiveActionsColumn(hostAdapter, peerState, responsiveState) },
-        )
-    }
-}
-
-@Composable
-private fun ComposeOnboardingScreen(
-    state: ComposeOnboardingState,
-    darkTheme: Boolean,
-    onThemeToggle: () -> Unit,
-    onHostRoom: () -> Unit,
-    onJoinRoom: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 34.dp, vertical = 28.dp),
-        horizontalArrangement = Arrangement.spacedBy(28.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1.15f).fillMaxHeight(),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, sectionBorderColor()),
-                color = fieldBackgroundColor(),
-            ) {
-                Text(
-                    text = state.brandGlyph,
-                    modifier = Modifier.padding(horizontal = 30.dp, vertical = 18.dp),
-                    style = MaterialTheme.typography.h4,
-                    color = MaterialTheme.colors.primary,
+            chatColumn = {
+                WorkspaceCenterColumn(
+                    workspaceState = workspaceState,
+                    connectionHubExpanded = connectionHubExpanded,
+                    onConnectionHubToggle = { connectionHubExpanded = !connectionHubExpanded },
+                    startupSurface = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                        ) {
+                            WorkspaceWelcomeHeader(ComposeShellMetadata.DEFAULT_ONBOARDING_STATE)
+                            ConnectionHub(
+                                hostAdapter = hostAdapter,
+                                initialMode = requestedConnectionMode,
+                                wrapInCard = false,
+                            )
+                        }
+                    },
+                    chatSurface = { LiveChatWorkspaceCard(hostAdapter, peerState, onAttachmentPanelModeChange = { attachmentPanelMode = it }) },
                 )
-            }
-            Spacer(Modifier.height(24.dp))
-            Text(state.headline, style = MaterialTheme.typography.h4, color = MaterialTheme.colors.onSurface)
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = state.body,
-                style = MaterialTheme.typography.body1,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                modifier = Modifier.widthIn(max = 620.dp),
-            )
-            Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                state.benefitChips.forEach { chip -> StatusChip(chip) }
-            }
-        }
-        Card(
-            modifier = Modifier.weight(0.85f).widthIn(min = 360.dp, max = 520.dp),
-            shape = PanelShape,
-            border = BorderStroke(1.dp, panelBorderColor()),
-            elevation = 0.dp,
-            backgroundColor = MaterialTheme.colors.surface,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text("Start nearby", style = MaterialTheme.typography.h6)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(
-                        onClick = onHostRoom,
-                        modifier = Modifier.widthIn(min = 180.dp, max = 240.dp).heightIn(min = 40.dp),
-                        shape = ButtonShape,
-                    ) { Text(state.hostActionLabel) }
-                    OutlinedButton(
-                        onClick = onJoinRoom,
-                        modifier = Modifier.widthIn(min = 180.dp, max = 240.dp).heightIn(min = 40.dp),
-                        shape = ButtonShape,
-                    ) { Text(state.joinActionLabel) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    state.secondaryLinks.forEach { link ->
-                        Text(
-                            text = link,
-                            style = MaterialTheme.typography.caption,
-                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                }
-                Divider(color = sectionBorderColor())
-                Text(state.discoveryStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.66f))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = SectionShape,
-                    border = BorderStroke(1.dp, sectionBorderColor()),
-                    color = fieldBackgroundColor(),
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(state.emptyNearbyTitle, style = MaterialTheme.typography.subtitle2)
-                        Text(
-                            text = state.emptyNearbyDetail,
-                            style = MaterialTheme.typography.caption,
-                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                }
-            }
-        }
+            },
+            actionsColumn = { responsiveState ->
+                LiveActionsColumn(
+                    hostAdapter = hostAdapter,
+                    peerState = peerState,
+                    responsiveState = responsiveState,
+                    diagnosticsRequested = diagnosticsRequested,
+                    attachmentPanelMode = attachmentPanelMode,
+                    onClearAttachmentPanel = { attachmentPanelMode = AttachmentPanelMode.NONE },
+                )
+            },
+        )
     }
 }
 
@@ -352,25 +494,27 @@ private fun SecureLanAppShell(
     shellState: ComposeAppShellState,
     darkTheme: Boolean,
     onThemeToggle: () -> Unit,
+    onDiagnosticsClick: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Column(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         Card(
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp, max = 56.dp),
-            shape = PanelShape,
-            border = BorderStroke(1.dp, panelBorderColor()),
+            shape = RoundedCornerShape(tokens.radius.large),
+            border = BorderStroke(1.dp, tokens.colors.borderSubtle),
             elevation = 0.dp,
             backgroundColor = MaterialTheme.colors.surface,
         ) {
             Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
                     Text(
                         text = shellState.currentContextLabel,
                         maxLines = 1,
@@ -386,10 +530,8 @@ private fun SecureLanAppShell(
                     )
                 }
                 StatusChip(shellState.globalStatusLabel)
-                CompactButton(onClick = {}, enabled = false) { Text("Search") }
-                CompactButton(onClick = {}, enabled = false) { Text("Settings") }
                 if (shellState.rightActions.contains("Diagnostics")) {
-                    CompactButton(onClick = {}, enabled = false) { Text("Diagnostics") }
+                    CompactButton(onClick = onDiagnosticsClick) { Text("Diagnostics") }
                 }
                 ThemeToggleButton(darkTheme = darkTheme, onThemeToggle = onThemeToggle)
             }
@@ -409,8 +551,8 @@ private fun ComposeStatusBar(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().height(48.dp),
-        shape = PanelShape,
-        border = BorderStroke(1.dp, panelBorderColor()),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.large),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
         elevation = 0.dp,
         backgroundColor = MaterialTheme.colors.surface,
     ) {
@@ -447,8 +589,12 @@ private fun ThemeToggleButton(
     Button(
         onClick = onThemeToggle,
         modifier = Modifier.heightIn(min = 26.dp),
-        shape = ButtonShape,
-        elevation = ButtonDefaults.elevation(defaultElevation = 0.dp, pressedElevation = 0.dp, disabledElevation = 0.dp),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        elevation = ButtonDefaults.elevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp,
+            disabledElevation = 0.dp
+        ),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 3.dp),
     ) {
         Text(if (darkTheme) "Dark theme" else "Light theme", style = MaterialTheme.typography.button)
@@ -457,14 +603,14 @@ private fun ThemeToggleButton(
 
 @Composable
 private fun StatusChip(text: String) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = if (MaterialTheme.colors.isLight) MaterialTheme.colors.background else MaterialTheme.colors.surface.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(tokens.radius.pill),
+        color = tokens.colors.surfaceLevel2,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StatusIndicator(text)
@@ -476,8 +622,16 @@ private fun StatusChip(text: String) {
 @Composable
 private fun StatusIndicator(text: String) {
     val color = when {
-        text.contains("running", ignoreCase = true) || text.contains("connected", ignoreCase = true) -> MaterialTheme.colors.primary
-        text.contains("error", ignoreCase = true) || text.contains("failed", ignoreCase = true) -> MaterialTheme.colors.error
+        text.contains("running", ignoreCase = true) || text.contains(
+            "connected",
+            ignoreCase = true
+        ) -> MaterialTheme.colors.primary
+
+        text.contains("error", ignoreCase = true) || text.contains(
+            "failed",
+            ignoreCase = true
+        ) -> MaterialTheme.colors.error
+
         else -> MaterialTheme.colors.onSurface.copy(alpha = 0.55f)
     }
     Canvas(modifier = Modifier.size(7.dp)) {
@@ -508,8 +662,8 @@ private fun HelpTooltip(text: String) {
     TooltipArea(
         tooltip = {
             Surface(
-                shape = FieldShape,
-                border = BorderStroke(1.dp, sectionBorderColor()),
+                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+                border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
                 color = MaterialTheme.colors.surface,
             ) {
                 Text(
@@ -522,9 +676,9 @@ private fun HelpTooltip(text: String) {
         },
     ) {
         Surface(
-            shape = RoundedCornerShape(999.dp),
-            border = BorderStroke(1.dp, sectionBorderColor()),
-            color = fieldBackgroundColor(),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.pill),
+            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+            color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
         ) {
             Text(
                 text = "?",
@@ -540,6 +694,7 @@ private fun HelpTooltip(text: String) {
 private fun ConnectionHub(
     hostAdapter: ComposeDesktopHostAdapter,
     initialMode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
+    wrapInCard: Boolean = true,
 ) {
     var mode by remember(initialMode) { mutableStateOf(initialMode) }
     var nickname by remember { mutableStateOf(hostAdapter.statusState.nickname) }
@@ -577,49 +732,72 @@ private fun ConnectionHub(
         mode = mode,
         localNetworkInfo = hostAdapter.localNetworkInfo,
     )
+    var actionInFlight by remember { mutableStateOf<ComposeConnectionHubMode?>(null) }
+    LaunchedEffect(hostAdapter.statusState.localServerRunning, hostAdapter.statusState.clientConnected, hostAdapter.adapterEvents.size) {
+        actionInFlight = null
+    }
 
-    ConnectionHubContent(
-        state = hubState,
-        nickname = nickname,
-        onNicknameChange = { nickname = it },
-        password = password,
-        onPasswordChange = { password = it },
-        mode = mode,
-        onModeChange = { mode = it },
-        serverChatPort = serverChatPort,
-        onServerChatPortChange = { serverChatPort = it },
-        serverFilePort = serverFilePort,
-        onServerFilePortChange = { serverFilePort = it },
-        discoverable = discoverable,
-        onDiscoverableChange = { discoverable = it },
-        manualHost = manualHost,
-        onManualHostChange = { manualHost = it },
-        clientChatPort = clientChatPort,
-        onClientChatPortChange = { clientChatPort = it },
-        clientFilePort = clientFilePort,
-        onClientFilePortChange = { clientFilePort = it },
-        onOpenRoom = {
-            statusState.serverChatPort?.let { chat ->
-                statusState.serverFilePort?.let { file ->
-                    hostAdapter.openRoom(nickname, password, chat, file, discoverable)
+    val content: @Composable () -> Unit = {
+        ConnectionHubContent(
+            state = hubState,
+            actionInFlight = actionInFlight,
+            nickname = nickname,
+            onNicknameChange = { nickname = it },
+            password = password,
+            onPasswordChange = { password = it },
+            mode = mode,
+            onModeChange = { mode = it },
+            serverChatPort = serverChatPort,
+            onServerChatPortChange = { serverChatPort = it },
+            serverFilePort = serverFilePort,
+            onServerFilePortChange = { serverFilePort = it },
+            discoverable = discoverable,
+            onDiscoverableChange = { discoverable = it },
+            manualHost = manualHost,
+            onManualHostChange = { manualHost = it },
+            clientChatPort = clientChatPort,
+            onClientChatPortChange = { clientChatPort = it },
+            clientFilePort = clientFilePort,
+            onClientFilePortChange = { clientFilePort = it },
+            onOpenRoom = {
+                actionInFlight = ComposeConnectionHubMode.HOST
+                statusState.serverChatPort?.let { chat ->
+                    statusState.serverFilePort?.let { file ->
+                        hostAdapter.openRoom(nickname, password, chat, file, discoverable)
+                    }
                 }
-            }
-        },
-        onStopHosting = { hostAdapter.stopHosting() },
-        onConnect = {
-            statusState.clientChatPort?.let { chat ->
-                statusState.clientFilePort?.let { file ->
-                    hostAdapter.connect(manualHost, nickname, password, chat, file)
+            },
+            onStopHosting = { hostAdapter.stopHosting() },
+            onConnect = {
+                actionInFlight = ComposeConnectionHubMode.JOIN
+                statusState.clientChatPort?.let { chat ->
+                    statusState.clientFilePort?.let { file ->
+                        hostAdapter.connect(manualHost, nickname, password, chat, file)
+                    }
                 }
-            }
-        },
-        onDisconnect = { hostAdapter.disconnect() },
-        onSetDiscoverable = { hostAdapter.setDiscoverable(it) },
-    )
+            },
+            onDisconnect = { hostAdapter.disconnect() },
+            onSetDiscoverable = { hostAdapter.setDiscoverable(it) },
+        )
+    }
+    if (wrapInCard) {
+        Card(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 224.dp),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.large),
+            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+            elevation = 0.dp,
+            backgroundColor = MaterialTheme.colors.surface,
+        ) { content() }
+    } else {
+        content()
+    }
 }
 
 @Composable
-private fun ConnectionHubPreview(state: ComposeConnectionHubState) {
+private fun ConnectionHubPreview(
+    state: ComposeConnectionHubState,
+    wrapInCard: Boolean = true,
+) {
     var mode by remember { mutableStateOf(state.mode) }
     var nickname by remember { mutableStateOf(state.nickname) }
     var password by remember { mutableStateOf(state.password) }
@@ -642,36 +820,167 @@ private fun ConnectionHubPreview(state: ComposeConnectionHubState) {
     )
     val hubState = state.copy(statusState = statusState, mode = mode)
 
-    ConnectionHubContent(
-        state = hubState,
-        nickname = nickname,
-        onNicknameChange = { nickname = it },
-        password = password,
-        onPasswordChange = { password = it },
-        mode = mode,
-        onModeChange = { mode = it },
-        serverChatPort = serverChatPort,
-        onServerChatPortChange = { serverChatPort = it },
-        serverFilePort = serverFilePort,
-        onServerFilePortChange = { serverFilePort = it },
-        discoverable = discoverable,
-        onDiscoverableChange = { discoverable = it },
-        manualHost = manualHost,
-        onManualHostChange = { manualHost = it },
-        clientChatPort = clientChatPort,
-        onClientChatPortChange = { clientChatPort = it },
-        clientFilePort = clientFilePort,
-        onClientFilePortChange = { clientFilePort = it },
-        onOpenRoom = {},
-        onStopHosting = {},
-        onConnect = {},
-        onDisconnect = {},
-        onSetDiscoverable = {},
-    )
+    val content: @Composable () -> Unit = {
+        ConnectionHubContent(
+            state = hubState,
+            actionInFlight = null,
+            nickname = nickname,
+            onNicknameChange = { nickname = it },
+            password = password,
+            onPasswordChange = { password = it },
+            mode = mode,
+            onModeChange = { mode = it },
+            serverChatPort = serverChatPort,
+            onServerChatPortChange = { serverChatPort = it },
+            serverFilePort = serverFilePort,
+            onServerFilePortChange = { serverFilePort = it },
+            discoverable = discoverable,
+            onDiscoverableChange = { discoverable = it },
+            manualHost = manualHost,
+            onManualHostChange = { manualHost = it },
+            clientChatPort = clientChatPort,
+            onClientChatPortChange = { clientChatPort = it },
+            clientFilePort = clientFilePort,
+            onClientFilePortChange = { clientFilePort = it },
+            onOpenRoom = {},
+            onStopHosting = {},
+            onConnect = {},
+            onDisconnect = {},
+            onSetDiscoverable = {},
+        )
+    }
+    if (wrapInCard) {
+        Card(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 224.dp),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.large),
+            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+            elevation = 0.dp,
+            backgroundColor = MaterialTheme.colors.surface,
+        ) { content() }
+    } else {
+        content()
+    }
+}
+
+@Composable
+private fun WorkspaceCenterColumn(
+    workspaceState: ComposeWorkspaceState,
+    connectionHubExpanded: Boolean,
+    onConnectionHubToggle: () -> Unit,
+    startupSurface: @Composable () -> Unit,
+    chatSurface: @Composable () -> Unit,
+) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        CollapsibleConnectionHub(
+            expanded = connectionHubExpanded,
+            onToggle = onConnectionHubToggle,
+            workspaceState = workspaceState,
+            expandedContent = startupSurface,
+        )
+        AnimatedVisibility(
+            visible = workspaceState.callBannerVisible,
+            enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+            exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+        ) {
+            CallBanner(workspaceState = workspaceState)
+        }
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            chatSurface()
+        }
+    }
+}
+
+@Composable
+private fun CollapsibleConnectionHub(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    workspaceState: ComposeWorkspaceState,
+    expandedContent: @Composable () -> Unit,
+) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(tokens.radius.large),
+        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+        elevation = 0.dp,
+        backgroundColor = MaterialTheme.colors.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+                    Text(
+                        text = workspaceState.title,
+                        style = MaterialTheme.typography.subtitle2,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = workspaceState.subtitle,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                CompactButton(onClick = onToggle) {
+                    Text(if (expanded) "Hide" else "Show")
+                }
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+                exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+            ) {
+                expandedContent()
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallBanner(workspaceState: ComposeWorkspaceState) {
+    val tokens = LocalSecureLanDesignTokens.current
+    val tone = when {
+        workspaceState.mode == ComposeWorkspaceMode.VOICE_CALL || workspaceState.mode == ComposeWorkspaceMode.VIDEO_CALL -> MicrointeractionTone.SUCCESS
+        workspaceState.subtitle.contains("disconnected", ignoreCase = true) -> MicrointeractionTone.FAILURE
+        else -> MicrointeractionTone.NEUTRAL
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        color = tokens.colors.success.copy(alpha = if (MaterialTheme.colors.isLight) 0.09f else 0.14f),
+        border = BorderStroke(tokens.border.subtle, tokens.colors.success.copy(alpha = 0.36f)),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = workspaceState.title,
+                style = MaterialTheme.typography.subtitle2,
+                color = MaterialTheme.colors.primary,
+                modifier = Modifier.weight(1f),
+            )
+            MicroFeedbackPill(text = workspaceState.subtitle, tone = tone)
+        }
+    }
 }
 
 @Composable
 private fun MainWorkspaceRow(
+    workspaceState: ComposeWorkspaceState,
     parityState: ComposeJavaFxWorkspaceParityState,
     peersTooltip: String? = null,
     chatTooltip: String? = null,
@@ -681,6 +990,7 @@ private fun MainWorkspaceRow(
     chatColumn: @Composable () -> Unit,
     actionsColumn: @Composable (ComposeContextPanelResponsiveState) -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
         val responsiveState = ComposeContextPanelResponsiveState.forWidth(maxWidth.value.toInt())
         var contextDrawerOpen by remember(responsiveState.mode) { mutableStateOf(false) }
@@ -688,7 +998,7 @@ private fun MainWorkspaceRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             MainWorkspaceColumn(
                 title = parityState.workspaceColumns[0].title,
@@ -704,7 +1014,9 @@ private fun MainWorkspaceRow(
                     if (responsiveState.drawerEntryVisible) {
                         CompactButton(
                             onClick = { contextDrawerOpen = true },
-                            modifier = Modifier.semantics { contentDescription = responsiveState.drawerOpenContentDescription },
+                            modifier = Modifier.semantics {
+                                contentDescription = responsiveState.drawerOpenContentDescription
+                            },
                         ) { Text("Context") }
                     }
                 },
@@ -719,8 +1031,9 @@ private fun MainWorkspaceRow(
                 )
             }
         }
-        if (responsiveState.drawerMode && contextDrawerOpen) {
+        if (responsiveState.drawerMode) {
             ContextAssistantDrawer(
+                visible = contextDrawerOpen,
                 responsiveState = responsiveState,
                 onClose = { contextDrawerOpen = false },
                 content = { actionsColumn(responsiveState) },
@@ -731,10 +1044,13 @@ private fun MainWorkspaceRow(
 
 @Composable
 private fun ContextAssistantDrawer(
+    visible: Boolean,
     responsiveState: ComposeContextPanelResponsiveState,
     onClose: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
+    val motion = motionTween<IntOffset>()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -747,45 +1063,59 @@ private fun ContextAssistantDrawer(
                 }
             },
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.28f))
-                .clickable(onClick = onClose),
-        )
-        Surface(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .widthIn(min = 320.dp, max = 380.dp)
-                .semantics { contentDescription = responsiveState.drawerContentDescription },
-            shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp),
-            border = BorderStroke(1.dp, panelBorderColor()),
-            color = MaterialTheme.colors.surface,
-            elevation = 8.dp,
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(motionTween()),
+            exit = fadeOut(motionTween()),
         ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.28f))
+                    .clickable(onClick = onClose),
+            )
+        }
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInHorizontally(motion) { it } + fadeIn(motionTween()),
+            exit = slideOutHorizontally(motion) { it } + fadeOut(motionTween()),
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(min = 320.dp, max = 380.dp)
+                    .semantics { contentDescription = responsiveState.drawerContentDescription },
+                shape = RoundedCornerShape(topStart = tokens.radius.large, bottomStart = tokens.radius.large),
+                border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+                color = MaterialTheme.colors.surface,
+                elevation = 8.dp,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Column(
+                    modifier = Modifier.padding(tokens.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 ) {
-                    Text("Context Assistant", style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
-                    CompactButton(
-                        onClick = onClose,
-                        modifier = Modifier.semantics { contentDescription = responsiveState.drawerCloseContentDescription },
-                    ) { Text("Close") }
-                }
-                Text(
-                    text = responsiveState.summary,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
-                )
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopStart) {
-                    content()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Context Assistant", style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
+                        CompactButton(
+                            onClick = onClose,
+                            modifier = Modifier.semantics {
+                                contentDescription = responsiveState.drawerCloseContentDescription
+                            },
+                        ) { Text("Close") }
+                    }
+                    Text(
+                        text = responsiveState.summary,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                    )
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopStart) {
+                        content()
+                    }
                 }
             }
         }
@@ -800,31 +1130,42 @@ private fun MainWorkspaceColumn(
     headerActions: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Card(
         modifier = modifier,
-        shape = PanelShape,
-        border = BorderStroke(1.dp, panelBorderColor()),
+        shape = RoundedCornerShape(tokens.radius.large),
+        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
         elevation = 0.dp,
         backgroundColor = MaterialTheme.colors.surface,
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(tokens.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (tooltip == null) {
-                    Text(title, style = MaterialTheme.typography.subtitle2, modifier = Modifier.weight(1f))
-                } else {
-                    TitleWithHelp(
-                        title = title,
-                        tooltip = tooltip,
-                        titleStyle = MaterialTheme.typography.subtitle2,
-                        modifier = Modifier.weight(1f),
-                    )
+                val reduced = LocalReducedMotion.current
+                AnimatedContent(
+                    targetState = title,
+                    transitionSpec = {
+                        fadeIn(motionTween(reduced)) + slideInVertically(motionTween(reduced)) { it / 4 } togetherWith
+                            fadeOut(motionTween(reduced)) + slideOutVertically(motionTween(reduced)) { it / 4 }
+                    },
+                    modifier = Modifier.weight(1f),
+                    label = "WorkspaceColumnTitle",
+                ) { animatedTitle ->
+                    if (tooltip == null) {
+                        Text(animatedTitle, style = MaterialTheme.typography.subtitle2)
+                    } else {
+                        TitleWithHelp(
+                            title = animatedTitle,
+                            tooltip = tooltip,
+                            titleStyle = MaterialTheme.typography.subtitle2,
+                        )
+                    }
                 }
                 headerActions()
             }
@@ -838,60 +1179,131 @@ private fun LiveActionsColumn(
     hostAdapter: ComposeDesktopHostAdapter,
     peerState: ComposePeerListState,
     responsiveState: ComposeContextPanelResponsiveState,
+    diagnosticsRequested: Boolean,
+    attachmentPanelMode: AttachmentPanelMode,
+    onClearAttachmentPanel: () -> Unit,
 ) {
-    val quickActions = ComposeSelectedPeerQuickActionsState(
-        peerListState = peerState,
-        clientConnected = hostAdapter.statusState.clientConnected,
-        hangUpReady = hostAdapter.mediaVoiceState.canHangUp || hostAdapter.experimentalVideoState.canHangUp,
-    )
-    val transferState = ComposeFileTransferState(
-        statusState = hostAdapter.statusState,
-        peerListState = peerState,
-        senderId = hostAdapter.statusState.nickname,
-        sessionPassword = hostAdapter.currentRoomPassword,
-        entries = hostAdapter.transferEntries,
-        incomingPrompts = hostAdapter.incomingTransferPrompts,
-        autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
-    )
-    val voiceState = hostAdapter.mediaVoiceState.copy(peerListState = peerState)
-    val videoState = hostAdapter.experimentalVideoState.copy(peerListState = peerState)
-    val contextPanelState = when {
-        voiceState.currentSession != null || videoState.currentSession != null || videoState.previewRunning -> ComposeContextPanelState.forCall(quickActions, voiceState, videoState)
-        transferState.activeCount > 0 || transferState.waitingPromptCount > 0 -> ComposeContextPanelState.forTransfer(transferState, quickActions)
-        peerState.selectedPeer != null -> ComposeContextPanelState.forPeer(quickActions, transferState)
-        else -> ComposeContextPanelState.forRoom(peerState, transferState)
-    }
-    Column(
-        modifier = Modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ContextPanelSummary(state = contextPanelState, responsiveState = responsiveState)
-        contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
-            val expandedContent: (@Composable () -> Unit)? = when (card.kind) {
-                ComposeContextPanelCardKind.TRANSFER_DETAILS -> {
-                    { LiveFileTransferCard(hostAdapter, peerState) }
+    val tokens = LocalSecureLanDesignTokens.current
+    val reducedMotion = LocalReducedMotion.current
+    AnimatedContent(
+        targetState = attachmentPanelMode,
+        transitionSpec = {
+            fadeIn(motionTween(reducedMotion)) + slideInHorizontally(motionTween(reducedMotion)) { it / 10 } togetherWith
+                fadeOut(motionTween(reducedMotion)) + slideOutHorizontally(motionTween(reducedMotion)) { it / 10 }
+        },
+        label = "AttachmentPanelMode",
+    ) { mode ->
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        ) {
+            when (mode) {
+                AttachmentPanelMode.QUICK_SHARE -> {
+                    ContextPanelCard(
+                        card = ComposeContextPanelCard(
+                            kind = ComposeContextPanelCardKind.QUICK_SHARE,
+                            title = "Quick Share",
+                            body = "Share files through a temporary LAN browser link.",
+                            primary = true,
+                        ),
+                        expandedContent = { LiveQuickShareCard(hostAdapter) },
+                    )
                 }
-                ComposeContextPanelCardKind.CALL_CONTROLS -> {
-                    { CallControlsPanel(hostAdapter, quickActions, voiceState, videoState) }
+                AttachmentPanelMode.STEGANOGRAPHY -> {
+                    ContextPanelCard(
+                        card = ComposeContextPanelCard(
+                            kind = ComposeContextPanelCardKind.STEGANOGRAPHY,
+                            title = "Steganography",
+                            body = "Hide or extract a hidden message inside a BMP image.",
+                            primary = true,
+                        ),
+                        expandedContent = { LiveSteganographyCard(hostAdapter) },
+                    )
                 }
-                ComposeContextPanelCardKind.QUICK_ACTIONS -> {
-                    { PeerQuickActionsPanel(hostAdapter, quickActions) }
-                }
-                ComposeContextPanelCardKind.QUICK_SHARE -> {
-                    { LiveQuickShareCard(hostAdapter) }
-                }
-                ComposeContextPanelCardKind.DIAGNOSTICS -> {
-                    {
-                        RuntimeDiagnosticsCardContent(
-                            diagnosticsState = hostAdapter.diagnosticsState,
-                            regressionState = hostAdapter.regressionReadinessState,
-                            packagingState = hostAdapter.packagingReadinessState,
+                AttachmentPanelMode.NONE -> {
+                    val quickActions = ComposeSelectedPeerQuickActionsState(
+                        peerListState = peerState,
+                        clientConnected = hostAdapter.statusState.clientConnected,
+                        hangUpReady = hostAdapter.mediaVoiceState.canHangUp || hostAdapter.experimentalVideoState.canHangUp,
+                    )
+                    val transferState = ComposeFileTransferState(
+                        statusState = hostAdapter.statusState,
+                        peerListState = peerState,
+                        senderId = hostAdapter.statusState.nickname,
+                        sessionPassword = hostAdapter.currentRoomPassword,
+                        entries = hostAdapter.transferEntries,
+                        incomingPrompts = hostAdapter.incomingTransferPrompts,
+                        autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
+                    )
+                    val voiceState = hostAdapter.mediaVoiceState.copy(peerListState = peerState)
+                    val videoState = hostAdapter.experimentalVideoState.copy(peerListState = peerState)
+                    val contextPanelState = when {
+                        diagnosticsRequested -> ComposeContextPanelState.forDiagnostics(hostAdapter.diagnosticsState)
+                        voiceState.currentSession != null || videoState.currentSession != null || videoState.previewRunning -> ComposeContextPanelState.forCall(
+                            quickActions,
+                            voiceState,
+                            videoState
                         )
+
+                        transferState.activeCount > 0 || transferState.waitingPromptCount > 0 -> ComposeContextPanelState.forTransfer(
+                            transferState,
+                            quickActions
+                        )
+
+                        peerState.selectedPeer != null -> ComposeContextPanelState.forPeer(quickActions, transferState)
+                        else -> ComposeContextPanelState.forRoom(peerState, transferState)
+                    }
+                    ContextPanelSummary(state = contextPanelState, responsiveState = responsiveState)
+                    val contextCardsReduced = LocalReducedMotion.current
+                    AnimatedContent(
+                        targetState = contextPanelState.mode,
+                        transitionSpec = {
+                            fadeIn(motionTween(contextCardsReduced)) + slideInHorizontally(motionTween(contextCardsReduced)) { it / 8 } togetherWith
+                                fadeOut(motionTween(contextCardsReduced)) + slideOutHorizontally(motionTween(contextCardsReduced)) { it / 8 }
+                        },
+                        label = "ContextAssistantCards",
+                    ) { _ ->
+                        Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                            contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
+                                val expandedContent: (@Composable () -> Unit)? = when (card.kind) {
+                                    ComposeContextPanelCardKind.TRANSFER_DETAILS -> {
+                                        { LiveFileTransferCard(hostAdapter, peerState) }
+                                    }
+
+                                    ComposeContextPanelCardKind.CALL_CONTROLS -> {
+                                        { CallControlsPanel(hostAdapter, quickActions, voiceState, videoState) }
+                                    }
+
+                                    ComposeContextPanelCardKind.QUICK_ACTIONS -> {
+                                        { PeerQuickActionsPanel(hostAdapter, quickActions) }
+                                    }
+
+                                    ComposeContextPanelCardKind.QUICK_SHARE -> {
+                                        { LiveQuickShareCard(hostAdapter) }
+                                    }
+
+                                    ComposeContextPanelCardKind.STEGANOGRAPHY -> {
+                                        { LiveSteganographyCard(hostAdapter) }
+                                    }
+
+                                    ComposeContextPanelCardKind.DIAGNOSTICS -> {
+                                        {
+                                            RuntimeDiagnosticsCardContent(
+                                                diagnosticsState = hostAdapter.diagnosticsState,
+                                                regressionState = hostAdapter.regressionReadinessState,
+                                                packagingState = hostAdapter.packagingReadinessState,
+                                            )
+                                        }
+                                    }
+
+                                    else -> null
+                                }
+                                ContextPanelCard(card, expandedContent)
+                            }
+                        }
                     }
                 }
-                else -> null
             }
-            ContextPanelCard(card, expandedContent)
         }
     }
 }
@@ -902,7 +1314,7 @@ private fun ActionsColumnSection(
     content: @Composable () -> Unit,
 ) {
     var expanded by remember(presentation.kind) { mutableStateOf(presentation.expandedByDefault) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium)
     val borderColor = MaterialTheme.colors.onSurface.copy(alpha = if (expanded) 0.18f else 0.12f)
     val headerColor = MaterialTheme.colors.surface.copy(alpha = if (expanded) 0.98f else 0.86f)
     val contentColor = MaterialTheme.colors.background.copy(alpha = 0.55f)
@@ -937,18 +1349,24 @@ private fun ActionsColumnSection(
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
                 )
             }
-            if (expanded) {
+            this@Column.AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+                exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+            ) {
                 content()
             }
         }
     }
 }
+
 @Composable
 private fun ContextPanelSummary(
     state: ComposeContextPanelState,
     responsiveState: ComposeContextPanelResponsiveState? = null,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
         Text(state.title, style = MaterialTheme.typography.h6)
         Text(
             text = state.nextActionSummary,
@@ -981,51 +1399,76 @@ private fun ContextPanelCard(
     card: ComposeContextPanelCard,
     expandedContent: @Composable (() -> Unit)? = null,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     var expanded by remember(card.kind, card.title, card.collapsed) { mutableStateOf(!card.collapsed) }
     val borderAlpha = if (card.primary) 0.30f else 0.14f
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, (if (card.primary) MaterialTheme.colors.primary else sectionBorderColor()).copy(alpha = borderAlpha)),
-        color = if (card.primary) MaterialTheme.colors.primary.copy(alpha = 0.08f) else fieldBackgroundColor().copy(alpha = 0.56f),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        border = BorderStroke(
+            1.dp,
+            (if (card.primary) MaterialTheme.colors.primary else tokens.colors.borderSubtle).copy(alpha = borderAlpha)
+        ),
+        color = if (card.primary) MaterialTheme.colors.primary.copy(alpha = 0.08f) else tokens.colors.surfaceLevel2.copy(
+            alpha = 0.56f
+        ),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(card.title, style = if (card.primary) MaterialTheme.typography.subtitle1 else MaterialTheme.typography.subtitle2)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+                    Text(
+                        card.title,
+                        style = if (card.primary) MaterialTheme.typography.subtitle1 else MaterialTheme.typography.subtitle2
+                    )
                     if (!card.badge.isNullOrBlank()) {
-                        Text(card.badge, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f))
+                        Text(
+                            card.badge,
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f)
+                        )
                     }
                 }
                 if (expandedContent != null) {
                     Text(
                         text = if (expanded) "Hide" else "Show",
-                        modifier = Modifier.clickable { expanded = !expanded }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.clickable { expanded = !expanded }
+                            .padding(horizontal = tokens.spacing.xxs, vertical = tokens.spacing.xxs),
                         style = MaterialTheme.typography.caption,
                         color = MaterialTheme.colors.primary,
                     )
                 }
             }
-            Text(card.body, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f))
+            Text(
+                card.body,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f)
+            )
             if (!card.primaryAction.isNullOrBlank()) {
-                Surface(shape = FieldShape, border = BorderStroke(1.dp, sectionBorderColor()), color = MaterialTheme.colors.surface.copy(alpha = 0.86f)) {
+                Surface(
+                    shape = RoundedCornerShape(tokens.radius.small),
+                    color = MaterialTheme.colors.surface.copy(alpha = 0.86f)
+                ) {
                     Text(
                         text = card.primaryAction,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
                         style = MaterialTheme.typography.caption,
                         color = MaterialTheme.colors.primary,
                     )
                 }
             }
-            if (expanded && expandedContent != null) {
-                expandedContent()
+            AnimatedVisibility(
+                visible = expanded && expandedContent != null,
+                enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+                exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+            ) {
+                expandedContent?.invoke()
             }
         }
     }
@@ -1040,10 +1483,22 @@ private fun PeerQuickActionsPanel(hostAdapter: ComposeDesktopHostAdapter, state:
         hangUpEnabled = state.hangUpEnabled,
         onAttach = {},
         onVoice = {
-            state.selectedPeer?.let { peer -> hostAdapter.startRealtimeSession(hostAdapter.statusState.nickname, peer.nickname, RtcSessionMode.AUDIO) }
+            state.selectedPeer?.let { peer ->
+                hostAdapter.startRealtimeSession(
+                    hostAdapter.statusState.nickname,
+                    peer.nickname,
+                    RtcSessionMode.AUDIO
+                )
+            }
         },
         onVideo = {
-            state.selectedPeer?.let { peer -> hostAdapter.startRealtimeSession(hostAdapter.statusState.nickname, peer.nickname, RtcSessionMode.AUDIO_VIDEO) }
+            state.selectedPeer?.let { peer ->
+                hostAdapter.startRealtimeSession(
+                    hostAdapter.statusState.nickname,
+                    peer.nickname,
+                    RtcSessionMode.AUDIO_VIDEO
+                )
+            }
         },
         onHangUp = hostAdapter::closeRealtimeSession,
     )
@@ -1056,8 +1511,9 @@ private fun CallControlsPanel(
     voiceState: ComposeMediaVoiceState,
     videoState: ComposeExperimentalVideoState,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
             TransferInfoChip(voiceState.voiceStatusText)
             TransferInfoChip(videoState.previewStateLabel)
         }
@@ -1071,16 +1527,17 @@ private fun HeaderCard(
     tooltip: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = PanelShape,
-        border = BorderStroke(1.dp, panelBorderColor()),
-        elevation = 0.dp,
+        shape = RoundedCornerShape(tokens.radius.large),
+        border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle),
+        elevation = tokens.elevation.flat,
         backgroundColor = MaterialTheme.colors.surface,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             if (tooltip == null) {
                 Text(title, style = MaterialTheme.typography.subtitle2)
@@ -1103,6 +1560,14 @@ private fun CompactTextField(
     onSubmit: (() -> Unit)? = null,
     placeholder: String? = null,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val focused by interactionSource.collectIsFocusedAsState()
+    val interactive = rememberInteractiveSurfaceState(
+        hovered = hovered,
+        focused = focused,
+        enabled = enabled,
+    )
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1113,13 +1578,14 @@ private fun CompactTextField(
         }
         Surface(
             modifier = Modifier.weight(1f).heightIn(min = 34.dp),
-            shape = FieldShape,
-            border = BorderStroke(1.dp, sectionBorderColor()),
-            color = fieldBackgroundColor(),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+            border = BorderStroke(LocalSecureLanDesignTokens.current.border.focus, interactive.borderColor),
+            color = interactive.backgroundColor,
         ) {
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
+                interactionSource = interactionSource,
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(
@@ -1166,9 +1632,9 @@ private fun ContentSurface(
 ) {
     Surface(
         modifier = modifier,
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(10.dp), content = content)
     }
@@ -1181,9 +1647,9 @@ private fun SubtleContentSurface(
 ) {
     Surface(
         modifier = modifier,
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.55f)),
-        color = fieldBackgroundColor().copy(alpha = 0.54f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.55f)),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.54f),
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(8.dp), content = content)
     }
@@ -1194,11 +1660,11 @@ private fun PeerListContentSurface(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = modifier,
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        color = tokens.colors.surfaceLevel1,
     ) {
         Column(modifier = Modifier.fillMaxSize(), content = content)
     }
@@ -1222,9 +1688,9 @@ private fun PeerListEmptyState(peerState: ComposePeerListState) {
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
             )
             Surface(
-                shape = FieldShape,
-                border = BorderStroke(1.dp, sectionBorderColor()),
-                color = fieldBackgroundColor(),
+                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+                border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+                color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
             ) {
                 Text(
                     text = peerState.emptyStateActionLabel,
@@ -1244,12 +1710,28 @@ private fun CompactButton(
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val focused by interactionSource.collectIsFocusedAsState()
+    val tokens = LocalSecureLanDesignTokens.current
+    val borderColor by animateColorAsState(
+        targetValue = if (focused) tokens.colors.borderFocus else Color.Transparent,
+        animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+        label = "CompactButtonFocusBorder",
+    )
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 30.dp),
-        shape = ButtonShape,
-        elevation = ButtonDefaults.elevation(defaultElevation = 0.dp, pressedElevation = 0.dp, disabledElevation = 0.dp),
+        interactionSource = interactionSource,
+        modifier = modifier
+            .heightIn(min = 30.dp)
+            .border(BorderStroke(tokens.border.focus, borderColor), RoundedCornerShape(tokens.radius.medium)),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        elevation = ButtonDefaults.elevation(
+            defaultElevation = 0.dp,
+            pressedElevation = if (pressed) tokens.elevation.popover else 0.dp,
+            disabledElevation = 0.dp
+        ),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
         content = content,
     )
@@ -1263,18 +1745,30 @@ private fun ChatCallActions(
     val voiceEnabled = hostAdapter.chatConnected && selectedPeer?.online == true && selectedPeer.voiceCapable
     val videoEnabled = hostAdapter.chatConnected && selectedPeer?.online == true && selectedPeer.videoCapable
     val hangUpEnabled = selectedPeer?.realtimeCapable == true &&
-        (hostAdapter.mediaVoiceState.canHangUp || hostAdapter.experimentalVideoState.canHangUp)
+            (hostAdapter.mediaVoiceState.canHangUp || hostAdapter.experimentalVideoState.canHangUp)
 
     CompactButton(
         onClick = {
-            selectedPeer?.let { peer -> hostAdapter.startRealtimeSession(hostAdapter.statusState.nickname, peer.nickname, RtcSessionMode.AUDIO) }
+            selectedPeer?.let { peer ->
+                hostAdapter.startRealtimeSession(
+                    hostAdapter.statusState.nickname,
+                    peer.nickname,
+                    RtcSessionMode.AUDIO
+                )
+            }
         },
         modifier = Modifier.defaultMinSize(minWidth = 0.dp),
         enabled = voiceEnabled,
     ) { Text("Voice") }
     CompactButton(
         onClick = {
-            selectedPeer?.let { peer -> hostAdapter.startRealtimeSession(hostAdapter.statusState.nickname, peer.nickname, RtcSessionMode.AUDIO_VIDEO) }
+            selectedPeer?.let { peer ->
+                hostAdapter.startRealtimeSession(
+                    hostAdapter.statusState.nickname,
+                    peer.nickname,
+                    RtcSessionMode.AUDIO_VIDEO
+                )
+            }
         },
         modifier = Modifier.defaultMinSize(minWidth = 0.dp),
         enabled = videoEnabled,
@@ -1358,16 +1852,34 @@ private fun PreviewActionsColumn(responsiveState: ComposeContextPanelResponsiveS
 private fun FileTransferPreviewCard(state: ComposeFileTransferState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Transfers", style = MaterialTheme.typography.subtitle1)
-        Text(
-            text = state.hint,
-            style = MaterialTheme.typography.body2,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-        )
-        Text(
-            text = if (state.entryRows.isEmpty()) "Transfers will appear here." else state.entryRows.joinToString(" · "),
-            style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-        )
+        if (state.entryRows.isEmpty()) {
+            Text(
+                text = state.heroTitle,
+                style = MaterialTheme.typography.subtitle2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
+            )
+            Text(
+                text = state.heroSubtitle,
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+            )
+            Text(
+                text = state.nextStepSummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+            )
+        } else {
+            Text(
+                text = state.hint,
+                style = MaterialTheme.typography.body2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+            )
+            Text(
+                text = state.entryRows.joinToString(" · "),
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+            )
+        }
     }
 }
 
@@ -1395,7 +1907,10 @@ private fun PeerActionReadinessPreviewCard(transferState: ComposeFileTransferSta
                 style = MaterialTheme.typography.caption,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
             )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 TransferInfoChip(transferState.transferCountSummary)
                 TransferInfoChip(transferState.receiveModeShortLabel)
             }
@@ -1436,7 +1951,9 @@ private fun QuickSharePreviewCard(state: ComposeQuickShareState) {
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
         )
         Text(
-            text = if (state.shareRowsDetailed.isEmpty()) state.emptySharesTitle else state.shareRowsDetailed.joinToString(" · ") { row -> "${row.typeLabel}: ${row.statusLabel}" },
+            text = if (state.shareRowsDetailed.isEmpty()) state.emptySharesTitle else state.shareRowsDetailed.joinToString(
+                " · "
+            ) { row -> "${row.typeLabel}: ${row.statusLabel}" },
             style = MaterialTheme.typography.caption,
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
         )
@@ -1483,17 +2000,27 @@ private fun ChatWorkspacePreviewCard(initialState: ComposeChatWorkspaceState) {
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        SubtleContentSurface(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            if (previewState.transcriptLines.isEmpty()) {
-                ChatTranscriptEmptyState(previewState, connected = false)
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    items(previewState.messages.size) { index ->
-                        ChatTranscriptLine(previewState.messages[index])
+        val reduced = LocalReducedMotion.current
+    SubtleContentSurface(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            AnimatedContent(
+                targetState = previewState.transcriptLines.isNotEmpty(),
+                transitionSpec = {
+                    fadeIn(motionTween(reduced)) togetherWith fadeOut(motionTween(reduced))
+                },
+                label = "ChatTranscriptContentPreview",
+            ) { hasContent ->
+                if (!hasContent) {
+                    ChatTranscriptEmptyState(previewState, connected = false)
+                } else {
+                    val tokens = LocalSecureLanDesignTokens.current
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                    ) {
+                        items(previewState.messages.size) { index ->
+                            ChatTranscriptLine(previewState.messages[index])
+                        }
                     }
                 }
             }
@@ -1524,6 +2051,7 @@ private fun ChatWorkspacePreviewCard(initialState: ComposeChatWorkspaceState) {
 @Composable
 private fun ConnectionHubContent(
     state: ComposeConnectionHubState,
+    actionInFlight: ComposeConnectionHubMode?,
     nickname: String,
     onNicknameChange: (String) -> Unit,
     password: String,
@@ -1548,155 +2076,241 @@ private fun ConnectionHubContent(
     onDisconnect: () -> Unit,
     onSetDiscoverable: (Boolean) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 224.dp),
-        shape = PanelShape,
-        border = BorderStroke(1.dp, panelBorderColor()),
-        elevation = 0.dp,
-        backgroundColor = MaterialTheme.colors.surface,
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TitleWithHelp(
-                    title = state.title,
-                    tooltip = "Set your name and the shared room password, then open a room on this computer or join one on another computer.",
-                    titleStyle = MaterialTheme.typography.subtitle2,
-                )
-                ConnectionStatusBadge(label = state.activeBadgeLabel ?: state.modeHint)
-                Box(modifier = Modifier.weight(1f))
-                if (state.copyRoomAddressEnabled) {
-                    CompactButton(onClick = { copyToSystemClipboard(state.copyRoomAddressText) }) { Text("Copy room address") }
-                }
-            }
-
-            ConnectionModeChooser(
-                mode = mode,
-                hostLabel = state.hostTabLabel,
-                hostSubtitle = state.hostChoiceSubtitle,
-                joinLabel = state.joinTabLabel,
-                joinSubtitle = state.joinChoiceSubtitle,
-                onModeChange = onModeChange,
+            TitleWithHelp(
+                title = state.title,
+                tooltip = "Set your name and the shared room password, then open a room on this computer or join one nearby.",
+                titleStyle = MaterialTheme.typography.subtitle2,
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CompactTextField(nickname, onNicknameChange, label = "Your name", modifier = Modifier.weight(1f))
-                CompactTextField(
-                    password,
-                    onPasswordChange,
-                    label = "Room password",
-                    modifier = Modifier.weight(1f),
-                    visualTransformation = PasswordVisualTransformation(),
-                )
+            ConnectionStatusBadge(label = state.activeBadgeLabel ?: state.modeHint)
+            Box(modifier = Modifier.weight(1f))
+            if (state.copyRoomAddressEnabled) {
+                CompactButton(onClick = { copyToSystemClipboard(state.copyRoomAddressText) }) { Text("Copy room address") }
             }
+        }
 
-            ConnectionModeDetailsSurface(
-                title = state.activeModeTitle,
-                detail = state.activeModeDetail,
-                summary = state.joinTargetSummary,
+        ConnectionModeChooser(
+            mode = mode,
+            hostLabel = state.hostTabLabel,
+            hostSubtitle = state.hostChoiceSubtitle,
+            joinLabel = state.joinTabLabel,
+            joinSubtitle = state.joinChoiceSubtitle,
+            onModeChange = onModeChange,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompactTextField(nickname, onNicknameChange, label = "Your name", modifier = Modifier.weight(1f))
+            CompactTextField(
+                password,
+                onPasswordChange,
+                label = "Room password",
+                modifier = Modifier.weight(1f),
+                visualTransformation = PasswordVisualTransformation(),
+            )
+        }
+
+        val reduced = LocalReducedMotion.current
+        Crossfade(
+            targetState = mode,
+            animationSpec = motionTween(reduced),
+            label = "ConnectionHubModeCrossfade",
+        ) { currentMode ->
+            val animatedState = state.copy(mode = currentMode)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
             ) {
-                if (mode == ComposeConnectionHubMode.HOST) {
-                    Text(
-                        text = "Your display name and room password are set above. Discovery controls whether nearby trusted peers can find this room.",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                    )
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Switch(
-                            checked = discoverable,
-                            onCheckedChange = {
-                                onDiscoverableChange(it)
-                                if (state.statusState.localServerRunning) {
-                                    onSetDiscoverable(it)
-                                }
-                            },
-                            enabled = state.discoverableToggleEnabled,
+                ConnectionModeDetailsSurface(
+                    title = animatedState.activeModeTitle,
+                    detail = animatedState.activeModeDetail,
+                    summary = animatedState.joinTargetSummary,
+                ) {
+                    if (currentMode == ComposeConnectionHubMode.HOST) {
+                        Text(
+                            text = "Your display name and room password are set above. Nearby trusted peers can find this room when it is visible.",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.body2,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
                         )
-                        Text(state.discoverableLabel, style = MaterialTheme.typography.body2)
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Switch(
+                                checked = discoverable,
+                                onCheckedChange = {
+                                    onDiscoverableChange(it)
+                                    if (animatedState.statusState.localServerRunning) {
+                                        onSetDiscoverable(it)
+                                    }
+                                },
+                                enabled = animatedState.discoverableToggleEnabled,
+                            )
+                            Text(animatedState.discoverableLabel, style = MaterialTheme.typography.body2)
+                        }
+                    } else {
+                        Text(
+                            text = "Nearby rooms appear in the people list. Use Advanced connection if a room is hidden.",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.body2,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                        )
                     }
-                } else {
-                    Text(
-                        text = "Nearby rooms will appear in the peer list. Use Advanced manual connection when a room is hidden or discovery is blocked.",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                    )
                 }
-            }
 
-            ComposeAdvancedPane(state.advancedSettingsTitle) {
-                if (mode == ComposeConnectionHubMode.HOST) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CompactTextField(serverChatPort, onServerChatPortChange, label = "Chat port", modifier = Modifier.weight(1f))
-                        CompactTextField(serverFilePort, onServerFilePortChange, label = "File port", modifier = Modifier.weight(1f))
-                    }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CompactTextField(manualHost, onManualHostChange, label = "Host address", modifier = Modifier.weight(1.3f))
-                        CompactTextField(clientChatPort, onClientChatPortChange, label = "Chat port", modifier = Modifier.weight(1f))
-                        CompactTextField(clientFilePort, onClientFilePortChange, label = "File port", modifier = Modifier.weight(1f))
+                ComposeAdvancedPane(animatedState.advancedSettingsTitle) {
+                    if (currentMode == ComposeConnectionHubMode.HOST) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CompactTextField(
+                                serverChatPort,
+                                onServerChatPortChange,
+                                label = "Chat port",
+                                modifier = Modifier.weight(1f)
+                            )
+                            CompactTextField(
+                                serverFilePort,
+                                onServerFilePortChange,
+                                label = "File port",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    } else {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CompactTextField(
+                                manualHost,
+                                onManualHostChange,
+                                label = "Room address",
+                                modifier = Modifier.weight(1.3f)
+                            )
+                            CompactTextField(
+                                clientChatPort,
+                                onClientChatPortChange,
+                                label = "Chat port",
+                                modifier = Modifier.weight(1f)
+                            )
+                            CompactTextField(
+                                clientFilePort,
+                                onClientFilePortChange,
+                                label = "File port",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
-            }
 
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val primaryInteractionSource = remember { MutableInteractionSource() }
+                val primaryFocused by primaryInteractionSource.collectIsFocusedAsState()
+                val primaryPressed by primaryInteractionSource.collectIsPressedAsState()
+                val primaryBorder by animateColorAsState(
+                    targetValue = if (primaryFocused) tokens.colors.borderFocus else Color.Transparent,
+                    animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+                    label = "ConnectionPrimaryFocusBorder",
+                )
                 Button(
-                    onClick = when (mode) {
+                    onClick = when (currentMode) {
                         ComposeConnectionHubMode.HOST -> onOpenRoom
                         ComposeConnectionHubMode.JOIN -> onConnect
                     },
-                    enabled = state.primaryActionEnabled,
-                    shape = ButtonShape,
-                    modifier = Modifier.widthIn(min = 140.dp),
+                    enabled = animatedState.primaryActionEnabled,
+                    interactionSource = primaryInteractionSource,
+                    elevation = ButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = if (primaryPressed) tokens.elevation.popover else 0.dp,
+                        disabledElevation = 0.dp,
+                    ),
+                    shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+                    modifier = Modifier
+                        .widthIn(min = 140.dp)
+                        .border(BorderStroke(tokens.border.focus, primaryBorder), RoundedCornerShape(tokens.radius.medium)),
                 ) {
-                    Text(state.primaryActionLabel)
+                    Text(animatedState.primaryActionLabel)
                 }
+                AnimatedVisibility(
+                    visible = actionInFlight == currentMode,
+                    enter = fadeIn(motionTween()) + expandHorizontally(motionTween(), expandFrom = Alignment.Start),
+                    exit = shrinkHorizontally(motionTween(), shrinkTowards = Alignment.Start) + fadeOut(motionTween()),
+                ) {
+                    MicroFeedbackPill(
+                        text = when (currentMode) {
+                            ComposeConnectionHubMode.HOST -> "Opening room…"
+                            ComposeConnectionHubMode.JOIN -> "Joining room…"
+                        },
+                        tone = MicrointeractionTone.LOADING,
+                    )
+                }
+                val secondaryInteractionSource = remember { MutableInteractionSource() }
+                val secondaryFocused by secondaryInteractionSource.collectIsFocusedAsState()
+                val secondaryBorder by animateColorAsState(
+                    targetValue = if (secondaryFocused) tokens.colors.borderFocus else Color.Transparent,
+                    animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+                    label = "ConnectionSecondaryFocusBorder",
+                )
                 OutlinedButton(
-                    onClick = when (mode) {
+                    onClick = when (currentMode) {
                         ComposeConnectionHubMode.HOST -> onStopHosting
                         ComposeConnectionHubMode.JOIN -> onDisconnect
                     },
-                    enabled = state.secondaryActionEnabled,
-                    shape = ButtonShape,
-                    modifier = Modifier.widthIn(min = 120.dp),
+                    enabled = animatedState.secondaryActionEnabled,
+                    interactionSource = secondaryInteractionSource,
+                    shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+                    modifier = Modifier
+                        .widthIn(min = 120.dp)
+                        .border(BorderStroke(tokens.border.focus, secondaryBorder), RoundedCornerShape(tokens.radius.medium)),
                 ) {
-                    Text(state.secondaryActionLabel)
+                    Text(animatedState.secondaryActionLabel)
                 }
-                Box(modifier = Modifier.weight(1f))
-                Text(
-                    text = state.networkInfoSummary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-                )
-            }
-
-            Box(modifier = Modifier.fillMaxWidth().height(38.dp), contentAlignment = Alignment.CenterStart) {
-                if (state.statusMessage != null) {
-                    ConnectionHubStatusMessage(
-                        text = state.statusMessage,
-                        tone = state.statusMessageTone,
+                    Box(modifier = Modifier.weight(1f))
+                    Text(
+                        text = animatedState.networkInfoSummary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
                     )
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().height(38.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    val statusMessage = animatedState.statusMessage
+                    AnimatedVisibility(
+                        visible = statusMessage != null,
+                        enter = fadeIn(motionTween()) + slideInVertically(motionTween()) { it / 2 },
+                        exit = slideOutVertically(motionTween()) { it / 2 } + fadeOut(motionTween()),
+                    ) {
+                        if (statusMessage != null) {
+                            ConnectionHubStatusMessage(
+                                text = statusMessage,
+                                tone = animatedState.statusMessageTone,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1712,9 +2326,10 @@ private fun ConnectionModeChooser(
     joinSubtitle: String,
     onModeChange: (ComposeConnectionHubMode) -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         ConnectionModeChoiceCard(
             title = hostLabel,
@@ -1741,17 +2356,22 @@ private fun ConnectionModeChoiceCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val border = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.72f) else sectionBorderColor()
-    val background = if (selected) MaterialTheme.colors.primary.copy(alpha = if (MaterialTheme.colors.isLight) 0.10f else 0.18f) else fieldBackgroundColor()
+    val tokens = LocalSecureLanDesignTokens.current
+    val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected)
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, border),
-        color = background,
+        modifier = modifier.clickable(
+            interactionSource = interactionSource,
+            indication = LocalIndication.current,
+            role = Role.Tab,
+            onClick = onClick,
+        ),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        border = BorderStroke(tokens.border.focus, interactive.borderColor),
+        color = interactive.backgroundColor,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -1759,8 +2379,12 @@ private fun ConnectionModeChoiceCard(
                 style = MaterialTheme.typography.subtitle2,
                 color = if (selected) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = 0.42f),
             )
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.button, color = MaterialTheme.colors.onSurface.copy(alpha = 0.88f))
+            Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs), modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.button,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.88f)
+                )
                 Text(
                     subtitle,
                     maxLines = 1,
@@ -1780,18 +2404,18 @@ private fun ConnectionModeDetailsSurface(
     summary: String,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor().copy(alpha = 0.62f),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        color = tokens.colors.surfaceLevel2.copy(alpha = 0.62f),
     ) {
         Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
                     Text(title, style = MaterialTheme.typography.subtitle2)
                     Text(
                         detail,
@@ -1805,7 +2429,7 @@ private fun ConnectionModeDetailsSurface(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
                 content = content,
             )
@@ -1815,14 +2439,14 @@ private fun ConnectionModeDetailsSurface(
 
 @Composable
 private fun ConnectionStatusBadge(label: String) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(tokens.radius.pill),
+        color = tokens.colors.surfaceLevel2,
     ) {
         Text(
             text = label,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
             style = MaterialTheme.typography.caption,
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
         )
@@ -1836,7 +2460,7 @@ private fun ConnectionHubStatusMessage(
 ) {
     val accent = when (tone) {
         ComposeConnectionHubMessageTone.INFO -> MaterialTheme.colors.primary
-        ComposeConnectionHubMessageTone.SUCCESS -> Color(0xFF7FB4FF)
+        ComposeConnectionHubMessageTone.SUCCESS -> LocalSecureLanDesignTokens.current.colors.success
         ComposeConnectionHubMessageTone.ERROR -> MaterialTheme.colors.error
     }
     val backgroundAlpha = when (tone) {
@@ -1847,13 +2471,12 @@ private fun ConnectionHubStatusMessage(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.28f)),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
         color = accent.copy(alpha = backgroundAlpha),
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            modifier = Modifier.padding(horizontal = LocalSecureLanDesignTokens.current.spacing.sm, vertical = LocalSecureLanDesignTokens.current.spacing.xs),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.caption,
@@ -1872,9 +2495,9 @@ private fun ConnectionModeSelector(
 ) {
     Surface(
         modifier = modifier,
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
         Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             ConnectionModeSegment(
@@ -1900,14 +2523,27 @@ private fun ConnectionModeSegment(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val background = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.92f) else Color.Transparent
-    val contentColor = if (selected) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+    val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected)
+    val background = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.92f) else interactive.backgroundColor.copy(alpha = if (interactive.hovered || interactive.focused) 1f else 0f)
+    val contentColor =
+        if (selected) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
+        modifier = modifier.clickable(
+            interactionSource = interactionSource,
+            indication = LocalIndication.current,
+            role = Role.Tab,
+            onClick = onClick,
+        ),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
         color = background,
+        border = BorderStroke(LocalSecureLanDesignTokens.current.border.focus, if (interactive.focused) interactive.borderColor else Color.Transparent),
     ) {
-        Text(label, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.button, color = contentColor)
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.button,
+            color = contentColor
+        )
     }
 }
 
@@ -1916,24 +2552,20 @@ private fun ComposeAdvancedPane(
     title: String,
     content: @Composable () -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     var expanded by remember(title) { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { expanded = !expanded },
-            shape = SectionShape,
-            border = BorderStroke(1.dp, sectionBorderColor()),
-            color = if (MaterialTheme.colors.isLight) {
-                MaterialTheme.colors.background
-            } else {
-                androidx.compose.ui.graphics.Color(0xFF182334)
-            },
+            shape = RoundedCornerShape(tokens.radius.medium),
+            color = tokens.colors.surfaceLevel2,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -1944,16 +2576,19 @@ private fun ComposeAdvancedPane(
                 Text(title, style = MaterialTheme.typography.subtitle2, modifier = Modifier.weight(1f))
             }
         }
-        if (expanded) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+            exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+        ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = SectionShape,
-                border = BorderStroke(1.dp, sectionBorderColor()),
-                color = MaterialTheme.colors.background.copy(alpha = 0.42f),
+                shape = RoundedCornerShape(tokens.radius.medium),
+                color = tokens.colors.surfaceLevel1.copy(alpha = 0.72f),
             ) {
                 Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(tokens.spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                     content = { content() },
                 )
             }
@@ -1969,24 +2604,33 @@ private fun LivePeerListCard(
     onTargetKindSelected: (ComposePeerTargetCommandKind?) -> Unit,
     onManualPeersCleared: () -> Unit,
 ) {
+    val reduced = LocalReducedMotion.current
     PeerListContentSurface(modifier = Modifier.fillMaxSize()) {
-        if (!peerState.hasAnyPeers) {
-            PeerListEmptyState(peerState)
-        } else {
-            val scrollState = rememberScrollState()
-            Column(modifier = Modifier.verticalScroll(scrollState)) {
-                PeerListGroup(
-                    peers = peerState.onlinePeers,
-                    sectionTitle = "Online",
-                    peerState = peerState,
-                    onPeerSelected = onPeerSelected,
-                )
-                PeerListGroup(
-                    peers = peerState.offlinePeers,
-                    sectionTitle = "Offline",
-                    peerState = peerState,
-                    onPeerSelected = onPeerSelected,
-                )
+        AnimatedContent(
+            targetState = peerState.hasAnyPeers,
+            transitionSpec = {
+                fadeIn(motionTween(reduced)) togetherWith fadeOut(motionTween(reduced))
+            },
+            label = "PeerListContent",
+        ) { hasPeers ->
+            if (!hasPeers) {
+                PeerListEmptyState(peerState)
+            } else {
+                val scrollState = rememberScrollState()
+                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                    PeerListGroup(
+                        peers = peerState.onlinePeers,
+                        sectionTitle = "Online",
+                        peerState = peerState,
+                        onPeerSelected = onPeerSelected,
+                    )
+                    PeerListGroup(
+                        peers = peerState.offlinePeers,
+                        sectionTitle = "Offline",
+                        peerState = peerState,
+                        onPeerSelected = onPeerSelected,
+                    )
+                }
             }
         }
     }
@@ -2032,7 +2676,11 @@ internal fun resolveAttachCandidatePeer(
     ?.let { selected -> resolvePeer(selected.nickname) }
 
 @Composable
-private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerState: ComposePeerListState) {
+private fun LiveChatWorkspaceCard(
+    hostAdapter: ComposeDesktopHostAdapter,
+    peerState: ComposePeerListState,
+    onAttachmentPanelModeChange: (AttachmentPanelMode) -> Unit,
+) {
     var draftMessage by remember { mutableStateOf("") }
     val transcript = hostAdapter.chatMessages
     val selectedPeer = peerState.selectedPeer
@@ -2047,6 +2695,17 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
         draftMessage = draftMessage,
     )
     val listState = rememberLazyListState()
+    val chatInputFocusRequester = remember { FocusRequester() }
+    val latestStatusEvent = hostAdapter.microinteractionEvents.lastOrNull() ?: hostAdapter.adapterEvents.lastOrNull()
+    val latestConnectionFeedback = remember(latestStatusEvent?.message, latestStatusEvent?.kind, hostAdapter.statusState.localServerRunning, hostAdapter.statusState.clientConnected) {
+        when {
+            latestStatusEvent?.kind == ComposeConnectionEventKind.ERROR -> latestStatusEvent.message to MicrointeractionTone.FAILURE
+            latestStatusEvent?.kind == ComposeConnectionEventKind.SUCCESS -> latestStatusEvent.message to MicrointeractionTone.SUCCESS
+            hostAdapter.statusState.clientConnected -> "Connected to the room" to MicrointeractionTone.SUCCESS
+            hostAdapter.statusState.localServerRunning -> "Room is open" to MicrointeractionTone.SUCCESS
+            else -> null
+        }
+    }
 
     LaunchedEffect(transcript.size) {
         if (transcript.isNotEmpty()) {
@@ -2058,8 +2717,10 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
         if (draftMessage.isNotBlank() && hostAdapter.chatConnected) {
             hostAdapter.sendMessage(draftMessage.trim())
             draftMessage = ""
+            chatInputFocusRequester.requestFocus()
         }
     }
+
     fun attachSelectedFile() {
         val peer = selectedFilePeer ?: return
         val path = openComposeFileChooser("Choose file to send to ${peer.nickname}") ?: return
@@ -2070,7 +2731,12 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (hostAdapter.experimentalVideoState.previewRunning || hostAdapter.experimentalVideoState.currentSession != null) {
+        val videoStageVisible = hostAdapter.experimentalVideoState.previewRunning || hostAdapter.experimentalVideoState.currentSession != null
+        AnimatedVisibility(
+            visible = videoStageVisible,
+            enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+            exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+        ) {
             ComposeVideoStage(hostAdapter.experimentalVideoState.copy(peerListState = peerState))
         }
         SubtleContentSurface(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -2081,21 +2747,41 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
                 incomingPrompts = hostAdapter.incomingTransferPrompts,
                 autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
             )
-            if (transcript.isEmpty() && transferState.chatAttachmentCards.isEmpty()) {
+            val hasTranscript = transcript.isNotEmpty() || transferState.chatAttachmentCards.isNotEmpty()
+            val reduced = LocalReducedMotion.current
+            AnimatedContent(
+                targetState = hasTranscript,
+                transitionSpec = {
+                    fadeIn(motionTween(reduced)) togetherWith fadeOut(motionTween(reduced))
+                },
+                label = "ChatTranscriptContent",
+            ) { hasContent ->
+            if (!hasContent) {
                 ChatTranscriptEmptyState(chatState, hostAdapter.chatConnected)
             } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    items(transcript.size) { index ->
-                        ChatTranscriptLine(transcript[index], hostAdapter.statusState.nickname)
-                    }
-                    items(transferState.chatAttachmentCards.size) { index ->
-                        ChatAttachmentCardRow(transferState.chatAttachmentCards[index])
+                    val tokens = LocalSecureLanDesignTokens.current
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                    ) {
+                        items(transcript.size) { index ->
+                            ChatTranscriptLine(transcript[index], hostAdapter.statusState.nickname)
+                        }
+                        items(transferState.chatAttachmentCards.size) { index ->
+                            ChatAttachmentCardRow(transferState.chatAttachmentCards[index])
+                        }
                     }
                 }
+            }
+        }
+        AnimatedVisibility(
+            visible = latestConnectionFeedback != null,
+            enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+            exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+        ) {
+            latestConnectionFeedback?.let { (message, tone) ->
+                MicroFeedbackPill(text = message, tone = tone)
             }
         }
         Row(
@@ -2103,15 +2789,41 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CompactButton(
-                onClick = ::attachSelectedFile,
-                enabled = hostAdapter.chatConnected && selectedFilePeer != null,
-            ) { Text(attachmentTools.title) }
+            var attachMenuExpanded by remember { mutableStateOf(false) }
+            Box {
+                CompactButton(
+                    onClick = { attachMenuExpanded = true },
+                    enabled = attachmentTools.primaryItems.isNotEmpty(),
+                ) { Text(attachmentTools.title) }
+                DropdownMenu(
+                    expanded = attachMenuExpanded,
+                    onDismissRequest = { attachMenuExpanded = false },
+                ) {
+                    attachmentTools.primaryItems.forEach { item ->
+                        val itemEnabled = when (item) {
+                            "Send secure file" -> selectedFilePeer != null
+                            "Send encrypted text or file" -> false
+                            else -> true
+                        }
+                        DropdownMenuItem(
+                            onClick = {
+                                attachMenuExpanded = false
+                                when (item) {
+                                    "Send secure file" -> attachSelectedFile()
+                                    "Share on LAN temporarily" -> onAttachmentPanelModeChange(AttachmentPanelMode.QUICK_SHARE)
+                                    "Hide message in image", "Extract hidden message" -> onAttachmentPanelModeChange(AttachmentPanelMode.STEGANOGRAPHY)
+                                }
+                            },
+                            enabled = itemEnabled,
+                        ) { Text(item) }
+                    }
+                }
+            }
             CompactTextField(
                 draftMessage,
                 { draftMessage = it },
                 label = "",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).then(Modifier.focusRequester(chatInputFocusRequester)),
                 onSubmit = ::sendDraftMessage,
                 placeholder = "Type a message for the shared chat...",
             )
@@ -2127,64 +2839,196 @@ private fun LiveChatWorkspaceCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
 
 @Composable
 private fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: String = "") {
+    val tokens = LocalSecureLanDesignTokens.current
     val presentation = ComposeChatTranscriptLinePresentation.from(message.displayText, localNickname, message.timestamp)
-    val accent = when (presentation.kind) {
-        ComposeChatTranscriptLineKind.LOCAL -> MaterialTheme.colors.primary
-        ComposeChatTranscriptLineKind.REMOTE -> MaterialTheme.colors.onSurface.copy(alpha = 0.82f)
-        ComposeChatTranscriptLineKind.PRESENCE -> Color(0xFF8FB7FF)
-        ComposeChatTranscriptLineKind.WARNING -> MaterialTheme.colors.error
-        ComposeChatTranscriptLineKind.DIAGNOSTIC -> MaterialTheme.colors.onSurface.copy(alpha = 0.54f)
-    }
-    val bubbleColor = when (presentation.kind) {
-        ComposeChatTranscriptLineKind.LOCAL -> MaterialTheme.colors.primary.copy(alpha = if (MaterialTheme.colors.isLight) 0.14f else 0.18f)
-        ComposeChatTranscriptLineKind.REMOTE -> MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.06f else 0.08f)
-        ComposeChatTranscriptLineKind.PRESENCE -> accent.copy(alpha = 0.08f)
-        ComposeChatTranscriptLineKind.WARNING -> MaterialTheme.colors.error.copy(alpha = 0.10f)
-        ComposeChatTranscriptLineKind.DIAGNOSTIC -> fieldBackgroundColor().copy(alpha = 0.36f)
-    }
-    val alignment = when (presentation.kind) {
-        ComposeChatTranscriptLineKind.LOCAL -> Alignment.CenterEnd
-        ComposeChatTranscriptLineKind.REMOTE -> Alignment.CenterStart
-        else -> Alignment.Center
-    }
-    val bubbleWidth = when (presentation.kind) {
-        ComposeChatTranscriptLineKind.LOCAL, ComposeChatTranscriptLineKind.REMOTE -> 0.82f
-        else -> 0.96f
+    val style = rememberChatTranscriptLineStyle(presentation.kind, tokens)
+    val bubbleShape = when (presentation.kind) {
+        ComposeChatTranscriptLineKind.USER_LOCAL -> RoundedCornerShape(
+            topStart = tokens.radius.medium,
+            topEnd = tokens.radius.medium,
+            bottomStart = tokens.radius.small,
+            bottomEnd = tokens.radius.medium,
+        )
+        ComposeChatTranscriptLineKind.USER_REMOTE -> RoundedCornerShape(
+            topStart = tokens.radius.medium,
+            topEnd = tokens.radius.medium,
+            bottomStart = tokens.radius.medium,
+            bottomEnd = tokens.radius.small,
+        )
+        else -> RoundedCornerShape(tokens.radius.medium)
     }
 
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(bubbleWidth),
-            shape = RoundedCornerShape(10.dp),
-            border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = if (presentation.kind == ComposeChatTranscriptLineKind.REMOTE) 0.48f else 0.28f)),
-            color = bubbleColor,
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SelectionContainer(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = presentation.label,
-                            style = MaterialTheme.typography.caption,
-                            color = accent,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Text(
-                        text = presentation.displayTime,
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.46f),
-                    )
-                }
-                SelectionContainer {
-                    Text(
-                        text = presentation.body,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = if (presentation.kind == ComposeChatTranscriptLineKind.REMOTE || presentation.kind == ComposeChatTranscriptLineKind.LOCAL) MaterialTheme.typography.body2 else MaterialTheme.typography.caption,
-                        color = if (presentation.kind == ComposeChatTranscriptLineKind.WARNING) MaterialTheme.colors.error else MaterialTheme.colors.onSurface.copy(alpha = 0.80f),
-                    )
-                }
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(motionTween()) + slideInVertically(motionTween()) { it / 4 },
+        exit = fadeOut(motionTween()),
+    ) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = style.alignment) {
+        if (style.framed) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(style.width),
+                shape = bubbleShape,
+                color = style.backgroundColor,
+            ) {
+                ChatTranscriptLineContent(presentation, style, tokens)
             }
+        } else {
+            ChatTranscriptLineContent(presentation, style, tokens)
+        }
+    }
+    }
+}
+
+@Composable
+private fun ChatTranscriptLineContent(
+    presentation: ComposeChatTranscriptLinePresentation,
+    style: ChatTranscriptLineStyle,
+    tokens: SecureLanDesignTokens,
+) {
+    Column(
+        modifier = if (style.framed) {
+            Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)
+        } else {
+            Modifier.padding(vertical = tokens.spacing.xxs)
+        },
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+    ) {
+        ChatTranscriptLineMetaRow(presentation, style, tokens)
+        ChatTranscriptLineBody(presentation, style)
+    }
+}
+
+@Composable
+private fun ChatTranscriptLineMetaRow(
+    presentation: ComposeChatTranscriptLinePresentation,
+    style: ChatTranscriptLineStyle,
+    tokens: SecureLanDesignTokens,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(
+                text = presentation.label,
+                style = MaterialTheme.typography.caption,
+                color = style.accentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = presentation.displayTime,
+            style = MaterialTheme.typography.caption,
+            color = tokens.colors.textTertiary,
+        )
+    }
+}
+
+@Composable
+private fun ChatTranscriptLineBody(
+    presentation: ComposeChatTranscriptLinePresentation,
+    style: ChatTranscriptLineStyle,
+) {
+    SelectionContainer {
+        Text(
+            text = presentation.body,
+            modifier = Modifier.fillMaxWidth(),
+            style = style.bodyTextStyle,
+            color = style.bodyColor,
+        )
+    }
+}
+
+private data class ChatTranscriptLineStyle(
+    val alignment: Alignment,
+    val width: Float,
+    val framed: Boolean,
+    val backgroundColor: Color,
+    val accentColor: Color,
+    val bodyColor: Color,
+    val bodyTextStyle: TextStyle,
+)
+
+@Composable
+private fun rememberChatTranscriptLineStyle(kind: ComposeChatTranscriptLineKind, tokens: SecureLanDesignTokens): ChatTranscriptLineStyle {
+    val body1Style = MaterialTheme.typography.body1
+    val body2Style = MaterialTheme.typography.body2
+    val captionStyle = MaterialTheme.typography.caption
+    return remember(kind, tokens) {
+        when (kind) {
+            ComposeChatTranscriptLineKind.USER_LOCAL -> ChatTranscriptLineStyle(
+                alignment = Alignment.CenterEnd,
+                width = 0.82f,
+                framed = true,
+                backgroundColor = tokens.colors.accent.copy(alpha = 0.14f),
+                accentColor = tokens.colors.accent,
+                bodyColor = tokens.colors.textPrimary,
+                bodyTextStyle = body1Style,
+            )
+            ComposeChatTranscriptLineKind.USER_REMOTE -> ChatTranscriptLineStyle(
+                alignment = Alignment.CenterStart,
+                width = 0.82f,
+                framed = true,
+                backgroundColor = tokens.colors.surfaceLevel2,
+                accentColor = tokens.colors.textSecondary,
+                bodyColor = tokens.colors.textPrimary,
+                bodyTextStyle = body1Style,
+            )
+            ComposeChatTranscriptLineKind.PRESENCE -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = true,
+                backgroundColor = tokens.colors.accent.copy(alpha = 0.08f),
+                accentColor = tokens.colors.accent,
+                bodyColor = tokens.colors.textSecondary,
+                bodyTextStyle = body2Style,
+            )
+            ComposeChatTranscriptLineKind.TRANSFER -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = true,
+                backgroundColor = tokens.colors.success.copy(alpha = 0.08f),
+                accentColor = tokens.colors.success,
+                bodyColor = tokens.colors.textSecondary,
+                bodyTextStyle = body2Style,
+            )
+            ComposeChatTranscriptLineKind.SECURITY -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = true,
+                backgroundColor = tokens.colors.error.copy(alpha = 0.08f),
+                accentColor = tokens.colors.error,
+                bodyColor = tokens.colors.error,
+                bodyTextStyle = body2Style,
+            )
+            ComposeChatTranscriptLineKind.CALL -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = true,
+                backgroundColor = tokens.colors.warning.copy(alpha = 0.08f),
+                accentColor = tokens.colors.warning,
+                bodyColor = tokens.colors.textSecondary,
+                bodyTextStyle = body2Style,
+            )
+            ComposeChatTranscriptLineKind.SYSTEM -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = false,
+                backgroundColor = Color.Transparent,
+                accentColor = tokens.colors.textSecondary,
+                bodyColor = tokens.colors.textSecondary,
+                bodyTextStyle = body2Style,
+            )
+            ComposeChatTranscriptLineKind.DIAGNOSTIC -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = false,
+                backgroundColor = Color.Transparent,
+                accentColor = tokens.colors.textTertiary,
+                bodyColor = tokens.colors.textTertiary,
+                bodyTextStyle = captionStyle,
+            )
         }
     }
 }
@@ -2193,9 +3037,11 @@ private fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: Strin
 private fun ChatAttachmentCardRow(card: ComposeChatAttachmentCard) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = if (card.needsDecision) MaterialTheme.colors.primary.copy(alpha = 0.10f) else fieldBackgroundColor().copy(alpha = 0.72f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = if (card.needsDecision) MaterialTheme.colors.primary.copy(alpha = 0.10f) else LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(
+            alpha = 0.72f
+        ),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -2203,9 +3049,17 @@ private fun ChatAttachmentCardRow(card: ComposeChatAttachmentCard) {
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(card.title, style = MaterialTheme.typography.body2, modifier = Modifier.weight(1f))
-                Text(card.progressLabel, style = MaterialTheme.typography.caption, color = if (card.failed) MaterialTheme.colors.error else MaterialTheme.colors.primary)
+                Text(
+                    card.progressLabel,
+                    style = MaterialTheme.typography.caption,
+                    color = if (card.failed) MaterialTheme.colors.error else MaterialTheme.colors.primary
+                )
             }
-            Text(card.subtitle, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+            Text(
+                card.subtitle,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+            )
             if (!card.needsDecision) {
                 LinearProgressIndicator(
                     progress = card.progressPercent.coerceIn(0, 100) / 100f,
@@ -2220,9 +3074,10 @@ private fun ChatAttachmentCardRow(card: ComposeChatAttachmentCard) {
 
 @Composable
 private fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState, connected: Boolean) {
-    Box(modifier = Modifier.fillMaxSize().padding(14.dp), contentAlignment = Alignment.Center) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Box(modifier = Modifier.fillMaxSize().padding(tokens.spacing.md), contentAlignment = Alignment.Center) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -2235,6 +3090,18 @@ private fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState, conne
                 style = MaterialTheme.typography.body2,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
             )
+            Surface(
+                shape = RoundedCornerShape(tokens.radius.small),
+                border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+                color = tokens.colors.surfaceLevel2,
+            ) {
+                Text(
+                    text = chatState.transcriptEmptyActionLabel,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+                )
+            }
         }
     }
 }
@@ -2290,11 +3157,18 @@ private fun LiveFileTransferCard(hostAdapter: ComposeDesktopHostAdapter, peerSta
                 filePath = filePath,
                 onFilePathChange = { filePath = it },
                 onChooseFile = {
-                    openComposeFileChooser("Choose file to send to ${transferState.selectedPeerName}")?.let { filePath = it.toString() }
+                    openComposeFileChooser("Choose file to send to ${transferState.selectedPeerName}")?.let {
+                        filePath = it.toString()
+                    }
                 },
                 onSend = {
                     val peer = selectedPeer ?: return@SendEncryptedFilePanel
-                    hostAdapter.sendFileToPeer(Path.of(filePath), hostAdapter.statusState.nickname, peer, hostAdapter.currentRoomPassword)
+                    hostAdapter.sendFileToPeer(
+                        Path.of(filePath),
+                        hostAdapter.statusState.nickname,
+                        peer,
+                        hostAdapter.currentRoomPassword
+                    )
                 },
                 sendEnabled = transferState.canSendSelectedFile && selectedPeer != null,
             )
@@ -2327,14 +3201,14 @@ private fun TransferHeroPanel(transferState: ComposeFileTransferState) {
 
 @Composable
 private fun TransferInfoChip(text: String) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(tokens.radius.pill),
+        color = tokens.colors.surfaceLevel2,
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
             style = MaterialTheme.typography.caption,
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
         )
@@ -2348,12 +3222,20 @@ private fun RecentTransfersPanel(transferState: ComposeFileTransferState) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text("Recent transfer activity", style = MaterialTheme.typography.subtitle2)
+        TransferCompletionFeedback(transferState)
         if (transferState.recentEntryRows.isEmpty()) {
-            Text(
-                text = "No files sent or received yet. Transfer results will stay here after they finish.",
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = transferState.recentEmptyTitle,
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
+                )
+                Text(
+                    text = transferState.recentEmptyDetail,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+                )
+            }
         } else {
             transferState.recentEntryRows.forEach { row -> TransferActivityRow(row) }
         }
@@ -2362,12 +3244,35 @@ private fun RecentTransfersPanel(transferState: ComposeFileTransferState) {
 
 @Composable
 private fun TransferActivityRow(row: ComposeTransferRow) {
-    val accent = when {
-        row.failed -> MaterialTheme.colors.error
-        row.active -> MaterialTheme.colors.primary
-        else -> MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+    val tokens = LocalSecureLanDesignTokens.current
+    val tone = when {
+        row.failed -> MicrointeractionTone.FAILURE
+        row.active -> MicrointeractionTone.LOADING
+        row.completed -> MicrointeractionTone.SUCCESS
+        else -> MicrointeractionTone.NEUTRAL
     }
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    val accent = when (tone) {
+        MicrointeractionTone.FAILURE -> tokens.colors.error
+        MicrointeractionTone.LOADING -> tokens.colors.accent
+        MicrointeractionTone.SUCCESS -> tokens.colors.success
+        MicrointeractionTone.NEUTRAL -> tokens.colors.textSecondary
+    }
+    val progress by animateFloatAsState(
+        targetValue = row.percent.coerceIn(0, 100) / 100f,
+        animationSpec = motionTween<Float>(durationMillis = tokens.motion.durationDefault),
+        label = "TransferProgress",
+    )
+    val (_, interactive) = rememberInteractiveSurfaceState(tone = tone)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(tokens.radius.small),
+        border = BorderStroke(tokens.border.subtle, interactive.borderColor.copy(alpha = 0.55f)),
+        color = interactive.backgroundColor.copy(alpha = if (row.active || row.completed || row.failed) 0.74f else 0.42f),
+    ) {
+    Column(
+        modifier = Modifier.padding(tokens.spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2377,7 +3282,7 @@ private fun TransferActivityRow(row: ComposeTransferRow) {
             Text(row.progressLabel, style = MaterialTheme.typography.caption, color = accent)
         }
         LinearProgressIndicator(
-            progress = row.percent / 100f,
+            progress = progress,
             modifier = Modifier.fillMaxWidth().height(3.dp),
             color = accent,
             backgroundColor = MaterialTheme.colors.onSurface.copy(alpha = 0.10f),
@@ -2386,6 +3291,22 @@ private fun TransferActivityRow(row: ComposeTransferRow) {
             row.detail,
             style = MaterialTheme.typography.caption,
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
+        )
+    }
+    }
+}
+
+@Composable
+private fun TransferCompletionFeedback(transferState: ComposeFileTransferState) {
+    val latest = transferState.recentEntryRows.lastOrNull { it.completed || it.failed } ?: return
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+        exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+    ) {
+        MicroFeedbackPill(
+            text = if (latest.completed) "Transfer completed: ${latest.fileName}" else "Transfer failed: ${latest.fileName}",
+            tone = if (latest.completed) MicrointeractionTone.SUCCESS else MicrointeractionTone.FAILURE,
         )
     }
 }
@@ -2429,9 +3350,9 @@ private fun SendEncryptedFilePanel(
             )
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = SectionShape,
-                border = BorderStroke(1.dp, sectionBorderColor()),
-                color = if (sendEnabled) MaterialTheme.colors.primary.copy(alpha = 0.08f) else fieldBackgroundColor(),
+                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+                border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+                color = if (sendEnabled) MaterialTheme.colors.primary.copy(alpha = 0.08f) else LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
             ) {
                 Row(
                     modifier = Modifier.padding(10.dp),
@@ -2444,7 +3365,11 @@ private fun SendEncryptedFilePanel(
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f),
                         modifier = Modifier.weight(1f),
                     )
-                    CompactButton(onClick = onSend, enabled = sendEnabled, modifier = Modifier.widthIn(min = 132.dp)) { Text("Send encrypted file") }
+                    CompactButton(
+                        onClick = onSend,
+                        enabled = sendEnabled,
+                        modifier = Modifier.widthIn(min = 132.dp)
+                    ) { Text("Send encrypted file") }
                 }
             }
         }
@@ -2463,13 +3388,12 @@ private fun SelectedFileSummary(
         ?.let { runCatching { Paths.get(it).fileName?.toString() ?: it }.getOrDefault(it) }
     Surface(
         modifier = modifier.heightIn(min = 34.dp),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = LocalSecureLanDesignTokens.current.spacing.sm, vertical = LocalSecureLanDesignTokens.current.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(LocalSecureLanDesignTokens.current.spacing.xxs),
         ) {
             Text(
                 text = fileName ?: fallbackSummary,
@@ -2501,7 +3425,11 @@ private fun TransferDiagnosticsPanel(diagnostics: List<String>) {
     } else {
         ComposeAdvancedPane("Transfer diagnostics") {
             visibleDiagnostics.takeLast(4).forEach { diagnostic ->
-                Text("• $diagnostic", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+                Text(
+                    "• $diagnostic",
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
             }
         }
     }
@@ -2509,7 +3437,7 @@ private fun TransferDiagnosticsPanel(diagnostics: List<String>) {
 
 private fun String.isAutoAcceptToggleDiagnostic(): Boolean =
     this == "Incoming file auto-accept enabled." ||
-        this == "Incoming file auto-accept disabled; confirmation is required."
+            this == "Incoming file auto-accept disabled; confirmation is required."
 
 @Composable
 private fun ReceiveModePanel(
@@ -2519,9 +3447,11 @@ private fun ReceiveModePanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.72f)),
-        color = if (autoAcceptFiles) MaterialTheme.colors.primary.copy(alpha = 0.08f) else fieldBackgroundColor().copy(alpha = 0.62f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.72f)),
+        color = if (autoAcceptFiles) MaterialTheme.colors.primary.copy(alpha = 0.08f) else LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(
+            alpha = 0.62f
+        ),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
@@ -2545,8 +3475,8 @@ private fun IncomingTransferPromptRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
         color = MaterialTheme.colors.primary.copy(alpha = 0.08f),
     ) {
         Row(
@@ -2562,15 +3492,28 @@ private fun IncomingTransferPromptRow(
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
                 )
             }
-            CompactButton(onClick = { hostAdapter.recordIncomingFileDecision(prompt.id, true) }, modifier = Modifier.widthIn(min = 76.dp)) { Text("Accept") }
-            CompactButton(onClick = { hostAdapter.recordIncomingFileDecision(prompt.id, false) }, modifier = Modifier.widthIn(min = 76.dp)) { Text("Decline") }
+            CompactButton(
+                onClick = { hostAdapter.recordIncomingFileDecision(prompt.id, true) },
+                modifier = Modifier.widthIn(min = 76.dp)
+            ) { Text("Accept") }
+            CompactButton(
+                onClick = { hostAdapter.recordIncomingFileDecision(prompt.id, false) },
+                modifier = Modifier.widthIn(min = 76.dp)
+            ) { Text("Decline") }
         }
     }
 }
 
 @Composable
 private fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
-    var quickSharePort by remember { mutableStateOf(ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.serverFilePortText.replace("5051", "5053")) }
+    var quickSharePort by remember {
+        mutableStateOf(
+            ComposeShellMetadata.DEFAULT_STATUS_ADAPTER_STATE.serverFilePortText.replace(
+                "5051",
+                "5053"
+            )
+        )
+    }
     var filePath by remember { mutableStateOf("") }
     var textDraft by remember { mutableStateOf("SecureLanSuite quick-share text") }
     var expirationMinutes by remember { mutableStateOf("10") }
@@ -2588,8 +3531,8 @@ private fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
         elevation = 0.dp,
         backgroundColor = MaterialTheme.colors.surface,
     ) {
@@ -2659,7 +3602,7 @@ private fun QuickShareHeader(state: ComposeQuickShareState) {
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = FieldShape,
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
             border = BorderStroke(1.dp, MaterialTheme.colors.error.copy(alpha = 0.26f)),
             color = MaterialTheme.colors.error.copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.14f),
         ) {
@@ -2686,25 +3629,34 @@ private fun QuickShareServerPanel(
     onStop: () -> Unit,
     onCopyIndex: () -> Unit,
 ) {
-    QuickShareSection(title = "Server and link limits", subtitle = state.statusDetail) {
+    QuickShareSection(title = "Sharing settings", subtitle = state.statusDetail) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CompactButton(onClick = onStart, enabled = state.canStartServer) { Text(state.serverActionLabel) }
-            CompactButton(onClick = onStop, enabled = state.canStopServer) { Text("Stop server") }
+            CompactButton(onClick = onStop, enabled = state.canStopServer) { Text("Stop sharing") }
             CompactButton(onClick = onCopyIndex, enabled = state.canCopyIndex) { Text("Copy index") }
         }
         QuickShareInfoLine(label = "Browser index", value = state.landingText)
-        ComposeAdvancedPane("Advanced limits and port") {
+        ComposeAdvancedPane("Advanced limits") {
             Text(
-                text = "Defaults are enough for most trusted-LAN shares. Change these only for port conflicts or shorter access windows.",
+                text = "Defaults work for most trusted networks. Change these only if the address is already in use or you want a shorter access window.",
                 style = MaterialTheme.typography.caption,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                CompactTextField(port, onPortChange, label = "Port", modifier = Modifier.weight(1f))
-                CompactTextField(expirationMinutes, onExpirationMinutesChange, label = "Minutes", modifier = Modifier.weight(1f))
+                CompactTextField(port, onPortChange, label = "Network port", modifier = Modifier.weight(1f))
+                CompactTextField(
+                    expirationMinutes,
+                    onExpirationMinutesChange,
+                    label = "Minutes",
+                    modifier = Modifier.weight(1f)
+                )
             }
             CompactTextField(accessLimit, onAccessLimitChange, label = "Open limit", modifier = Modifier.fillMaxWidth())
-            Text(state.policySummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            Text(
+                state.policySummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
         }
     }
 }
@@ -2726,9 +3678,9 @@ private fun QuickShareCreateLinksPanel(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = FieldShape,
-            border = BorderStroke(1.dp, sectionBorderColor()),
-            color = fieldBackgroundColor(),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+            color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
         ) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("File", style = MaterialTheme.typography.subtitle2)
@@ -2739,18 +3691,28 @@ private fun QuickShareCreateLinksPanel(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = "Choose a local file",
                 )
-                Text(state.selectedFileLabel, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    state.selectedFileLabel,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     CompactButton(onClick = onChooseFile) { Text("Choose file") }
-                    CompactButton(onClick = onCreateFile, enabled = state.canCreateFileShare) { Text(state.fileShareActionLabel) }
+                    CompactButton(
+                        onClick = onCreateFile,
+                        enabled = state.canCreateFileShare
+                    ) { Text(state.fileShareActionLabel) }
                 }
             }
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = FieldShape,
-            border = BorderStroke(1.dp, sectionBorderColor()),
-            color = fieldBackgroundColor(),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+            color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
         ) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Text", style = MaterialTheme.typography.subtitle2)
@@ -2762,7 +3724,10 @@ private fun QuickShareCreateLinksPanel(
                     minLines = 2,
                     maxLines = 4,
                 )
-                CompactButton(onClick = onCreateText, enabled = state.canCreateTextShare) { Text(state.textShareActionLabel) }
+                CompactButton(
+                    onClick = onCreateText,
+                    enabled = state.canCreateTextShare
+                ) { Text(state.textShareActionLabel) }
             }
         }
     }
@@ -2793,9 +3758,9 @@ private fun QuickShareLinkRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2809,8 +3774,15 @@ private fun QuickShareLinkRow(
                 }
                 QuickShareStatusPill(row.statusLabel, active = row.active)
             }
-            Text(row.url.ifBlank { "URL unavailable" }, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                row.url.ifBlank { "URL unavailable" },
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 CompactButton(onClick = { onCopy(row.url) }, enabled = row.url.isNotBlank()) { Text("Copy link") }
                 CompactButton(onClick = { onStop(row.id) }, enabled = row.active) { Text("Stop link") }
             }
@@ -2824,13 +3796,25 @@ private fun QuickShareDiagnosticsPanel(
     readinessSummary: String,
 ) {
     ComposeAdvancedPane("Readiness and diagnostics") {
-        Text(readinessSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f))
+        Text(
+            readinessSummary,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f)
+        )
         val recentDiagnostics = diagnostics.takeLast(4)
         if (recentDiagnostics.isEmpty()) {
-            Text("No quick-share diagnostics yet.", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f))
+            Text(
+                "No quick-share diagnostics yet.",
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f)
+            )
         } else {
             recentDiagnostics.forEach { diagnostic ->
-                Text("• $diagnostic", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+                Text(
+                    "• $diagnostic",
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
             }
         }
     }
@@ -2842,15 +3826,22 @@ private fun QuickShareSection(
     subtitle: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = if (MaterialTheme.colors.isLight) MaterialTheme.colors.background else MaterialTheme.colors.background.copy(alpha = 0.52f),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        color = tokens.colors.surfaceLevel1,
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.padding(tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        ) {
             Text(title, style = MaterialTheme.typography.subtitle2)
-            Text(subtitle, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
             content()
         }
     }
@@ -2860,12 +3851,19 @@ private fun QuickShareSection(
 private fun QuickShareInfoLine(label: String, value: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f))
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f)
+            )
             Text(value, style = MaterialTheme.typography.body2, color = MaterialTheme.colors.onSurface)
         }
     }
@@ -2875,15 +3873,23 @@ private fun QuickShareInfoLine(label: String, value: String) {
 private fun QuickShareEmptyState(state: ComposeQuickShareState) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(state.emptySharesTitle, style = MaterialTheme.typography.subtitle2)
-            Text(state.emptySharesDetail, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            Text(
+                state.emptySharesDetail,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
             state.quickStartSteps.forEach { step ->
-                Text(step, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+                Text(
+                    step,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
             }
         }
     }
@@ -2893,12 +3899,16 @@ private fun QuickShareEmptyState(state: ComposeQuickShareState) {
 private fun QuickShareStatusPill(text: String, active: Boolean) {
     val color = when {
         active -> MaterialTheme.colors.primary
-        text.contains("expired", ignoreCase = true) || text.contains("limit", ignoreCase = true) -> androidx.compose.ui.graphics.Color(0xFFF59E0B)
+        text.contains("expired", ignoreCase = true) || text.contains(
+            "limit",
+            ignoreCase = true
+        ) -> androidx.compose.ui.graphics.Color(0xFFF59E0B)
+
         text.contains("stopped", ignoreCase = true) -> MaterialTheme.colors.onSurface.copy(alpha = 0.52f)
         else -> MaterialTheme.colors.onSurface.copy(alpha = 0.60f)
     }
     Surface(
-        shape = RoundedCornerShape(999.dp),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.pill),
         border = BorderStroke(1.dp, color.copy(alpha = 0.36f)),
         color = color.copy(alpha = 0.12f),
     ) {
@@ -2929,6 +3939,7 @@ private fun LiveSteganographyCard(hostAdapter: ComposeDesktopHostAdapter) {
         encryptPayload = encrypt,
         encryptedExtract = encryptedExtract,
     )
+
     fun selectCover(path: Path) {
         val normalized = path.toAbsolutePath().normalize()
         coverPath = normalized.toString()
@@ -2956,8 +3967,14 @@ private fun LiveSteganographyCard(hostAdapter: ComposeDesktopHostAdapter) {
         outputPath = outputPath,
         onOutputPathChange = { outputPath = it },
         onChooseOutput = {
-            val initial = coverPath.trim().takeIf(String::isNotEmpty)?.let { DesktopMainViewHelpers.suggestedStegoOutputPath(Path.of(it)) }
-            openComposeFileChooser("Save stego BMP image", ComposeBmpFiles, save = true, initialFile = initial)?.let { path ->
+            val initial = coverPath.trim().takeIf(String::isNotEmpty)
+                ?.let { DesktopMainViewHelpers.suggestedStegoOutputPath(Path.of(it)) }
+            openComposeFileChooser(
+                "Save stego BMP image",
+                ComposeBmpFiles,
+                save = true,
+                initialFile = initial
+            )?.let { path ->
                 outputPath = DesktopMainViewHelpers.ensureBmpExtension(path.toAbsolutePath().normalize()).toString()
             }
         },
@@ -2969,16 +3986,24 @@ private fun LiveSteganographyCard(hostAdapter: ComposeDesktopHostAdapter) {
         onEncryptChange = { encrypt = it },
         encryptedExtract = encryptedExtract,
         onEncryptedExtractChange = { encryptedExtract = it },
-        onInspect = { coverPath.trim().takeIf(String::isNotEmpty)?.let { path -> hostAdapter.inspectStegoCover(Path.of(path)) } },
+        onInspect = {
+            coverPath.trim().takeIf(String::isNotEmpty)?.let { path -> hostAdapter.inspectStegoCover(Path.of(path)) }
+        },
         onHide = {
-            val output = outputPath.ifBlank { coverPath.trim().takeIf(String::isNotEmpty)?.let { Path.of(it) }?.let { path ->
-                com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers.suggestedStegoOutputPath(path).toString()
-            }.orEmpty() }
+            val output = outputPath.ifBlank {
+                coverPath.trim().takeIf(String::isNotEmpty)?.let { Path.of(it) }?.let { path ->
+                    com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers.suggestedStegoOutputPath(path)
+                        .toString()
+                }.orEmpty()
+            }
             if (coverPath.isNotBlank() && output.isNotBlank()) {
                 hostAdapter.hideStegoMessage(Path.of(coverPath), Path.of(output), message, password.takeIf { encrypt })
             }
         },
-        onExtract = { inputPath.trim().takeIf(String::isNotEmpty)?.let { path -> hostAdapter.extractStegoMessage(Path.of(path), password.takeIf { encryptedExtract }) } },
+        onExtract = {
+            inputPath.trim().takeIf(String::isNotEmpty)
+                ?.let { path -> hostAdapter.extractStegoMessage(Path.of(path), password.takeIf { encryptedExtract }) }
+        },
     )
 }
 
@@ -2993,11 +4018,18 @@ private fun ComposeVideoStage(state: ComposeExperimentalVideoState) {
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(state.stageTitle, style = MaterialTheme.typography.subtitle1)
-                    Text(state.frameCaption, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+                    Text(
+                        state.frameCaption,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                    )
                 }
                 Text(state.stageBadge, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.primary)
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text("Participants: ${state.selectedPeerName}", style = MaterialTheme.typography.caption)
                 Text("Media: ${state.mediaLabel}", style = MaterialTheme.typography.caption)
                 Text("Preview: ${state.previewStatus}", style = MaterialTheme.typography.caption)
@@ -3033,8 +4065,16 @@ private fun VideoSurfacePlaceholder(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(title, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-            Text(body, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f))
+            Text(
+                title,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+            )
+            Text(
+                body,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f)
+            )
         }
     }
 }
@@ -3114,8 +4154,8 @@ private fun SteganographyCardContent(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
         elevation = 0.dp,
         backgroundColor = MaterialTheme.colors.surface,
     ) {
@@ -3192,9 +4232,9 @@ private fun SteganographyHeader(state: ComposeSteganographyState) {
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = FieldShape,
-            border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.72f)),
-            color = fieldBackgroundColor().copy(alpha = 0.62f),
+            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.72f)),
+            color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.62f),
         ) {
             Text(
                 text = "Input can be PNG, BMP, JPG, or JPEG. Output is saved as BMP so the hidden message can be extracted later.",
@@ -3209,12 +4249,20 @@ private fun SteganographyHeader(state: ComposeSteganographyState) {
 @Composable
 private fun SteganographyStatusPill(text: String) {
     val color = when {
-        text.contains("failed", ignoreCase = true) || text.contains("rejected", ignoreCase = true) -> MaterialTheme.colors.error
-        text.contains("saved", ignoreCase = true) || text.contains("extracted", ignoreCase = true) || text.contains("ready", ignoreCase = true) -> MaterialTheme.colors.primary
+        text.contains("failed", ignoreCase = true) || text.contains(
+            "rejected",
+            ignoreCase = true
+        ) -> MaterialTheme.colors.error
+
+        text.contains("saved", ignoreCase = true) || text.contains(
+            "extracted",
+            ignoreCase = true
+        ) || text.contains("ready", ignoreCase = true) -> MaterialTheme.colors.primary
+
         else -> MaterialTheme.colors.onSurface.copy(alpha = 0.58f)
     }
     Surface(
-        shape = RoundedCornerShape(999.dp),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.pill),
         border = BorderStroke(1.dp, color.copy(alpha = 0.34f)),
         color = color.copy(alpha = 0.12f),
     ) {
@@ -3230,9 +4278,16 @@ private fun SteganographyStatusPill(text: String) {
 @Composable
 private fun SteganographyStatusPanel(state: ComposeSteganographyState) {
     ComposeAdvancedPane("Readiness details") {
-        Text(state.readinessSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+        Text(
+            state.readinessSummary,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+        )
         if (state.passwordRequiredForHide || state.passwordRequiredForExtract) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 SteganographyStepChip("Password", state.passwordReady)
             }
         }
@@ -3243,7 +4298,7 @@ private fun SteganographyStatusPanel(state: ComposeSteganographyState) {
 private fun SteganographyStepChip(label: String, ready: Boolean) {
     val color = if (ready) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = 0.52f)
     Surface(
-        shape = RoundedCornerShape(999.dp),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.pill),
         border = BorderStroke(1.dp, color.copy(alpha = 0.32f)),
         color = color.copy(alpha = 0.10f),
     ) {
@@ -3320,9 +4375,9 @@ private fun SteganographyHidePanel(
             } else {
                 state.blockedReasons.firstOrNull { reason ->
                     reason.contains("cover", ignoreCase = true) ||
-                        reason.contains("output", ignoreCase = true) ||
-                        reason.contains("text", ignoreCase = true) ||
-                        reason.contains("password", ignoreCase = true)
+                            reason.contains("output", ignoreCase = true) ||
+                            reason.contains("text", ignoreCase = true) ||
+                            reason.contains("password", ignoreCase = true)
                 } ?: "Complete the hide-message fields to continue."
             },
             active = hideEnabled,
@@ -3330,7 +4385,11 @@ private fun SteganographyHidePanel(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CompactButton(onClick = onChooseCover, enabled = !previewOnly) { Text("Choose cover") }
             CompactButton(onClick = onInspect, enabled = inspectEnabled) { Text("Check capacity") }
-            CompactButton(onClick = onHide, enabled = hideEnabled, modifier = Modifier.widthIn(min = 104.dp)) { Text("Save BMP") }
+            CompactButton(
+                onClick = onHide,
+                enabled = hideEnabled,
+                modifier = Modifier.widthIn(min = 104.dp)
+            ) { Text("Save BMP") }
         }
     }
 }
@@ -3381,7 +4440,11 @@ private fun SteganographyExtractPanel(
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CompactButton(onClick = onChooseInput, enabled = !previewOnly) { Text("Choose stego BMP") }
-            CompactButton(onClick = onExtract, enabled = extractEnabled, modifier = Modifier.widthIn(min = 112.dp)) { Text("Extract text") }
+            CompactButton(
+                onClick = onExtract,
+                enabled = extractEnabled,
+                modifier = Modifier.widthIn(min = 112.dp)
+            ) { Text("Extract text") }
         }
     }
 }
@@ -3392,16 +4455,23 @@ private fun SteganographySection(
     subtitle: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor().copy(alpha = 0.62f),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        color = tokens.colors.surfaceLevel1,
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(
+            modifier = Modifier.padding(tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
                 Text(title, style = MaterialTheme.typography.subtitle2)
-                Text(subtitle, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
             }
             content()
         }
@@ -3419,8 +4489,16 @@ private fun SteganographyFileRow(
     enabled: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             CompactTextField(
                 value = value,
                 onValueChange = onValueChange,
@@ -3428,7 +4506,11 @@ private fun SteganographyFileRow(
                 modifier = Modifier.weight(1f),
                 placeholder = placeholder,
             )
-            CompactButton(onClick = onChoose, enabled = enabled, modifier = Modifier.widthIn(min = 92.dp)) { Text(buttonText) }
+            CompactButton(onClick = onChoose, enabled = enabled, modifier = Modifier.widthIn(min = 92.dp)) {
+                Text(
+                    buttonText
+                )
+            }
         }
     }
 }
@@ -3446,7 +4528,11 @@ private fun SteganographyPasswordRow(
             Checkbox(checked, onCheckedChange)
             Text(label, style = MaterialTheme.typography.body2, modifier = Modifier.weight(1f))
         }
-        if (checked) {
+        AnimatedVisibility(
+            visible = checked,
+            enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+            exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+        ) {
             CompactTextField(
                 value = password,
                 onValueChange = onPasswordChange,
@@ -3463,9 +4549,9 @@ private fun SteganographyPasswordRow(
 private fun SteganographyActionHint(text: String, active: Boolean) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.72f)),
-        color = if (active) MaterialTheme.colors.primary.copy(alpha = 0.08f) else fieldBackgroundColor().copy(alpha = 0.62f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.72f)),
+        color = if (active) MaterialTheme.colors.primary.copy(alpha = 0.08f) else LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.62f),
     ) {
         Text(
             text = text,
@@ -3480,25 +4566,55 @@ private fun SteganographyActionHint(text: String, active: Boolean) {
 private fun SteganographyResultPanel(state: ComposeSteganographyState) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Result and capacity", style = MaterialTheme.typography.subtitle2)
-            Text(state.capacityText, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
-            if (state.extractedMessage.isBlank()) {
-                Text("Extracted text will appear here after a successful extraction.", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f))
-            } else {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = FieldShape,
-                    border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.72f)),
-                    color = MaterialTheme.colors.primary.copy(alpha = 0.08f),
-                ) {
-                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(state.extractedSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.primary)
-                        Text(state.extractedMessage, style = MaterialTheme.typography.body2, color = MaterialTheme.colors.onSurface.copy(alpha = 0.82f))
+            Text(
+                state.capacityText,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+            )
+            val reduced = LocalReducedMotion.current
+            AnimatedContent(
+                targetState = state.extractedMessage.isBlank(),
+                transitionSpec = { fadeIn(motionTween(reduced)) togetherWith fadeOut(motionTween(reduced)) },
+                label = "StegoResult",
+            ) { blank ->
+                if (blank) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            state.extractedSummary,
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+                        )
+                        Text(
+                            state.extractedEmptyHint,
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f)
+                        )
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+                        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.72f)),
+                        color = MaterialTheme.colors.primary.copy(alpha = 0.08f),
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                state.extractedSummary,
+                                style = MaterialTheme.typography.caption,
+                                color = MaterialTheme.colors.primary
+                            )
+                            Text(
+                                state.extractedMessage,
+                                style = MaterialTheme.typography.body2,
+                                color = MaterialTheme.colors.onSurface.copy(alpha = 0.82f)
+                            )
+                        }
                     }
                 }
             }
@@ -3657,12 +4773,19 @@ private fun AudioVideoDevicesCardContent(
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
                 )
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 StatusPill(voiceState.permissionStatusLabel)
                 StatusPill(videoState.permissionStatusLabel)
                 StatusPill("Call target: ${voiceState.selectedPeerName}")
             }
-            Button(onClick = onRefresh, enabled = !previewOnly && voiceState.canRefreshDevices, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onRefresh,
+                enabled = !previewOnly && voiceState.canRefreshDevices,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Refresh device list")
             }
             DeviceSettingsSection(
@@ -3678,10 +4801,23 @@ private fun AudioVideoDevicesCardContent(
                     helperText = voiceState.microphoneEmptyState,
                 )
                 AudioInputLevelMeter(percent = voiceState.localAudioPercent, label = voiceState.localAudioLabel)
-                Text(voiceState.microphoneTestStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onTestMicrophone, enabled = !previewOnly && voiceState.canTestMicrophone) { Text("Test microphone") }
-                    Button(onClick = onStartVoice, enabled = !previewOnly && voiceState.canStartVoice) { Text(voiceState.startVoiceLabel) }
+                Text(
+                    voiceState.microphoneTestStatus,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onTestMicrophone,
+                        enabled = !previewOnly && voiceState.canTestMicrophone
+                    ) { Text("Test microphone") }
+                    Button(
+                        onClick = onStartVoice,
+                        enabled = !previewOnly && voiceState.canStartVoice
+                    ) { Text(voiceState.startVoiceLabel) }
                     Button(onClick = onHangUp, enabled = !previewOnly && voiceState.canHangUp) { Text("Hang up") }
                 }
             }
@@ -3697,8 +4833,15 @@ private fun AudioVideoDevicesCardContent(
                     onSelected = onSpeakerSelected,
                     helperText = voiceState.outputEmptyState,
                 )
-                Text(voiceState.speakerTestStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-                Button(onClick = onTestSpeaker, enabled = !previewOnly && voiceState.canTestSpeaker) { Text("Test speakers") }
+                Text(
+                    voiceState.speakerTestStatus,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+                )
+                Button(
+                    onClick = onTestSpeaker,
+                    enabled = !previewOnly && voiceState.canTestSpeaker
+                ) { Text("Test speakers") }
             }
             DeviceSettingsSection(
                 title = "Camera",
@@ -3713,14 +4856,39 @@ private fun AudioVideoDevicesCardContent(
                     onSelected = onCameraSelected,
                     helperText = videoState.cameraEmptyState,
                 )
-                Text(videoState.previewActionHint, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+                Text(
+                    videoState.previewActionHint,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+                )
                 CameraPreviewStatus(state = videoState)
-                Text(videoState.cameraTestStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onTestCamera, enabled = !previewOnly && videoState.canTestCamera) { Text("Test camera") }
-                    Button(onClick = onStartPreview, enabled = !previewOnly && videoState.canStartPreview) { Text(videoState.startPreviewLabel) }
-                    Button(onClick = onStopPreview, enabled = !previewOnly && videoState.canStopPreview) { Text(videoState.stopPreviewLabel) }
-                    Button(onClick = onStartVideo, enabled = !previewOnly && videoState.canStartVideo) { Text(videoState.startVideoLabel) }
+                Text(
+                    videoState.cameraTestStatus,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onTestCamera,
+                        enabled = !previewOnly && videoState.canTestCamera
+                    ) { Text("Test camera") }
+                    Button(onClick = onStartPreview, enabled = !previewOnly && videoState.canStartPreview) {
+                        Text(
+                            videoState.startPreviewLabel
+                        )
+                    }
+                    Button(onClick = onStopPreview, enabled = !previewOnly && videoState.canStopPreview) {
+                        Text(
+                            videoState.stopPreviewLabel
+                        )
+                    }
+                    Button(
+                        onClick = onStartVideo,
+                        enabled = !previewOnly && videoState.canStartVideo
+                    ) { Text(videoState.startVideoLabel) }
                     Button(onClick = onHangUp, enabled = !previewOnly && videoState.canHangUp) { Text("Hang up") }
                 }
             }
@@ -3729,10 +4897,22 @@ private fun AudioVideoDevicesCardContent(
                 body = "Allow camera and microphone access in browser or operating-system privacy settings, close other apps that may be using the device, then refresh this list.",
             )
             diagnostics.takeLast(3).forEach {
-                Text("• $it", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+                Text(
+                    "• $it",
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
             }
-            Text(voiceState.readinessSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
-            Text(videoState.readinessSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            Text(
+                voiceState.readinessSummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
+            Text(
+                videoState.readinessSummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
         }
     }
 }
@@ -3743,10 +4923,14 @@ private fun DeviceSettingsSection(
     description: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(color = MaterialTheme.colors.onSurface.copy(alpha = 0.04f), shape = SectionShape) {
+    Surface(color = MaterialTheme.colors.onSurface.copy(alpha = 0.04f), shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium)) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.subtitle1)
-            Text(description, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+            Text(
+                description,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+            )
             content()
         }
     }
@@ -3754,7 +4938,7 @@ private fun DeviceSettingsSection(
 
 @Composable
 private fun StatusPill(text: String) {
-    Surface(color = MaterialTheme.colors.primary.copy(alpha = 0.12f), shape = FieldShape) {
+    Surface(color = MaterialTheme.colors.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small)) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -3772,13 +4956,17 @@ private fun AudioInputLevelMeter(percent: Int, label: String) {
             Text("$percent%", style = MaterialTheme.typography.caption)
         }
         LinearProgressIndicator(progress = percent.coerceIn(0, 100) / 100f, modifier = Modifier.fillMaxWidth())
-        Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+        Text(
+            label,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+        )
     }
 }
 
 @Composable
 private fun CameraPreviewStatus(state: ComposeExperimentalVideoState) {
-    Surface(color = MaterialTheme.colors.background.copy(alpha = 0.42f), shape = FieldShape) {
+    Surface(color = MaterialTheme.colors.background.copy(alpha = 0.42f), shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small)) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val previewImage = remember(state.latestPreviewFrame) { state.latestPreviewFrame?.toPreviewImageBitmap() }
             if (previewImage != null) {
@@ -3795,8 +4983,16 @@ private fun CameraPreviewStatus(state: ComposeExperimentalVideoState) {
                 )
             }
             Text(state.previewStatus, style = MaterialTheme.typography.body2)
-            Text(state.frameCaption, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
-            Text(state.previewConfigurationLabel, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f))
+            Text(
+                state.frameCaption,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+            )
+            Text(
+                state.previewConfigurationLabel,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f)
+            )
         }
     }
 }
@@ -3826,10 +5022,14 @@ private fun com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent.toPreview
 
 @Composable
 private fun HelpNotice(title: String, body: String) {
-    Surface(color = MaterialTheme.colors.secondary.copy(alpha = 0.10f), shape = SectionShape) {
+    Surface(color = MaterialTheme.colors.secondary.copy(alpha = 0.10f), shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium)) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.subtitle2)
-            Text(body, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
+            Text(
+                body,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+            )
         }
     }
 }
@@ -3875,7 +5075,10 @@ private fun MediaVoiceCardContent(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(state.title, style = MaterialTheme.typography.h6)
-            Text("Runtime: ${state.runtimeLabel} · Target: ${state.selectedPeerName}", style = MaterialTheme.typography.body2)
+            Text(
+                "Status: ${state.runtimeLabel} · Target: ${state.selectedPeerName}",
+                style = MaterialTheme.typography.body2
+            )
             DeviceChoiceDropdown(
                 label = "Microphone",
                 choices = state.microphones,
@@ -3885,15 +5088,41 @@ private fun MediaVoiceCardContent(
             )
             Text(state.voiceStatusText, style = MaterialTheme.typography.body2)
             Text("${state.localAudioLabel} · ${state.remoteAudioLabel}", style = MaterialTheme.typography.caption)
-            Text(state.microphoneTestStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRefresh, enabled = !previewOnly && state.canRefreshDevices) { Text("Refresh devices") }
-                Button(onClick = onTestMicrophone, enabled = !previewOnly && state.canTestMicrophone) { Text("Test mic") }
-                Button(onClick = onStartVoice, enabled = !previewOnly && state.canStartVoice) { Text(state.startVoiceLabel) }
+            Text(
+                state.microphoneTestStatus,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onRefresh,
+                    enabled = !previewOnly && state.canRefreshDevices
+                ) { Text("Refresh devices") }
+                Button(
+                    onClick = onTestMicrophone,
+                    enabled = !previewOnly && state.canTestMicrophone
+                ) { Text("Test mic") }
+                Button(
+                    onClick = onStartVoice,
+                    enabled = !previewOnly && state.canStartVoice
+                ) { Text(state.startVoiceLabel) }
                 Button(onClick = onHangUp, enabled = !previewOnly && state.canHangUp) { Text("Hang up") }
             }
-            diagnostics.takeLast(4).forEach { Text("• $it", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)) }
-            Text(state.readinessSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            diagnostics.takeLast(4).forEach {
+                Text(
+                    "• $it",
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
+            }
+            Text(
+                state.readinessSummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
         }
     }
 }
@@ -3943,7 +5172,10 @@ private fun ExperimentalVideoCardContent(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(state.title, style = MaterialTheme.typography.h6)
-            Text("Runtime: ${state.runtimeLabel} · Target: ${state.selectedPeerName}", style = MaterialTheme.typography.body2)
+            Text(
+                "Status: ${state.runtimeLabel} · Target: ${state.selectedPeerName}",
+                style = MaterialTheme.typography.body2
+            )
             DeviceChoiceDropdown(
                 label = "Camera",
                 choices = state.cameras,
@@ -3952,19 +5184,48 @@ private fun ExperimentalVideoCardContent(
                 onSelected = onCameraSelected,
             )
             Text(state.previewConfigurationLabel, style = MaterialTheme.typography.caption)
-            Text("${state.stageTitle} · ${state.stageBadge} · ${state.mediaLabel}", style = MaterialTheme.typography.body2)
+            Text(
+                "${state.stageTitle} · ${state.stageBadge} · ${state.mediaLabel}",
+                style = MaterialTheme.typography.body2
+            )
             Text("${state.previewStatus} · ${state.frameCaption}", style = MaterialTheme.typography.caption)
-            Text(state.cameraTestStatus, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onRefresh, enabled = !previewOnly && state.canRefreshCameras) { Text("Refresh cameras") }
+            Text(
+                state.cameraTestStatus,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onRefresh,
+                    enabled = !previewOnly && state.canRefreshCameras
+                ) { Text("Refresh cameras") }
                 Button(onClick = onTestCamera, enabled = !previewOnly && state.canTestCamera) { Text("Test camera") }
-                Button(onClick = onStartPreview, enabled = !previewOnly && state.canStartPreview) { Text("Start preview") }
+                Button(
+                    onClick = onStartPreview,
+                    enabled = !previewOnly && state.canStartPreview
+                ) { Text("Start preview") }
                 Button(onClick = onStopPreview, enabled = !previewOnly && state.canStopPreview) { Text("Stop preview") }
-                Button(onClick = onStartVideo, enabled = !previewOnly && state.canStartVideo) { Text(state.startVideoLabel) }
+                Button(
+                    onClick = onStartVideo,
+                    enabled = !previewOnly && state.canStartVideo
+                ) { Text(state.startVideoLabel) }
                 Button(onClick = onHangUp, enabled = !previewOnly && state.canHangUp) { Text("Hang up") }
             }
-            diagnostics.takeLast(4).forEach { Text("• $it", style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)) }
-            Text(state.readinessSummary, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            diagnostics.takeLast(4).forEach {
+                Text(
+                    "• $it",
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+                )
+            }
+            Text(
+                state.readinessSummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
         }
     }
 }
@@ -4014,7 +5275,7 @@ private fun RuntimeDiagnosticsCardContent(
 private fun RuntimeDiagnosticsHero(state: ComposeDiagnosticsState) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
         border = BorderStroke(1.dp, runtimeStatusColor(state).copy(alpha = 0.28f)),
         color = runtimeStatusColor(state).copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.16f),
     ) {
@@ -4068,13 +5329,20 @@ private fun RuntimeMetricRow(state: ComposeDiagnosticsState) {
 private fun RuntimeMetricTile(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.heightIn(min = 54.dp),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.72f)),
-        color = fieldBackgroundColor().copy(alpha = 0.72f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.72f)),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.72f),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(value, style = MaterialTheme.typography.subtitle2)
-            Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f))
+            Text(
+                label,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f)
+            )
         }
     }
 }
@@ -4092,9 +5360,9 @@ private fun RuntimeDiagnosticsChannels(channels: List<ComposeDiagnosticChannel>)
 private fun RuntimeDiagnosticChannelCard(channel: ComposeDiagnosticChannel) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = SectionShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor().copy(alpha = if (channel.hasMessages) 0.78f else 0.48f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = if (channel.hasMessages) 0.78f else 0.48f),
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
@@ -4104,11 +5372,17 @@ private fun RuntimeDiagnosticChannelCard(channel: ComposeDiagnosticChannel) {
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(channel.title, style = MaterialTheme.typography.subtitle2)
-                    Text(channel.description, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f))
+                    Text(
+                        channel.description,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f)
+                    )
                 }
                 RuntimeStatusPill(
                     text = channel.stateLabel,
-                    color = if (channel.hasMessages) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = 0.38f),
+                    color = if (channel.hasMessages) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(
+                        alpha = 0.38f
+                    ),
                 )
             }
             if (channel.hasMessages) {
@@ -4145,13 +5419,24 @@ private fun DiagnosticAlertRow(alert: ComposeDiagnosticAlert) {
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
         border = BorderStroke(1.dp, color.copy(alpha = 0.28f)),
         color = color.copy(alpha = if (MaterialTheme.colors.isLight) 0.08f else 0.14f),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(alert.title, style = MaterialTheme.typography.subtitle2, color = MaterialTheme.colors.onSurface.copy(alpha = 0.88f))
-            Text(alert.message, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                alert.title,
+                style = MaterialTheme.typography.subtitle2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.88f)
+            )
+            Text(
+                alert.message,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+            )
         }
     }
 }
@@ -4188,24 +5473,32 @@ private fun RuntimeReadinessRow(
     val color = if (ready) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = 0.42f)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor()),
-        color = fieldBackgroundColor().copy(alpha = 0.60f),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.60f),
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.subtitle2, modifier = Modifier.weight(1f))
                 RuntimeStatusPill(if (ready) "Ready" else "Pending", color)
             }
-            Text(status, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
-            Text(action, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f))
+            Text(
+                status,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
+            )
+            Text(
+                action,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f)
+            )
         }
     }
 }
 
 @Composable
 private fun RuntimeStatusPill(text: String, color: Color) {
-    Surface(color = color.copy(alpha = 0.16f), shape = FieldShape) {
+    Surface(color = color.copy(alpha = 0.16f), shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small)) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
@@ -4219,7 +5512,7 @@ private fun RuntimeStatusPill(text: String, color: Color) {
 private fun DiagnosticMessageRow(message: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
         color = MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.035f else 0.055f),
     ) {
         Text(
@@ -4235,8 +5528,8 @@ private fun DiagnosticMessageRow(message: String) {
 private fun RuntimeEmptyState(text: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = FieldShape,
-        border = BorderStroke(1.dp, sectionBorderColor().copy(alpha = 0.46f)),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.46f)),
         color = MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.025f else 0.045f),
     ) {
         Text(
@@ -4251,8 +5544,16 @@ private fun RuntimeEmptyState(text: String) {
 @Composable
 private fun DiagnosticsDetailLine(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f))
-        Text(value, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
+        Text(
+            label,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+        )
     }
 }
 
@@ -4283,9 +5584,17 @@ private fun DeviceChoiceDropdown(
     var expanded by remember(label, selected.deviceId) { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+        Text(
+            label,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+        )
         Box {
-            Button(onClick = { expanded = true }, enabled = enabled && choices.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { expanded = true },
+                enabled = enabled && choices.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(selected.toString())
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -4302,7 +5611,11 @@ private fun DeviceChoiceDropdown(
             }
         }
         helperText?.let {
-            Text(it, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f))
+            Text(
+                it,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
+            )
         }
     }
 }
@@ -4319,28 +5632,37 @@ private fun PeerListPreviewCard(initialState: ComposePeerListState) {
     var selectedPeerIndex by remember { mutableStateOf(initialState.selectedPeerIndex) }
     val previewState = initialState.copy(selectedPeerIndex = selectedPeerIndex)
 
+    val reduced = LocalReducedMotion.current
     PeerListContentSurface(modifier = Modifier.fillMaxSize()) {
-        if (!previewState.hasAnyPeers) {
-            PeerListEmptyState(previewState)
-        } else {
-            val scrollState = rememberScrollState()
-            Column(modifier = Modifier.verticalScroll(scrollState)) {
-                PeerListGroup(
-                    peers = previewState.onlinePeers,
-                    sectionTitle = "Online",
-                    peerState = previewState,
-                    onPeerSelected = { nickname ->
-                        selectedPeerIndex = previewState.visiblePeers.indexOfFirst { it.nickname == nickname }
-                    },
-                )
-                PeerListGroup(
-                    peers = previewState.offlinePeers,
-                    sectionTitle = "Offline",
-                    peerState = previewState,
-                    onPeerSelected = { nickname ->
-                        selectedPeerIndex = previewState.visiblePeers.indexOfFirst { it.nickname == nickname }
-                    },
-                )
+        AnimatedContent(
+            targetState = previewState.hasAnyPeers,
+            transitionSpec = {
+                fadeIn(motionTween(reduced)) togetherWith fadeOut(motionTween(reduced))
+            },
+            label = "PeerListContentPreview",
+        ) { hasPeers ->
+            if (!hasPeers) {
+                PeerListEmptyState(previewState)
+            } else {
+                val scrollState = rememberScrollState()
+                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                    PeerListGroup(
+                        peers = previewState.onlinePeers,
+                        sectionTitle = "Online",
+                        peerState = previewState,
+                        onPeerSelected = { nickname ->
+                            selectedPeerIndex = previewState.visiblePeers.indexOfFirst { it.nickname == nickname }
+                        },
+                    )
+                    PeerListGroup(
+                        peers = previewState.offlinePeers,
+                        sectionTitle = "Offline",
+                        peerState = previewState,
+                        onPeerSelected = { nickname ->
+                            selectedPeerIndex = previewState.visiblePeers.indexOfFirst { it.nickname == nickname }
+                        },
+                    )
+                }
             }
         }
     }
@@ -4368,13 +5690,24 @@ private fun PeerPreviewRow(
 ) {
     val statusColor =
         if (peer.online) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface.copy(alpha = 0.42f)
-    val surfaceColor = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.10f) else MaterialTheme.colors.surface
+    val (interactionSource, interactive) = rememberInteractiveSurfaceState(
+        selected = selected,
+        enabled = peer.online,
+        tone = if (peer.online) MicrointeractionTone.SUCCESS else MicrointeractionTone.NEUTRAL,
+    )
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onSelect),
-        color = surfaceColor,
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onSelect,
+            ),
+        color = interactive.backgroundColor,
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(LocalSecureLanDesignTokens.current.border.focus, interactive.borderColor),
     ) {
         Row(
             modifier = Modifier.padding(10.dp),

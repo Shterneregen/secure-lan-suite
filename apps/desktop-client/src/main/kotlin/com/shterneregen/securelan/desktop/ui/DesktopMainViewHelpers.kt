@@ -145,7 +145,7 @@ object DesktopMainViewHelpers {
 
     @JvmStatic
     fun discoverySearchHint(): String =
-        "Looking for SecureLanSuite peers on this LAN. Select a discovered peer and connect before sending files or starting a call."
+        "Looking for nearby rooms. Select a discovered room and connect before sending files or starting a call."
 
     @JvmStatic
     fun discoveryVisibilityMessage(discoverable: Boolean): String =

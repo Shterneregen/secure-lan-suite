@@ -117,6 +117,10 @@ class ComposeDesktopHostAdapter(
     var adapterEvents: List<ComposeConnectionEvent> by mutableStateOf(emptyList())
         private set
 
+    /** Lightweight workspace feedback for hover/focus-adjacent microinteractions and one-shot state changes. */
+    var microinteractionEvents: List<ComposeConnectionEvent> by mutableStateOf(emptyList())
+        private set
+
     /** Snapshot of discovered peers from the discovery service. */
     var discoveredPeers: List<DiscoveredPeer> by mutableStateOf(emptyList())
         private set
@@ -382,7 +386,7 @@ class ComposeDesktopHostAdapter(
             )
             chatServerService.start(ChatServerConfig(chatPort, password))
             startFileTransferListener(filePort, password)
-            publish(ComposeConnectionEventKind.SUCCESS, "Room opened on chat port $chatPort, file port $filePort.")
+            publish(ComposeConnectionEventKind.SUCCESS, "Room opened. Chat on $chatPort, files on $filePort.")
             publishEventKind(ComposeAdapterEventKind.HOST_STARTED, "Host started: $trimmedNick")
 
             connectLocalHostedChat(chatPort, trimmedNick, password)
@@ -396,10 +400,10 @@ class ComposeDesktopHostAdapter(
             )
 
             if (discoverable) {
-                publish(ComposeConnectionEventKind.SUCCESS, "Discovery announcements active.")
+                publish(ComposeConnectionEventKind.SUCCESS, "Room is visible to nearby peers.")
                 publishEventKind(ComposeAdapterEventKind.DISCOVERY_VISIBILITY_CHANGED, "Discoverable: true")
             } else {
-                publish(ComposeConnectionEventKind.INFO, "Discovery listen-only; room is hidden.")
+                publish(ComposeConnectionEventKind.INFO, "Room is hidden from nearby peers.")
                 publishEventKind(ComposeAdapterEventKind.DISCOVERY_VISIBILITY_CHANGED, "Discoverable: false")
             }
         } catch (e: Exception) {
@@ -422,7 +426,7 @@ class ComposeDesktopHostAdapter(
         try {
             if (chatClientService.isConnected()) {
                 chatClientService.disconnect()
-                publish(ComposeConnectionEventKind.INFO, "Client disconnected before stopping room.")
+                publish(ComposeConnectionEventKind.INFO, "Disconnected before stopping room.")
             }
             if (fileTransferServerService.isRunning()) {
                 fileTransferServerService.stop()
@@ -456,7 +460,7 @@ class ComposeDesktopHostAdapter(
         val trimmedHost = host.trim()
         val trimmedNick = nickname.trim()
         if (trimmedHost.isEmpty() || trimmedNick.isEmpty()) {
-            publish(ComposeConnectionEventKind.WARNING, "Host address and nickname are required to connect.")
+            publish(ComposeConnectionEventKind.WARNING, "Room address and nickname are required to connect.")
             return
         }
         if (chatClientService.isConnected()) {
@@ -520,7 +524,7 @@ class ComposeDesktopHostAdapter(
     fun setDiscoverable(enabled: Boolean) {
         if (shuttingDown.get()) return
         if (!discoveryService.isRunning()) {
-            publish(ComposeConnectionEventKind.WARNING, "Discovery is not running; open a room first.")
+            publish(ComposeConnectionEventKind.WARNING, "No room is open; start hosting first.")
             return
         }
         try {
@@ -1345,11 +1349,11 @@ class ComposeDesktopHostAdapter(
         statusState = statusState.copy(
             localServerRunning = serverRunning,
             clientConnected = clientConnected,
-            serverStatus = if (serverRunning) "Room running" else "Server stopped",
+            serverStatus = if (serverRunning) "Room running" else "Room closed",
             connectionStatus = if (clientConnected) "Connected" else "Connection idle",
             discoveryStatus = when {
-                discoveryActive && config?.announceEnabled == true -> "Discovery active"
-                discoveryActive -> "Discovery listen-only"
+                discoveryActive && config?.announceEnabled == true -> "Room visible nearby"
+                discoveryActive -> "Room hidden nearby"
                 else -> "Discovery not started"
             },
             discoverable = config?.announceEnabled ?: statusState.discoverable,
@@ -1360,6 +1364,10 @@ class ComposeDesktopHostAdapter(
 
     private fun publish(kind: ComposeConnectionEventKind, message: String) {
         adapterEvents = adapterEvents + ComposeConnectionEvent(kind, message)
+    }
+
+    private fun publishMicrointeraction(kind: ComposeConnectionEventKind, message: String) {
+        microinteractionEvents = (microinteractionEvents + ComposeConnectionEvent(kind, message)).takeLast(8)
     }
 
     private fun dispatchUiStateUpdate(action: () -> Unit) {
@@ -1432,6 +1440,14 @@ class ComposeDesktopHostAdapter(
         val timestamp = Instant.now()
         chatTranscript = (chatTranscript + normalized).takeLast(200)
         chatMessages = (chatMessages + ComposeChatMessage.fromTranscriptLine(normalized, timestamp)).takeLast(200)
+        when {
+            normalized.startsWith("[join]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Peer joined: ${normalized.removePrefix("[join]").trim()}")
+            normalized.startsWith("[left]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Peer left: ${normalized.removePrefix("[left]").trim()}")
+            normalized.startsWith("[connected]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Connection active")
+            normalized.startsWith("[disconnected]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Connection ended")
+            normalized.contains("completed", ignoreCase = true) && (normalized.startsWith("[file-send]", ignoreCase = true) || normalized.startsWith("[file-recv]", ignoreCase = true)) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed")
+            normalized.startsWith("[error]", ignoreCase = true) || normalized.contains("failed", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, normalized.removePrefix("[error]").trim())
+        }
         refreshMigrationReadinessState()
     }
 
@@ -1578,7 +1594,7 @@ class ComposeDesktopHostAdapter(
 
     private fun refreshRealtimeState() {
         val peerState = ComposePeerListState(peers = visiblePeerItems.map { ComposePeerListItem.fromPeer(it, chatClientService.isConnected()) }, selectedPeerIndex = if (visiblePeerItems.isEmpty()) -1 else 0)
-        val runtimeStatus = rtcSessionService?.runtimeStatus() ?: RtcRuntimeStatus.unavailable("RTC session service is not configured in Compose.")
+        val runtimeStatus = rtcSessionService?.runtimeStatus() ?: RtcRuntimeStatus.unavailable("Voice and video service is not configured.")
         val currentSession = rtcSessionService?.currentSession()?.orElse(null)
         mediaVoiceState = mediaVoiceState.copy(statusState = statusState, peerListState = peerState, runtimeStatus = runtimeStatus, currentSession = currentSession)
         experimentalVideoState = experimentalVideoState.copy(statusState = statusState, peerListState = peerState, runtimeStatus = runtimeStatus, currentSession = currentSession)
@@ -1658,6 +1674,12 @@ class ComposeDesktopHostAdapter(
                         event.message,
                     ),
                 )
+                when (event.state ?: RtcSessionState.IDLE) {
+                    RtcSessionState.CONNECTED -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Call connected")
+                    RtcSessionState.CLOSED -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Call disconnected")
+                    RtcSessionState.FAILED -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, event.message ?: "Call failed")
+                    else -> Unit
+                }
             }
             is RtcRuntimeWarningEvent -> {
                 publishRealtimeDiagnostic(DesktopRealtimeFormatters.rtcWarningDiagnostics(event.message.orEmpty()))

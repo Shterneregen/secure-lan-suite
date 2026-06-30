@@ -240,7 +240,7 @@ class DesktopMainViewHelpersTest {
         )
         assertEquals("[discovery] socket failed", DesktopMainViewHelpers.discoveryChatMessage("socket failed"))
         assertEquals(
-            "Looking for SecureLanSuite peers on this LAN. Select a discovered peer and connect before sending files or starting a call.",
+            "Looking for nearby rooms. Select a discovered room and connect before sending files or starting a call.",
             DesktopMainViewHelpers.discoverySearchHint(),
         )
         assertEquals("[discovery] room is now discoverable", DesktopMainViewHelpers.discoveryVisibilityMessage(true))

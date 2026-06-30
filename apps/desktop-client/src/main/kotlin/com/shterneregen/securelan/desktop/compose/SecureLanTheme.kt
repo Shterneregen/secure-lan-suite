@@ -64,6 +64,7 @@ data class SecureLanTypographyTokens(
     val bodyDefault: TextUnit = 14.sp,
     val bodyLarge: TextUnit = 15.sp,
     val caption: TextUnit = 11.sp,
+    val overline: TextUnit = 10.sp,
 )
 
 @Immutable
@@ -89,6 +90,14 @@ data class SecureLanDensityTokens(
 )
 
 @Immutable
+data class SecureLanMotionTokens(
+    val durationFast: Int = 150,
+    val durationDefault: Int = 200,
+    val durationSlow: Int = 250,
+    val durationInstant: Int = 0,
+)
+
+@Immutable
 data class SecureLanDesignTokens(
     val colors: SecureLanColorTokens,
     val spacing: SecureLanSpacingTokens = SecureLanSpacingTokens(),
@@ -97,6 +106,7 @@ data class SecureLanDesignTokens(
     val elevation: SecureLanElevationTokens = SecureLanElevationTokens(),
     val border: SecureLanBorderTokens = SecureLanBorderTokens(),
     val density: SecureLanDensityTokens = SecureLanDensityTokens(),
+    val motion: SecureLanMotionTokens = SecureLanMotionTokens(),
 )
 
 object SecureLanThemeTokens {
@@ -138,6 +148,38 @@ object SecureLanThemeTokens {
 
 val LocalSecureLanDesignTokens = staticCompositionLocalOf { SecureLanThemeTokens.Dark }
 
+val LocalReducedMotion = staticCompositionLocalOf { false }
+
+@Composable
+internal fun motionDuration(millis: Int): Int {
+    return if (LocalReducedMotion.current) 0 else millis
+}
+
+@Composable
+internal fun <T> motionTween(
+    durationMillis: Int = LocalSecureLanDesignTokens.current.motion.durationDefault,
+    delayMillis: Int = 0,
+    easing: androidx.compose.animation.core.Easing = androidx.compose.animation.core.FastOutSlowInEasing,
+): androidx.compose.animation.core.TweenSpec<T> = motionTween(
+    reducedMotion = LocalReducedMotion.current,
+    durationMillis = durationMillis,
+    delayMillis = delayMillis,
+    easing = easing,
+)
+
+internal fun <T> motionTween(
+    reducedMotion: Boolean,
+    durationMillis: Int = 200,
+    delayMillis: Int = 0,
+    easing: androidx.compose.animation.core.Easing = androidx.compose.animation.core.FastOutSlowInEasing,
+): androidx.compose.animation.core.TweenSpec<T> {
+    return androidx.compose.animation.core.tween(
+        durationMillis = if (reducedMotion) 0 else durationMillis,
+        delayMillis = delayMillis,
+        easing = easing,
+    )
+}
+
 private fun SecureLanColorTokens.toMaterialDarkColors(): Colors = darkColors(
     primary = accent,
     onPrimary = Color.White,
@@ -167,11 +209,12 @@ private fun secureLanDesktopTypography(tokens: SecureLanTypographyTokens): Typog
     h5 = TextStyle(fontSize = tokens.titleMin, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
     h6 = TextStyle(fontSize = tokens.bodyLarge, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
     subtitle1 = TextStyle(fontSize = tokens.bodySmall, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
-    subtitle2 = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
+    subtitle2 = TextStyle(fontSize = tokens.bodyDefault, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
     body1 = TextStyle(fontSize = tokens.bodySmall, fontFamily = tokens.fontFamily),
-    body2 = TextStyle(fontSize = 12.sp, fontFamily = tokens.fontFamily),
-    button = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
+    body2 = TextStyle(fontSize = tokens.bodyDefault, fontFamily = tokens.fontFamily),
+    button = TextStyle(fontSize = tokens.bodyDefault, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily),
     caption = TextStyle(fontSize = tokens.caption, fontFamily = tokens.fontFamily),
+    overline = TextStyle(fontSize = tokens.overline, fontWeight = FontWeight.Bold, fontFamily = tokens.fontFamily, letterSpacing = 0.5.sp),
 )
 
 @Composable

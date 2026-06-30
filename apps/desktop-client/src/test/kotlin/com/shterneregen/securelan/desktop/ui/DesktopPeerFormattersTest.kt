@@ -12,13 +12,13 @@ class DesktopPeerFormattersTest {
 
     @Test
     fun shouldFormatOfflineListMetaWithDiscoveryHost() {
-        assertEquals("offline • 192.168.1.20", DesktopPeerFormatters.formatListMeta(discoveredPeer(online = false)))
+        assertEquals("offline nearby", DesktopPeerFormatters.formatListMeta(discoveredPeer(online = false)))
     }
 
     @Test
     fun shouldFormatDiscoveredOnlineListMeta() {
         assertEquals(
-            "discovered • 192.168.1.20:5555 • file 5556",
+            "chat • voice • video • file",
             DesktopPeerFormatters.formatListMeta(discoveredPeer()),
         )
     }
@@ -31,7 +31,7 @@ class DesktopPeerFormattersTest {
     @Test
     fun shouldFormatSelectedDiscoveredPeerWhileConnected() {
         assertEquals(
-            "Online via chat and LAN discovery — 192.168.1.20:5555 chat, 5556 file.",
+            "Online via chat and nearby discovery.",
             DesktopPeerFormatters.formatSelectedPeerMeta(discoveredPeer(), clientConnected = true),
         )
     }
@@ -47,7 +47,7 @@ class DesktopPeerFormattersTest {
     @Test
     fun shouldFormatSelectedInferredFilePeerWhileConnected() {
         assertEquals(
-            "Online via chat — file receiver inferred at 192.168.1.30:6051 for Android/client peers.",
+            "Online via chat — ready to receive files.",
             DesktopPeerFormatters.formatSelectedPeerMeta(inferredFilePeer(), clientConnected = true),
         )
     }
@@ -55,7 +55,7 @@ class DesktopPeerFormattersTest {
     @Test
     fun shouldFormatSelectedDiscoveredPeerBeforeChatConnection() {
         assertEquals(
-            "Discovered via LAN — connect to chat before sending files or starting calls.",
+            "Discovered nearby — connect to chat before sending files or starting calls.",
             DesktopPeerFormatters.formatSelectedPeerMeta(discoveredPeer(), clientConnected = false),
         )
     }
@@ -63,7 +63,7 @@ class DesktopPeerFormattersTest {
     @Test
     fun shouldFormatSelectedOnlineCandidateBeforeChatConnection() {
         assertEquals(
-            "Online candidate — connect to chat before starting voice or video.",
+            "Online — connect to chat before starting voice or video.",
             DesktopPeerFormatters.formatSelectedPeerMeta(peer(), clientConnected = false),
         )
     }
