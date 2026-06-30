@@ -16,6 +16,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,6 +116,7 @@ private fun PreviewComposeShellContent(
                 parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
                 peersTooltip = previewPeerState.hint,
                 chatTooltip = previewChatState.subtitle,
+                rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,
                 chatActions = {
                     CompactButton(onClick = {}, enabled = false) { Text("Voice call") }
                     CompactButton(onClick = {}, enabled = false) { Text("Video call") }
@@ -121,7 +124,7 @@ private fun PreviewComposeShellContent(
                 },
                 peersColumn = { PeerListPreviewCard(previewPeerState) },
                 chatColumn = { ChatWorkspacePreviewCard(previewChatState) },
-                actionsColumn = { PreviewActionsColumn() },
+                actionsColumn = { responsiveState -> PreviewActionsColumn(responsiveState) },
             )
         }
     }
@@ -218,6 +221,7 @@ private fun LiveComposeShellContent(
             parityState = ComposeShellMetadata.DEFAULT_WORKSPACE_PARITY_STATE,
             peersTooltip = peerState.hint,
             chatTooltip = chatTooltip,
+            rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,
             chatActions = {
                 ChatCallActions(
                     hostAdapter = hostAdapter,
@@ -240,7 +244,7 @@ private fun LiveComposeShellContent(
                 )
             },
             chatColumn = { LiveChatWorkspaceCard(hostAdapter, peerState) },
-            actionsColumn = { LiveActionsColumn(hostAdapter, peerState) },
+            actionsColumn = { responsiveState -> LiveActionsColumn(hostAdapter, peerState, responsiveState) },
         )
     }
 }
@@ -671,35 +675,120 @@ private fun MainWorkspaceRow(
     parityState: ComposeJavaFxWorkspaceParityState,
     peersTooltip: String? = null,
     chatTooltip: String? = null,
+    rightColumnTitle: String = parityState.workspaceColumns[2].title,
     chatActions: @Composable RowScope.() -> Unit = {},
     peersColumn: @Composable () -> Unit,
     chatColumn: @Composable () -> Unit,
-    actionsColumn: @Composable () -> Unit,
+    actionsColumn: @Composable (ComposeContextPanelResponsiveState) -> Unit,
 ) {
-    Row(
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+        val responsiveState = ComposeContextPanelResponsiveState.forWidth(maxWidth.value.toInt())
+        var contextDrawerOpen by remember(responsiveState.mode) { mutableStateOf(false) }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MainWorkspaceColumn(
+                title = parityState.workspaceColumns[0].title,
+                tooltip = peersTooltip,
+                modifier = Modifier.weight(parityState.workspaceColumns[0].weight).fillMaxHeight(),
+                content = peersColumn,
+            )
+            MainWorkspaceColumn(
+                title = parityState.workspaceColumns[1].title,
+                tooltip = chatTooltip,
+                headerActions = {
+                    chatActions()
+                    if (responsiveState.drawerEntryVisible) {
+                        CompactButton(
+                            onClick = { contextDrawerOpen = true },
+                            modifier = Modifier.semantics { contentDescription = responsiveState.drawerOpenContentDescription },
+                        ) { Text("Context") }
+                    }
+                },
+                modifier = Modifier.weight(parityState.workspaceColumns[1].weight).fillMaxHeight(),
+                content = chatColumn,
+            )
+            if (responsiveState.inlinePanelVisible) {
+                MainWorkspaceColumn(
+                    title = rightColumnTitle,
+                    modifier = Modifier.weight(parityState.workspaceColumns[2].weight).fillMaxHeight(),
+                    content = { actionsColumn(responsiveState) },
+                )
+            }
+        }
+        if (responsiveState.drawerMode && contextDrawerOpen) {
+            ContextAssistantDrawer(
+                responsiveState = responsiveState,
+                onClose = { contextDrawerOpen = false },
+                content = { actionsColumn(responsiveState) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ContextAssistantDrawer(
+    responsiveState: ComposeContextPanelResponsiveState,
+    onClose: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.key == Key.Escape && event.type == KeyEventType.KeyUp) {
+                    onClose()
+                    true
+                } else {
+                    false
+                }
+            },
     ) {
-        MainWorkspaceColumn(
-            title = parityState.workspaceColumns[0].title,
-            tooltip = peersTooltip,
-            modifier = Modifier.weight(parityState.workspaceColumns[0].weight).fillMaxHeight(),
-            content = peersColumn,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.28f))
+                .clickable(onClick = onClose),
         )
-        MainWorkspaceColumn(
-            title = parityState.workspaceColumns[1].title,
-            tooltip = chatTooltip,
-            headerActions = chatActions,
-            modifier = Modifier.weight(parityState.workspaceColumns[1].weight).fillMaxHeight(),
-            content = chatColumn,
-        )
-        MainWorkspaceColumn(
-            title = parityState.workspaceColumns[2].title,
-            modifier = Modifier.weight(parityState.workspaceColumns[2].weight).fillMaxHeight(),
-            content = actionsColumn,
-        )
+        Surface(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .widthIn(min = 320.dp, max = 380.dp)
+                .semantics { contentDescription = responsiveState.drawerContentDescription },
+            shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp),
+            border = BorderStroke(1.dp, panelBorderColor()),
+            color = MaterialTheme.colors.surface,
+            elevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Context Assistant", style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
+                    CompactButton(
+                        onClick = onClose,
+                        modifier = Modifier.semantics { contentDescription = responsiveState.drawerCloseContentDescription },
+                    ) { Text("Close") }
+                }
+                Text(
+                    text = responsiveState.summary,
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                )
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopStart) {
+                    content()
+                }
+            }
+        }
     }
 }
 
@@ -745,36 +834,64 @@ private fun MainWorkspaceColumn(
 }
 
 @Composable
-private fun LiveActionsColumn(hostAdapter: ComposeDesktopHostAdapter, peerState: ComposePeerListState) {
-    val presentation = ComposeShellMetadata.DEFAULT_ACTIONS_PRESENTATION_STATE
+private fun LiveActionsColumn(
+    hostAdapter: ComposeDesktopHostAdapter,
+    peerState: ComposePeerListState,
+    responsiveState: ComposeContextPanelResponsiveState,
+) {
     val quickActions = ComposeSelectedPeerQuickActionsState(
         peerListState = peerState,
         clientConnected = hostAdapter.statusState.clientConnected,
         hangUpReady = hostAdapter.mediaVoiceState.canHangUp || hostAdapter.experimentalVideoState.canHangUp,
     )
+    val transferState = ComposeFileTransferState(
+        statusState = hostAdapter.statusState,
+        peerListState = peerState,
+        senderId = hostAdapter.statusState.nickname,
+        sessionPassword = hostAdapter.currentRoomPassword,
+        entries = hostAdapter.transferEntries,
+        incomingPrompts = hostAdapter.incomingTransferPrompts,
+        autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
+    )
+    val voiceState = hostAdapter.mediaVoiceState.copy(peerListState = peerState)
+    val videoState = hostAdapter.experimentalVideoState.copy(peerListState = peerState)
+    val contextPanelState = when {
+        voiceState.currentSession != null || videoState.currentSession != null || videoState.previewRunning -> ComposeContextPanelState.forCall(quickActions, voiceState, videoState)
+        transferState.activeCount > 0 || transferState.waitingPromptCount > 0 -> ComposeContextPanelState.forTransfer(transferState, quickActions)
+        peerState.selectedPeer != null -> ComposeContextPanelState.forPeer(quickActions, transferState)
+        else -> ComposeContextPanelState.forRoom(peerState, transferState)
+    }
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        SelectedPeerSummary(state = quickActions)
-        if (peerState.selectedPeer == null) {
-            PeerActionReadinessCard(peerState = peerState, hostAdapter = hostAdapter)
-        } else {
-            ActionsColumnSection(presentation.section(ComposeActionsSectionKind.TRANSFERS)) {
-                LiveFileTransferCard(hostAdapter, peerState)
+        ContextPanelSummary(state = contextPanelState, responsiveState = responsiveState)
+        contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
+            val expandedContent: (@Composable () -> Unit)? = when (card.kind) {
+                ComposeContextPanelCardKind.TRANSFER_DETAILS -> {
+                    { LiveFileTransferCard(hostAdapter, peerState) }
+                }
+                ComposeContextPanelCardKind.CALL_CONTROLS -> {
+                    { CallControlsPanel(hostAdapter, quickActions, voiceState, videoState) }
+                }
+                ComposeContextPanelCardKind.QUICK_ACTIONS -> {
+                    { PeerQuickActionsPanel(hostAdapter, quickActions) }
+                }
+                ComposeContextPanelCardKind.QUICK_SHARE -> {
+                    { LiveQuickShareCard(hostAdapter) }
+                }
+                ComposeContextPanelCardKind.DIAGNOSTICS -> {
+                    {
+                        RuntimeDiagnosticsCardContent(
+                            diagnosticsState = hostAdapter.diagnosticsState,
+                            regressionState = hostAdapter.regressionReadinessState,
+                            packagingState = hostAdapter.packagingReadinessState,
+                        )
+                    }
+                }
+                else -> null
             }
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.QUICK_SHARE)) {
-            LiveQuickShareCard(hostAdapter)
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.STEGANOGRAPHY)) {
-            LiveSteganographyCard(hostAdapter)
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.MEDIA_DEVICES)) {
-            LiveAudioVideoDevicesCard(hostAdapter, peerState)
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.RUNTIME_DIAGNOSTICS)) {
-            LiveRuntimeDiagnosticsCard(hostAdapter)
+            ContextPanelCard(card, expandedContent)
         }
     }
 }
@@ -824,6 +941,127 @@ private fun ActionsColumnSection(
                 content()
             }
         }
+    }
+}
+@Composable
+private fun ContextPanelSummary(
+    state: ComposeContextPanelState,
+    responsiveState: ComposeContextPanelResponsiveState? = null,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(state.title, style = MaterialTheme.typography.h6)
+        Text(
+            text = state.nextActionSummary,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+        )
+        if (state.hiddenFeatureNames.isNotEmpty()) {
+            Text(
+                text = state.hiddenFeatureSummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.48f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (responsiveState != null && responsiveState.mode != ComposeContextPanelResponsiveMode.FULL_PANEL) {
+            Text(
+                text = responsiveState.summary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.48f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ContextPanelCard(
+    card: ComposeContextPanelCard,
+    expandedContent: @Composable (() -> Unit)? = null,
+) {
+    var expanded by remember(card.kind, card.title, card.collapsed) { mutableStateOf(!card.collapsed) }
+    val borderAlpha = if (card.primary) 0.30f else 0.14f
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = SectionShape,
+        border = BorderStroke(1.dp, (if (card.primary) MaterialTheme.colors.primary else sectionBorderColor()).copy(alpha = borderAlpha)),
+        color = if (card.primary) MaterialTheme.colors.primary.copy(alpha = 0.08f) else fieldBackgroundColor().copy(alpha = 0.56f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(card.title, style = if (card.primary) MaterialTheme.typography.subtitle1 else MaterialTheme.typography.subtitle2)
+                    if (!card.badge.isNullOrBlank()) {
+                        Text(card.badge, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f))
+                    }
+                }
+                if (expandedContent != null) {
+                    Text(
+                        text = if (expanded) "Hide" else "Show",
+                        modifier = Modifier.clickable { expanded = !expanded }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.primary,
+                    )
+                }
+            }
+            Text(card.body, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f))
+            if (!card.primaryAction.isNullOrBlank()) {
+                Surface(shape = FieldShape, border = BorderStroke(1.dp, sectionBorderColor()), color = MaterialTheme.colors.surface.copy(alpha = 0.86f)) {
+                    Text(
+                        text = card.primaryAction,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.primary,
+                    )
+                }
+            }
+            if (expanded && expandedContent != null) {
+                expandedContent()
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeerQuickActionsPanel(hostAdapter: ComposeDesktopHostAdapter, state: ComposeSelectedPeerQuickActionsState) {
+    SelectedPeerQuickActions(
+        attachEnabled = state.attachEnabled,
+        voiceEnabled = state.voiceEnabled,
+        videoEnabled = state.videoEnabled,
+        hangUpEnabled = state.hangUpEnabled,
+        onAttach = {},
+        onVoice = {
+            state.selectedPeer?.let { peer -> hostAdapter.startRealtimeSession(hostAdapter.statusState.nickname, peer.nickname, RtcSessionMode.AUDIO) }
+        },
+        onVideo = {
+            state.selectedPeer?.let { peer -> hostAdapter.startRealtimeSession(hostAdapter.statusState.nickname, peer.nickname, RtcSessionMode.AUDIO_VIDEO) }
+        },
+        onHangUp = hostAdapter::closeRealtimeSession,
+    )
+}
+
+@Composable
+private fun CallControlsPanel(
+    hostAdapter: ComposeDesktopHostAdapter,
+    quickActions: ComposeSelectedPeerQuickActionsState,
+    voiceState: ComposeMediaVoiceState,
+    videoState: ComposeExperimentalVideoState,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            TransferInfoChip(voiceState.voiceStatusText)
+            TransferInfoChip(videoState.previewStateLabel)
+        }
+        PeerQuickActionsPanel(hostAdapter, quickActions)
     }
 }
 
@@ -1103,25 +1341,15 @@ private fun SelectedPeerQuickActionsCard(
 }
 
 @Composable
-private fun PreviewActionsColumn() {
-    val presentation = ComposeShellMetadata.DEFAULT_ACTIONS_PRESENTATION_STATE
+private fun PreviewActionsColumn(responsiveState: ComposeContextPanelResponsiveState) {
+    val contextPanelState = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        SelectedPeerSummary(state = ComposeShellMetadata.DEFAULT_SELECTED_PEER_QUICK_ACTIONS_STATE)
-        PeerActionReadinessPreviewCard(ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE)
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.QUICK_SHARE)) {
-            QuickSharePreviewCard(ComposeShellMetadata.DEFAULT_QUICK_SHARE_STATE)
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.STEGANOGRAPHY)) {
-            SteganographyPreviewCard(ComposeShellMetadata.DEFAULT_STEGO_STATE)
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.MEDIA_DEVICES)) {
-            AudioVideoDevicesPreviewCard()
-        }
-        ActionsColumnSection(presentation.section(ComposeActionsSectionKind.RUNTIME_DIAGNOSTICS)) {
-            RuntimeDiagnosticsPreviewCard()
+        ContextPanelSummary(contextPanelState, responsiveState)
+        contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
+            ContextPanelCard(card)
         }
     }
 }

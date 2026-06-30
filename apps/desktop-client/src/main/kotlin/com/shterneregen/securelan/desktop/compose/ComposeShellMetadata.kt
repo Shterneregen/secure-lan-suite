@@ -89,6 +89,10 @@ object ComposeShellMetadata {
     val DEFAULT_PACKAGING_STATE: ComposePackagingReadinessState = ComposePackagingReadinessState()
     val DEFAULT_WORKSPACE_PARITY_STATE: ComposeJavaFxWorkspaceParityState = ComposeJavaFxWorkspaceParityState()
     val DEFAULT_ACTIONS_PRESENTATION_STATE: ComposeActionsColumnPresentationState = ComposeActionsColumnPresentationState()
+    val DEFAULT_CONTEXT_PANEL_STATE: ComposeContextPanelState = ComposeContextPanelState.forRoom(
+        peerListState = DEFAULT_PEER_LIST_STATE,
+        transferState = DEFAULT_FILE_TRANSFER_STATE,
+    )
     val DEFAULT_ONBOARDING_STATE: ComposeOnboardingState = ComposeOnboardingState()
     val DEFAULT_PRODUCT_SCREEN_STATE: ComposeProductScreenState = ComposeProductScreenState()
     val DEFAULT_APP_SHELL_STATE: ComposeAppShellState = ComposeAppShellState(
@@ -449,6 +453,269 @@ data class ComposeActionsColumnPresentationState(
 
     fun section(kind: ComposeActionsSectionKind): ComposeActionsSectionPresentation =
         sections.first { it.kind == kind }
+}
+
+enum class ComposeContextPanelCardKind {
+    GUIDANCE,
+    ROOM_STATUS,
+    PEER_PROFILE,
+    QUICK_ACTIONS,
+    QUICK_SHARE,
+    RECENT_FILES,
+    MEDIA,
+    SECURITY,
+    TRANSFER_DETAILS,
+    CALL_CONTROLS,
+    DIAGNOSTICS,
+    ADVANCED_DETAILS,
+}
+
+enum class ComposeContextPanelResponsiveMode {
+    FULL_PANEL,
+    COLLAPSED_SECONDARY,
+    COLLAPSED_HISTORY,
+    DRAWER,
+}
+
+data class ComposeContextPanelResponsiveState(
+    val widthPx: Int,
+    val mode: ComposeContextPanelResponsiveMode,
+) {
+    val inlinePanelVisible: Boolean = mode != ComposeContextPanelResponsiveMode.DRAWER
+    val drawerMode: Boolean = mode == ComposeContextPanelResponsiveMode.DRAWER
+    val drawerEntryVisible: Boolean = drawerMode
+    val drawerOpenLabel: String = "Open Context Assistant"
+    val drawerCloseLabel: String = "Close Context Assistant"
+    val drawerContentDescription: String = "Context Assistant drawer"
+    val drawerOpenContentDescription: String = "Open Context Assistant drawer"
+    val drawerCloseContentDescription: String = "Close Context Assistant drawer"
+    val collapseSecondaryCards: Boolean = mode == ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY
+    val collapseHistory: Boolean = mode == ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY || drawerMode
+    val preservesConversationFirst: Boolean = true
+    val escapeClosesDrawer: Boolean = drawerMode
+    val summary: String = when (mode) {
+        ComposeContextPanelResponsiveMode.FULL_PANEL -> "Full Context Assistant is visible."
+        ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY -> "Secondary context cards collapse to preserve the conversation."
+        ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY -> "History cards collapse before the conversation loses space."
+        ComposeContextPanelResponsiveMode.DRAWER -> "Context Assistant moves to drawer mode; conversation remains primary."
+    }
+
+    companion object {
+        fun forWidth(widthPx: Int): ComposeContextPanelResponsiveState {
+            val normalizedWidth = widthPx.coerceAtLeast(0)
+            val mode = when {
+                normalizedWidth >= 1600 -> ComposeContextPanelResponsiveMode.FULL_PANEL
+                normalizedWidth >= 1400 -> ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY
+                normalizedWidth >= 1200 -> ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY
+                else -> ComposeContextPanelResponsiveMode.DRAWER
+            }
+            return ComposeContextPanelResponsiveState(normalizedWidth, mode)
+        }
+    }
+}
+
+data class ComposeContextPanelCard(
+    val kind: ComposeContextPanelCardKind,
+    val title: String,
+    val body: String,
+    val badge: String? = null,
+    val primaryAction: String? = null,
+    val primary: Boolean = false,
+    val collapsed: Boolean = false,
+    val technical: Boolean = false,
+)
+
+data class ComposeContextPanelState(
+    val mode: RightPanelMode,
+    val cards: List<ComposeContextPanelCard>,
+) {
+    val title: String = "Context Assistant"
+    val visibleCards: List<ComposeContextPanelCard> = cards.take(MAX_VISIBLE_CARDS)
+    val primaryCards: List<ComposeContextPanelCard> = visibleCards.filter { it.primary }
+    val primaryButtons: List<String> = visibleCards.mapNotNull { it.primaryAction }
+    val collapsedCards: List<ComposeContextPanelCard> = visibleCards.filter { it.collapsed }
+    val visibleCardTitles: List<String> = visibleCards.map { it.title }
+    val visibleCardKinds: List<ComposeContextPanelCardKind> = visibleCards.map { it.kind }
+    val hiddenFeatureNames: List<String> = when (mode) {
+        RightPanelMode.ROOM_INFO -> listOf("Transfers", "Calls", "Quick Share", "Audio", "Camera", "Steganography", "Runtime", "Detailed diagnostics")
+        RightPanelMode.PEER_INFO -> listOf("Quick Share", "Device setup", "Runtime", "Validation", "Port information", "Raw logs")
+        RightPanelMode.TRANSFERS -> listOf("Quick Share", "Steganography", "Audio devices", "Camera devices", "Runtime")
+        RightPanelMode.CALL -> listOf("Quick Share", "Steganography", "Transfer setup", "Runtime")
+        RightPanelMode.DIAGNOSTICS -> listOf("Raw logs")
+        RightPanelMode.ADVANCED_CONNECTION -> listOf("Raw logs", "Runtime")
+        RightPanelMode.HIDDEN -> emptyList()
+    }
+    val hiddenFeatureSummary: String = when {
+        hiddenFeatureNames.isEmpty() -> "Only the current conversation context is shown."
+        mode == RightPanelMode.DIAGNOSTICS || mode == RightPanelMode.ADVANCED_CONNECTION -> "Technical details stay collapsed until requested."
+        else -> "More tools stay tucked away until they help this conversation."
+    }
+    val nextActionSummary: String = primaryCards.firstOrNull()?.body ?: visibleCards.firstOrNull()?.body.orEmpty()
+    val answersCurrentContext: Boolean = visibleCards.isNotEmpty() && visibleCards.all { it.title.isNotBlank() && it.body.isNotBlank() }
+    val hasOnePrimaryContext: Boolean = primaryCards.size <= 1
+    val withinVisualComplexityLimit: Boolean = visibleCards.size <= MAX_VISIBLE_CARDS && primaryButtons.size <= MAX_PRIMARY_BUTTONS
+    val hidesTechnicalControlsByDefault: Boolean = mode != RightPanelMode.DIAGNOSTICS && mode != RightPanelMode.ADVANCED_CONNECTION && visibleCards.none { it.technical }
+    val hidesQuickShareUntilRequested: Boolean = mode == RightPanelMode.DIAGNOSTICS || visibleCards.none { it.kind == ComposeContextPanelCardKind.QUICK_SHARE }
+    val behavesAsContextAssistant: Boolean = answersCurrentContext && hasOnePrimaryContext && withinVisualComplexityLimit && hidesTechnicalControlsByDefault && hidesQuickShareUntilRequested
+
+    fun responsiveStateFor(widthPx: Int): ComposeContextPanelResponsiveState = ComposeContextPanelResponsiveState.forWidth(widthPx)
+
+    fun visibleCardsFor(responsiveState: ComposeContextPanelResponsiveState): List<ComposeContextPanelCard> = visibleCards.map { card ->
+        when {
+            responsiveState.collapseSecondaryCards && !card.primary -> card.copy(collapsed = true)
+            responsiveState.collapseHistory && card.kind == ComposeContextPanelCardKind.RECENT_FILES -> card.copy(collapsed = true)
+            else -> card
+        }
+    }
+
+    fun visibleCardsForWidth(widthPx: Int): List<ComposeContextPanelCard> = visibleCardsFor(responsiveStateFor(widthPx))
+
+    companion object {
+        private const val MAX_VISIBLE_CARDS: Int = 6
+        private const val MAX_PRIMARY_BUTTONS: Int = 3
+
+        fun forRoom(
+            peerListState: ComposePeerListState,
+            transferState: ComposeFileTransferState,
+        ): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.ROOM_INFO,
+            cards = listOf(
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.GUIDANCE,
+                    title = "Choose someone to start",
+                    body = peerListState.noPeerActionDetail,
+                    primaryAction = "Select a peer",
+                    primary = true,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.ROOM_STATUS,
+                    title = "Room status",
+                    body = "${peerListState.onlinePeers.size} online · ${transferState.transferCountSummary}",
+                    badge = if (peerListState.onlinePeers.isEmpty()) "Waiting" else "Ready",
+                ),
+            ),
+        )
+
+        fun forPeer(
+            quickActions: ComposeSelectedPeerQuickActionsState,
+            transferState: ComposeFileTransferState,
+        ): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.PEER_INFO,
+            cards = listOf(
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.PEER_PROFILE,
+                    title = quickActions.title,
+                    body = quickActions.meta,
+                    badge = quickActions.selectedPeerStatus,
+                    primary = true,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.QUICK_ACTIONS,
+                    title = "Quick actions",
+                    body = quickActions.readinessSummary,
+                    primaryAction = quickActions.enabledActionLabels.firstOrNull(),
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.RECENT_FILES,
+                    title = "Recent files",
+                    body = if (transferState.recentEntryRows.isEmpty()) "Files you send or receive with this peer will appear here." else transferState.recentEntryRows.joinToString(" · ") { it.title },
+                    badge = transferState.transferCountSummary,
+                    collapsed = transferState.recentEntryRows.isEmpty(),
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.MEDIA,
+                    title = "Calls",
+                    body = quickActions.buttonReadinessSummary,
+                    collapsed = true,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.SECURITY,
+                    title = "Security",
+                    body = "Messages and files stay inside the current secure LAN room.",
+                    collapsed = true,
+                ),
+            ),
+        )
+
+        fun forTransfer(
+            transferState: ComposeFileTransferState,
+            quickActions: ComposeSelectedPeerQuickActionsState,
+        ): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.TRANSFERS,
+            cards = listOf(
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.TRANSFER_DETAILS,
+                    title = transferState.heroTitle,
+                    body = transferState.nextStepSummary,
+                    badge = transferState.transferCountSummary,
+                    primaryAction = if (transferState.waitingPromptCount > 0) "Review files" else null,
+                    primary = true,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.PEER_PROFILE,
+                    title = quickActions.title,
+                    body = quickActions.meta,
+                    badge = quickActions.selectedPeerStatus,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.QUICK_ACTIONS,
+                    title = "Quick actions",
+                    body = quickActions.readinessSummary,
+                    collapsed = true,
+                ),
+            ),
+        )
+
+        fun forCall(
+            quickActions: ComposeSelectedPeerQuickActionsState,
+            voiceState: ComposeMediaVoiceState,
+            videoState: ComposeExperimentalVideoState,
+        ): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.CALL,
+            cards = listOf(
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.CALL_CONTROLS,
+                    title = "Call controls",
+                    body = if (videoState.currentSession != null || videoState.previewRunning) videoState.stageBadge else voiceState.voiceStatusText,
+                    badge = quickActions.selectedPeerStatus,
+                    primaryAction = if (quickActions.hangUpEnabled) "End call" else quickActions.enabledActionLabels.firstOrNull { it.contains("call", ignoreCase = true) },
+                    primary = true,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.PEER_PROFILE,
+                    title = quickActions.title,
+                    body = quickActions.meta,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.QUICK_ACTIONS,
+                    title = "Quick actions",
+                    body = quickActions.buttonReadinessSummary,
+                    collapsed = true,
+                ),
+            ),
+        )
+
+        fun forDiagnostics(diagnosticsState: ComposeDiagnosticsState): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.DIAGNOSTICS,
+            cards = listOf(
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.DIAGNOSTICS,
+                    title = "Health summary",
+                    body = diagnosticsState.runtimeOverview,
+                    badge = diagnosticsState.statusLabel,
+                    primaryAction = "Open details",
+                    primary = true,
+                ),
+                ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.ADVANCED_DETAILS,
+                    title = "Show technical log",
+                    body = diagnosticsState.recentMessages.firstOrNull() ?: "Raw logs remain collapsed until requested.",
+                    collapsed = true,
+                    technical = true,
+                ),
+            ),
+        )
+    }
 }
 
 data class ComposeGlobalStatusIndicatorState(
@@ -1507,13 +1774,20 @@ data class ComposeConnectionHubState(
     val localNetworkInfo: String = "",
 ) {
     val isHostMode: Boolean = mode == ComposeConnectionHubMode.HOST
-    val title: String = "Room connection"
-    val hostTabLabel: String = "Host Room"
-    val joinTabLabel: String = "Join Room"
+    val title: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Host a secure room"
+        ComposeConnectionHubMode.JOIN -> "Join a secure room"
+    }
+    val hostTabLabel: String = "Host secure room"
+    val joinTabLabel: String = "Join nearby room"
+    val roomNameLabel: String = "Room name"
+    val displayNameLabel: String = "Your display name"
+    val passwordLabel: String = "Room password"
+    val visibilityToggleLabel: String = "Visible to nearby devices"
     val hostChoiceSubtitle: String = if (statusState.localServerRunning) {
-        if (statusState.discoverable) "Room is discoverable" else "Hidden room is open"
+        if (statusState.discoverable) "Visible to nearby devices" else "Only people with an invite can join"
     } else {
-        "Create a trusted room on this computer"
+        "People nearby can join this trusted room."
     }
     val joinChoiceSubtitle: String = when {
         statusState.clientConnected -> "Joined ${statusState.manualHost.trim()}"
@@ -1521,16 +1795,14 @@ data class ComposeConnectionHubState(
             "Ready for ${statusState.manualHost.trim()}"
         else -> "Choose a nearby room or use Advanced"
     }
-    val activeModeTitle: String = when (mode) {
-        ComposeConnectionHubMode.HOST -> "Host a secure room"
-        ComposeConnectionHubMode.JOIN -> "Join a secure room"
-    }
+    val activeModeTitle: String = title
     val activeModeDetail: String = when (mode) {
-        ComposeConnectionHubMode.HOST -> "Set the room name, your display name, and a shared password. Keep discovery on if nearby peers should find it."
+        ComposeConnectionHubMode.HOST -> "People nearby can join this trusted room."
         ComposeConnectionHubMode.JOIN -> "Choose a nearby room when one appears. Advanced manual connection keeps host and port fields available when discovery is not enough."
     }
     val nickname: String = statusState.nickname
     val password: String = statusState.roomPasswordPlaceholder
+    val roomName: String = "Secure LAN room"
 
     val primaryActionEnabled: Boolean = statusState.javaFxFallbackAvailable && when (mode) {
         ComposeConnectionHubMode.HOST -> statusState.canOpenRoom

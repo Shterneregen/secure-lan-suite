@@ -96,6 +96,143 @@ class ComposeShellMetadataTest {
     }
 
     @Test
+    fun shouldResolveContextPanelAsAssistantInsteadOfPermanentToolbox() {
+        val peerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
+        val transferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE
+        val roomPanel = ComposeContextPanelState.forRoom(peerState, transferState)
+        val peerPanel = ComposeContextPanelState.forPeer(
+            quickActions = ComposeShellMetadata.DEFAULT_SELECTED_PEER_QUICK_ACTIONS_STATE,
+            transferState = transferState,
+        )
+
+        assertEquals("Context Assistant", roomPanel.title)
+        assertEquals(RightPanelMode.ROOM_INFO, roomPanel.mode)
+        assertEquals(listOf(ComposeContextPanelCardKind.GUIDANCE, ComposeContextPanelCardKind.ROOM_STATUS), roomPanel.visibleCardKinds)
+        assertTrue(roomPanel.hiddenFeatureNames.contains("Quick Share"))
+        assertTrue(roomPanel.hiddenFeatureNames.contains("Runtime"))
+        assertTrue(roomPanel.hiddenFeatureNames.contains("Detailed diagnostics"))
+        assertEquals("More tools stay tucked away until they help this conversation.", roomPanel.hiddenFeatureSummary)
+        assertEquals(true, roomPanel.hidesQuickShareUntilRequested)
+        assertEquals(true, roomPanel.behavesAsContextAssistant)
+        assertEquals(true, peerPanel.behavesAsContextAssistant)
+        assertTrue(peerPanel.visibleCardKinds.contains(ComposeContextPanelCardKind.PEER_PROFILE))
+        assertFalse(peerPanel.visibleCardKinds.contains(ComposeContextPanelCardKind.QUICK_SHARE))
+        assertTrue(peerPanel.hiddenFeatureNames.contains("Quick Share"))
+        assertEquals(true, peerPanel.hidesQuickShareUntilRequested)
+        assertFalse(peerPanel.visibleCardKinds.contains(ComposeContextPanelCardKind.DIAGNOSTICS))
+        assertTrue(peerPanel.visibleCards.size <= 6)
+        assertTrue(peerPanel.primaryButtons.size <= 3)
+        assertEquals(1, peerPanel.primaryCards.size)
+    }
+
+    @Test
+    fun shouldPrioritizeTransferAndCallContextsInRightPanel() {
+        val peerState = ComposePeerListState(selectedPeerIndex = 0)
+        val quickActions = ComposeSelectedPeerQuickActionsState(
+            peerListState = peerState,
+            clientConnected = true,
+            hangUpReady = true,
+        )
+        val transferState = ComposeFileTransferState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = peerState,
+        )
+        val transferPanel = ComposeContextPanelState.forTransfer(transferState, quickActions)
+        val callPanel = ComposeContextPanelState.forCall(
+            quickActions = quickActions,
+            voiceState = ComposeMediaVoiceState(
+                statusState = ComposeStatusConnectionState(clientConnected = true),
+                peerListState = peerState,
+            ),
+            videoState = ComposeExperimentalVideoState(
+                statusState = ComposeStatusConnectionState(clientConnected = true),
+                peerListState = peerState,
+            ),
+        )
+
+        assertEquals(RightPanelMode.TRANSFERS, transferPanel.mode)
+        assertEquals(ComposeContextPanelCardKind.TRANSFER_DETAILS, transferPanel.visibleCardKinds.first())
+        assertEquals(RightPanelMode.CALL, callPanel.mode)
+        assertEquals(ComposeContextPanelCardKind.CALL_CONTROLS, callPanel.visibleCardKinds.first())
+        assertTrue(transferPanel.hiddenFeatureNames.contains("Quick Share"))
+        assertTrue(callPanel.hiddenFeatureNames.contains("Steganography"))
+        assertEquals(true, transferPanel.behavesAsContextAssistant)
+        assertEquals(true, callPanel.behavesAsContextAssistant)
+    }
+
+    @Test
+    fun shouldExposeResponsiveContextAssistantBehaviorForPhaseElevenWidths() {
+        val peerState = ComposePeerListState(selectedPeerIndex = 0)
+        val quickActions = ComposeSelectedPeerQuickActionsState(
+            peerListState = peerState,
+            clientConnected = true,
+        )
+        val panel = ComposeContextPanelState.forPeer(
+            quickActions = quickActions,
+            transferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
+        )
+
+        val full = panel.responsiveStateFor(1600)
+        val collapsedSecondary = panel.responsiveStateFor(1500)
+        val collapsedHistory = panel.responsiveStateFor(1300)
+        val drawer = panel.responsiveStateFor(1199)
+
+        assertEquals(ComposeContextPanelResponsiveMode.FULL_PANEL, full.mode)
+        assertEquals(true, full.inlinePanelVisible)
+        assertEquals(false, full.drawerMode)
+        assertEquals(ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY, collapsedSecondary.mode)
+        assertEquals(true, collapsedSecondary.collapseSecondaryCards)
+        assertEquals(ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY, collapsedHistory.mode)
+        assertEquals(true, collapsedHistory.collapseHistory)
+        assertEquals(ComposeContextPanelResponsiveMode.DRAWER, drawer.mode)
+        assertEquals(false, drawer.inlinePanelVisible)
+        assertEquals(true, drawer.drawerMode)
+        assertEquals(true, drawer.drawerEntryVisible)
+        assertEquals("Open Context Assistant", drawer.drawerOpenLabel)
+        assertEquals("Close Context Assistant", drawer.drawerCloseLabel)
+        assertEquals("Context Assistant drawer", drawer.drawerContentDescription)
+        assertEquals("Open Context Assistant drawer", drawer.drawerOpenContentDescription)
+        assertEquals("Close Context Assistant drawer", drawer.drawerCloseContentDescription)
+        assertEquals(true, drawer.escapeClosesDrawer)
+        assertEquals(true, listOf(full, collapsedSecondary, collapsedHistory, drawer).all { it.preservesConversationFirst })
+        assertTrue(collapsedSecondary.summary.contains("Secondary context cards collapse"), collapsedSecondary.summary)
+    }
+
+    @Test
+    fun shouldCollapseContextAssistantCardsWithoutChangingPrimaryContext() {
+        val peerState = ComposePeerListState(selectedPeerIndex = 0)
+        val panel = ComposeContextPanelState.forPeer(
+            quickActions = ComposeSelectedPeerQuickActionsState(
+                peerListState = peerState,
+                clientConnected = true,
+            ),
+            transferState = ComposeFileTransferState(
+                statusState = ComposeStatusConnectionState(clientConnected = true),
+                peerListState = peerState,
+                entries = listOf(TransferEntry("tx-recent", "recent.bin", true, "Completed", 100, 4096)),
+            ),
+        )
+
+        val fullCards = panel.visibleCardsForWidth(1600)
+        val secondaryCollapsedCards = panel.visibleCardsForWidth(1500)
+        val historyCollapsedCards = panel.visibleCardsForWidth(1300)
+
+        assertEquals(panel.visibleCardKinds, fullCards.map { it.kind })
+        assertEquals(false, fullCards.first { it.primary }.collapsed)
+        assertEquals(false, secondaryCollapsedCards.first { it.primary }.collapsed)
+        assertTrue(
+            secondaryCollapsedCards.filterNot { it.primary }.all { it.collapsed },
+            "secondaryCollapsedCards=$secondaryCollapsedCards",
+        )
+        assertEquals(false, historyCollapsedCards.first { it.primary }.collapsed)
+        assertEquals(
+            true,
+            historyCollapsedCards.first { it.kind == ComposeContextPanelCardKind.RECENT_FILES }.collapsed,
+        )
+        assertEquals(1, historyCollapsedCards.count { it.primary })
+    }
+
+    @Test
     fun shouldBlockActionsColumnPresentationWhenFallbackUnavailable() {
         val state = ComposeActionsColumnPresentationState(javaFxFallbackAvailable = false)
 
@@ -613,9 +750,9 @@ class ComposeShellMetadataTest {
             mode = ComposeConnectionHubMode.JOIN,
         )
 
-        assertEquals("Room is discoverable", hostState.hostChoiceSubtitle)
+        assertEquals("Visible to nearby devices", hostState.hostChoiceSubtitle)
         assertEquals("Host a secure room", hostState.activeModeTitle)
-        assertTrue(hostState.activeModeDetail.contains("discovery"))
+        assertTrue(hostState.activeModeDetail.contains("trusted room"))
         assertEquals("Ready for 192.168.1.20", joinState.joinChoiceSubtitle)
         assertEquals("Join a secure room", joinState.activeModeTitle)
         assertTrue(joinState.activeModeDetail.contains("Advanced manual connection"))
@@ -1012,9 +1149,9 @@ class ComposeShellMetadataTest {
             localNetworkInfo = "LAN: 192.168.1.10",
         )
 
-        assertEquals("Room connection", state.title)
-        assertEquals("Host Room", state.hostTabLabel)
-        assertEquals("Join Room", state.joinTabLabel)
+        assertEquals("Host a secure room", state.title)
+        assertEquals("Host secure room", state.hostTabLabel)
+        assertEquals("Join nearby room", state.joinTabLabel)
         assertEquals("Alice", state.nickname)
         assertEquals(true, state.primaryActionEnabled)
         assertEquals("Start secure room", state.primaryActionLabel)
