@@ -2,69 +2,162 @@
 name: securelan-architecture
 license: MIT
 description: >
-  SecureLanSuite architecture, module-boundary, Kotlin migration, and Gradle
-  multi-project workflow skill. Use when the user asks about SecureLanSuite
-  modules, dependency directions, core-vs-UI separation, Java/Kotlin interop,
-  project structure, migration planning, or cross-module implementation rules.
+  SecureLanSuite architecture router skill. Use when the task affects module
+  boundaries, dependency directions, Gradle multi-project structure, reusable
+  core modules, Java/Kotlin migration, cross-module refactoring, or architecture
+  documentation. This skill routes the agent to project rules and relevant docs;
+  it does not duplicate the full architecture rule set.
 ---
 
 # SecureLanSuite Architecture Skill
 
-Use this skill for changes or analysis that affect the SecureLanSuite module graph, reusable core modules, Kotlin/Java migration, project-wide Gradle configuration, or architecture documentation.
+## Role
 
-## Mandatory first checks
+You are a SecureLanSuite architecture assistant.
 
-1. Read the current project rules in [`rules.md`](../../rules/rules.md).
-2. Read only the relevant public docs before proposing broad changes:
-   - [`README.md`](../../../README.md) for current stack and module responsibilities.
-   - [`docs/kotlin-migration.md`](../../../docs/kotlin-migration/kotlin-migration.md) for Kotlin migration state.
-   - [`docs/desktop-client-kotlin-migration.md`](../../../docs/kotlin-migration/desktop-client-kotlin-migration.md) for desktop interop and Compose migration status.
-   - [`docs/development.md`](../../../docs/development.md) for build and validation tasks.
-3. Inspect the actual module build file before editing a module dependency.
+Your job is to help with module boundaries, dependency directions, Gradle project
+structure, reusable core modules, Kotlin/Java migration, and cross-module
+implementation decisions without violating project rules.
 
-## Architecture guardrails
+This skill is intentionally short.
 
-- Do not introduce Spring or Spring Boot unless the user explicitly requests it.
-- Keep reusable modules UI-agnostic.
-- Do not put JavaFX, Android UI, or Compose UI code in `modules/*`.
-- Do not make any `modules/*` project depend on `apps/desktop-client` or `apps/android-client`.
-- Avoid cyclic dependencies.
-- Keep cryptography logic outside UI modules.
-- Keep network, file-transfer, and realtime orchestration behind focused service boundaries where practical.
-- Prefer plain Java/Kotlin, constructor injection, explicit interfaces, immutable DTOs, and small focused classes.
+The authoritative architecture constraints live in:
 
-## Allowed internal dependency directions
+- `.kilocode/rules.md`
+- `.kilocode/rules/*.md`
+- repository `README.md`
+- repository `docs/`
 
-- `apps/*` may depend on `modules/*`.
-- `modules/common-model` must not depend on internal modules.
-- `modules/common-net` may depend only on `common-model`.
-- `modules/crypto-core` may depend only on `common-model`.
-- `modules/chat-core` may depend on `common-model`, `common-net`, and `crypto-core`.
-- `modules/file-transfer-core` may depend on `common-model`, `common-net`, and `crypto-core`.
-- `modules/webrtc-core` may depend on `common-model` and external `webrtc-java`.
-- `modules/audio-core` may depend on `common-model` and `common-net`.
-- `modules/webcam-core` may depend on `common-model`.
-- `modules/stego-core` may depend on `common-model` and `crypto-core`.
+Do not duplicate large rule sets inside this skill.
 
-## Kotlin migration rules
+---
 
-- Keep the repository buildable after every incremental change.
-- Preserve public API contracts unless the user explicitly approves a breaking change.
-- Preserve protocol behavior for LAN discovery, chat handshake, file transfer, quick share, RTC signaling, voice, and experimental video.
-- Treat `webrtc-core` callback-heavy runtime code as high risk; prefer small, reversible changes with targeted tests.
-- Kotlin JVM modules currently compile with JVM target 24 while the Java toolchain remains Java 25; do not “fix” this unless the Kotlin version supports JVM target 25.
+## Use this skill when
 
-## Gradle and validation defaults
+Use this skill for tasks involving:
 
-On Windows, prefer `gradlew.bat` commands from the repository root.
+- module graph changes;
+- `modules/*` dependency changes;
+- `apps/*` to `modules/*` boundaries;
+- reusable core extraction;
+- Java/Kotlin migration planning;
+- cross-module refactoring;
+- Gradle multi-project configuration;
+- API compatibility between modules;
+- architecture documentation updates.
 
-- Whole repository validation: `gradlew.bat clean build --no-daemon`.
-- Focused JVM module validation: `gradlew.bat :modules:<module-name>:test --no-daemon`.
-- Desktop validation: `gradlew.bat :apps:desktop-client:test :apps:desktop-client:build --no-daemon`.
-- Android debug validation: `gradlew.bat :apps:android-client:assembleDebug --no-daemon`.
+Do not use this skill for ordinary Compose UI implementation unless the UI task
+requires architecture or module-boundary changes.
 
-Only run broader validation when the change justifies it. For small pure logic changes, prefer the closest module tests first.
+---
 
-## Documentation update rule
+## Mandatory first steps
 
-If a change alters architecture, supported Java/Kotlin versions, module responsibilities, migration status, packaging flow, or product status, update the relevant public docs in [`README.md`](../../../README.md) or [`docs`](../../../docs) in the same task.
+Before proposing or implementing architecture changes:
+
+1. Read `.kilocode/rules.md`.
+2. Read only the relevant repository docs:
+   - `README.md`
+   - `docs/development.md`
+   - `docs/kotlin-migration/kotlin-migration.md`
+   - relevant feature or module docs under `docs/`
+3. Inspect the actual `build.gradle.kts` files involved.
+4. Identify the affected modules and dependency direction.
+5. State the intended architecture change before editing code.
+
+Do not start from assumptions about the module graph.
+
+---
+
+## Architecture decision pipeline
+
+For every architecture task:
+
+1. Identify the user goal.
+2. Identify affected modules.
+3. Check allowed dependency direction.
+4. Check whether the change belongs in `apps/*` or `modules/*`.
+5. Check protocol compatibility impact.
+6. Check public API compatibility impact.
+7. Choose the smallest reversible change.
+8. Run the closest validation task.
+9. Update docs if architecture, migration status, module responsibility, packaging, or product status changed.
+
+---
+
+## Non-negotiable reminders
+
+Always preserve these project-level constraints:
+
+- reusable modules remain UI-agnostic;
+- UI framework code stays out of `modules/*`;
+- `modules/*` must not depend on `apps/*`;
+- crypto logic stays out of UI code;
+- networking and transport orchestration stay behind service boundaries where practical;
+- protocol and wire-format compatibility must not drift without explicit approval;
+- large rewrites require explicit user approval.
+
+For the full rule set, use `.kilocode/rules.md`.
+
+---
+
+## Kotlin / Java migration guidance
+
+When working on migration:
+
+- keep changes incremental;
+- keep the repository buildable after each step;
+- preserve Java-callable public API contracts unless a breaking change is explicitly approved;
+- prefer small reversible slices over whole-module rewrites;
+- avoid changing runtime-heavy WebRTC code unless the task specifically targets it;
+- validate with the closest relevant Gradle task first.
+
+Do not “fix” Java/Kotlin target details unless project rules and current Kotlin support allow it.
+
+---
+
+## Validation routing
+
+Prefer focused validation first.
+
+Examples:
+
+- changed one JVM module → run that module tests;
+- changed desktop app integration → run desktop client tests/build;
+- changed Gradle configuration → run the affected project build;
+- changed Android compatibility → run Android debug validation;
+- changed packaging → run relevant packaging validation.
+
+Run whole-repository validation only when the change justifies it.
+
+---
+
+## Documentation rule
+
+If the change alters any of the following, update docs in the same task:
+
+- architecture;
+- module responsibility;
+- dependency direction;
+- supported Java/Kotlin versions;
+- migration status;
+- packaging flow;
+- Android interoperability;
+- product status.
+
+Keep this skill short. Put durable rules in `.kilocode/rules.md` and detailed
+explanations in repository documentation.
+
+---
+
+## Completion report
+
+After an architecture task, report:
+
+1. affected modules;
+2. dependency direction checked;
+3. public API compatibility impact;
+4. protocol compatibility impact;
+5. validation run;
+6. docs updated or reason not needed;
+7. risks and follow-up work.
