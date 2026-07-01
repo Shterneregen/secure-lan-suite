@@ -165,13 +165,13 @@ object DesktopMainViewHelpers {
 
     @JvmStatic
     fun localNetworkInfoMessage(localIps: List<String>): String = when (localIps.size) {
-        0 -> "[info] local network IP is unavailable right now"
-        1 -> "[info] local network IP: ${localIps.first()}"
-        else -> "[info] local network IPs: ${localIps.joinToString(", ")}"
+        0 -> "local network IP is unavailable right now"
+        1 -> "local network IP: ${localIps.first()}"
+        else -> "local network IPs: ${localIps.joinToString(", ")}"
     }
 
     @JvmStatic
-    fun localNetworkInfoErrorMessage(message: String?): String = "[info] failed to determine local network IP: $message"
+    fun localNetworkInfoErrorMessage(message: String?): String = "failed to determine local network IP: $message"
 
     @JvmStatic
     @Throws(SocketException::class)

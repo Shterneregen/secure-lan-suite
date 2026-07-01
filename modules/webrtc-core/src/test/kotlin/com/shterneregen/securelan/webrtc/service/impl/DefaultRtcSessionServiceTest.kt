@@ -3,6 +3,7 @@ package com.shterneregen.securelan.webrtc.service.impl
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
+import com.shterneregen.securelan.common.model.rtc.RtcSignalType
 import com.shterneregen.securelan.webrtc.event.RtcEvent
 import com.shterneregen.securelan.webrtc.event.RtcRuntimeWarningEvent
 import com.shterneregen.securelan.webrtc.event.RtcStateChangedEvent
@@ -76,8 +77,58 @@ class DefaultRtcSessionServiceTest {
         assertTrue(waitUntil { engine.closedSessionIds.isNotEmpty() })
     }
 
+    @Test
+    fun shouldCloseExistingSessionBeforeStartingAnotherCall() {
+        val events = CopyOnWriteArrayList<RtcEvent>()
+        val signals = CopyOnWriteArrayList<RtcSignalEnvelope>()
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        val service = DefaultRtcSessionService(events::add, signals::add, engine)
+        val first = service.startSession(RtcSessionRequest("local", "remote-a", RtcSessionMode.AUDIO, "securelan-data"))
+
+        val second = service.startSession(RtcSessionRequest("local", "remote-b", RtcSessionMode.AUDIO_VIDEO, "securelan-data"))
+
+        assertEquals("remote-b", second.remotePeer)
+        assertTrue(signals.any { it.type() == RtcSignalType.HANGUP && it.sessionId() == first.sessionId })
+        assertTrue(waitUntil { engine.closedSessionIds.contains(first.sessionId) })
+        assertEquals(second.sessionId, service.currentSession().orElseThrow().sessionId)
+    }
+
+    @Test
+    fun shouldKeepClosedStateWhenEngineEmitsLateStateAfterHangup() {
+        val events = CopyOnWriteArrayList<RtcEvent>()
+        val signals = CopyOnWriteArrayList<RtcSignalEnvelope>()
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"), emitLateConnectingOnClose = true)
+        val service = DefaultRtcSessionService(events::add, signals::add, engine)
+        service.startSession(RtcSessionRequest("local", "remote", RtcSessionMode.AUDIO_VIDEO, "securelan-data"))
+
+        service.closeCurrentSession()
+
+        assertTrue(waitUntil { engine.closedSessionIds.isNotEmpty() })
+        assertEquals(RtcSessionState.CLOSED, service.currentSession().orElseThrow().state)
+        assertTrue(events.filterIsInstance<RtcStateChangedEvent>().any { it.state == RtcSessionState.CONNECTING && it.message == "Late fake engine state" })
+    }
+
+    @Test
+    fun shouldCloseEngineAndStateWhenRemoteHangupArrives() {
+        val events = CopyOnWriteArrayList<RtcEvent>()
+        val signals = CopyOnWriteArrayList<RtcSignalEnvelope>()
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        val service = DefaultRtcSessionService(events::add, signals::add, engine)
+        val started = service.startSession(RtcSessionRequest("local", "remote", RtcSessionMode.AUDIO_VIDEO, "securelan-data"))
+
+        service.acceptInboundSignal(
+            "local",
+            RtcSignalEnvelope.hangup(started.sessionId ?: "", "remote", "local", RtcSessionMode.AUDIO_VIDEO, "securelan-data", "Remote ended"),
+        )
+
+        assertTrue(waitUntil { engine.closedSessionIds.contains(started.sessionId) })
+        assertEquals(RtcSessionState.CLOSED, service.currentSession().orElseThrow().state)
+        assertTrue(events.filterIsInstance<RtcStateChangedEvent>().any { it.state == RtcSessionState.CLOSED && it.message == "Remote ended" })
+    }
+
     private class FakeRtcEngine(
         private val status: RtcRuntimeStatus,
+        private val emitLateConnectingOnClose: Boolean = false,
     ) : RtcEngine {
         val closedSessionIds = CopyOnWriteArrayList<String?>()
 
@@ -108,6 +159,9 @@ class DefaultRtcSessionServiceTest {
 
         override fun closeSession(sessionId: String?, eventConsumer: Consumer<RtcEvent>) {
             closedSessionIds.add(sessionId)
+            if (emitLateConnectingOnClose) {
+                eventConsumer.accept(RtcStateChangedEvent(sessionId, "remote", RtcSessionMode.AUDIO_VIDEO, RtcSessionState.CONNECTING, "Late fake engine state"))
+            }
         }
     }
 

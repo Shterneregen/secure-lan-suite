@@ -38,6 +38,7 @@ dependencies {
     implementation project(':modules:stego-core')
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
     implementation compose.desktop.currentOs
+    implementation compose.materialIconsExtended
 }
 
 def appName = 'SecureLanSuite'

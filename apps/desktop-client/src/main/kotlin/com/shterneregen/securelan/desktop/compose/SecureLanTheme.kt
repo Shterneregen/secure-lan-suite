@@ -187,7 +187,7 @@ private fun SecureLanColorTokens.toMaterialDarkColors(): Colors = darkColors(
     onSecondary = Color(0xFF06152D),
     background = background,
     onBackground = textPrimary,
-    surface = surfaceLevel2,
+    surface = surfaceLevel1,
     onSurface = textPrimary,
     error = error,
 )

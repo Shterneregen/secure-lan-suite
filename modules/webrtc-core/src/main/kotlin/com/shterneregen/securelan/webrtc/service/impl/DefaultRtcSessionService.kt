@@ -55,6 +55,8 @@ open class DefaultRtcSessionService : RtcSessionService {
     override fun startSession(request: RtcSessionRequest): RtcSessionSnapshot {
         validateRequest(request)
 
+        closeExistingSessionBeforeStarting(request.remotePeer())
+
         val sessionId = UUID.randomUUID().toString()
         val snapshot = RtcSessionSnapshot(
             sessionId,
@@ -217,6 +219,31 @@ open class DefaultRtcSessionService : RtcSessionService {
         }
     }
 
+    private fun closeExistingSessionBeforeStarting(nextRemotePeer: String) {
+        val existing = currentSession.get() ?: return
+        if (existing.state == RtcSessionState.CLOSED || existing.state == RtcSessionState.FAILED || existing.state == RtcSessionState.UNAVAILABLE) {
+            return
+        }
+
+        sendSignal(
+            RtcSignalEnvelope.hangup(
+                existing.sessionId ?: "",
+                existing.localPeer ?: "",
+                existing.remotePeer ?: "",
+                existing.mode ?: RtcSessionMode.DATA,
+                existing.dataChannelLabel ?: "",
+                "Starting a new realtime session with $nextRemotePeer",
+            ),
+        )
+
+        executeOnRtcThread {
+            val engine = rtcEngine.get()
+            if (engine !== UNINITIALIZED_ENGINE && engine.status().available) {
+                engine.closeSession(existing.sessionId, Consumer(::forwardEvent))
+            }
+        }
+    }
+
     private fun validateRequest(request: RtcSessionRequest) {
         Objects.requireNonNull(request, "request must not be null")
         if (request.localPeer().isBlank()) {
@@ -234,7 +261,7 @@ open class DefaultRtcSessionService : RtcSessionService {
     private fun forwardEvent(event: RtcEvent) {
         if (event is RtcStateChangedEvent) {
             currentSession.updateAndGet { existing ->
-                if (existing == null || existing.sessionId != event.sessionId) {
+                if (existing == null || existing.sessionId != event.sessionId || isTerminalSnapshot(existing)) {
                     existing
                 } else {
                     RtcSessionSnapshot(
@@ -250,6 +277,14 @@ open class DefaultRtcSessionService : RtcSessionService {
             }
         }
         eventPublisher.publish(event)
+    }
+
+    private fun isTerminalSnapshot(snapshot: RtcSessionSnapshot): Boolean = when (snapshot.state) {
+        RtcSessionState.CLOSED,
+        RtcSessionState.FAILED,
+        RtcSessionState.UNAVAILABLE,
+        -> true
+        else -> false
     }
 
     private fun publishState(snapshot: RtcSessionSnapshot) {

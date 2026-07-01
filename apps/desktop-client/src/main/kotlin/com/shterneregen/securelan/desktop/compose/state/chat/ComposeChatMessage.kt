@@ -1,0 +1,23 @@
+package com.shterneregen.securelan.desktop.compose.state.chat
+
+import java.time.Instant
+
+public data class ComposeChatMessage(
+    val sender: String,
+    val text: String,
+    val system: Boolean = false,
+    val timestamp: Instant = Instant.now(),
+    val transcriptLine: String? = null,
+) {
+    val displayText: String = transcriptLine ?: if (system) "[$sender] $text" else "$sender: $text"
+    val displayTime: String = formatComposeChatTimestamp(timestamp)
+
+    companion object {
+        fun fromTranscriptLine(line: String, timestamp: Instant = Instant.now()): ComposeChatMessage = ComposeChatMessage(
+            sender = "runtime",
+            text = line,
+            timestamp = timestamp,
+            transcriptLine = line,
+        )
+    }
+}

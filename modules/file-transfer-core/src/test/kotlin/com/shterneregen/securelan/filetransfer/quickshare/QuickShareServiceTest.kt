@@ -87,5 +87,31 @@ class QuickShareServiceTest {
         }
     }
 
+    @Test
+    fun shouldKeepUnlimitedShareActiveUntilStopped() {
+        val service = DefaultQuickShareService(QuickShareEventPublisher.noOp())
+        service.start(QuickShareServerConfig(findAvailablePort(), listOf("127.0.0.1")))
+        try {
+            val snapshot = service.share(QuickShareCreateRequest.text("always available", "Unlimited", null, null))
+            val client = HttpClient.newHttpClient()
+
+            repeat(3) {
+                val response = client.send(
+                    HttpRequest.newBuilder(URI.create(snapshot.primaryUrl())).GET().build(),
+                    HttpResponse.BodyHandlers.ofString(),
+                )
+                assertEquals(200, response.statusCode())
+            }
+
+            val current = service.findShare(snapshot.id()).orElseThrow()
+            assertTrue(current.active())
+            assertEquals(3, current.accessCount())
+            assertEquals(null, current.accessLimit())
+            assertEquals(null, current.expiresAt())
+        } finally {
+            service.stop()
+        }
+    }
+
     private fun findAvailablePort(): Int = ServerSocket(0).use { it.localPort }
 }

@@ -7,37 +7,30 @@ import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryService
-import com.shterneregen.securelan.chat.event.ChatConnectedEvent
-import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent
-import com.shterneregen.securelan.chat.event.ChatErrorEvent
-import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent
-import com.shterneregen.securelan.chat.event.ChatMessageSentEvent
-import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent
-import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
-import com.shterneregen.securelan.chat.event.ChatUserLeftEvent
+import com.shterneregen.securelan.chat.event.*
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
-import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
-import com.shterneregen.securelan.chat.service.ChatClientService
-import com.shterneregen.securelan.chat.service.ChatEventPublisher
-import com.shterneregen.securelan.chat.service.ChatServerConfig
-import com.shterneregen.securelan.chat.service.ChatServerService
-import com.shterneregen.securelan.chat.service.RandomNicknameService
+import com.shterneregen.securelan.chat.service.*
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.common.net.NetworkConstants
-import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
-import com.shterneregen.securelan.desktop.ui.DesktopQuickShareFormatters
-import com.shterneregen.securelan.desktop.ui.DesktopRealtimeFormatters
-import com.shterneregen.securelan.desktop.ui.DesktopTransferFormatters
-import com.shterneregen.securelan.desktop.ui.MediaDeviceChoice
-import com.shterneregen.securelan.desktop.ui.PeerPresence
-import com.shterneregen.securelan.desktop.ui.QuickShareEntry
-import com.shterneregen.securelan.desktop.ui.TransferEntry
-import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
+import com.shterneregen.securelan.desktop.compose.logging.SecureLanLogger
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
+import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventKind
+import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventRouting
+import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEvent
+import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEventKind
+import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
+import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimentalVideoState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceState
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
+import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPrompt
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPromptStatus
+import com.shterneregen.securelan.desktop.ui.*
+import com.shterneregen.securelan.filetransfer.event.*
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateRequest
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent
@@ -50,26 +43,19 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import com.shterneregen.securelan.stego.StegoServices
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import com.shterneregen.securelan.stego.service.SteganographyService
-import com.shterneregen.securelan.webrtc.event.RtcAudioLevelEvent
-import com.shterneregen.securelan.webrtc.event.RtcEvent
-import com.shterneregen.securelan.webrtc.event.RtcRuntimeWarningEvent
-import com.shterneregen.securelan.webrtc.event.RtcStateChangedEvent
-import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent
+import com.shterneregen.securelan.webrtc.event.*
 import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus
 import com.shterneregen.securelan.webrtc.service.RtcMediaDeviceService
 import com.shterneregen.securelan.webrtc.service.RtcSessionRequest
 import com.shterneregen.securelan.webrtc.service.RtcSessionService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot
+import kotlinx.coroutines.*
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -149,8 +135,13 @@ class ComposeDesktopHostAdapter(
             }
             visiblePeers.forEach { peer ->
                 val existing = chatPeers.firstOrNull { DesktopMainViewHelpers.samePeer(it, peer.nickname, peer.peerId) }
-                val presence = existing ?: PeerPresence(peer.nickname, true, peer.peerId, peer.host, peer.chatPort, peer.filePort, peer.lastSeen)
-                merged[peerKey(presence)] = presence
+                if (existing != null) {
+                    merged.remove(peerKeyForDiscovered(peer))
+                    merged[peerKey(existing)] = existing
+                } else {
+                    val presence = PeerPresence(peer.nickname, true, peer.peerId, peer.host, peer.chatPort, peer.filePort, peer.lastSeen)
+                    merged[peerKey(presence)] = presence
+                }
             }
             return merged.values
                 .sortedWith(
@@ -158,10 +149,6 @@ class ComposeDesktopHostAdapter(
                         .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
                 )
         }
-
-    /** Runtime peer-list diagnostics for discovery and targeting validation. */
-    var peerListDiagnostics: List<String> by mutableStateOf(listOf("Peer discovery has not started."))
-        private set
 
     /** Chat transcript lines for workspace wiring. */
     var chatTranscript: List<String> by mutableStateOf(emptyList())
@@ -184,10 +171,6 @@ class ComposeDesktopHostAdapter(
     /** Dedicated coroutine scope for blocking desktop file-transfer client work. */
     private val fileTransferIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** File-transfer diagnostics for the Compose shell. */
-    var transferDiagnostics: List<String> by mutableStateOf(listOf("File transfer listener has not started."))
-        private set
-
     /** Quick-share rows for browser-link workspace wiring. */
     var quickShareEntries: List<QuickShareEntry> by mutableStateOf(emptyList())
         private set
@@ -200,8 +183,8 @@ class ComposeDesktopHostAdapter(
     var quickShareLanding: String by mutableStateOf("Start quick share to get LAN browser links.")
         private set
 
-    /** Quick-share diagnostics for trusted-LAN browser-link actions. */
-    var quickShareDiagnostics: List<String> by mutableStateOf(listOf("Quick share is stopped."))
+    /** Last Quick Share server error, shown next to the affected advanced setting. */
+    var quickShareError: String? by mutableStateOf(null)
         private set
 
     /** Steganography UI state for Compose wiring. */
@@ -220,36 +203,16 @@ class ComposeDesktopHostAdapter(
     )
         private set
 
-    /** Realtime diagnostics for voice/video/device actions. */
-    var realtimeDiagnostics: List<String> by mutableStateOf(listOf("RTC runtime not checked."))
-        private set
-
-    /** Manual/runtime evidence records captured for regression review. */
-    private var runtimeEvidenceRecords: List<ComposeRuntimeEvidenceRecord> by mutableStateOf(emptyList())
-
-    /** Build/package evidence records captured for release review. */
-    private var packagingEvidenceRecords: List<ComposePackagingEvidenceRecord> by mutableStateOf(emptyList())
-
-    /** Full-regression readiness state for diagnostics. */
-    var regressionReadinessState: ComposeRegressionReadinessState by mutableStateOf(buildRegressionReadinessState())
-        private set
-
-    /** Packaging readiness state for promotion gates. */
-    var packagingReadinessState: ComposePackagingReadinessState by mutableStateOf(ComposeShellMetadata.DEFAULT_PACKAGING_STATE)
-        private set
-
     /** Whether the chat client is connected (for send readiness). */
     val chatConnected: Boolean get() = chatClientService.isConnected()
 
     /** Whether quick share is running. */
-    val quickShareRunning: Boolean get() = quickShareService.isRunning()
+    var quickShareRunning: Boolean by mutableStateOf(quickShareService.isRunning())
+        private set
 
     /** Quick-share landing URLs currently exposed by the local browser-link server. */
-    val quickShareLandingUrls: List<String> get() = quickShareService.landingUrls()
-
-    /** Live diagnostics state aggregated from all Compose adapter channels. */
-    val diagnosticsState: ComposeDiagnosticsState
-        get() = buildDiagnosticsState()
+    var quickShareLandingUrls: List<String> by mutableStateOf(quickShareService.landingUrls())
+        private set
 
     /** Local LAN addresses shown by the Compose profile card, matching the JavaFX startup info line. */
     var localNetworkInfo: String by mutableStateOf(DesktopMainViewHelpers.localNetworkInfoMessage(emptyList()))
@@ -269,7 +232,7 @@ class ComposeDesktopHostAdapter(
     val chatEventPublisher: ChatEventPublisher = ChatEventPublisher { event ->
         when (event) {
             is ChatConnectedEvent -> {
-                appendChatTranscript("[connected] ${event.nickname ?: "unknown"} -> ${formatEndpoint(event.remoteAddress)}")
+                // Do not render a local-client connection line in the chat transcript.
                 clearChatPeers()
             }
             is ChatDisconnectedEvent -> {
@@ -279,29 +242,34 @@ class ComposeDesktopHostAdapter(
             }
             is ChatMessageReceivedEvent -> {
                 val sender = event.senderNickname ?: "unknown"
+                val systemLikeMessage = isSystemSender(sender) || isSystemPrefixedChatText(event.text)
                 val text = normalizeChatText(event.text, sender)
-                if (!isSystemSender(sender)) {
+                if (systemLikeMessage) {
+                    updatePeerPresenceFromSystemMessage(text)
+                } else {
                     upsertChatPeer(sender, online = true)
                 }
-                appendChatTranscript(formatChatMessage(sender, text))
+                appendChatTranscript(formatChatMessage(if (systemLikeMessage) "system" else sender, text))
             }
             is ChatMessageSentEvent -> {
                 // JavaFX shows the message through the normal chat receive flow; keep Compose parity and avoid duplicates.
             }
             is ChatUserJoinedEvent -> {
-                val peer = upsertJoinedPeer(event)
-                if (peer != null && peer.online()) {
-                    appendChatTranscript("[join] ${normalizeChatText(event.nickname, "join")}")
-                }
+                // The server already broadcasts a "[system] <nickname> joined the chat" message,
+                // which is the single user-facing presence event. Do not add an extra transcript line
+                // here, otherwise hosts (which see both server-side and client-side events) show
+                // duplicate join entries.
+                upsertJoinedPeer(event)
             }
             is ChatUserLeftEvent -> {
-                if (markChatPeerOffline(event.nickname)) {
-                    appendChatTranscript("[left] ${event.nickname}")
-                }
+                // Same as above: the "[system] <nickname> left the chat" message is the only
+                // rendered leave event. Mark the peer offline without appending a duplicate line.
+                markChatPeerOffline(event.nickname)
             }
             is ChatSignalReceivedEvent -> {
                 upsertChatPeer(event.signal.fromPeer(), online = true)
-                publishPeerListDiagnostic("RTC signal preserved through chat-core: ${event.signal.type()} from ${event.signal.fromPeer()} to ${event.signal.toPeer()}.")
+                SecureLanLogger.logConnection("RTC signal preserved through chat-core: ${event.signal.type()} from ${event.signal.fromPeer()} to ${event.signal.toPeer()}.")
+                rtcSessionService?.acceptInboundSignal(statusState.nickname.trim(), event.signal)
             }
             is ChatErrorEvent -> {
                 val detail = "[error] ${event.message ?: "Chat error"}${event.cause?.message?.let { " -> $it" } ?: ""}"
@@ -326,18 +294,16 @@ class ComposeDesktopHostAdapter(
     private val discoveryListener = object : PeerDiscoveryListener {
         override fun onPeerDiscovered(peer: DiscoveredPeer) {
             discoveredPeers = discoveryService.snapshot()
-            publishPeerListDiagnostic(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
-            refreshMigrationReadinessState()
+            SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
         }
 
         override fun onPeerExpired(peer: DiscoveredPeer) {
             discoveredPeers = discoveryService.snapshot()
-            publishPeerListDiagnostic(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
-            refreshMigrationReadinessState()
+            SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
         }
 
         override fun onDiscoveryError(message: String, cause: Throwable) {
-            publishPeerListDiagnostic(DesktopMainViewHelpers.discoveryErrorDiagnostics(message, cause))
+            SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryErrorDiagnostics(message, cause))
             if (!discoveryService.isRunning()) {
                 publish(ComposeConnectionEventKind.ERROR, DesktopMainViewHelpers.discoveryChatMessage(message))
             }
@@ -395,7 +361,7 @@ class ComposeDesktopHostAdapter(
             currentConfig = discoveryConfig
             discoveryService.start(discoveryConfig, discoveryListener)
             discoveredPeers = discoveryService.snapshot()
-            publishPeerListDiagnostic(
+            SecureLanLogger.logConnection(
                 "Discovery started on port ${discoveryConfig.discoveryPort}; announce=${discoveryConfig.announceEnabled}; snapshot=${discoveredPeers.size}.",
             )
 
@@ -436,7 +402,7 @@ class ComposeDesktopHostAdapter(
             currentConfig = null
             discoveredPeers = emptyList()
             clearChatPeers()
-            publishPeerListDiagnostic("Discovery stopped; peer snapshot cleared.")
+            SecureLanLogger.logConnection("Discovery stopped; peer snapshot cleared.")
             chatServerService.stop()
             publish(ComposeConnectionEventKind.SUCCESS, "Room stopped.")
             publishEventKind(ComposeAdapterEventKind.HOST_STOPPED, "Host stopped.")
@@ -533,10 +499,10 @@ class ComposeDesktopHostAdapter(
             val label = if (enabled) "Discoverable" else "Hidden"
             publish(ComposeConnectionEventKind.SUCCESS, "Room set to $label mode.")
             publishEventKind(ComposeAdapterEventKind.DISCOVERY_VISIBILITY_CHANGED, label)
-            publishPeerListDiagnostic("Discovery visibility changed to $label; snapshot=${discoveredPeers.size}.")
+            SecureLanLogger.logConnection("Discovery visibility changed to $label; snapshot=${discoveredPeers.size}.")
         } catch (e: Exception) {
             publish(ComposeConnectionEventKind.ERROR, "Failed to change discovery mode: ${e.message}")
-            publishPeerListDiagnostic("Failed to change discovery visibility: ${e.message ?: "unknown error"}.")
+            SecureLanLogger.logConnection("Failed to change discovery visibility: ${e.message ?: "unknown error"}.")
         }
         refreshState()
     }
@@ -552,7 +518,7 @@ class ComposeDesktopHostAdapter(
         val trimmedNick = nickname.trim()
         val trimmedHost = host.trim()
         if (trimmedNick.isEmpty() || trimmedHost.isEmpty()) {
-            publishPeerListDiagnostic("Manual peer rejected: nickname and host are required.")
+            SecureLanLogger.logConnection("Manual peer rejected: nickname and host are required.")
             return
         }
         val peerId = "manual-${trimmedNick.lowercase()}-${trimmedHost.lowercase()}-$chatPort-$filePort"
@@ -560,7 +526,7 @@ class ComposeDesktopHostAdapter(
         val peer = DiscoveredPeer(peerId, trimmedNick, trimmedHost, chatPort, filePort, Instant.now())
         manualPeers = (manualPeers.filterNot { it.peerId == peer.peerId } + peer)
             .sortedWith(Comparator.comparing(DiscoveredPeer::nickname, String.CASE_INSENSITIVE_ORDER))
-        publishPeerListDiagnostic("Manual peer added: ${peer.nickname}@${peer.host}; visible=${visiblePeers.size}.")
+        SecureLanLogger.logConnection("Manual peer added: ${peer.nickname}@${peer.host}; visible=${visiblePeers.size}.")
     }
 
     /** Resolve a selected Compose peer row to its advertised LAN file endpoint. */
@@ -590,7 +556,7 @@ class ComposeDesktopHostAdapter(
     /** Clear manually added Compose peer targets. */
     fun clearManualPeers() {
         manualPeers = emptyList()
-        publishPeerListDiagnostic("Manual peer targets cleared; visible=${visiblePeers.size}.")
+        SecureLanLogger.logConnection("Manual peer targets cleared; visible=${visiblePeers.size}.")
     }
 
     /** Generate a default random nickname. */
@@ -641,7 +607,7 @@ class ComposeDesktopHostAdapter(
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
                 appendChatTranscript(DesktopTransferFormatters.fileRejectedDisconnectedMessage(metadata.fileName, metadata.senderId))
-                publishTransferDiagnostic("Incoming file rejected because chat is not connected: ${metadata.fileName}.")
+                SecureLanLogger.logTransfer("Incoming file rejected because chat is not connected: ${metadata.fileName}.")
                 immediateDecision = false
                 return@runUiStateUpdateAndWait
             }
@@ -650,7 +616,7 @@ class ComposeDesktopHostAdapter(
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
                 appendChatTranscript(DesktopTransferFormatters.fileRejectedUnknownPeerMessage(metadata.fileName, metadata.senderId))
-                publishTransferDiagnostic("Incoming file rejected from unknown/offline peer ${metadata.senderId}.")
+                SecureLanLogger.logTransfer("Incoming file rejected from unknown/offline peer ${metadata.senderId}.")
                 immediateDecision = false
                 return@runUiStateUpdateAndWait
             }
@@ -658,14 +624,14 @@ class ComposeDesktopHostAdapter(
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.AUTO_ACCEPTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
                 appendChatTranscript(DesktopTransferFormatters.fileAutoAcceptedMessage(metadata.fileName, metadata.senderId))
-                publishTransferDiagnostic("Incoming file auto-accepted: ${metadata.fileName} from ${metadata.senderId}.")
+                SecureLanLogger.logTransfer("Incoming file auto-accepted: ${metadata.fileName} from ${metadata.senderId}.")
                 immediateDecision = true
                 return@runUiStateUpdateAndWait
             }
 
             val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.WAITING)
             incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
-            publishTransferDiagnostic("Incoming file prompt waiting for user decision: ${prompt.header}.")
+            SecureLanLogger.logTransfer("Incoming file prompt waiting for user decision: ${prompt.header}.")
             val decision = CompletableFuture<Boolean>()
             pendingIncomingTransferDecisions[prompt.id] = decision
             pendingPromptId = prompt.id
@@ -674,14 +640,14 @@ class ComposeDesktopHostAdapter(
         immediateDecision?.let { return it }
         val decision = pendingDecision ?: return false
         if (SwingUtilities.isEventDispatchThread()) {
-            publishTransferDiagnostic("Incoming file prompt rejected because waiting on the UI thread would freeze the Compose event loop.")
+            SecureLanLogger.logTransfer("Incoming file prompt rejected because waiting on the UI thread would freeze the Compose event loop.")
             pendingPromptId?.let { pendingIncomingTransferDecisions.remove(it) }
             return false
         }
         return try {
             decision.get()
         } catch (e: Exception) {
-            dispatchUiStateUpdate { publishTransferDiagnostic(DesktopTransferFormatters.fileConfirmationFailedDiagnostics(e.message)) }
+            dispatchUiStateUpdate { SecureLanLogger.logTransfer(DesktopTransferFormatters.fileConfirmationFailedDiagnostics(e.message)) }
             false
         } finally {
             pendingPromptId?.let { pendingIncomingTransferDecisions.remove(it) }
@@ -706,7 +672,7 @@ class ComposeDesktopHostAdapter(
             }
         }
         appendChatTranscript(DesktopTransferFormatters.fileConfirmationResultMessage(accepted, prompt.fileName, prompt.senderId))
-        publishTransferDiagnostic("Incoming file ${if (accepted) "accepted" else "rejected"}: ${prompt.fileName} from ${prompt.senderId}.")
+        SecureLanLogger.logTransfer("Incoming file ${if (accepted) "accepted" else "rejected"}: ${prompt.fileName} from ${prompt.senderId}.")
     }
 
     private fun upsertIncomingTransferPrompt(prompt: ComposeIncomingTransferPrompt): List<ComposeIncomingTransferPrompt> =
@@ -744,138 +710,26 @@ class ComposeDesktopHostAdapter(
         autoAcceptIncomingFiles = enabled
     }
 
-    /** Record manual/runtime validation evidence gathered outside deterministic unit tests. */
-    fun updateRuntimeValidationEvidence(
-        chatRuntimeValidated: Boolean = regressionReadinessState.chatRuntimeValidated,
-        fileTransferRuntimeValidated: Boolean = regressionReadinessState.fileTransferRuntimeValidated,
-        quickShareRuntimeValidated: Boolean = regressionReadinessState.quickShareRuntimeValidated,
-        steganographyRuntimeValidated: Boolean = regressionReadinessState.steganographyRuntimeValidated,
-        voiceRuntimeValidated: Boolean = regressionReadinessState.voiceRuntimeValidated,
-        videoRuntimeValidated: Boolean = regressionReadinessState.videoRuntimeValidated,
-        resizeScreenshotMatrixValidated: Boolean = regressionReadinessState.resizeScreenshotMatrixValidated,
-        fullRuntimeRegressionValidated: Boolean = regressionReadinessState.fullRuntimeRegressionValidated,
-    ) {
-        regressionReadinessState = buildRegressionReadinessState(
-            chatRuntimeValidated = chatRuntimeValidated,
-            fileTransferRuntimeValidated = fileTransferRuntimeValidated,
-            quickShareRuntimeValidated = quickShareRuntimeValidated,
-            steganographyRuntimeValidated = steganographyRuntimeValidated,
-            voiceRuntimeValidated = voiceRuntimeValidated,
-            videoRuntimeValidated = videoRuntimeValidated,
-            resizeScreenshotMatrixValidated = resizeScreenshotMatrixValidated,
-            fullRuntimeRegressionValidated = fullRuntimeRegressionValidated,
-        )
-    }
-
-    /** Mark one runtime-evidence requirement from the Compose regression checklist. */
-    fun recordRuntimeEvidence(kind: ComposeRuntimeEvidenceKind, recorded: Boolean = true) {
-        updateRuntimeValidationEvidence(
-            chatRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.CHAT_INTEROP) recorded else regressionReadinessState.chatRuntimeValidated,
-            fileTransferRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.FILE_TRANSFER) recorded else regressionReadinessState.fileTransferRuntimeValidated,
-            quickShareRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.QUICK_SHARE) recorded else regressionReadinessState.quickShareRuntimeValidated,
-            steganographyRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.STEGANOGRAPHY) recorded else regressionReadinessState.steganographyRuntimeValidated,
-            voiceRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.VOICE) recorded else regressionReadinessState.voiceRuntimeValidated,
-            videoRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.EXPERIMENTAL_VIDEO) recorded else regressionReadinessState.videoRuntimeValidated,
-            resizeScreenshotMatrixValidated = if (kind == ComposeRuntimeEvidenceKind.RESIZE_SCREENSHOTS) recorded else regressionReadinessState.resizeScreenshotMatrixValidated,
-            fullRuntimeRegressionValidated = if (kind == ComposeRuntimeEvidenceKind.FULL_REGRESSION) recorded else regressionReadinessState.fullRuntimeRegressionValidated,
-        )
-    }
-
-    /** Capture a copyable runtime evidence record while keeping acceptance explicit. */
-    fun recordRuntimeEvidenceRecord(
-        kind: ComposeRuntimeEvidenceKind,
-        note: String,
-        status: ComposeRuntimeEvidenceChecklistStatus = ComposeRuntimeEvidenceChecklistStatus.RECORDED,
-        recordedAt: Instant = Instant.now(),
-    ) {
-        runtimeEvidenceRecords = (runtimeEvidenceRecords.filterNot { it.kind == kind } +
-            ComposeRuntimeEvidenceRecord(kind, status, note.ifBlank { "Runtime evidence recorded without details." }, recordedAt))
-            .sortedBy { it.kind.ordinal }
-        recordRuntimeEvidence(kind, status == ComposeRuntimeEvidenceChecklistStatus.ACCEPTED)
-    }
-
-    /** Record build/package validation evidence without changing launcher or jpackage configuration. */
-    fun updatePackagingValidationEvidence(
-        desktopTestsPassed: Boolean = packagingReadinessState.desktopTestsPassed,
-        desktopBuildPassed: Boolean = packagingReadinessState.desktopBuildPassed,
-        composeRuntimeSmokePassed: Boolean = packagingReadinessState.composeRuntimeSmokePassed,
-        portableZipValidated: Boolean = packagingReadinessState.portableZipValidated,
-        composePortableZipValidated: Boolean = packagingReadinessState.composePortableZipValidated,
-        windowsExeValidated: Boolean = packagingReadinessState.windowsExeValidated,
-        composePromotionApproved: Boolean = packagingReadinessState.composePromotionApproved,
-        fullRuntimeRegressionValidated: Boolean = packagingReadinessState.fullRuntimeRegressionValidated,
-    ) {
-        packagingReadinessState = packagingReadinessState.copy(
-            desktopTestsPassed = desktopTestsPassed,
-            desktopBuildPassed = desktopBuildPassed,
-            composeRuntimeSmokePassed = composeRuntimeSmokePassed,
-            portableZipValidated = portableZipValidated,
-            composePortableZipValidated = composePortableZipValidated,
-            windowsExeValidated = windowsExeValidated,
-            composePromotionApproved = composePromotionApproved,
-            fullRuntimeRegressionValidated = fullRuntimeRegressionValidated,
-            evidenceRecords = packagingEvidenceRecords,
-        )
-    }
-
-    /** Capture one build/package evidence record without changing launcher or jpackage configuration. */
-    fun recordPackagingEvidenceRecord(
-        kind: ComposePackagingEvidenceKind,
-        validated: Boolean,
-        note: String,
-        recordedAt: Instant = Instant.now(),
-    ) {
-        packagingEvidenceRecords = (packagingEvidenceRecords.filterNot { it.kind == kind } +
-            ComposePackagingEvidenceRecord(kind, validated, note.ifBlank { "Packaging evidence recorded without details." }, recordedAt))
-            .sortedBy { it.kind.ordinal }
-        updatePackagingValidationEvidence(
-            desktopTestsPassed = if (kind == ComposePackagingEvidenceKind.DESKTOP_TESTS) validated else packagingReadinessState.desktopTestsPassed,
-            desktopBuildPassed = if (kind == ComposePackagingEvidenceKind.DESKTOP_BUILD) validated else packagingReadinessState.desktopBuildPassed,
-            composeRuntimeSmokePassed = if (kind == ComposePackagingEvidenceKind.COMPOSE_RUNTIME_SMOKE) validated else packagingReadinessState.composeRuntimeSmokePassed,
-            portableZipValidated = if (kind == ComposePackagingEvidenceKind.PORTABLE_ZIP) validated else packagingReadinessState.portableZipValidated,
-            composePortableZipValidated = if (kind == ComposePackagingEvidenceKind.COMPOSE_PORTABLE_ZIP) validated else packagingReadinessState.composePortableZipValidated,
-            windowsExeValidated = if (kind == ComposePackagingEvidenceKind.WINDOWS_EXE) validated else packagingReadinessState.windowsExeValidated,
-            composePromotionApproved = if (kind == ComposePackagingEvidenceKind.PROMOTION_APPROVAL) validated else packagingReadinessState.composePromotionApproved,
-            fullRuntimeRegressionValidated = if (kind == ComposePackagingEvidenceKind.FULL_RUNTIME_REGRESSION) validated else packagingReadinessState.fullRuntimeRegressionValidated,
-        )
-    }
-
-    /** Mark one packaging artifact check without mutating launcher or jpackage configuration. */
-    fun recordPackagingArtifactEvidence(kind: ComposePackagingArtifactKind, validated: Boolean = true) {
-        updatePackagingValidationEvidence(
-            composeRuntimeSmokePassed = if (kind == ComposePackagingArtifactKind.COMPOSE_ENTRYPOINT) validated else packagingReadinessState.composeRuntimeSmokePassed,
-            portableZipValidated = if (kind == ComposePackagingArtifactKind.PORTABLE_ZIP) validated else packagingReadinessState.portableZipValidated,
-            composePortableZipValidated = if (kind == ComposePackagingArtifactKind.COMPOSE_PORTABLE_ZIP) validated else packagingReadinessState.composePortableZipValidated,
-            windowsExeValidated = if (kind == ComposePackagingArtifactKind.WINDOWS_EXE) validated else packagingReadinessState.windowsExeValidated,
-        )
-    }
-
-    /** Mirror accepted full runtime-regression evidence into the packaging promotion gate. */
-    fun recordFullRegressionPackagingEvidence(validated: Boolean = true) {
-        recordRuntimeEvidence(ComposeRuntimeEvidenceKind.FULL_REGRESSION, validated)
-        updatePackagingValidationEvidence(fullRuntimeRegressionValidated = validated)
-    }
-
     fun sendFileToPeer(filePath: Path, senderId: String, recipient: DiscoveredPeer, sessionPassword: String): CompletableFuture<String?> {
         if (shuttingDown.get()) return CompletableFuture.completedFuture(null)
         val completion = CompletableFuture<String?>()
         val client = fileTransferClientService
         if (client == null) {
-            publishTransferDiagnostic("Outgoing file send unavailable: file-transfer client service is not configured.")
+            SecureLanLogger.logTransfer("Outgoing file send unavailable: file-transfer client service is not configured.")
             completion.complete(null)
             return completion
         }
         if (!chatClientService.isConnected()) {
-            publishTransferDiagnostic("Outgoing file send blocked: connect to chat before sending files.")
+            SecureLanLogger.logTransfer("Outgoing file send blocked: connect to chat before sending files.")
             completion.complete(null)
             return completion
         }
 
-        publishTransferDiagnostic("Outgoing file send queued for ${recipient.nickname}; file checks and transfer will run on the IO dispatcher.")
+        SecureLanLogger.logTransfer("Outgoing file send queued for ${recipient.nickname}; file checks and transfer will run on the IO dispatcher.")
         fileTransferIoScope.launch {
             val normalizedFile = filePath.toAbsolutePath().normalize()
             if (!Files.isRegularFile(normalizedFile)) {
-                dispatchUiStateUpdate { publishTransferDiagnostic("Outgoing file send blocked: file does not exist: $normalizedFile.") }
+                dispatchUiStateUpdate { SecureLanLogger.logTransfer("Outgoing file send blocked: file does not exist: $normalizedFile.") }
                 completion.complete(null)
                 return@launch
             }
@@ -890,12 +744,12 @@ class ComposeDesktopHostAdapter(
                         normalizedFile,
                     ),
                 )
-                dispatchUiStateUpdate { publishTransferDiagnostic("Outgoing file send finished: ${normalizedFile.fileName} to ${recipient.nickname}.") }
+                dispatchUiStateUpdate { SecureLanLogger.logTransfer("Outgoing file send finished: ${normalizedFile.fileName} to ${recipient.nickname}.") }
                 completion.complete(transferId)
             } catch (e: Exception) {
                 val message = "Outgoing file send failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
                 dispatchUiStateUpdate {
-                    publishTransferDiagnostic(message)
+                    SecureLanLogger.logTransfer(message)
                     publish(ComposeConnectionEventKind.ERROR, message)
                 }
                 completion.complete(null)
@@ -908,13 +762,15 @@ class ComposeDesktopHostAdapter(
         if (shuttingDown.get()) return
         try {
             quickShareService.start(QuickShareServerConfig(port))
+            quickShareError = null
             refreshQuickShareState()
             appendChatTranscript(DesktopQuickShareFormatters.formatServerStartedMessage(quickShareService.port()))
-            publishQuickShareDiagnostic(DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(quickShareService.landingUrls()))
+            SecureLanLogger.logQuickShare(DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(quickShareService.landingUrls()))
         } catch (e: Exception) {
             val message = "Quick-share start failed: ${e.message ?: "unknown error"}"
+            quickShareError = message
             publish(ComposeConnectionEventKind.ERROR, message)
-            publishQuickShareDiagnostic(message)
+            SecureLanLogger.logQuickShare(message)
         }
     }
 
@@ -923,18 +779,18 @@ class ComposeDesktopHostAdapter(
         quickShareService.stop()
         refreshQuickShareState()
         appendChatTranscript(DesktopQuickShareFormatters.formatServerStoppedMessage())
-        publishQuickShareDiagnostic("Quick-share server stopped from Compose.")
+        SecureLanLogger.logQuickShare("Quick-share server stopped from Compose.")
     }
 
-    fun createTextQuickShare(text: String, expirationMinutes: Long, accessLimit: Int) {
+    fun createTextQuickShare(text: String, expirationMinutes: Long?, accessLimit: Int?) {
         if (shuttingDown.get()) return
         val normalizedText = text.trim()
         if (normalizedText.isBlank()) {
-            publishQuickShareDiagnostic("Text quick-share rejected: enter text to share first.")
+            SecureLanLogger.logQuickShare("Text quick-share rejected: enter text to share first.")
             return
         }
-        if (expirationMinutes < 1 || accessLimit < 1) {
-            publishQuickShareDiagnostic("Text quick-share rejected: expiration and access limit must be at least 1.")
+        if ((expirationMinutes != null && expirationMinutes < 1) || (accessLimit != null && accessLimit < 1)) {
+            SecureLanLogger.logQuickShare("Text quick-share rejected: expiration and access limit must be at least 1.")
             return
         }
         try {
@@ -945,17 +801,18 @@ class ComposeDesktopHostAdapter(
                 QuickShareCreateRequest.text(
                     normalizedText,
                     DesktopQuickShareFormatters.formatTextDisplayName(normalizedText),
-                    Duration.ofMinutes(expirationMinutes),
+                    expirationMinutes?.let(Duration::ofMinutes),
                     accessLimit,
                 ),
             )
             refreshQuickShareState()
-            appendChatTranscript(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(snapshot.primaryUrl()))
-            publishQuickShareDiagnostic("Text quick-share created: ${snapshot.displayName()}.")
+            val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot)
+            appendChatTranscript(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(shareUrl))
+            SecureLanLogger.logQuickShare("Text quick-share created: ${snapshot.displayName()}.")
         } catch (e: Exception) {
             val message = "Text quick-share failed: ${e.message ?: "unknown error"}"
             publish(ComposeConnectionEventKind.ERROR, message)
-            publishQuickShareDiagnostic(message)
+            SecureLanLogger.logQuickShare(message)
         }
     }
 
@@ -963,15 +820,15 @@ class ComposeDesktopHostAdapter(
         if (shuttingDown.get()) return
         if (quickShareService.stopShare(id)) {
             refreshQuickShareState()
-            publishQuickShareDiagnostic("Quick-share stopped: $id.")
+            SecureLanLogger.logQuickShare("Quick-share stopped: $id.")
         }
     }
 
-    fun createFileQuickShare(filePath: Path, expirationMinutes: Long, accessLimit: Int) {
+    fun createFileQuickShare(filePath: Path, expirationMinutes: Long?, accessLimit: Int?) {
         if (shuttingDown.get()) return
         val normalizedFile = filePath.toAbsolutePath().normalize()
-        if (expirationMinutes < 1 || accessLimit < 1) {
-            publishQuickShareDiagnostic("File quick-share rejected: expiration and access limit must be at least 1.")
+        if ((expirationMinutes != null && expirationMinutes < 1) || (accessLimit != null && accessLimit < 1)) {
+            SecureLanLogger.logQuickShare("File quick-share rejected: expiration and access limit must be at least 1.")
             return
         }
         try {
@@ -982,17 +839,18 @@ class ComposeDesktopHostAdapter(
                 QuickShareCreateRequest.file(
                     normalizedFile,
                     normalizedFile.fileName.toString(),
-                    Duration.ofMinutes(expirationMinutes),
+                    expirationMinutes?.let(Duration::ofMinutes),
                     accessLimit,
                 ),
             )
             refreshQuickShareState()
-            appendChatTranscript("[quick-share] file link copied: ${snapshot.primaryUrl()}")
-            publishQuickShareDiagnostic("File quick-share created: ${snapshot.displayName()}.")
+            val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot)
+            appendChatTranscript(DesktopQuickShareFormatters.formatFileLinkCopiedMessage(shareUrl))
+            SecureLanLogger.logQuickShare("File quick-share created: ${snapshot.displayName()}.")
         } catch (e: Exception) {
             val message = "File quick-share failed: ${e.message ?: "unknown error"}"
             publish(ComposeConnectionEventKind.ERROR, message)
-            publishQuickShareDiagnostic(message)
+            SecureLanLogger.logQuickShare(message)
         }
     }
 
@@ -1089,11 +947,15 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    fun clearSteganographyState() {
+        stegoState = ComposeSteganographyState()
+    }
+
     fun refreshMediaDevices() {
         if (shuttingDown.get()) return
         val mediaService = rtcMediaDeviceService
         if (mediaService == null) {
-            publishRealtimeDiagnostic("RTC media device service is not configured.")
+            SecureLanLogger.logRealtime("RTC media device service is not configured.")
             refreshRealtimeState()
             return
         }
@@ -1107,7 +969,7 @@ class ComposeDesktopHostAdapter(
             speakerTestStatus = "Speakers refreshed: ${outputDevices.size}",
         )
         experimentalVideoState = experimentalVideoState.copy(cameras = cameras, cameraTestStatus = "Cameras refreshed: ${cameras.size}")
-        publishRealtimeDiagnostic("Media devices refreshed: ${microphones.size} microphones, ${outputDevices.size} speakers, ${cameras.size} cameras.")
+        SecureLanLogger.logRealtime("Media devices refreshed: ${microphones.size} microphones, ${outputDevices.size} speakers, ${cameras.size} cameras.")
         refreshRealtimeState()
     }
 
@@ -1119,13 +981,13 @@ class ComposeDesktopHostAdapter(
             mediaService.testAudioCaptureDevice(deviceId)
         }
         mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty(), microphoneTestStatus = result)
-        publishRealtimeDiagnostic(result)
+        SecureLanLogger.logRealtime(result)
         return result
     }
 
     fun selectMicrophone(deviceId: String?) {
         mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty())
-        publishRealtimeDiagnostic("Microphone selected: ${mediaVoiceState.selectedMicrophone}.")
+        SecureLanLogger.logRealtime("Microphone selected: ${mediaVoiceState.selectedMicrophone}.")
     }
 
     fun testSpeaker(deviceId: String? = mediaVoiceState.selectedOutputDevice.deviceId): String {
@@ -1136,13 +998,13 @@ class ComposeDesktopHostAdapter(
             mediaService.testAudioRenderDevice(deviceId)
         }
         mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty(), speakerTestStatus = result)
-        publishRealtimeDiagnostic(result)
+        SecureLanLogger.logRealtime(result)
         return result
     }
 
     fun selectSpeaker(deviceId: String?) {
         mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty())
-        publishRealtimeDiagnostic("Speaker output selected: ${mediaVoiceState.selectedOutputDevice}.")
+        SecureLanLogger.logRealtime("Speaker output selected: ${mediaVoiceState.selectedOutputDevice}.")
     }
 
     fun testCamera(deviceId: String? = experimentalVideoState.selectedCamera.deviceId): String {
@@ -1153,13 +1015,13 @@ class ComposeDesktopHostAdapter(
             mediaService.testVideoCaptureDevice(deviceId)
         }
         experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty(), cameraTestStatus = result)
-        publishRealtimeDiagnostic(result)
+        SecureLanLogger.logRealtime(result)
         return result
     }
 
     fun selectCamera(deviceId: String?) {
         experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty())
-        publishRealtimeDiagnostic("Camera selected: ${experimentalVideoState.selectedCamera}.")
+        SecureLanLogger.logRealtime("Camera selected: ${experimentalVideoState.selectedCamera}.")
     }
 
     fun startRealtimeSession(
@@ -1173,11 +1035,11 @@ class ComposeDesktopHostAdapter(
         if (shuttingDown.get()) return
         val service = rtcSessionService
         if (service == null) {
-            publishRealtimeDiagnostic("RTC session service is not configured.")
+            SecureLanLogger.logRealtime("RTC session service is not configured.")
             return
         }
         if (!chatClientService.isConnected()) {
-            publishRealtimeDiagnostic("RTC session blocked: connect to chat before starting realtime.")
+            SecureLanLogger.logRealtime("RTC session blocked: connect to chat before starting realtime.")
             return
         }
         try {
@@ -1191,7 +1053,7 @@ class ComposeDesktopHostAdapter(
                     videoDeviceId.orEmpty(),
                 ),
             )
-            publishRealtimeDiagnostic(
+            SecureLanLogger.logRealtime(
                 DesktopRealtimeFormatters.rtcStateDiagnostics(
                     mode,
                     snapshot.state ?: RtcSessionState.IDLE,
@@ -1201,7 +1063,7 @@ class ComposeDesktopHostAdapter(
             )
         } catch (e: Exception) {
             val message = "RTC session failed: ${e.message ?: "unknown error"}"
-            publishRealtimeDiagnostic(message)
+            SecureLanLogger.logRealtime(message)
             publish(ComposeConnectionEventKind.ERROR, message)
         }
         refreshRealtimeState()
@@ -1209,8 +1071,9 @@ class ComposeDesktopHostAdapter(
 
     fun closeRealtimeSession() {
         if (shuttingDown.get()) return
+        clearRealtimeMediaState()
         rtcSessionService?.closeCurrentSession()
-        publishRealtimeDiagnostic("RTC session close requested from Compose.")
+        SecureLanLogger.logRealtime("RTC session close requested from Compose.")
         refreshRealtimeState()
     }
 
@@ -1224,7 +1087,7 @@ class ComposeDesktopHostAdapter(
                 latestPreviewFrame = null,
                 cameraTestStatus = message,
             )
-            publishRealtimeDiagnostic(message)
+            SecureLanLogger.logRealtime(message)
             return
         }
         closeCameraPreview()
@@ -1232,12 +1095,17 @@ class ComposeDesktopHostAdapter(
             selectedCameraId = deviceId.orEmpty(),
             previewRunning = true,
             latestPreviewFrame = null,
+            latestLocalVideoFrame = null,
             cameraTestStatus = "Starting camera preview…",
         )
         val session = try {
             mediaService.startVideoPreview(deviceId) { event ->
-                experimentalVideoState = experimentalVideoState.copy(latestPreviewFrame = event, previewRunning = true)
-                publishRealtimeDiagnostic(DesktopRealtimeFormatters.cameraPreviewLiveStatus(event.width(), event.height()))
+                experimentalVideoState = experimentalVideoState.copy(
+                    latestPreviewFrame = event,
+                    latestLocalVideoFrame = event.takeIf { it.local() } ?: experimentalVideoState.latestLocalVideoFrame,
+                    previewRunning = true,
+                )
+                SecureLanLogger.logRealtime(DesktopRealtimeFormatters.cameraPreviewLiveStatus(event.width(), event.height()))
             }
         } catch (error: Throwable) {
             val message = "Camera preview failed: ${error::class.java.simpleName}: ${error.message.orEmpty()}"
@@ -1246,7 +1114,7 @@ class ComposeDesktopHostAdapter(
                 latestPreviewFrame = null,
                 cameraTestStatus = message,
             )
-            publishRealtimeDiagnostic(message)
+            SecureLanLogger.logRealtime(message)
             return
         }
         val status = session.statusMessage()
@@ -1257,7 +1125,7 @@ class ComposeDesktopHostAdapter(
                 latestPreviewFrame = null,
                 cameraTestStatus = status,
             )
-            publishRealtimeDiagnostic(status)
+            SecureLanLogger.logRealtime(status)
             return
         }
         cameraPreviewSession = session
@@ -1266,7 +1134,7 @@ class ComposeDesktopHostAdapter(
             previewRunning = true,
             cameraTestStatus = status,
         )
-        publishRealtimeDiagnostic(status)
+        SecureLanLogger.logRealtime(status)
     }
 
     fun closeCameraPreview() {
@@ -1277,7 +1145,8 @@ class ComposeDesktopHostAdapter(
         } catch (_: Exception) { /* best-effort */ }
         experimentalVideoState = experimentalVideoState.copy(
             previewRunning = false,
-            latestPreviewFrame = null,
+            latestPreviewFrame = if (experimentalVideoState.latestPreviewFrame?.local() == true) null else experimentalVideoState.latestPreviewFrame,
+            latestLocalVideoFrame = null,
             cameraTestStatus = "Camera preview stopped.",
         )
     }
@@ -1325,7 +1194,7 @@ class ComposeDesktopHostAdapter(
             discoveryService.stop()
             currentConfig = null
             discoveredPeers = emptyList()
-            publishPeerListDiagnostic("Discovery stopped during adapter shutdown; peer snapshot cleared.")
+            SecureLanLogger.logConnection("Discovery stopped during adapter shutdown; peer snapshot cleared.")
         } catch (_: Exception) { /* best-effort */ }
 
         try {
@@ -1362,11 +1231,15 @@ class ComposeDesktopHostAdapter(
             discoverable = config?.announceEnabled ?: statusState.discoverable,
         )
         refreshRealtimeState()
-        refreshMigrationReadinessState()
     }
 
     private fun publish(kind: ComposeConnectionEventKind, message: String) {
         adapterEvents = adapterEvents + ComposeConnectionEvent(kind, message)
+        when (kind) {
+            ComposeConnectionEventKind.ERROR -> SecureLanLogger.logError(message)
+            ComposeConnectionEventKind.WARNING -> SecureLanLogger.logWarning(message)
+            else -> SecureLanLogger.logConnection(message)
+        }
     }
 
     private fun publishMicrointeraction(kind: ComposeConnectionEventKind, message: String) {
@@ -1408,33 +1281,6 @@ class ComposeDesktopHostAdapter(
         }
     }
 
-    private fun publishPeerListDiagnostic(message: String) {
-        peerListDiagnostics = (peerListDiagnostics + message).takeLast(8)
-    }
-
-    private fun publishTransferDiagnostic(message: String) {
-        val normalized = message.trim()
-        if (normalized.isEmpty()) {
-            return
-        }
-        val progressPrefix = "Transfer progress: "
-        transferDiagnostics = if (normalized.startsWith(progressPrefix)) {
-            val target = normalized.substringAfter(progressPrefix).substringBeforeLast(' ').trim()
-            val retained = transferDiagnostics.filterNot { it.startsWith(progressPrefix) && it.substringAfter(progressPrefix).substringBeforeLast(' ').trim() == target }
-            (retained + normalized).takeLast(8)
-        } else {
-            (transferDiagnostics + normalized).takeLast(8)
-        }
-    }
-
-    private fun publishQuickShareDiagnostic(message: String) {
-        quickShareDiagnostics = (quickShareDiagnostics + message).takeLast(8)
-    }
-
-    private fun publishRealtimeDiagnostic(message: String) {
-        realtimeDiagnostics = (realtimeDiagnostics + message).takeLast(10)
-    }
-
     private fun appendChatTranscript(line: String) {
         val normalized = normalizeTranscriptLine(line)
         if (normalized.isBlank()) {
@@ -1444,14 +1290,10 @@ class ComposeDesktopHostAdapter(
         chatTranscript = (chatTranscript + normalized).takeLast(200)
         chatMessages = (chatMessages + ComposeChatMessage.fromTranscriptLine(normalized, timestamp)).takeLast(200)
         when {
-            normalized.startsWith("[join]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Peer joined: ${normalized.removePrefix("[join]").trim()}")
-            normalized.startsWith("[left]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Peer left: ${normalized.removePrefix("[left]").trim()}")
-            normalized.startsWith("[connected]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Connection active")
             normalized.startsWith("[disconnected]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Connection ended")
             normalized.contains("completed", ignoreCase = true) && (normalized.startsWith("[file-send]", ignoreCase = true) || normalized.startsWith("[file-recv]", ignoreCase = true)) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed")
             normalized.startsWith("[error]", ignoreCase = true) || normalized.contains("failed", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, normalized.removePrefix("[error]").trim())
         }
-        refreshMigrationReadinessState()
     }
 
     private fun formatChatMessage(sender: String, text: String): String {
@@ -1467,9 +1309,6 @@ class ComposeDesktopHostAdapter(
     private fun normalizeTranscriptLine(line: String): String = line.trim()
         .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "[system] ")
         .replace(Regex("^\\[system]\\s*system:\\s*", RegexOption.IGNORE_CASE), "[system] ")
-        .replace(Regex("^\\[join]\\s*\\[join]\\s*", RegexOption.IGNORE_CASE), "[join] ")
-        .replace(Regex("^\\[left]\\s*\\[left]\\s*", RegexOption.IGNORE_CASE), "[left] ")
-        .replace(Regex("^\\[connected]\\s*([^>]+)->\\s*/([^\\s]+)"), "[connected] $1-> $2")
 
     private fun normalizeChatText(text: String?, sender: String): String {
         var normalized = text?.trim().orEmpty()
@@ -1481,16 +1320,7 @@ class ComposeDesktopHostAdapter(
             .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "")
             .replace(Regex("^\\[system]\\s*system:\\s*", RegexOption.IGNORE_CASE), "")
             .replace(Regex("^\\[system]\\s*", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("^\\[join]\\s*", RegexOption.IGNORE_CASE), "")
         return normalized
-    }
-
-    private fun formatEndpoint(value: Any?): String {
-        val raw = value?.toString()?.trim().orEmpty()
-        if (raw.isBlank()) {
-            return "unknown"
-        }
-        return raw.removePrefix("/")
     }
 
     private fun publishLocalNetworkInfo() {
@@ -1500,7 +1330,7 @@ class ComposeDesktopHostAdapter(
             DesktopMainViewHelpers.localNetworkInfoErrorMessage(e.message)
         }
         appendChatTranscript(localNetworkInfo)
-        publishPeerListDiagnostic(localNetworkInfo)
+        SecureLanLogger.logConnection(localNetworkInfo)
     }
 
     private fun startFileTransferListener(filePort: Int, password: String) {
@@ -1516,7 +1346,7 @@ class ComposeDesktopHostAdapter(
             ),
         )
         publish(ComposeConnectionEventKind.SUCCESS, "File transfer listener started on port $filePort.")
-        publishTransferDiagnostic("File transfer listener started on port $filePort.")
+        SecureLanLogger.logTransfer("File transfer listener started on port $filePort.")
     }
 
     private fun handleFileTransferEvent(event: FileTransferEvent) {
@@ -1532,7 +1362,7 @@ class ComposeDesktopHostAdapter(
                 )
                 transferEntryMap[entry.transferId] = entry
                 appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "started: ${entry.fileName}")
-                publishTransferDiagnostic("Transfer started: ${entry.fileName}.")
+                SecureLanLogger.logTransfer("Transfer started: ${entry.fileName}.")
             }
 
             is FileTransferProgressEvent -> {
@@ -1542,7 +1372,7 @@ class ComposeDesktopHostAdapter(
                 if (existing.active()) {
                     existing.status = if (event.outgoing) "Sending" else "Receiving"
                     existing.updateProgress(progress.transferredBytes, progress.percent(), progress.totalBytes)
-                    publishTransferDiagnostic("Transfer progress: ${existing.fileName} ${existing.percent}%.")
+                    SecureLanLogger.logTransfer("Transfer progress: ${existing.fileName} ${existing.percent}%.")
                 }
             }
 
@@ -1556,7 +1386,7 @@ class ComposeDesktopHostAdapter(
                 entry.totalBytes = event.totalBytes
                 entry.stopSpeedTracking()
                 appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "completed: ${event.path}")
-                publishTransferDiagnostic("Transfer completed: ${entry.fileName}.")
+                SecureLanLogger.logTransfer("Transfer completed: ${entry.fileName}.")
             }
 
             is FileTransferFailedEvent -> {
@@ -1568,7 +1398,7 @@ class ComposeDesktopHostAdapter(
                 entry.stopSpeedTracking()
                 val message = event.message?.takeIf { it.isNotBlank() } ?: "unknown error"
                 appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "failed: $message")
-                publishTransferDiagnostic("Transfer failed: ${entry.fileName}: $message.")
+                SecureLanLogger.logTransfer("Transfer failed: ${entry.fileName}: $message.")
             }
         }
         transferEntries = transferEntryMap.values.toList()
@@ -1576,7 +1406,7 @@ class ComposeDesktopHostAdapter(
 
     private fun handleQuickShareEvent(event: QuickShareEvent) {
         if (event.message().isNotBlank()) {
-            publishQuickShareDiagnostic(
+            SecureLanLogger.logQuickShare(
                 DesktopQuickShareFormatters.formatEventDiagnostics(event.message(), event.remoteAddress()),
             )
         }
@@ -1585,10 +1415,11 @@ class ComposeDesktopHostAdapter(
 
     private fun refreshQuickShareState() {
         quickShareEntries = quickShareService.shares().map(::QuickShareEntry)
-        if (quickShareService.isRunning()) {
-            val landingUrls = quickShareService.landingUrls()
+        quickShareRunning = quickShareService.isRunning()
+        quickShareLandingUrls = quickShareService.landingUrls()
+        if (quickShareRunning) {
             quickShareStatus = DesktopQuickShareFormatters.formatServerStatus(quickShareService.port())
-            quickShareLanding = DesktopQuickShareFormatters.formatLandingValue(landingUrls)
+            quickShareLanding = DesktopQuickShareFormatters.formatLandingValue(quickShareLandingUrls)
         } else {
             quickShareStatus = "Quick share idle"
             quickShareLanding = "Start quick share to get LAN browser links."
@@ -1598,80 +1429,34 @@ class ComposeDesktopHostAdapter(
     private fun refreshRealtimeState() {
         val peerState = ComposePeerListState(peers = visiblePeerItems.map { ComposePeerListItem.fromPeer(it, chatClientService.isConnected()) }, selectedPeerIndex = if (visiblePeerItems.isEmpty()) -1 else 0)
         val runtimeStatus = rtcSessionService?.runtimeStatus() ?: RtcRuntimeStatus.unavailable("Voice and video service is not configured.")
-        val currentSession = rtcSessionService?.currentSession()?.orElse(null)
+        val currentSession = rtcSessionService?.currentSession()?.orElse(null)?.takeUnless { it.isTerminal() }
         mediaVoiceState = mediaVoiceState.copy(statusState = statusState, peerListState = peerState, runtimeStatus = runtimeStatus, currentSession = currentSession)
         experimentalVideoState = experimentalVideoState.copy(statusState = statusState, peerListState = peerState, runtimeStatus = runtimeStatus, currentSession = currentSession)
     }
 
-    private fun buildDiagnosticsState(): ComposeDiagnosticsState = ComposeDiagnosticsState(
-        statusState = statusState,
-        peerListState = ComposePeerListState(
-            peers = visiblePeerItems.map { ComposePeerListItem.fromPeer(it, chatClientService.isConnected()) },
-            selectedPeerIndex = if (visiblePeerItems.isEmpty()) -1 else 0,
-        ),
-        chatDiagnostics = chatTranscript,
-        fileTransferDiagnostics = transferDiagnostics,
-        quickShareDiagnostics = quickShareDiagnostics,
-        realtimeDiagnostics = realtimeDiagnostics,
-    )
-
-    private fun buildRegressionReadinessState(
-        chatRuntimeValidated: Boolean = runCatching { regressionReadinessState.chatRuntimeValidated }.getOrDefault(false),
-        fileTransferRuntimeValidated: Boolean = runCatching { regressionReadinessState.fileTransferRuntimeValidated }.getOrDefault(false),
-        quickShareRuntimeValidated: Boolean = runCatching { regressionReadinessState.quickShareRuntimeValidated }.getOrDefault(false),
-        steganographyRuntimeValidated: Boolean = runCatching { regressionReadinessState.steganographyRuntimeValidated }.getOrDefault(false),
-        voiceRuntimeValidated: Boolean = runCatching { regressionReadinessState.voiceRuntimeValidated }.getOrDefault(false),
-        videoRuntimeValidated: Boolean = runCatching { regressionReadinessState.videoRuntimeValidated }.getOrDefault(false),
-        resizeScreenshotMatrixValidated: Boolean = runCatching { regressionReadinessState.resizeScreenshotMatrixValidated }.getOrDefault(false),
-        fullRuntimeRegressionValidated: Boolean = runCatching { regressionReadinessState.fullRuntimeRegressionValidated }.getOrDefault(false),
-    ): ComposeRegressionReadinessState {
-        val peerState = ComposePeerListState(
-            peers = visiblePeerItems.map { ComposePeerListItem.fromPeer(it, chatClientService.isConnected()) },
-            selectedPeerIndex = if (visiblePeerItems.isEmpty()) -1 else 0,
-        )
-        return ComposeRegressionReadinessState(
-            statusState = statusState,
-            peerListState = peerState,
-            chatState = ComposeChatWorkspaceState(
-                statusState = statusState,
-                peerListState = peerState,
-                messages = chatMessages.ifEmpty { chatTranscript.map { ComposeChatMessage.fromTranscriptLine(it) } },
-            ),
-            fileTransferState = ComposeFileTransferState(
-                statusState = statusState,
-                peerListState = peerState,
-                entries = transferEntries,
-                incomingPrompts = incomingTransferPrompts,
-            ),
-            quickShareState = ComposeQuickShareState(
-                running = quickShareRunning,
-                entries = quickShareEntries,
-                landingUrls = quickShareService.landingUrls(),
-            ),
-            steganographyState = stegoState,
-            mediaVoiceState = mediaVoiceState,
-            experimentalVideoState = experimentalVideoState,
-            diagnosticsState = buildDiagnosticsState(),
-            chatRuntimeValidated = chatRuntimeValidated,
-            fileTransferRuntimeValidated = fileTransferRuntimeValidated,
-            quickShareRuntimeValidated = quickShareRuntimeValidated,
-            steganographyRuntimeValidated = steganographyRuntimeValidated,
-            voiceRuntimeValidated = voiceRuntimeValidated,
-            videoRuntimeValidated = videoRuntimeValidated,
-            resizeScreenshotMatrixValidated = resizeScreenshotMatrixValidated,
-            fullRuntimeRegressionValidated = fullRuntimeRegressionValidated,
-            runtimeEvidenceRecords = runtimeEvidenceRecords,
+    private fun clearRealtimeMediaState() {
+        closeCameraPreview()
+        mediaVoiceState = mediaVoiceState.copy(localAudioLevel = 0.0, remoteAudioLevel = 0.0, currentSession = null)
+        experimentalVideoState = experimentalVideoState.copy(
+            latestPreviewFrame = null,
+            latestLocalVideoFrame = null,
+            latestRemoteVideoFrame = null,
+            currentSession = null,
         )
     }
 
-    private fun refreshMigrationReadinessState() {
-        regressionReadinessState = buildRegressionReadinessState()
+    private fun RtcSessionSnapshot.isTerminal(): Boolean = when (state) {
+        RtcSessionState.CLOSED,
+        RtcSessionState.FAILED,
+        RtcSessionState.UNAVAILABLE,
+        -> true
+        else -> false
     }
 
     private fun handleRtcEvent(event: RtcEvent) {
         when (event) {
             is RtcStateChangedEvent -> {
-                publishRealtimeDiagnostic(
+                SecureLanLogger.logRealtime(
                     DesktopRealtimeFormatters.rtcStateDiagnostics(
                         event.mode ?: RtcSessionMode.DATA,
                         event.state ?: RtcSessionState.IDLE,
@@ -1681,13 +1466,21 @@ class ComposeDesktopHostAdapter(
                 )
                 when (event.state ?: RtcSessionState.IDLE) {
                     RtcSessionState.CONNECTED -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Call connected")
-                    RtcSessionState.CLOSED -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Call disconnected")
-                    RtcSessionState.FAILED -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, event.message ?: "Call failed")
+                    RtcSessionState.CLOSED -> {
+                        clearRealtimeMediaState()
+                        publishMicrointeraction(ComposeConnectionEventKind.INFO, "Call disconnected")
+                    }
+                    RtcSessionState.FAILED,
+                    RtcSessionState.UNAVAILABLE,
+                    -> {
+                        clearRealtimeMediaState()
+                        publishMicrointeraction(ComposeConnectionEventKind.ERROR, event.message ?: "Call failed")
+                    }
                     else -> Unit
                 }
             }
             is RtcRuntimeWarningEvent -> {
-                publishRealtimeDiagnostic(DesktopRealtimeFormatters.rtcWarningDiagnostics(event.message.orEmpty()))
+                SecureLanLogger.logRealtime(DesktopRealtimeFormatters.rtcWarningDiagnostics(event.message.orEmpty()))
             }
             is RtcAudioLevelEvent -> {
                 if (event.local) {
@@ -1697,10 +1490,14 @@ class ComposeDesktopHostAdapter(
                 }
             }
             is RtcVideoFrameEvent -> {
-                experimentalVideoState = experimentalVideoState.copy(latestPreviewFrame = event)
+                experimentalVideoState = if (event.local()) {
+                    experimentalVideoState.copy(latestPreviewFrame = event, latestLocalVideoFrame = event)
+                } else {
+                    experimentalVideoState.copy(latestPreviewFrame = event, latestRemoteVideoFrame = event)
+                }
             }
             else -> {
-                publishRealtimeDiagnostic("RTC event: ${event.javaClass.simpleName}.")
+                SecureLanLogger.logRealtime("RTC event: ${event.javaClass.simpleName}.")
             }
         }
         refreshRealtimeState()
@@ -1762,7 +1559,7 @@ class ComposeDesktopHostAdapter(
                 DesktopMainViewHelpers.discoveryListeningMessage(discoveryConfig.discoveryPort)
             }
             publish(ComposeConnectionEventKind.INFO, message)
-            publishPeerListDiagnostic("$message; snapshot=${discoveredPeers.size}.")
+            SecureLanLogger.logConnection("$message; snapshot=${discoveredPeers.size}.")
         }
     }
 
@@ -1791,6 +1588,16 @@ class ComposeDesktopHostAdapter(
     private fun filePortFromCapabilities(capabilities: PeerCapabilities, fallback: Int): Int =
         if (capabilities.supportsFileReceive() && capabilities.fileReceivePort() > 0) capabilities.fileReceivePort() else fallback
 
+    private fun updatePeerPresenceFromSystemMessage(text: String): Boolean {
+        val match = PRESENCE_MESSAGE_REGEX.matchEntire(text.trim()) ?: return false
+        val nickname = match.groupValues[1].trim()
+        when (match.groupValues[2].lowercase()) {
+            "joined" -> upsertChatPeer(nickname, online = true)
+            "left" -> markChatPeerOffline(nickname)
+        }
+        return true
+    }
+
     private fun upsertChatPeer(
         nickname: String?,
         online: Boolean,
@@ -1806,16 +1613,32 @@ class ComposeDesktopHostAdapter(
         }
         val existing = chatPeers.firstOrNull { DesktopMainViewHelpers.samePeer(it, nickname, peerId) }
         if (existing != null) {
-            existing.apply(online, peerId, host, chatPort, filePort, lastSeen, capabilities)
-            refreshChatPeers()
-            return existing
+            val changed = existing.apply(online, peerId, host, chatPort, filePort, lastSeen, capabilities)
+            if (!changed) {
+                return existing
+            }
+            // Replace the mutated peer with a fresh instance so Compose observes the change.
+            val updated = PeerPresence(
+                existing.nickname(),
+                existing.online(),
+                existing.peerId(),
+                existing.host(),
+                existing.chatPort(),
+                existing.filePort(),
+                existing.lastSeen(),
+                existing.capabilities(),
+            )
+            chatPeers = chatPeers.map { if (it === existing) updated else it }.sortedWith(
+                Comparator.comparing(PeerPresence::online).reversed()
+                    .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
+            )
+            return updated
         }
         val created = PeerPresence(nickname, online, peerId, host, chatPort, filePort, lastSeen, capabilities)
         chatPeers = (chatPeers + created).sortedWith(
             Comparator.comparing(PeerPresence::online).reversed()
                 .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
         )
-        refreshMigrationReadinessState()
         return created
     }
 
@@ -1823,27 +1646,47 @@ class ComposeDesktopHostAdapter(
         if (nickname.isNullOrBlank() || isSystemSender(nickname) || isLocalNickname(nickname)) {
             return false
         }
-        val peer = chatPeers.firstOrNull { it.nickname().equals(nickname, ignoreCase = true) } ?: return false
-        val changed = peer.markOffline()
-        if (changed) {
-            refreshChatPeers()
+        val peer = chatPeers.firstOrNull { it.nickname().equals(nickname, ignoreCase = true) }
+        if (peer != null) {
+            if (!peer.online()) {
+                return false
+            }
+            // PeerPresence is a mutable class; mutating the same instance and re-assigning the list
+            // does not notify Compose because the new list is structurally equal to the old one.
+            // Replace the peer with a new immutable copy so the state change is observed.
+            val offlinePeer = PeerPresence(
+                peer.nickname(),
+                false,
+                peer.peerId(),
+                peer.host(),
+                peer.chatPort(),
+                peer.filePort(),
+                peer.lastSeen(),
+                peer.capabilities(),
+            )
+            chatPeers = chatPeers.map { if (it === peer) offlinePeer else it }.sortedWith(
+                Comparator.comparing(PeerPresence::online).reversed()
+                    .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
+            )
+            return true
         }
-        return changed
+        val discovered = visiblePeers.firstOrNull { it.nickname.equals(nickname, ignoreCase = true) }
+        val offlinePeer = if (discovered != null) {
+            PeerPresence(discovered.nickname, false, discovered.peerId, discovered.host, discovered.chatPort, discovered.filePort, discovered.lastSeen)
+        } else {
+            PeerPresence(nickname, false, null, null, 0, 0, null)
+        }
+        chatPeers = (chatPeers + offlinePeer).sortedWith(
+            Comparator.comparing(PeerPresence::online).reversed()
+                .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
+        )
+        return true
     }
 
     private fun clearChatPeers() {
         if (chatPeers.isNotEmpty()) {
             chatPeers = emptyList()
-            refreshMigrationReadinessState()
         }
-    }
-
-    private fun refreshChatPeers() {
-        chatPeers = chatPeers.sortedWith(
-            Comparator.comparing(PeerPresence::online).reversed()
-                .thenComparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER),
-        )
-        refreshMigrationReadinessState()
     }
 
     private fun inferredClientFilePort(): Int = DesktopMainViewHelpers.resolveInferredClientFilePort(
@@ -1860,7 +1703,17 @@ class ComposeDesktopHostAdapter(
 
     private fun isSystemSender(nickname: String?): Boolean = nickname != null && nickname.equals("system", ignoreCase = true)
 
-    private fun peerKey(peer: PeerPresence): String = peer.peerId()?.takeIf { it.isNotBlank() } ?: "nick:${peer.nickname().lowercase()}"
+    private fun isSystemPrefixedChatText(text: String?): Boolean {
+        val trimmed = text?.trim().orEmpty()
+        return trimmed.startsWith("[system]", ignoreCase = true) ||
+            trimmed.startsWith("system:", ignoreCase = true)
+    }
+
+    private fun peerKey(peer: PeerPresence): String = peer.peerId()?.takeIf { it.isNotBlank() } ?: peerKeyForNickname(peer.nickname())
+
+    private fun peerKeyForDiscovered(peer: DiscoveredPeer): String = peer.peerId.takeIf { it.isNotBlank() } ?: peerKeyForNickname(peer.nickname)
+
+    private fun peerKeyForNickname(nickname: String): String = "nick:${nickname.lowercase()}"
 
     private fun publishEventKind(kind: ComposeAdapterEventKind, detail: String) {
         val prefix = kind.name.lowercase().replace('_', ' ')
@@ -1873,5 +1726,9 @@ class ComposeDesktopHostAdapter(
     private companion object {
         private const val APP_VERSION = "0.5.0"
         const val COMPOSE_CLIENT_FILE_PORT_OFFSET: Int = 1000
+        private val PRESENCE_MESSAGE_REGEX = Regex(
+            "^(?:\\[system]\\s*)?(?:system:\\s*)?(?:\\[(?:join|left)]\\s*)?(.+?)\\s+(joined|left)\\s+the\\s+chat[\\s.!?]*$",
+            RegexOption.IGNORE_CASE,
+        )
     }
 }

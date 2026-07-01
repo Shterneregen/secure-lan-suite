@@ -11,22 +11,23 @@ class QuickShareCreateRequest(
     file: Path?,
     text: String?,
     expiresAfter: Duration?,
-    accessLimit: Int,
+    accessLimit: Int?,
 ) {
     private val typeValue: QuickShareType
     private val displayNameValue: String
     private val fileValue: Path?
     private val textValue: String
-    private val expiresAfterValue: Duration
-    private val accessLimitValue: Int
+    private val expiresAfterValue: Duration?
+    private val accessLimitValue: Int?
 
     init {
         val requiredType = Objects.requireNonNull(type, "type must not be null")!!
         val requiredDisplayName = Objects.requireNonNull(displayName, "displayName must not be null")!!
-        val requiredExpiresAfter = Objects.requireNonNull(expiresAfter, "expiresAfter must not be null")!!
         require(requiredDisplayName.isNotBlank()) { "displayName must not be blank" }
-        require(!(requiredExpiresAfter.isZero || requiredExpiresAfter.isNegative)) { "expiresAfter must be positive" }
-        require(accessLimit >= 1) { "accessLimit must be at least 1" }
+        require(expiresAfter == null || !(expiresAfter.isZero || expiresAfter.isNegative)) {
+            "expiresAfter must be positive when present"
+        }
+        require(accessLimit == null || accessLimit >= 1) { "accessLimit must be at least 1 when present" }
 
         val normalizedFile: Path?
         val normalizedText: String
@@ -48,7 +49,7 @@ class QuickShareCreateRequest(
         displayNameValue = requiredDisplayName
         fileValue = normalizedFile
         textValue = normalizedText
-        expiresAfterValue = requiredExpiresAfter
+        expiresAfterValue = expiresAfter
         accessLimitValue = accessLimit
     }
 
@@ -60,19 +61,19 @@ class QuickShareCreateRequest(
 
     fun text(): String = textValue
 
-    fun expiresAfter(): Duration = expiresAfterValue
+    fun expiresAfter(): Duration? = expiresAfterValue
 
-    fun accessLimit(): Int = accessLimitValue
+    fun accessLimit(): Int? = accessLimitValue
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is QuickShareCreateRequest) return false
-        return accessLimitValue == other.accessLimitValue &&
-            typeValue == other.typeValue &&
+        return typeValue == other.typeValue &&
             displayNameValue == other.displayNameValue &&
             fileValue == other.fileValue &&
             textValue == other.textValue &&
-            expiresAfterValue == other.expiresAfterValue
+            expiresAfterValue == other.expiresAfterValue &&
+            accessLimitValue == other.accessLimitValue
     }
 
     override fun hashCode(): Int = Objects.hash(
@@ -90,14 +91,14 @@ class QuickShareCreateRequest(
 
     companion object {
         @JvmStatic
-        fun file(file: Path?, displayName: String?, expiresAfter: Duration?, accessLimit: Int): QuickShareCreateRequest {
+        fun file(file: Path?, displayName: String?, expiresAfter: Duration?, accessLimit: Int?): QuickShareCreateRequest {
             val requiredFile = Objects.requireNonNull(file, "file must not be null")!!
             val resolvedName = if (displayName.isNullOrBlank()) requiredFile.fileName.toString() else displayName
             return QuickShareCreateRequest(QuickShareType.FILE, resolvedName, requiredFile, "", expiresAfter, accessLimit)
         }
 
         @JvmStatic
-        fun text(text: String?, displayName: String?, expiresAfter: Duration?, accessLimit: Int): QuickShareCreateRequest {
+        fun text(text: String?, displayName: String?, expiresAfter: Duration?, accessLimit: Int?): QuickShareCreateRequest {
             val resolvedName = if (displayName.isNullOrBlank()) "shared-text" else displayName
             return QuickShareCreateRequest(QuickShareType.TEXT, resolvedName, null, text, expiresAfter, accessLimit)
         }

@@ -324,8 +324,8 @@ class DefaultQuickShareService @JvmOverloads constructor(
                     .append(escapeHtml(snapshot.displayName()))
                     .append("</a> <span>")
                     .append(escapeHtml(snapshot.type().name.lowercase(Locale.ROOT)))
-                    .append(" — ").append(snapshot.accessCount()).append("/").append(snapshot.accessLimit())
-                    .append(" accesses</span></li>")
+                    .append(" — ").append(escapeHtml(accessSummary(snapshot)))
+                    .append("</span></li>")
             }
             body.append("</ul>")
         }
@@ -337,14 +337,14 @@ class DefaultQuickShareService @JvmOverloads constructor(
         "<h1>${escapeHtml(snapshot.displayName())}</h1>" +
         "<p>File: <strong>${escapeHtml(snapshot.fileName())}</strong></p>" +
         "<p>Size: ${snapshot.fileSize()} bytes</p>" +
-        "<p>Accesses: ${snapshot.accessCount()} / ${snapshot.accessLimit()}</p>" +
+        "<p>${escapeHtml(accessSummary(snapshot))}</p>" +
         "<a class='button' href='/${escapeHtml(snapshot.id())}/download'>Download file</a>" +
         "<p><a href='/'>Back to active shares</a></p>" +
         baseHtmlEnd()
 
     private fun textItemHtml(snapshot: QuickShareSnapshot, text: String): String = baseHtmlStart(snapshot.displayName()) +
         "<h1>${escapeHtml(snapshot.displayName())}</h1>" +
-        "<p>Accesses: ${snapshot.accessCount()} / ${snapshot.accessLimit()}</p>" +
+        "<p>${escapeHtml(accessSummary(snapshot))}</p>" +
         "<textarea id='sharedText' readonly>${escapeHtml(text)}</textarea>" +
         "<p><button class='button' onclick='navigator.clipboard.writeText(document.getElementById(\"sharedText\").value)'>Copy text</button></p>" +
         "<p><a href='/'>Back to active shares</a></p>" +
@@ -362,6 +362,13 @@ class DefaultQuickShareService @JvmOverloads constructor(
     private fun notFoundHtml(): String = baseHtmlStart("Not found") +
         "<h1>Not found</h1><p>The requested share does not exist.</p><p><a href='/'>Back to active shares</a></p>" +
         baseHtmlEnd()
+
+    private fun accessSummary(snapshot: QuickShareSnapshot): String {
+        val access = snapshot.accessLimit()?.let { "${snapshot.accessCount()} / $it accesses" }
+            ?: "${snapshot.accessCount()} accesses · unlimited"
+        val expiration = snapshot.expiresAt()?.let { "expires $it" } ?: "available until stopped"
+        return "$access · $expiration"
+    }
 
     private fun baseHtmlStart(title: String): String =
         "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
@@ -412,7 +419,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
             fileSize,
             request.text(),
             now,
-            now.plus(request.expiresAfter()),
+            request.expiresAfter()?.let(now::plus),
             request.accessLimit(),
             urls,
         )
@@ -468,8 +475,8 @@ class DefaultQuickShareService @JvmOverloads constructor(
         val fileSize: Long,
         val text: String,
         private val createdAt: Instant,
-        private val expiresAt: Instant,
-        private val accessLimit: Int,
+        private val expiresAt: Instant?,
+        private val accessLimit: Int?,
         private val urls: List<String>,
     ) {
         private var accessCount = 0
@@ -479,12 +486,12 @@ class DefaultQuickShareService @JvmOverloads constructor(
         fun registerAccess(now: Instant): AccessResult {
             expireIfNeeded(now)
             if (status != QuickShareStatus.ACTIVE) return AccessResult(false, snapshot())
-            if (accessCount >= accessLimit) {
+            if (accessLimit != null && accessCount >= accessLimit) {
                 status = QuickShareStatus.LIMIT_REACHED
                 return AccessResult(false, snapshot())
             }
             accessCount++
-            if (accessCount >= accessLimit) status = QuickShareStatus.LIMIT_REACHED
+            if (accessLimit != null && accessCount >= accessLimit) status = QuickShareStatus.LIMIT_REACHED
             return AccessResult(true, snapshot())
         }
 
@@ -496,7 +503,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
 
         @Synchronized
         fun expireIfNeeded(now: Instant): QuickShareSnapshot? {
-            if (status == QuickShareStatus.ACTIVE && !now.isBefore(expiresAt)) {
+            if (status == QuickShareStatus.ACTIVE && expiresAt != null && !now.isBefore(expiresAt)) {
                 status = QuickShareStatus.EXPIRED
                 return snapshot()
             }

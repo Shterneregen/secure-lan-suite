@@ -11,7 +11,7 @@ class QuickShareSnapshot(
     fileSize: Long,
     createdAt: Instant?,
     expiresAt: Instant?,
-    accessLimit: Int,
+    accessLimit: Int?,
     accessCount: Int,
     status: QuickShareStatus?,
     urls: List<String>?,
@@ -22,15 +22,15 @@ class QuickShareSnapshot(
     private val fileNameValue: String = Objects.requireNonNull(fileName, "fileName must not be null")!!
     private val fileSizeValue: Long = fileSize
     private val createdAtValue: Instant = Objects.requireNonNull(createdAt, "createdAt must not be null")!!
-    private val expiresAtValue: Instant = Objects.requireNonNull(expiresAt, "expiresAt must not be null")!!
-    private val accessLimitValue: Int = accessLimit
+    private val expiresAtValue: Instant? = expiresAt
+    private val accessLimitValue: Int? = accessLimit
     private val accessCountValue: Int = accessCount
     private val statusValue: QuickShareStatus = Objects.requireNonNull(status, "status must not be null")!!
     private val urlsValue: List<String>
 
     init {
         val requiredUrls = Objects.requireNonNull(urls, "urls must not be null")!!
-        require(accessLimit >= 1) { "accessLimit must be at least 1" }
+        require(accessLimit == null || accessLimit >= 1) { "accessLimit must be at least 1 when present" }
         require(accessCount >= 0) { "accessCount must not be negative" }
         urlsValue = requiredUrls.toList()
     }
@@ -47,9 +47,9 @@ class QuickShareSnapshot(
 
     fun createdAt(): Instant = createdAtValue
 
-    fun expiresAt(): Instant = expiresAtValue
+    fun expiresAt(): Instant? = expiresAtValue
 
-    fun accessLimit(): Int = accessLimitValue
+    fun accessLimit(): Int? = accessLimitValue
 
     fun accessCount(): Int = accessCountValue
 

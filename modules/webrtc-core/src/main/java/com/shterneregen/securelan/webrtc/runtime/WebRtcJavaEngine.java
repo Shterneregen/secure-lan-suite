@@ -54,7 +54,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -504,6 +506,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
         private final Consumer<RtcEvent> eventConsumer;
         private final RTCPeerConnection peerConnection;
         private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final AtomicBoolean remoteDescriptionReady = new AtomicBoolean(false);
+        private final Queue<RtcSignalEnvelope> pendingRemoteIceCandidates = new ConcurrentLinkedQueue<>();
         private final String streamId;
 
         private AudioTrackSource audioSource;
@@ -576,6 +580,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             peerConnection.setRemoteDescription(description, new SetSessionDescriptionObserver() {
                 @Override
                 public void onSuccess() {
+                    remoteDescriptionReady.set(true);
+                    flushPendingRemoteIceCandidates();
                     createAnswer();
                 }
 
@@ -609,6 +615,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             peerConnection.setRemoteDescription(description, new SetSessionDescriptionObserver() {
                 @Override
                 public void onSuccess() {
+                    remoteDescriptionReady.set(true);
+                    flushPendingRemoteIceCandidates();
                     publishState(RtcSessionState.CONNECTING, "Remote answer applied");
                 }
 
@@ -621,6 +629,22 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void applyRemoteIceCandidate(RtcSignalEnvelope signal) {
+            if (!remoteDescriptionReady.get()) {
+                pendingRemoteIceCandidates.add(signal);
+                diag(eventConsumer, "queued remote ICE candidate until remote description is ready session=" + sessionId + " queued=" + pendingRemoteIceCandidates.size());
+                return;
+            }
+            addRemoteIceCandidate(signal);
+        }
+
+        private void flushPendingRemoteIceCandidates() {
+            RtcSignalEnvelope pending;
+            while ((pending = pendingRemoteIceCandidates.poll()) != null && !closed.get()) {
+                addRemoteIceCandidate(pending);
+            }
+        }
+
+        private void addRemoteIceCandidate(RtcSignalEnvelope signal) {
             try {
                 diag(eventConsumer, "adding remote ICE candidate mid=" + signal.sdpMid() + " index=" + signal.sdpMLineIndex() + " candidateLength=" + (signal.iceCandidate() == null ? 0 : signal.iceCandidate().length()));
                 RTCIceCandidate candidate = new RTCIceCandidate(signal.sdpMid(), signal.sdpMLineIndex(), signal.iceCandidate());
@@ -656,6 +680,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
             if (!closed.compareAndSet(false, true)) {
                 return;
             }
+            pendingRemoteIceCandidates.clear();
             if (emitState) {
                 publishState(RtcSessionState.CLOSED, message);
             }

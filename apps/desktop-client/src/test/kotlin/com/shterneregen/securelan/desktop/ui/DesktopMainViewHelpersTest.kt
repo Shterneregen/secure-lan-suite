@@ -267,15 +267,15 @@ class DesktopMainViewHelpersTest {
     @Test
     fun shouldFormatLocalNetworkInfoMessages() {
         assertEquals(
-            "[info] local network IP is unavailable right now",
+            "local network IP is unavailable right now",
             DesktopMainViewHelpers.localNetworkInfoMessage(emptyList()),
         )
         assertEquals(
-            "[info] local network IP: 192.168.1.20",
+            "local network IP: 192.168.1.20",
             DesktopMainViewHelpers.localNetworkInfoMessage(listOf("192.168.1.20")),
         )
         assertEquals(
-            "[info] local network IPs: 10.0.0.5, 192.168.1.20",
+            "local network IPs: 10.0.0.5, 192.168.1.20",
             DesktopMainViewHelpers.localNetworkInfoMessage(listOf("10.0.0.5", "192.168.1.20")),
         )
     }
@@ -283,7 +283,7 @@ class DesktopMainViewHelpersTest {
     @Test
     fun shouldFormatLocalNetworkInfoErrorMessage() {
         assertEquals(
-            "[info] failed to determine local network IP: permission denied",
+            "failed to determine local network IP: permission denied",
             DesktopMainViewHelpers.localNetworkInfoErrorMessage("permission denied"),
         )
     }

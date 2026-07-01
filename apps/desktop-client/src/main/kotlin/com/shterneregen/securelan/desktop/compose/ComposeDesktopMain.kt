@@ -14,6 +14,7 @@ import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
 import com.shterneregen.securelan.filetransfer.quickshare.impl.DefaultQuickShareService
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.webrtc.event.RtcEvent
 import com.shterneregen.securelan.webrtc.service.RtcEventPublisher
 import com.shterneregen.securelan.webrtc.service.RtcSignalingGateway
