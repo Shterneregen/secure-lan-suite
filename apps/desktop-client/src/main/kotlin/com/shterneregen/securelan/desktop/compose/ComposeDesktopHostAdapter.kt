@@ -752,6 +752,7 @@ class ComposeDesktopHostAdapter(
         steganographyRuntimeValidated: Boolean = regressionReadinessState.steganographyRuntimeValidated,
         voiceRuntimeValidated: Boolean = regressionReadinessState.voiceRuntimeValidated,
         videoRuntimeValidated: Boolean = regressionReadinessState.videoRuntimeValidated,
+        resizeScreenshotMatrixValidated: Boolean = regressionReadinessState.resizeScreenshotMatrixValidated,
         fullRuntimeRegressionValidated: Boolean = regressionReadinessState.fullRuntimeRegressionValidated,
     ) {
         regressionReadinessState = buildRegressionReadinessState(
@@ -761,6 +762,7 @@ class ComposeDesktopHostAdapter(
             steganographyRuntimeValidated = steganographyRuntimeValidated,
             voiceRuntimeValidated = voiceRuntimeValidated,
             videoRuntimeValidated = videoRuntimeValidated,
+            resizeScreenshotMatrixValidated = resizeScreenshotMatrixValidated,
             fullRuntimeRegressionValidated = fullRuntimeRegressionValidated,
         )
     }
@@ -774,6 +776,7 @@ class ComposeDesktopHostAdapter(
             steganographyRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.STEGANOGRAPHY) recorded else regressionReadinessState.steganographyRuntimeValidated,
             voiceRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.VOICE) recorded else regressionReadinessState.voiceRuntimeValidated,
             videoRuntimeValidated = if (kind == ComposeRuntimeEvidenceKind.EXPERIMENTAL_VIDEO) recorded else regressionReadinessState.videoRuntimeValidated,
+            resizeScreenshotMatrixValidated = if (kind == ComposeRuntimeEvidenceKind.RESIZE_SCREENSHOTS) recorded else regressionReadinessState.resizeScreenshotMatrixValidated,
             fullRuntimeRegressionValidated = if (kind == ComposeRuntimeEvidenceKind.FULL_REGRESSION) recorded else regressionReadinessState.fullRuntimeRegressionValidated,
         )
     }
@@ -1619,6 +1622,7 @@ class ComposeDesktopHostAdapter(
         steganographyRuntimeValidated: Boolean = runCatching { regressionReadinessState.steganographyRuntimeValidated }.getOrDefault(false),
         voiceRuntimeValidated: Boolean = runCatching { regressionReadinessState.voiceRuntimeValidated }.getOrDefault(false),
         videoRuntimeValidated: Boolean = runCatching { regressionReadinessState.videoRuntimeValidated }.getOrDefault(false),
+        resizeScreenshotMatrixValidated: Boolean = runCatching { regressionReadinessState.resizeScreenshotMatrixValidated }.getOrDefault(false),
         fullRuntimeRegressionValidated: Boolean = runCatching { regressionReadinessState.fullRuntimeRegressionValidated }.getOrDefault(false),
     ): ComposeRegressionReadinessState {
         val peerState = ComposePeerListState(
@@ -1654,6 +1658,7 @@ class ComposeDesktopHostAdapter(
             steganographyRuntimeValidated = steganographyRuntimeValidated,
             voiceRuntimeValidated = voiceRuntimeValidated,
             videoRuntimeValidated = videoRuntimeValidated,
+            resizeScreenshotMatrixValidated = resizeScreenshotMatrixValidated,
             fullRuntimeRegressionValidated = fullRuntimeRegressionValidated,
             runtimeEvidenceRecords = runtimeEvidenceRecords,
         )

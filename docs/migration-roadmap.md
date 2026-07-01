@@ -248,6 +248,8 @@ Source repository:
 | [x] | Phase 9 | Android interoperability MVP | Android app can discover desktop peers, connect to secure chat, send files, receive files, and build signed release APKs |
 | [x] | Phase 10 | Stabilization | Compose runtime/readiness baseline closed; capability-aware peer targeting, deterministic tests, documentation, packaging gates, and JavaFX-deprecated fallback decision recorded |
 | [ ] | Phase 11 | Compose-first desktop UX hardening | JavaFX deprecated for new UI work; improve Compose navigation, peer states, chat, file transfer, settings, diagnostics, error handling, runtime evidence, and packaging validation |
+| [x] | Phase 12 | Workspace UX and product polish | Single contextual workspace, motion, microinteractions, empty states, visual polish, and consistency review are documented |
+| [ ] | Phase 13 | Runtime UI hardening and release-candidate polish | Screenshot-driven fixes for focus-ring halo, clipped composer, startup compaction, Context Assistant density, attachment ergonomics, resize validation, and release gates |
 
 ---
 
@@ -267,7 +269,7 @@ Source repository:
 | [ ] | 10 | Stabilize video and output device selection | Needed before positioning video as a normal feature |
 | [x] | 11 | Migrate `stego-core` | Advanced security feature |
 | [x] | 12 | Add Android desktop-interoperability MVP | Enables mobile LAN chat/file-transfer testing against the desktop client |
-| [ ] | 13 | Refine Compose UX, packaging, tests | Productization now targets Compose UI first; JavaFX receives only critical fixes until final removal |
+| [ ] | 13 | Refine Compose UX, packaging, tests | Phase 13 now focuses screenshot-driven runtime UI hardening and release-candidate gates for the Compose workspace |
 
 ---
 

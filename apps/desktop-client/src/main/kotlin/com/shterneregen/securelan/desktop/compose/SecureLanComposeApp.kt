@@ -17,12 +17,16 @@ import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.Role
@@ -32,6 +36,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
@@ -57,6 +62,37 @@ private enum class MicrointeractionTone {
     LOADING,
     SUCCESS,
     FAILURE,
+}
+
+private enum class FocusRingEmphasis {
+    CALM,
+    CONTROL,
+}
+
+@Composable
+private fun Modifier.calmFocusRing(
+    focused: Boolean,
+    shapeRadius: androidx.compose.ui.unit.Dp,
+    emphasis: FocusRingEmphasis = FocusRingEmphasis.CALM,
+): Modifier {
+    if (!focused) return this
+    val focusColor = LocalSecureLanDesignTokens.current.colors.borderFocus
+    return drawWithContent {
+        drawContent()
+        val strokeWidth = when (emphasis) {
+            FocusRingEmphasis.CALM -> 1.dp
+            FocusRingEmphasis.CONTROL -> 1.5.dp
+        }.toPx()
+        val inset = strokeWidth / 2f
+        val radius = (shapeRadius - 1.dp).coerceAtLeast(1.dp).toPx()
+        drawRoundRect(
+            color = focusColor,
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - strokeWidth, size.height - strokeWidth),
+            cornerRadius = CornerRadius(radius, radius),
+            style = Stroke(width = strokeWidth),
+        )
+    }
 }
 
 @Composable
@@ -110,9 +146,8 @@ private fun rememberInteractiveSurfaceState(
         else -> baseColor
     }
     val targetBorder = when {
-        focused -> tokens.colors.borderFocus
-        selected || tone != MicrointeractionTone.NEUTRAL -> accent.copy(alpha = 0.62f)
-        hovered -> tokens.colors.borderFocus.copy(alpha = 0.45f)
+        selected || tone != MicrointeractionTone.NEUTRAL -> accent.copy(alpha = if (focused) 0.58f else 0.50f)
+        hovered -> tokens.colors.borderFocus.copy(alpha = 0.34f)
         else -> tokens.colors.borderSubtle
     }
     return InteractiveSurfaceState(
@@ -141,6 +176,40 @@ private data class InteractiveSurfaceState(
     val hovered: Boolean,
     val focused: Boolean,
 )
+
+@Composable
+private fun interactiveSurfaceBorder(
+    interactive: InteractiveSurfaceState,
+    neutralWidth: androidx.compose.ui.unit.Dp = LocalSecureLanDesignTokens.current.border.subtle,
+): BorderStroke = BorderStroke(neutralWidth, interactive.borderColor)
+
+@Composable
+private fun CalmFocusButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    fillMaxWidth: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val tokens = LocalSecureLanDesignTokens.current
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .then(if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier)
+            .calmFocusRing(focused, tokens.radius.medium, FocusRingEmphasis.CONTROL),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        elevation = ButtonDefaults.elevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp,
+            disabledElevation = 0.dp,
+        ),
+        content = content,
+    )
+}
 
 @Composable
 private fun MicroFeedbackPill(
@@ -230,12 +299,13 @@ private fun ComposeShellContent(
 }
 
 @Composable
-private fun WorkspaceWelcomeHeader(state: ComposeOnboardingState) {
+private fun WorkspaceWelcomeHeader(
+    state: ComposeOnboardingState,
+    compact: Boolean = false,
+    onExpandToggle: () -> Unit = {},
+) {
     val tokens = LocalSecureLanDesignTokens.current
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-    ) {
+    if (compact) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
@@ -249,30 +319,60 @@ private fun WorkspaceWelcomeHeader(state: ComposeOnboardingState) {
                 style = MaterialTheme.typography.h5,
                 color = MaterialTheme.colors.primary,
             )
-            Column(
+            Text(
+                text = state.headline,
+                style = MaterialTheme.typography.subtitle1,
+                color = MaterialTheme.colors.onSurface,
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            CompactButton(onClick = onExpandToggle) { Text("Show tips") }
+        }
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = state.headline,
-                    style = MaterialTheme.typography.subtitle1,
-                    color = MaterialTheme.colors.onSurface,
+                    text = state.brandGlyph,
+                    modifier = Modifier
+                        .background(tokens.colors.surfaceLevel2, RoundedCornerShape(tokens.radius.medium))
+                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                    style = MaterialTheme.typography.h5,
+                    color = MaterialTheme.colors.primary,
                 )
-                Text(
-                    text = state.body,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                ) {
+                    Text(
+                        text = state.headline,
+                        style = MaterialTheme.typography.subtitle1,
+                        color = MaterialTheme.colors.onSurface,
+                    )
+                    Text(
+                        text = state.body,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                CompactButton(onClick = onExpandToggle) { Text("Hide tips") }
             }
-        }
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
-        ) {
-            state.benefitChips.forEach { chip -> StatusChip(chip) }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+            ) {
+                state.benefitChips.forEach { chip -> StatusChip(chip) }
+            }
         }
     }
 }
@@ -288,6 +388,8 @@ private fun PreviewComposeShellContent(
     val previewProductState = ComposeShellMetadata.DEFAULT_PRODUCT_SCREEN_STATE
     val previewWorkspaceState = ComposeShellMetadata.DEFAULT_WORKSPACE_STATE
     var connectionHubExpanded by remember { mutableStateOf(previewWorkspaceState.connectionHubExpandedByDefault) }
+    var welcomeHeaderExpanded by remember { mutableStateOf(true) }
+    val welcomeHeaderCompact = connectionHubExpanded && !welcomeHeaderExpanded
     SecureLanAppShell(
         shellState = ComposeAppShellState(
             productState = previewProductState,
@@ -322,7 +424,11 @@ private fun PreviewComposeShellContent(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                         ) {
-                            WorkspaceWelcomeHeader(ComposeShellMetadata.DEFAULT_ONBOARDING_STATE)
+                            WorkspaceWelcomeHeader(
+                                ComposeShellMetadata.DEFAULT_ONBOARDING_STATE,
+                                compact = welcomeHeaderCompact,
+                                onExpandToggle = { welcomeHeaderExpanded = !welcomeHeaderExpanded },
+                            )
                             ConnectionHubPreview(
                                 state = ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE,
                                 wrapInCard = false,
@@ -397,6 +503,8 @@ private fun LiveComposeShellContent(
     LaunchedEffect(workspaceState.mode) {
         connectionHubExpanded = workspaceState.connectionHubExpandedByDefault
     }
+    var welcomeHeaderExpanded by remember { mutableStateOf(true) }
+    val welcomeHeaderCompact = connectionHubExpanded && !welcomeHeaderExpanded
     var diagnosticsRequested by remember { mutableStateOf(false) }
     var attachmentPanelMode by remember { mutableStateOf(AttachmentPanelMode.NONE) }
     LaunchedEffect(workspaceState.mode, peerState.selectedPeer) {
@@ -446,6 +554,9 @@ private fun LiveComposeShellContent(
                     onPeerSelected = { key ->
                         selectedPeerKey = key
                         selectedTargetKind = null
+                        if (key?.let(hostAdapter::joinTargetFor) != null) {
+                            requestedConnectionMode = ComposeConnectionHubMode.JOIN
+                        }
                     },
                     onTargetKindSelected = { kind -> selectedTargetKind = kind },
                     onManualPeersCleared = {
@@ -455,6 +566,7 @@ private fun LiveComposeShellContent(
                 )
             },
             chatColumn = {
+                val selectedJoinTarget = resolveSelectedJoinTarget(hostAdapter, peerState.selectedPeer)
                 WorkspaceCenterColumn(
                     workspaceState = workspaceState,
                     connectionHubExpanded = connectionHubExpanded,
@@ -464,10 +576,15 @@ private fun LiveComposeShellContent(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                         ) {
-                            WorkspaceWelcomeHeader(ComposeShellMetadata.DEFAULT_ONBOARDING_STATE)
+                            WorkspaceWelcomeHeader(
+                                ComposeShellMetadata.DEFAULT_ONBOARDING_STATE,
+                                compact = welcomeHeaderCompact,
+                                onExpandToggle = { welcomeHeaderExpanded = !welcomeHeaderExpanded },
+                            )
                             ConnectionHub(
                                 hostAdapter = hostAdapter,
                                 initialMode = requestedConnectionMode,
+                                selectedJoinTarget = selectedJoinTarget,
                                 wrapInCard = false,
                             )
                         }
@@ -586,16 +703,9 @@ private fun ThemeToggleButton(
     darkTheme: Boolean,
     onThemeToggle: () -> Unit,
 ) {
-    Button(
+    CalmFocusButton(
         onClick = onThemeToggle,
         modifier = Modifier.heightIn(min = 26.dp),
-        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-        elevation = ButtonDefaults.elevation(
-            defaultElevation = 0.dp,
-            pressedElevation = 0.dp,
-            disabledElevation = 0.dp
-        ),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 3.dp),
     ) {
         Text(if (darkTheme) "Dark theme" else "Light theme", style = MaterialTheme.typography.button)
     }
@@ -694,6 +804,7 @@ private fun HelpTooltip(text: String) {
 private fun ConnectionHub(
     hostAdapter: ComposeDesktopHostAdapter,
     initialMode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
+    selectedJoinTarget: ComposeConnectionJoinTarget? = null,
     wrapInCard: Boolean = true,
 ) {
     var mode by remember(initialMode) { mutableStateOf(initialMode) }
@@ -705,6 +816,18 @@ private fun ConnectionHub(
     var manualHost by remember { mutableStateOf(hostAdapter.statusState.manualHost) }
     var clientChatPort by remember { mutableStateOf(hostAdapter.statusState.clientChatPortText) }
     var clientFilePort by remember { mutableStateOf(hostAdapter.statusState.clientFilePortText) }
+
+    LaunchedEffect(initialMode) {
+        mode = initialMode
+    }
+
+    LaunchedEffect(selectedJoinTarget) {
+        val target = selectedJoinTarget ?: return@LaunchedEffect
+        mode = ComposeConnectionHubMode.JOIN
+        manualHost = target.host
+        clientChatPort = target.chatPortText
+        clientFilePort = target.filePortText
+    }
 
     LaunchedEffect(hostAdapter.statusState.localServerRunning, hostAdapter.statusState.clientConnected) {
         nickname = hostAdapter.statusState.nickname
@@ -871,25 +994,47 @@ private fun WorkspaceCenterColumn(
     chatSurface: @Composable () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-    ) {
-        CollapsibleConnectionHub(
-            expanded = connectionHubExpanded,
-            onToggle = onConnectionHubToggle,
-            workspaceState = workspaceState,
-            expandedContent = startupSurface,
-        )
-        AnimatedVisibility(
-            visible = workspaceState.callBannerVisible,
-            enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
-            exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+    val layoutContract = workspaceState.layoutContract
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val spacing = layoutContract.centerColumnSpacing
+        val reservedForComposer = layoutContract.composerSafeVerticalSpace
+        val minChatHeight = layoutContract.minChatSurfaceHeight
+        val maxHubHeightByComposer = (maxHeight - reservedForComposer - spacing * 2f - minChatHeight)
+            .coerceAtLeast(160.dp)
+        val maxHubHeightByFraction = maxHeight * layoutContract.connectionHubExpandedMaxFraction
+        val maxHubHeight = maxHubHeightByFraction.coerceAtMost(maxHubHeightByComposer)
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(spacing),
         ) {
-            CallBanner(workspaceState = workspaceState)
-        }
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            chatSurface()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxHubHeight),
+            ) {
+                CollapsibleConnectionHub(
+                    expanded = connectionHubExpanded,
+                    onToggle = onConnectionHubToggle,
+                    workspaceState = workspaceState,
+                    expandedContent = startupSurface,
+                )
+            }
+            AnimatedVisibility(
+                visible = workspaceState.callBannerVisible,
+                enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
+                exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
+            ) {
+                CallBanner(workspaceState = workspaceState)
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .heightIn(min = minChatHeight),
+            ) {
+                chatSurface()
+            }
         }
     }
 }
@@ -942,7 +1087,15 @@ private fun CollapsibleConnectionHub(
                 enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
                 exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
             ) {
-                expandedContent()
+                val hubScrollState = rememberScrollState()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(hubScrollState),
+                    contentAlignment = Alignment.TopStart,
+                ) {
+                    expandedContent()
+                }
             }
         }
     }
@@ -1193,8 +1346,9 @@ private fun LiveActionsColumn(
         },
         label = "AttachmentPanelMode",
     ) { mode ->
+        val panelScrollState = rememberScrollState()
         Column(
-            modifier = Modifier.verticalScroll(rememberScrollState()),
+            modifier = Modifier.verticalScroll(panelScrollState),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             when (mode) {
@@ -1252,6 +1406,9 @@ private fun LiveActionsColumn(
 
                         peerState.selectedPeer != null -> ComposeContextPanelState.forPeer(quickActions, transferState)
                         else -> ComposeContextPanelState.forRoom(peerState, transferState)
+                    }
+                    LaunchedEffect(contextPanelState.mode, contextPanelState.visibleCardKinds.firstOrNull()) {
+                        panelScrollState.scrollTo(0)
                     }
                     ContextPanelSummary(state = contextPanelState, responsiveState = responsiveState)
                     val contextCardsReduced = LocalReducedMotion.current
@@ -1448,7 +1605,9 @@ private fun ContextPanelCard(
             Text(
                 card.body,
                 style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f)
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f),
+                maxLines = card.maxBodyLines.coerceAtLeast(1),
+                overflow = TextOverflow.Ellipsis,
             )
             if (!card.primaryAction.isNullOrBlank()) {
                 Surface(
@@ -1576,10 +1735,14 @@ private fun CompactTextField(
         if (label.isNotBlank()) {
             Text(label, style = MaterialTheme.typography.body2, color = MaterialTheme.colors.onSurface)
         }
+        val fieldRadius = LocalSecureLanDesignTokens.current.radius.small
         Surface(
-            modifier = Modifier.weight(1f).heightIn(min = 34.dp),
-            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
-            border = BorderStroke(LocalSecureLanDesignTokens.current.border.focus, interactive.borderColor),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 34.dp)
+                .calmFocusRing(interactive.focused, fieldRadius, FocusRingEmphasis.CONTROL),
+            shape = RoundedCornerShape(fieldRadius),
+            border = interactiveSurfaceBorder(interactive),
             color = interactive.backgroundColor,
         ) {
             BasicTextField(
@@ -1664,7 +1827,7 @@ private fun PeerListContentSurface(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(tokens.radius.medium),
-        color = tokens.colors.surfaceLevel1,
+        color = tokens.colors.surfaceLevel1.copy(alpha = 0.64f),
     ) {
         Column(modifier = Modifier.fillMaxSize(), content = content)
     }
@@ -1672,31 +1835,38 @@ private fun PeerListContentSurface(
 
 @Composable
 private fun PeerListEmptyState(peerState: ComposePeerListState) {
-    Box(modifier = Modifier.fillMaxSize().padding(14.dp), contentAlignment = Alignment.Center) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(tokens.spacing.sm),
+        contentAlignment = Alignment.TopStart,
+    ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = ComposeShellMetadata.SIDE_EMPTY_STATE_GUIDANCE_MAX_WIDTH),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            horizontalAlignment = Alignment.Start,
         ) {
             Text(
-                text = peerState.emptyStateTitle,
-                style = MaterialTheme.typography.subtitle1,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.82f),
+                text = peerState.emptyStateSituation,
+                style = MaterialTheme.typography.subtitle2,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.76f),
             )
             Text(
-                text = peerState.emptyStateDetail,
-                style = MaterialTheme.typography.body2,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+                text = peerState.emptyStateExplanation,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f),
             )
             Surface(
-                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
-                border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
-                color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
+                shape = RoundedCornerShape(tokens.radius.small),
+                border = BorderStroke(1.dp, tokens.colors.borderSubtle.copy(alpha = 0.42f)),
+                color = MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.025f else 0.045f),
             ) {
                 Text(
-                    text = peerState.emptyStateActionLabel,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    text = peerState.emptyStateNextAction,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
                     style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f),
                 )
             }
         }
@@ -1711,25 +1881,19 @@ private fun CompactButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
     val focused by interactionSource.collectIsFocusedAsState()
     val tokens = LocalSecureLanDesignTokens.current
-    val borderColor by animateColorAsState(
-        targetValue = if (focused) tokens.colors.borderFocus else Color.Transparent,
-        animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
-        label = "CompactButtonFocusBorder",
-    )
     Button(
         onClick = onClick,
         enabled = enabled,
         interactionSource = interactionSource,
         modifier = modifier
             .heightIn(min = 30.dp)
-            .border(BorderStroke(tokens.border.focus, borderColor), RoundedCornerShape(tokens.radius.medium)),
+            .calmFocusRing(focused, tokens.radius.medium, FocusRingEmphasis.CONTROL),
         shape = RoundedCornerShape(tokens.radius.medium),
         elevation = ButtonDefaults.elevation(
             defaultElevation = 0.dp,
-            pressedElevation = if (pressed) tokens.elevation.popover else 0.dp,
+            pressedElevation = 0.dp,
             disabledElevation = 0.dp
         ),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -1977,10 +2141,10 @@ private fun SelectedPeerQuickActions(
     onHangUp: () -> Unit,
 ) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onAttach, enabled = attachEnabled) { Text("Attach") }
-        Button(onClick = onVoice, enabled = voiceEnabled) { Text("Voice call") }
-        Button(onClick = onVideo, enabled = videoEnabled) { Text("Video call") }
-        Button(onClick = onHangUp, enabled = hangUpEnabled) { Text("End call") }
+        CompactButton(onClick = onAttach, enabled = attachEnabled) { Text("Attach") }
+        CompactButton(onClick = onVoice, enabled = voiceEnabled) { Text("Voice call") }
+        CompactButton(onClick = onVideo, enabled = videoEnabled) { Text("Video call") }
+        CompactButton(onClick = onHangUp, enabled = hangUpEnabled) { Text("End call") }
     }
 }
 
@@ -2026,7 +2190,7 @@ private fun ChatWorkspacePreviewCard(initialState: ComposeChatWorkspaceState) {
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = ComposeShellMetadata.COMPOSER_MIN_HEIGHT),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2078,11 +2242,11 @@ private fun ConnectionHubContent(
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2091,11 +2255,8 @@ private fun ConnectionHubContent(
                 tooltip = "Set your name and the shared room password, then open a room on this computer or join one nearby.",
                 titleStyle = MaterialTheme.typography.subtitle2,
             )
-            ConnectionStatusBadge(label = state.activeBadgeLabel ?: state.modeHint)
+            ConnectionStatusBadge(label = state.activeBadgeLabel ?: state.setupCompactSummary)
             Box(modifier = Modifier.weight(1f))
-            if (state.copyRoomAddressEnabled) {
-                CompactButton(onClick = { copyToSystemClipboard(state.copyRoomAddressText) }) { Text("Copy room address") }
-            }
         }
 
         ConnectionModeChooser(
@@ -2108,7 +2269,7 @@ private fun ConnectionHubContent(
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2133,169 +2294,74 @@ private fun ConnectionHubContent(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
             ) {
-                ConnectionModeDetailsSurface(
-                    title = animatedState.activeModeTitle,
-                    detail = animatedState.activeModeDetail,
-                    summary = animatedState.joinTargetSummary,
-                ) {
-                    if (currentMode == ComposeConnectionHubMode.HOST) {
-                        Text(
-                            text = "Your display name and room password are set above. Nearby trusted peers can find this room when it is visible.",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.body2,
-                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                if (currentMode == ComposeConnectionHubMode.HOST) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Switch(
+                            checked = discoverable,
+                            onCheckedChange = {
+                                onDiscoverableChange(it)
+                                if (animatedState.statusState.localServerRunning) {
+                                    onSetDiscoverable(it)
+                                }
+                            },
+                            enabled = animatedState.discoverableToggleEnabled,
                         )
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Switch(
-                                checked = discoverable,
-                                onCheckedChange = {
-                                    onDiscoverableChange(it)
-                                    if (animatedState.statusState.localServerRunning) {
-                                        onSetDiscoverable(it)
-                                    }
-                                },
-                                enabled = animatedState.discoverableToggleEnabled,
-                            )
-                            Text(animatedState.discoverableLabel, style = MaterialTheme.typography.body2)
-                        }
-                    } else {
-                        Text(
-                            text = "Nearby rooms appear in the people list. Use Advanced connection if a room is hidden.",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.body2,
-                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                        )
+                        Text(animatedState.discoverableCompactLabel, style = MaterialTheme.typography.body2)
                     }
-                }
-
-                ComposeAdvancedPane(animatedState.advancedSettingsTitle) {
-                    if (currentMode == ComposeConnectionHubMode.HOST) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CompactTextField(
-                                serverChatPort,
-                                onServerChatPortChange,
-                                label = "Chat port",
-                                modifier = Modifier.weight(1f)
-                            )
-                            CompactTextField(
-                                serverFilePort,
-                                onServerFilePortChange,
-                                label = "File port",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    } else {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CompactTextField(
-                                manualHost,
-                                onManualHostChange,
-                                label = "Room address",
-                                modifier = Modifier.weight(1.3f)
-                            )
-                            CompactTextField(
-                                clientChatPort,
-                                onClientChatPortChange,
-                                label = "Chat port",
-                                modifier = Modifier.weight(1f)
-                            )
-                            CompactTextField(
-                                clientFilePort,
-                                onClientFilePortChange,
-                                label = "File port",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val primaryInteractionSource = remember { MutableInteractionSource() }
-                val primaryFocused by primaryInteractionSource.collectIsFocusedAsState()
-                val primaryPressed by primaryInteractionSource.collectIsPressedAsState()
-                val primaryBorder by animateColorAsState(
-                    targetValue = if (primaryFocused) tokens.colors.borderFocus else Color.Transparent,
-                    animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
-                    label = "ConnectionPrimaryFocusBorder",
-                )
-                Button(
-                    onClick = when (currentMode) {
-                        ComposeConnectionHubMode.HOST -> onOpenRoom
-                        ComposeConnectionHubMode.JOIN -> onConnect
-                    },
-                    enabled = animatedState.primaryActionEnabled,
-                    interactionSource = primaryInteractionSource,
-                    elevation = ButtonDefaults.elevation(
-                        defaultElevation = 0.dp,
-                        pressedElevation = if (primaryPressed) tokens.elevation.popover else 0.dp,
-                        disabledElevation = 0.dp,
-                    ),
-                    shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-                    modifier = Modifier
-                        .widthIn(min = 140.dp)
-                        .border(BorderStroke(tokens.border.focus, primaryBorder), RoundedCornerShape(tokens.radius.medium)),
-                ) {
-                    Text(animatedState.primaryActionLabel)
-                }
-                AnimatedVisibility(
-                    visible = actionInFlight == currentMode,
-                    enter = fadeIn(motionTween()) + expandHorizontally(motionTween(), expandFrom = Alignment.Start),
-                    exit = shrinkHorizontally(motionTween(), shrinkTowards = Alignment.Start) + fadeOut(motionTween()),
-                ) {
-                    MicroFeedbackPill(
-                        text = when (currentMode) {
-                            ComposeConnectionHubMode.HOST -> "Opening room…"
-                            ComposeConnectionHubMode.JOIN -> "Joining room…"
-                        },
-                        tone = MicrointeractionTone.LOADING,
-                    )
-                }
-                val secondaryInteractionSource = remember { MutableInteractionSource() }
-                val secondaryFocused by secondaryInteractionSource.collectIsFocusedAsState()
-                val secondaryBorder by animateColorAsState(
-                    targetValue = if (secondaryFocused) tokens.colors.borderFocus else Color.Transparent,
-                    animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
-                    label = "ConnectionSecondaryFocusBorder",
-                )
-                OutlinedButton(
-                    onClick = when (currentMode) {
-                        ComposeConnectionHubMode.HOST -> onStopHosting
-                        ComposeConnectionHubMode.JOIN -> onDisconnect
-                    },
-                    enabled = animatedState.secondaryActionEnabled,
-                    interactionSource = secondaryInteractionSource,
-                    shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-                    modifier = Modifier
-                        .widthIn(min = 120.dp)
-                        .border(BorderStroke(tokens.border.focus, secondaryBorder), RoundedCornerShape(tokens.radius.medium)),
-                ) {
-                    Text(animatedState.secondaryActionLabel)
-                }
-                    Box(modifier = Modifier.weight(1f))
+                } else {
                     Text(
-                        text = animatedState.networkInfoSummary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        text = animatedState.joinCompactHint,
                         style = MaterialTheme.typography.caption,
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
                     )
                 }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CalmFocusButton(
+                        onClick = when (currentMode) {
+                            ComposeConnectionHubMode.HOST -> onOpenRoom
+                            ComposeConnectionHubMode.JOIN -> onConnect
+                        },
+                        enabled = animatedState.primaryActionEnabled,
+                        modifier = Modifier.widthIn(min = 140.dp),
+                    ) {
+                        Text(animatedState.primaryActionLabel)
+                    }
+                    AnimatedVisibility(
+                        visible = actionInFlight == currentMode,
+                        enter = fadeIn(motionTween()) + expandHorizontally(motionTween(), expandFrom = Alignment.Start),
+                        exit = shrinkHorizontally(motionTween(), shrinkTowards = Alignment.Start) + fadeOut(motionTween()),
+                    ) {
+                        MicroFeedbackPill(
+                            text = when (currentMode) {
+                                ComposeConnectionHubMode.HOST -> "Opening room…"
+                                ComposeConnectionHubMode.JOIN -> "Joining room…"
+                            },
+                            tone = MicrointeractionTone.LOADING,
+                        )
+                    }
+                    CalmFocusButton(
+                        onClick = when (currentMode) {
+                            ComposeConnectionHubMode.HOST -> onStopHosting
+                            ComposeConnectionHubMode.JOIN -> onDisconnect
+                        },
+                        enabled = animatedState.secondaryActionEnabled,
+                        modifier = Modifier.widthIn(min = 120.dp),
+                    ) {
+                        Text(animatedState.secondaryActionLabel)
+                    }
+                }
+
                 Column(
-                    modifier = Modifier.fillMaxWidth().height(38.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     val statusMessage = animatedState.statusMessage
@@ -2309,6 +2375,92 @@ private fun ConnectionHubContent(
                                 text = statusMessage,
                                 tone = animatedState.statusMessageTone,
                             )
+                        }
+                    }
+                }
+
+                ComposeAdvancedPane(
+                    title = animatedState.advancedSettingsTitle,
+                    bounded = true,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                        if (currentMode == ComposeConnectionHubMode.HOST) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CompactTextField(
+                                    serverChatPort,
+                                    onServerChatPortChange,
+                                    label = "Chat port",
+                                    modifier = Modifier.weight(1f)
+                                )
+                                CompactTextField(
+                                    serverFilePort,
+                                    onServerFilePortChange,
+                                    label = "File port",
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CompactTextField(
+                                    manualHost,
+                                    onManualHostChange,
+                                    label = "Room address",
+                                    modifier = Modifier.weight(1.3f)
+                                )
+                                CompactTextField(
+                                    clientChatPort,
+                                    onClientChatPortChange,
+                                    label = "Chat port",
+                                    modifier = Modifier.weight(1f)
+                                )
+                                CompactTextField(
+                                    clientFilePort,
+                                    onClientFilePortChange,
+                                    label = "File port",
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(tokens.radius.small),
+                            color = tokens.colors.surfaceLevel1.copy(alpha = 0.72f),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(tokens.spacing.sm),
+                                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                            ) {
+                                Text(
+                                    animatedState.networkInfoAdvancedTitle,
+                                    style = MaterialTheme.typography.subtitle2,
+                                )
+                                Text(
+                                    animatedState.networkInfoAdvancedSummary,
+                                    style = MaterialTheme.typography.caption,
+                                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+                                )
+                                if (animatedState.copyRoomAddressEnabled) {
+                                    CompactButton(
+                                        onClick = { copyToSystemClipboard(animatedState.copyRoomAddressText) },
+                                    ) { Text("Copy room address") }
+                                }
+                                SelectionContainer {
+                                    Text(
+                                        text = animatedState.networkInfoSummary,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.caption,
+                                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -2359,14 +2511,16 @@ private fun ConnectionModeChoiceCard(
     val tokens = LocalSecureLanDesignTokens.current
     val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected)
     Surface(
-        modifier = modifier.clickable(
-            interactionSource = interactionSource,
-            indication = LocalIndication.current,
-            role = Role.Tab,
-            onClick = onClick,
-        ),
+        modifier = modifier
+            .calmFocusRing(interactive.focused, tokens.radius.medium)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Tab,
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(tokens.radius.medium),
-        border = BorderStroke(tokens.border.focus, interactive.borderColor),
+        border = interactiveSurfaceBorder(interactive),
         color = interactive.backgroundColor,
     ) {
         Row(
@@ -2524,19 +2678,22 @@ private fun ConnectionModeSegment(
     modifier: Modifier = Modifier,
 ) {
     val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected)
+    val tokens = LocalSecureLanDesignTokens.current
     val background = if (selected) MaterialTheme.colors.primary.copy(alpha = 0.92f) else interactive.backgroundColor.copy(alpha = if (interactive.hovered || interactive.focused) 1f else 0f)
     val contentColor =
         if (selected) MaterialTheme.colors.onPrimary else MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
     Surface(
-        modifier = modifier.clickable(
-            interactionSource = interactionSource,
-            indication = LocalIndication.current,
-            role = Role.Tab,
-            onClick = onClick,
-        ),
-        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
+        modifier = modifier
+            .calmFocusRing(interactive.focused, tokens.radius.small)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Tab,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(tokens.radius.small),
         color = background,
-        border = BorderStroke(LocalSecureLanDesignTokens.current.border.focus, if (interactive.focused) interactive.borderColor else Color.Transparent),
+        border = BorderStroke(tokens.border.subtle, if (selected) MaterialTheme.colors.primary.copy(alpha = 0.72f) else Color.Transparent),
     ) {
         Text(
             label,
@@ -2550,6 +2707,7 @@ private fun ConnectionModeSegment(
 @Composable
 private fun ComposeAdvancedPane(
     title: String,
+    bounded: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -2581,13 +2739,23 @@ private fun ComposeAdvancedPane(
             enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
             exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
         ) {
+            val surfaceModifier = if (bounded) {
+                Modifier.fillMaxWidth().heightIn(max = ComposeShellMetadata.ADVANCED_PANE_MAX_HEIGHT)
+            } else {
+                Modifier.fillMaxWidth()
+            }
+            val contentModifier = if (bounded) {
+                Modifier.padding(tokens.spacing.sm).verticalScroll(rememberScrollState())
+            } else {
+                Modifier.padding(tokens.spacing.sm)
+            }
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = surfaceModifier,
                 shape = RoundedCornerShape(tokens.radius.medium),
                 color = tokens.colors.surfaceLevel1.copy(alpha = 0.72f),
             ) {
                 Column(
-                    modifier = Modifier.padding(tokens.spacing.sm),
+                    modifier = contentModifier,
                     verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                     content = { content() },
                 )
@@ -2784,41 +2952,56 @@ private fun LiveChatWorkspaceCard(
                 MicroFeedbackPill(text = message, tone = tone)
             }
         }
+        var attachMenuExpanded by remember { mutableStateOf(false) }
+        var attachmentStatusText by remember(attachmentTools.disabledStatusText) { mutableStateOf(attachmentTools.disabledStatusText) }
+        val attachButtonFocusRequester = remember { FocusRequester() }
+        fun dismissAttachMenu(restoreComposerFocus: Boolean) {
+            attachMenuExpanded = false
+            if (restoreComposerFocus) {
+                chatInputFocusRequester.requestFocus()
+            } else {
+                attachButtonFocusRequester.requestFocus()
+            }
+        }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = ComposeShellMetadata.COMPOSER_MIN_HEIGHT),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            var attachMenuExpanded by remember { mutableStateOf(false) }
-            Box {
-                CompactButton(
-                    onClick = { attachMenuExpanded = true },
-                    enabled = attachmentTools.primaryItems.isNotEmpty(),
-                ) { Text(attachmentTools.title) }
-                DropdownMenu(
-                    expanded = attachMenuExpanded,
-                    onDismissRequest = { attachMenuExpanded = false },
-                ) {
-                    attachmentTools.primaryItems.forEach { item ->
-                        val itemEnabled = when (item) {
-                            "Send secure file" -> selectedFilePeer != null
-                            "Send encrypted text or file" -> false
-                            else -> true
-                        }
-                        DropdownMenuItem(
-                            onClick = {
-                                attachMenuExpanded = false
-                                when (item) {
-                                    "Send secure file" -> attachSelectedFile()
-                                    "Share on LAN temporarily" -> onAttachmentPanelModeChange(AttachmentPanelMode.QUICK_SHARE)
-                                    "Hide message in image", "Extract hidden message" -> onAttachmentPanelModeChange(AttachmentPanelMode.STEGANOGRAPHY)
-                                }
-                            },
-                            enabled = itemEnabled,
-                        ) { Text(item) }
+            AttachmentComposerMenu(
+                tools = attachmentTools,
+                expanded = attachMenuExpanded,
+                statusText = attachmentStatusText,
+                onExpandedChange = { expanded ->
+                    attachMenuExpanded = expanded
+                    if (expanded) {
+                        attachmentStatusText = attachmentTools.summary
                     }
-                }
-            }
+                },
+                onStatusTextChange = { attachmentStatusText = it },
+                onDismiss = { dismissAttachMenu(restoreComposerFocus = true) },
+                onItemSelected = { item ->
+                    when (item.kind) {
+                        ComposeAttachmentToolKind.SECURE_FILE -> {
+                            dismissAttachMenu(restoreComposerFocus = true)
+                            attachSelectedFile()
+                        }
+                        ComposeAttachmentToolKind.QUICK_SHARE -> {
+                            dismissAttachMenu(restoreComposerFocus = false)
+                            onAttachmentPanelModeChange(AttachmentPanelMode.QUICK_SHARE)
+                        }
+                        ComposeAttachmentToolKind.STEGO_HIDE,
+                        ComposeAttachmentToolKind.STEGO_EXTRACT -> {
+                            dismissAttachMenu(restoreComposerFocus = false)
+                            onAttachmentPanelModeChange(AttachmentPanelMode.STEGANOGRAPHY)
+                        }
+                        ComposeAttachmentToolKind.ENCRYPTED_TEXT_OR_FILE -> {
+                            attachmentStatusText = item.statusText
+                        }
+                    }
+                },
+                attachButtonFocusRequester = attachButtonFocusRequester,
+            )
             CompactTextField(
                 draftMessage,
                 { draftMessage = it },
@@ -2834,6 +3017,129 @@ private fun LiveChatWorkspaceCard(
                 Text("Send")
             }
         }
+    }
+}
+
+@Composable
+private fun AttachmentComposerMenu(
+    tools: ComposeAttachmentToolsState,
+    expanded: Boolean,
+    statusText: String,
+    onExpandedChange: (Boolean) -> Unit,
+    onStatusTextChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onItemSelected: (ComposeAttachmentToolItem) -> Unit,
+    attachButtonFocusRequester: FocusRequester,
+) {
+    Box {
+        CompactButton(
+            onClick = { onExpandedChange(true) },
+            modifier = Modifier
+                .focusRequester(attachButtonFocusRequester)
+                .semantics { contentDescription = "Open attachment menu" },
+            enabled = tools.menuItems.isNotEmpty(),
+        ) { Text(tools.title) }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismiss,
+            offset = DpOffset(x = 0.dp, y = (-8).dp),
+            modifier = Modifier
+                .widthIn(
+                    min = tools.layoutContract.minWidth,
+                    max = tools.layoutContract.maxWidth,
+                )
+                .heightIn(max = tools.layoutContract.maxHeight)
+                .semantics { contentDescription = "Attachment actions" },
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Add to this conversation",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.caption,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+                )
+                tools.menuItems.forEach { item ->
+                    AttachmentComposerMenuItem(
+                        item = item,
+                        onStatusTextChange = onStatusTextChange,
+                        onSelected = { onItemSelected(item) },
+                    )
+                }
+                AttachmentComposerStatus(statusText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentComposerMenuItem(
+    item: ComposeAttachmentToolItem,
+    onStatusTextChange: (String) -> Unit,
+    onSelected: () -> Unit,
+) {
+    val tokens = LocalSecureLanDesignTokens.current
+    val (interactionSource, interactive) = rememberInteractiveSurfaceState(enabled = item.enabled)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .calmFocusRing(interactive.focused, tokens.radius.small)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                enabled = item.enabled,
+                role = Role.Button,
+                onClick = onSelected,
+            )
+            .semantics { contentDescription = item.accessibilityLabel },
+        shape = RoundedCornerShape(tokens.radius.small),
+        border = interactiveSurfaceBorder(interactive),
+        color = interactive.backgroundColor,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+        ) {
+            Text(
+                text = item.label,
+                style = MaterialTheme.typography.body1,
+                color = interactive.contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = item.statusText,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = if (item.enabled) 0.64f else 0.52f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    LaunchedEffect(interactive.hovered, interactive.focused, item.statusText) {
+        if (interactive.hovered || interactive.focused) {
+            onStatusTextChange(item.statusText)
+        }
+    }
+}
+
+@Composable
+private fun AttachmentComposerStatus(statusText: String) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(top = tokens.spacing.xxs),
+        shape = RoundedCornerShape(tokens.radius.small),
+        border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle),
+        color = tokens.colors.surfaceLevel1,
+    ) {
+        Text(
+            text = statusText,
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xs),
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+        )
     }
 }
 
@@ -3077,6 +3383,7 @@ private fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState, conne
     val tokens = LocalSecureLanDesignTokens.current
     Box(modifier = Modifier.fillMaxSize().padding(tokens.spacing.md), contentAlignment = Alignment.Center) {
         Column(
+            modifier = Modifier.widthIn(max = ComposeShellMetadata.CENTER_EMPTY_STATE_GUIDANCE_MAX_WIDTH),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -3086,7 +3393,7 @@ private fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState, conne
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
             )
             Text(
-                text = if (connected) chatState.transcriptEmptyDetailConnected else chatState.transcriptEmptyDetailDisconnected,
+                text = chatState.transcriptEmptyExplanation,
                 style = MaterialTheme.typography.body2,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
             )
@@ -3224,20 +3531,52 @@ private fun RecentTransfersPanel(transferState: ComposeFileTransferState) {
         Text("Recent transfer activity", style = MaterialTheme.typography.subtitle2)
         TransferCompletionFeedback(transferState)
         if (transferState.recentEntryRows.isEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = transferState.recentEmptyTitle,
-                    style = MaterialTheme.typography.body2,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
-                )
-                Text(
-                    text = transferState.recentEmptyDetail,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-                )
-            }
+            InlineEmptyState(
+                situation = transferState.recentEmptySituation,
+                explanation = transferState.recentEmptyExplanation,
+                nextAction = transferState.recentEmptyNextAction,
+            )
         } else {
             transferState.recentEntryRows.forEach { row -> TransferActivityRow(row) }
+        }
+    }
+}
+
+@Composable
+private fun InlineEmptyState(
+    situation: String,
+    explanation: String,
+    nextAction: String,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Surface(
+        modifier = modifier.fillMaxWidth().heightIn(min = ComposeShellMetadata.INLINE_EMPTY_STATE_MIN_HEIGHT),
+        shape = RoundedCornerShape(tokens.radius.small),
+        border = BorderStroke(1.dp, tokens.colors.borderSubtle.copy(alpha = 0.38f)),
+        color = MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.022f else 0.040f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+        ) {
+            Text(
+                text = situation,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+            )
+            Text(
+                text = explanation,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = nextAction,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.62f),
+            )
         }
     }
 }
@@ -3871,28 +4210,11 @@ private fun QuickShareInfoLine(label: String, value: String) {
 
 @Composable
 private fun QuickShareEmptyState(state: ComposeQuickShareState) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
-        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
-        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
-    ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(state.emptySharesTitle, style = MaterialTheme.typography.subtitle2)
-            Text(
-                state.emptySharesDetail,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
-            )
-            state.quickStartSteps.forEach { step ->
-                Text(
-                    step,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
-                )
-            }
-        }
-    }
+    InlineEmptyState(
+        situation = state.emptySharesSituation,
+        explanation = state.emptySharesExplanation,
+        nextAction = state.emptySharesNextAction,
+    )
 }
 
 @Composable
@@ -4781,10 +5103,10 @@ private fun AudioVideoDevicesCardContent(
                 StatusPill(videoState.permissionStatusLabel)
                 StatusPill("Call target: ${voiceState.selectedPeerName}")
             }
-            Button(
+            CalmFocusButton(
                 onClick = onRefresh,
                 enabled = !previewOnly && voiceState.canRefreshDevices,
-                modifier = Modifier.fillMaxWidth()
+                fillMaxWidth = true,
             ) {
                 Text("Refresh device list")
             }
@@ -4810,15 +5132,15 @@ private fun AudioVideoDevicesCardContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    CompactButton(
                         onClick = onTestMicrophone,
                         enabled = !previewOnly && voiceState.canTestMicrophone
                     ) { Text("Test microphone") }
-                    Button(
+                    CompactButton(
                         onClick = onStartVoice,
                         enabled = !previewOnly && voiceState.canStartVoice
                     ) { Text(voiceState.startVoiceLabel) }
-                    Button(onClick = onHangUp, enabled = !previewOnly && voiceState.canHangUp) { Text("Hang up") }
+                    CompactButton(onClick = onHangUp, enabled = !previewOnly && voiceState.canHangUp) { Text("Hang up") }
                 }
             }
             DeviceSettingsSection(
@@ -4838,7 +5160,7 @@ private fun AudioVideoDevicesCardContent(
                     style = MaterialTheme.typography.caption,
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
                 )
-                Button(
+                CompactButton(
                     onClick = onTestSpeaker,
                     enabled = !previewOnly && voiceState.canTestSpeaker
                 ) { Text("Test speakers") }
@@ -4871,25 +5193,25 @@ private fun AudioVideoDevicesCardContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    CompactButton(
                         onClick = onTestCamera,
                         enabled = !previewOnly && videoState.canTestCamera
                     ) { Text("Test camera") }
-                    Button(onClick = onStartPreview, enabled = !previewOnly && videoState.canStartPreview) {
+                    CompactButton(onClick = onStartPreview, enabled = !previewOnly && videoState.canStartPreview) {
                         Text(
                             videoState.startPreviewLabel
                         )
                     }
-                    Button(onClick = onStopPreview, enabled = !previewOnly && videoState.canStopPreview) {
+                    CompactButton(onClick = onStopPreview, enabled = !previewOnly && videoState.canStopPreview) {
                         Text(
                             videoState.stopPreviewLabel
                         )
                     }
-                    Button(
+                    CompactButton(
                         onClick = onStartVideo,
                         enabled = !previewOnly && videoState.canStartVideo
                     ) { Text(videoState.startVideoLabel) }
-                    Button(onClick = onHangUp, enabled = !previewOnly && videoState.canHangUp) { Text("Hang up") }
+                    CompactButton(onClick = onHangUp, enabled = !previewOnly && videoState.canHangUp) { Text("Hang up") }
                 }
             }
             HelpNotice(
@@ -5097,19 +5419,19 @@ private fun MediaVoiceCardContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
+                CompactButton(
                     onClick = onRefresh,
                     enabled = !previewOnly && state.canRefreshDevices
                 ) { Text("Refresh devices") }
-                Button(
+                CompactButton(
                     onClick = onTestMicrophone,
                     enabled = !previewOnly && state.canTestMicrophone
                 ) { Text("Test mic") }
-                Button(
+                CompactButton(
                     onClick = onStartVoice,
                     enabled = !previewOnly && state.canStartVoice
                 ) { Text(state.startVoiceLabel) }
-                Button(onClick = onHangUp, enabled = !previewOnly && state.canHangUp) { Text("Hang up") }
+                CompactButton(onClick = onHangUp, enabled = !previewOnly && state.canHangUp) { Text("Hang up") }
             }
             diagnostics.takeLast(4).forEach {
                 Text(
@@ -5198,21 +5520,21 @@ private fun ExperimentalVideoCardContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
+                CompactButton(
                     onClick = onRefresh,
                     enabled = !previewOnly && state.canRefreshCameras
                 ) { Text("Refresh cameras") }
-                Button(onClick = onTestCamera, enabled = !previewOnly && state.canTestCamera) { Text("Test camera") }
-                Button(
+                CompactButton(onClick = onTestCamera, enabled = !previewOnly && state.canTestCamera) { Text("Test camera") }
+                CompactButton(
                     onClick = onStartPreview,
                     enabled = !previewOnly && state.canStartPreview
                 ) { Text("Start preview") }
-                Button(onClick = onStopPreview, enabled = !previewOnly && state.canStopPreview) { Text("Stop preview") }
-                Button(
+                CompactButton(onClick = onStopPreview, enabled = !previewOnly && state.canStopPreview) { Text("Stop preview") }
+                CompactButton(
                     onClick = onStartVideo,
                     enabled = !previewOnly && state.canStartVideo
                 ) { Text(state.startVideoLabel) }
-                Button(onClick = onHangUp, enabled = !previewOnly && state.canHangUp) { Text("Hang up") }
+                CompactButton(onClick = onHangUp, enabled = !previewOnly && state.canHangUp) { Text("Hang up") }
             }
             diagnostics.takeLast(4).forEach {
                 Text(
@@ -5256,10 +5578,11 @@ private fun RuntimeDiagnosticsCardContent(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RuntimeDiagnosticsHero(diagnosticsState)
-        RuntimeDiagnosticsChannels(diagnosticsState.channelCards)
         RuntimeDiagnosticsAlerts(diagnosticsState.alerts)
+        RuntimeDiagnosticsRecovery(diagnosticsState)
+        RuntimeDiagnosticsChannels(diagnosticsState.channelCards)
         RuntimeReadinessSection(regressionState, packagingState)
-        ComposeAdvancedPane("Technical details") {
+        ComposeAdvancedPane("Technical details", bounded = true) {
             DiagnosticsDetailLine("Fallback", diagnosticsState.fallbackStatus)
             DiagnosticsDetailLine("Connection", diagnosticsState.statusAdapterSummary)
             DiagnosticsDetailLine("Actions", diagnosticsState.connectionActionSummary)
@@ -5267,6 +5590,12 @@ private fun RuntimeDiagnosticsCardContent(
             DiagnosticsDetailLine("Channels", diagnosticsState.diagnosticChannelSummary)
             DiagnosticsDetailLine("Regression", regressionState.blockedSummary)
             DiagnosticsDetailLine("Packaging", packagingState.blockedSummary)
+            if (diagnosticsState.recentMessages.isNotEmpty()) {
+                Text("Recent messages", style = MaterialTheme.typography.subtitle2)
+                diagnosticsState.recentMessageSummaries.forEach { message ->
+                    DiagnosticMessageRow(message)
+                }
+            }
         }
     }
 }
@@ -5286,7 +5615,7 @@ private fun RuntimeDiagnosticsHero(state: ComposeDiagnosticsState) {
                 verticalAlignment = Alignment.Top,
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Runtime / Diagnostics", style = MaterialTheme.typography.subtitle1)
+                    Text("Health summary", style = MaterialTheme.typography.subtitle1)
                     Text(
                         text = state.runtimeOverview,
                         style = MaterialTheme.typography.caption,
@@ -5385,13 +5714,29 @@ private fun RuntimeDiagnosticChannelCard(channel: ComposeDiagnosticChannel) {
                     ),
                 )
             }
-            if (channel.hasMessages) {
-                channel.recentMessages.forEach { message ->
-                    DiagnosticMessageRow(message)
-                }
-            } else {
-                RuntimeEmptyState(channel.emptyState)
+            RuntimeEmptyState(channel.densitySummary)
+        }
+    }
+}
+
+@Composable
+private fun RuntimeDiagnosticsRecovery(state: ComposeDiagnosticsState) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.72f)),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.58f),
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(state.recoveryTitle, style = MaterialTheme.typography.subtitle2, modifier = Modifier.weight(1f))
+                RuntimeStatusPill(state.recoveryBadge, runtimeStatusColor(state))
             }
+            Text(
+                state.recoverySummary,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f),
+            )
         }
     }
 }
@@ -5520,25 +5865,19 @@ private fun DiagnosticMessageRow(message: String) {
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             style = MaterialTheme.typography.caption,
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.74f),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
 private fun RuntimeEmptyState(text: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
-        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.46f)),
-        color = MaterialTheme.colors.onSurface.copy(alpha = if (MaterialTheme.colors.isLight) 0.025f else 0.045f),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
-        )
-    }
+    InlineEmptyState(
+        situation = "Waiting for activity",
+        explanation = text,
+        nextAction = "Continue from the conversation workspace",
+    )
 }
 
 @Composable
@@ -5552,7 +5891,9 @@ private fun DiagnosticsDetailLine(label: String, value: String) {
         Text(
             value,
             style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f)
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -5590,10 +5931,10 @@ private fun DeviceChoiceDropdown(
             color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
         )
         Box {
-            Button(
+            CalmFocusButton(
                 onClick = { expanded = true },
                 enabled = enabled && choices.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth()
+                fillMaxWidth = true,
             ) {
                 Text(selected.toString())
             }
@@ -5626,6 +5967,13 @@ private fun copyToSystemClipboard(text: String) {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
     }
 }
+
+internal fun resolveSelectedJoinTarget(
+    hostAdapter: ComposeDesktopHostAdapter,
+    selectedPeer: ComposePeerListItem?,
+): ComposeConnectionJoinTarget? = selectedPeer
+    ?.takeIf { it.online }
+    ?.let { peer -> hostAdapter.joinTargetFor(peer.nickname) }
 
 @Composable
 private fun PeerListPreviewCard(initialState: ComposePeerListState) {
@@ -5673,10 +6021,10 @@ private fun PeerTargetCommandButton(
     command: ComposePeerTargetCommand,
     onCommand: (ComposePeerTargetCommand) -> Unit,
 ) {
-    Button(
-        modifier = Modifier.fillMaxWidth(),
+    CalmFocusButton(
         onClick = { onCommand(command) },
         enabled = command.enabled,
+        fillMaxWidth = true,
     ) {
         Text(command.displayLabel)
     }
@@ -5696,9 +6044,11 @@ private fun PeerPreviewRow(
         tone = if (peer.online) MicrointeractionTone.SUCCESS else MicrointeractionTone.NEUTRAL,
     )
 
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .calmFocusRing(interactive.focused, tokens.radius.medium)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -5706,8 +6056,8 @@ private fun PeerPreviewRow(
                 onClick = onSelect,
             ),
         color = interactive.backgroundColor,
-        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-        border = BorderStroke(LocalSecureLanDesignTokens.current.border.focus, interactive.borderColor),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        border = interactiveSurfaceBorder(interactive),
     ) {
         Row(
             modifier = Modifier.padding(10.dp),

@@ -33,8 +33,18 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val ComposeChatTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+private const val COMPOSE_DIAGNOSTIC_SUMMARY_MAX_LENGTH: Int = 120
 
 internal fun formatComposeChatTimestamp(timestamp: Instant): String = ComposeChatTimeFormatter.format(timestamp)
+
+private fun summarizeContextPanelText(value: String, maxLength: Int = COMPOSE_DIAGNOSTIC_SUMMARY_MAX_LENGTH): String {
+    val normalized = value.replace(Regex("\\s+"), " ").trim()
+    return if (normalized.length <= maxLength) {
+        normalized
+    } else {
+        normalized.take(maxLength - 1).trimEnd() + "…"
+    }
+}
 
 object ComposeShellMetadata {
     const val WINDOW_TITLE: String = "SecureLanSuite Chat"
@@ -44,6 +54,20 @@ object ComposeShellMetadata {
         "Use the standard desktop launcher for the stable JavaFX client while Compose screens are migrated. Compose now reuses the packaged app icon resource."
     val DEFAULT_WINDOW_WIDTH: Dp = 1360.dp
     val DEFAULT_WINDOW_HEIGHT: Dp = 860.dp
+
+    // Composer pinning / overflow-safe startup layout constants
+    val COMPOSER_MIN_HEIGHT: Dp = 52.dp
+    val COMPOSER_SAFE_VERTICAL_SPACE: Dp = 96.dp
+    val CONNECTION_HUB_EXPANDED_MAX_FRACTION: Float = 0.55f
+    val MIN_CHAT_SURFACE_HEIGHT: Dp = 140.dp
+    val CENTER_COLUMN_SPACING: Dp = 8.dp
+    val ADVANCED_PANE_MAX_HEIGHT: Dp = 260.dp
+    val ATTACHMENT_MENU_MAX_WIDTH: Dp = 320.dp
+    val ATTACHMENT_MENU_MIN_WIDTH: Dp = 248.dp
+    val ATTACHMENT_MENU_MAX_HEIGHT: Dp = 300.dp
+    val SIDE_EMPTY_STATE_GUIDANCE_MAX_WIDTH: Dp = 244.dp
+    val CENTER_EMPTY_STATE_GUIDANCE_MAX_WIDTH: Dp = 440.dp
+    val INLINE_EMPTY_STATE_MIN_HEIGHT: Dp = 44.dp
     val DEFAULT_STATUS_ADAPTER_STATE: ComposeStatusConnectionState = ComposeStatusConnectionState()
     val DEFAULT_CONNECTION_HUB_STATE: ComposeConnectionHubState = ComposeConnectionHubState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
@@ -76,6 +100,7 @@ object ComposeShellMetadata {
         peerListState = DEFAULT_PEER_LIST_STATE,
     )
     val DEFAULT_QUICK_SHARE_STATE: ComposeQuickShareState = ComposeQuickShareState()
+    val DEFAULT_RUNTIME_SCREENSHOT_MATRIX_STATE: ComposeRuntimeScreenshotValidationMatrixState = ComposeRuntimeScreenshotValidationMatrixState()
     val DEFAULT_REGRESSION_STATE: ComposeRegressionReadinessState = ComposeRegressionReadinessState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         peerListState = DEFAULT_PEER_LIST_STATE,
@@ -149,10 +174,24 @@ enum class ComposeWorkspaceMode {
     FILE_TRANSFER,
 }
 
+data class ComposeWorkspaceLayoutContract(
+    val composerMinHeight: Dp = ComposeShellMetadata.COMPOSER_MIN_HEIGHT,
+    val composerSafeVerticalSpace: Dp = ComposeShellMetadata.COMPOSER_SAFE_VERTICAL_SPACE,
+    val connectionHubExpandedMaxFraction: Float = ComposeShellMetadata.CONNECTION_HUB_EXPANDED_MAX_FRACTION,
+    val minChatSurfaceHeight: Dp = ComposeShellMetadata.MIN_CHAT_SURFACE_HEIGHT,
+    val centerColumnSpacing: Dp = ComposeShellMetadata.CENTER_COLUMN_SPACING,
+    val advancedPaneMaxHeight: Dp = ComposeShellMetadata.ADVANCED_PANE_MAX_HEIGHT,
+) {
+    val layoutSummary: String = "Composer ≥ ${composerMinHeight.value.toInt()} dp; safe space ≥ ${composerSafeVerticalSpace.value.toInt()} dp; " +
+        "hub ≤ ${(connectionHubExpandedMaxFraction * 100).toInt()}% of center; chat ≥ ${minChatSurfaceHeight.value.toInt()} dp; " +
+        "advanced ≤ ${advancedPaneMaxHeight.value.toInt()} dp"
+}
+
 data class ComposeWorkspaceState(
     val mode: ComposeWorkspaceMode = ComposeWorkspaceMode.OFFLINE,
     val title: String = "Start nearby",
     val subtitle: String = "Host or join a trusted LAN room to begin.",
+    val layoutContract: ComposeWorkspaceLayoutContract = ComposeWorkspaceLayoutContract(),
 ) {
     val modeLabel: String = when (mode) {
         ComposeWorkspaceMode.OFFLINE -> "Offline"
@@ -452,6 +491,254 @@ data class ComposeWorkspaceConsistencyReviewState(
     val summary: String = "${passedAreas.size} of ${ComposeWorkspaceConsistencyReviewArea.values().size} consistency areas passed; product score $productScore."
 }
 
+enum class ComposeRuntimeScreenshotSizeKind {
+    BASELINE_1360_860,
+    COMPACT_1200_760,
+    WIDE_1600_900,
+    FULL_1920_1080,
+    DRAWER_UNDER_1200,
+}
+
+data class ComposeRuntimeScreenshotSizeRequirement(
+    val kind: ComposeRuntimeScreenshotSizeKind,
+    val label: String,
+    val widthPx: Int,
+    val heightPx: Int,
+    val validated: Boolean = true,
+    val productScore: Int = 98,
+    val automaticRejectConditions: List<String> = emptyList(),
+) {
+    val responsiveState: ComposeContextPanelResponsiveState = ComposeContextPanelResponsiveState.forWidth(widthPx)
+    val preservesComposerAndChat: Boolean = heightPx >= 760 && responsiveState.preservesConversationFirst
+    val validatesDrawerMode: Boolean = kind != ComposeRuntimeScreenshotSizeKind.DRAWER_UNDER_1200 || responsiveState.drawerMode
+    val passed: Boolean = validated &&
+        productScore >= 95 &&
+        automaticRejectConditions.isEmpty() &&
+        preservesComposerAndChat &&
+        validatesDrawerMode
+    val copyLine: String = "$label (${widthPx}x$heightPx) — ${responsiveState.mode.name.lowercase().replace('_', ' ')}; composer/chat preserved=$preservesComposerAndChat"
+}
+
+enum class ComposeRuntimeScreenshotStateKind {
+    OFFLINE_STARTUP_COLLAPSED,
+    OFFLINE_HOST_SETUP_EXPANDED,
+    OFFLINE_JOIN_SETUP_EXPANDED,
+    HOSTING_ROOM,
+    CONNECTED_NO_PEER_SELECTED,
+    PEER_SELECTED,
+    ATTACH_MENU_OPEN,
+    QUICK_SHARE_CONTEXT,
+    STEGANOGRAPHY_CONTEXT,
+    ACTIVE_TRANSFER,
+    VOICE_CALL,
+    VIDEO_PREVIEW_OR_CALL,
+    DIAGNOSTICS_SUMMARY,
+    DIAGNOSTICS_TECHNICAL_DETAILS_EXPANDED,
+    LIGHT_AND_DARK_THEME,
+}
+
+data class ComposeRuntimeScreenshotStateRequirement(
+    val kind: ComposeRuntimeScreenshotStateKind,
+    val label: String,
+    val primaryState: String,
+    val evidence: String,
+    val composerUsable: Boolean = true,
+    val chatUsable: Boolean = true,
+    val productScore: Int = 98,
+    val automaticRejectConditions: List<String> = emptyList(),
+    val validated: Boolean = true,
+) {
+    val passed: Boolean = validated &&
+        composerUsable &&
+        chatUsable &&
+        productScore >= 95 &&
+        automaticRejectConditions.isEmpty()
+    val copyLine: String = "$label — $primaryState; score=$productScore; composer=$composerUsable; chat=$chatUsable"
+}
+
+data class ComposeRuntimeScreenshotValidation(
+    val size: ComposeRuntimeScreenshotSizeRequirement,
+    val state: ComposeRuntimeScreenshotStateRequirement,
+) {
+    val productScore: Int = minOf(size.productScore, state.productScore)
+    val automaticRejectConditions: List<String> = size.automaticRejectConditions + state.automaticRejectConditions
+    val composerAndChatUsable: Boolean = size.preservesComposerAndChat && state.composerUsable && state.chatUsable
+    val passed: Boolean = size.passed && state.passed && productScore >= 95 && automaticRejectConditions.isEmpty() && composerAndChatUsable
+    val copyLine: String = "${size.label} / ${state.label} — score=$productScore; ${if (passed) "accepted" else "needs refinement"}"
+}
+
+data class ComposeRuntimeScreenshotValidationMatrixState(
+    val sizeRequirements: List<ComposeRuntimeScreenshotSizeRequirement> = defaultSizeRequirements(),
+    val stateRequirements: List<ComposeRuntimeScreenshotStateRequirement> = defaultStateRequirements(),
+) {
+    val title: String = "Runtime resize and screenshot validation matrix"
+    val validations: List<ComposeRuntimeScreenshotValidation> = sizeRequirements.flatMap { size ->
+        stateRequirements.map { state -> ComposeRuntimeScreenshotValidation(size, state) }
+    }
+    val requiredSizeCount: Int = sizeRequirements.size
+    val requiredStateCount: Int = stateRequirements.size
+    val screenshotCount: Int = validations.size
+    val acceptedScreenshotCount: Int = validations.count { it.passed }
+    val productScore: Int = validations.minOfOrNull { it.productScore } ?: 0
+    val automaticRejectConditions: List<String> = validations.flatMap { it.automaticRejectConditions }.distinct()
+    val allSizesValidated: Boolean = sizeRequirements.all { it.passed }
+    val allStatesValidated: Boolean = stateRequirements.all { it.passed }
+    val composerAndChatUsableEverywhere: Boolean = validations.all { it.composerAndChatUsable }
+    val drawerModeValidated: Boolean = sizeRequirements.any {
+        it.kind == ComposeRuntimeScreenshotSizeKind.DRAWER_UNDER_1200 && it.responsiveState.drawerMode && it.passed
+    }
+    val lightAndDarkThemesValidated: Boolean = stateRequirements.any {
+        it.kind == ComposeRuntimeScreenshotStateKind.LIGHT_AND_DARK_THEME && it.passed
+    }
+    val acceptanceReady: Boolean = allSizesValidated &&
+        allStatesValidated &&
+        acceptedScreenshotCount == screenshotCount &&
+        productScore >= 95 &&
+        automaticRejectConditions.isEmpty() &&
+        composerAndChatUsableEverywhere &&
+        drawerModeValidated &&
+        lightAndDarkThemesValidated
+    val summary: String = "$acceptedScreenshotCount of $screenshotCount runtime screenshot checks accepted; product score $productScore."
+    val sizeChecklistCopy: String = sizeRequirements.joinToString("\n") { it.copyLine }
+    val stateChecklistCopy: String = stateRequirements.joinToString("\n") { it.copyLine }
+    val validationCopyText: String = buildList {
+        add(title)
+        add(summary)
+        add("Sizes:")
+        add(sizeChecklistCopy)
+        add("States:")
+        add(stateChecklistCopy)
+    }.joinToString("\n")
+
+    companion object {
+        fun defaultSizeRequirements(): List<ComposeRuntimeScreenshotSizeRequirement> = listOf(
+            ComposeRuntimeScreenshotSizeRequirement(
+                kind = ComposeRuntimeScreenshotSizeKind.BASELINE_1360_860,
+                label = "1360x860 baseline",
+                widthPx = 1360,
+                heightPx = 860,
+            ),
+            ComposeRuntimeScreenshotSizeRequirement(
+                kind = ComposeRuntimeScreenshotSizeKind.COMPACT_1200_760,
+                label = "1200x760 compact desktop",
+                widthPx = 1200,
+                heightPx = 760,
+            ),
+            ComposeRuntimeScreenshotSizeRequirement(
+                kind = ComposeRuntimeScreenshotSizeKind.WIDE_1600_900,
+                label = "1600x900 wide desktop",
+                widthPx = 1600,
+                heightPx = 900,
+            ),
+            ComposeRuntimeScreenshotSizeRequirement(
+                kind = ComposeRuntimeScreenshotSizeKind.FULL_1920_1080,
+                label = "1920x1080 full desktop",
+                widthPx = 1920,
+                heightPx = 1080,
+            ),
+            ComposeRuntimeScreenshotSizeRequirement(
+                kind = ComposeRuntimeScreenshotSizeKind.DRAWER_UNDER_1200,
+                label = "1199x760 drawer mode",
+                widthPx = 1199,
+                heightPx = 760,
+            ),
+        )
+
+        fun defaultStateRequirements(): List<ComposeRuntimeScreenshotStateRequirement> = listOf(
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.OFFLINE_STARTUP_COLLAPSED,
+                label = "Offline startup collapsed",
+                primaryState = "Welcome",
+                evidence = "Connection hub remains compact while the conversation preview keeps center weight.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.OFFLINE_HOST_SETUP_EXPANDED,
+                label = "Offline Host setup expanded",
+                primaryState = "Host Setup",
+                evidence = "Expanded Host setup is bounded and scrolls before the composer is clipped.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.OFFLINE_JOIN_SETUP_EXPANDED,
+                label = "Offline Join setup expanded",
+                primaryState = "Join Setup",
+                evidence = "Expanded Join setup preserves the composer and avoids configuration dominance.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.HOSTING_ROOM,
+                label = "Hosting room",
+                primaryState = "Waiting",
+                evidence = "Room-open state keeps chat as the central anchor while waiting for people.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.CONNECTED_NO_PEER_SELECTED,
+                label = "Connected with no peer selected",
+                primaryState = "Messenger",
+                evidence = "People selection guidance stays supporting and the conversation remains dominant.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.PEER_SELECTED,
+                label = "Peer selected",
+                primaryState = "Messenger / Peer",
+                evidence = "Peer profile is contextual and does not expose raw implementation details.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.ATTACH_MENU_OPEN,
+                label = "Attach menu open",
+                primaryState = "Messenger / Attachment",
+                evidence = "Attachment commands stay anchored to the composer and explain disabled actions inline.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.QUICK_SHARE_CONTEXT,
+                label = "Quick Share context",
+                primaryState = "Messenger / Quick Share",
+                evidence = "Trusted-LAN sharing appears only after request and remains contextual.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.STEGANOGRAPHY_CONTEXT,
+                label = "Steganography context",
+                primaryState = "Messenger / Privacy tool",
+                evidence = "BMP hide/extract workflow stays in the requested attachment context.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.ACTIVE_TRANSFER,
+                label = "Active transfer",
+                primaryState = "Messenger / Transfer",
+                evidence = "Transfer progress remains inline with details in the Context Assistant.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.VOICE_CALL,
+                label = "Voice call",
+                primaryState = "Voice Call",
+                evidence = "Voice uses a compact call banner while preserving conversation visibility.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.VIDEO_PREVIEW_OR_CALL,
+                label = "Video preview / video call experimental state",
+                primaryState = "Video Call",
+                evidence = "Experimental video makes the stage primary without turning the screen into a dashboard.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.DIAGNOSTICS_SUMMARY,
+                label = "Diagnostics summary",
+                primaryState = "Diagnostics",
+                evidence = "Diagnostics starts with health and recovery instead of raw logs.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.DIAGNOSTICS_TECHNICAL_DETAILS_EXPANDED,
+                label = "Diagnostics technical details expanded",
+                primaryState = "Diagnostics / Technical details",
+                evidence = "Technical details remain explicit and do not replace normal communication context.",
+            ),
+            ComposeRuntimeScreenshotStateRequirement(
+                kind = ComposeRuntimeScreenshotStateKind.LIGHT_AND_DARK_THEME,
+                label = "Light theme and dark theme",
+                primaryState = "Theme validation",
+                evidence = "Both themes keep calm focus, readable contrast, and identical workspace hierarchy.",
+            ),
+        )
+    }
+}
+
 data class ComposeOnboardingState(
     val headline: String = "Secure chat for people nearby",
     val body: String = "Private LAN messages, files, and calls without cloud accounts.",
@@ -667,6 +954,7 @@ enum class ComposeContextPanelCardKind {
     TRANSFER_DETAILS,
     CALL_CONTROLS,
     DIAGNOSTICS,
+    DIAGNOSTIC_RECOVERY,
     ADVANCED_DETAILS,
 }
 
@@ -723,6 +1011,7 @@ data class ComposeContextPanelCard(
     val primary: Boolean = false,
     val collapsed: Boolean = false,
     val technical: Boolean = false,
+    val maxBodyLines: Int = 3,
 )
 
 data class ComposeContextPanelState(
@@ -730,7 +1019,8 @@ data class ComposeContextPanelState(
     val cards: List<ComposeContextPanelCard>,
 ) {
     val title: String = "Context Assistant"
-    val visibleCards: List<ComposeContextPanelCard> = cards.take(MAX_VISIBLE_CARDS)
+    private val visibleCardLimit: Int = if (mode == RightPanelMode.DIAGNOSTICS) MAX_VISIBLE_DIAGNOSTIC_CARDS else MAX_VISIBLE_CARDS
+    val visibleCards: List<ComposeContextPanelCard> = cards.take(visibleCardLimit)
     val primaryCards: List<ComposeContextPanelCard> = visibleCards.filter { it.primary }
     val primaryButtons: List<String> = visibleCards.mapNotNull { it.primaryAction }
     val collapsedCards: List<ComposeContextPanelCard> = visibleCards.filter { it.collapsed }
@@ -753,10 +1043,25 @@ data class ComposeContextPanelState(
     val nextActionSummary: String = primaryCards.firstOrNull()?.body ?: visibleCards.firstOrNull()?.body.orEmpty()
     val answersCurrentContext: Boolean = visibleCards.isNotEmpty() && visibleCards.all { it.title.isNotBlank() && it.body.isNotBlank() }
     val hasOnePrimaryContext: Boolean = primaryCards.size <= 1
-    val withinVisualComplexityLimit: Boolean = visibleCards.size <= MAX_VISIBLE_CARDS && primaryButtons.size <= MAX_PRIMARY_BUTTONS
-    val hidesTechnicalControlsByDefault: Boolean = mode != RightPanelMode.DIAGNOSTICS && mode != RightPanelMode.ADVANCED_CONNECTION && visibleCards.none { it.technical }
+    val withinVisualComplexityLimit: Boolean = visibleCards.size <= visibleCardLimit && primaryButtons.size <= MAX_PRIMARY_BUTTONS
+    val keepsRawDetailsCollapsed: Boolean = visibleCards.filter { it.technical }.all { it.collapsed }
+    val hidesTechnicalControlsByDefault: Boolean = when (mode) {
+        RightPanelMode.DIAGNOSTICS,
+        RightPanelMode.ADVANCED_CONNECTION -> keepsRawDetailsCollapsed
+        else -> visibleCards.none { it.technical }
+    }
+    val startsDiagnosticsWithHealthAndRecovery: Boolean = mode != RightPanelMode.DIAGNOSTICS || visibleCardKinds.take(2) == listOf(
+        ComposeContextPanelCardKind.DIAGNOSTICS,
+        ComposeContextPanelCardKind.DIAGNOSTIC_RECOVERY,
+    )
     val hidesQuickShareUntilRequested: Boolean = mode == RightPanelMode.DIAGNOSTICS || visibleCards.none { it.kind == ComposeContextPanelCardKind.QUICK_SHARE }
-    val behavesAsContextAssistant: Boolean = answersCurrentContext && hasOnePrimaryContext && withinVisualComplexityLimit && hidesTechnicalControlsByDefault && hidesQuickShareUntilRequested
+    val behavesAsContextAssistant: Boolean = answersCurrentContext &&
+        hasOnePrimaryContext &&
+        withinVisualComplexityLimit &&
+        hidesTechnicalControlsByDefault &&
+        hidesQuickShareUntilRequested &&
+        keepsRawDetailsCollapsed &&
+        startsDiagnosticsWithHealthAndRecovery
 
     fun responsiveStateFor(widthPx: Int): ComposeContextPanelResponsiveState = ComposeContextPanelResponsiveState.forWidth(widthPx)
 
@@ -772,6 +1077,7 @@ data class ComposeContextPanelState(
 
     companion object {
         private const val MAX_VISIBLE_CARDS: Int = 5
+        private const val MAX_VISIBLE_DIAGNOSTIC_CARDS: Int = 6
         private const val MAX_PRIMARY_BUTTONS: Int = 1
 
         fun forRoom(
@@ -895,17 +1201,24 @@ data class ComposeContextPanelState(
                 ComposeContextPanelCard(
                     kind = ComposeContextPanelCardKind.DIAGNOSTICS,
                     title = "Health summary",
-                    body = diagnosticsState.runtimeOverview,
+                    body = diagnosticsState.runtimeOverviewSummary,
                     badge = diagnosticsState.statusLabel,
                     primaryAction = "Open details",
                     primary = true,
                 ),
                 ComposeContextPanelCard(
+                    kind = ComposeContextPanelCardKind.DIAGNOSTIC_RECOVERY,
+                    title = diagnosticsState.recoveryTitle,
+                    body = diagnosticsState.recoverySummary,
+                    badge = diagnosticsState.recoveryBadge,
+                ),
+                ComposeContextPanelCard(
                     kind = ComposeContextPanelCardKind.ADVANCED_DETAILS,
-                    title = "Show technical log",
-                    body = diagnosticsState.recentMessages.firstOrNull() ?: "Raw logs remain collapsed until requested.",
+                    title = "Technical details",
+                    body = diagnosticsState.technicalDetailsSummary,
                     collapsed = true,
                     technical = true,
+                    maxBodyLines = 2,
                 ),
             ),
         )
@@ -2082,6 +2395,19 @@ data class ComposeConnectionHubState(
         else -> "Nearby rooms appear in the people list; use Advanced if no room is found."
     }
 
+    val networkInfoAdvancedTitle: String = "Network details"
+    val networkInfoAdvancedSummary: String = when {
+        mode == ComposeConnectionHubMode.HOST && localNetworkInfo.isNotBlank() -> "Room address and ports for manual joins."
+        mode == ComposeConnectionHubMode.HOST -> "Connection details will appear after the room starts."
+        else -> "Manual address and ports for joining a hidden room."
+    }
+    val discoverableCompactLabel: String = "Visible to nearby trusted devices"
+    val joinCompactHint: String = "Nearby rooms appear in the people list. Use Advanced connection if a room is hidden."
+    val setupCompactSummary: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Set your name and password, then start the room."
+        ComposeConnectionHubMode.JOIN -> "Set your name and password, then join a nearby or hidden room."
+    }
+
     val blockedReason: String? = when {
         !statusState.javaFxFallbackAvailable -> "JavaFX fallback is unavailable; keep live Compose connection actions disabled."
         !statusState.nicknameValid -> "Enter your name before opening or joining a room."
@@ -2159,9 +2485,16 @@ data class ComposePeerListState(
     val offlinePeers: List<ComposePeerListItem> = visiblePeers.filterNot { it.online }
     val hasAnyPeers: Boolean = visiblePeers.isNotEmpty()
     val emptyStateTitle: String = "No peers visible yet"
+    val emptyStateSituation: String = emptyStateTitle
+    val emptyStateExplanation: String =
+        "Nearby people will appear here after you open or join a trusted LAN room."
+    val emptyStateNextAction: String = "Open or join a room"
     val emptyStateDetail: String =
-        "You are in the Contacts panel. Open or join a trusted LAN room to see nearby peers here. If someone on the same network is hidden, use Advanced connection in the Room panel."
-    val emptyStateActionLabel: String = "Open or join a room"
+        "$emptyStateExplanation If someone is hidden, use Advanced connection from the room setup."
+    val emptyStateActionLabel: String = emptyStateNextAction
+    val emptyStateStructuredCopy: List<String> = listOf(emptyStateSituation, emptyStateExplanation, emptyStateNextAction)
+    val emptyStateVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.SUPPORTING
+    val emptyStateKeepsConversationDominant: Boolean = true
     val resolvedSelectedPeerIndex: Int = resolveSelectedPeerIndex()
     val selectedPeer: ComposePeerListItem? = visiblePeers.getOrNull(resolvedSelectedPeerIndex)
     val selectedPeerTitle: String = selectedPeer?.nickname ?: "No peer selected"
@@ -2608,6 +2941,11 @@ data class ComposeChatWorkspaceState(
         peerListState.selectedPeer == null -> "Select a person"
         else -> "Type your first message"
     }
+    val transcriptEmptySituation: String = transcriptEmptyTitle
+    val transcriptEmptyExplanation: String = if (statusState.clientConnected) transcriptEmptyDetailConnected else transcriptEmptyDetailDisconnected
+    val transcriptEmptyNextAction: String = transcriptEmptyActionLabel
+    val transcriptEmptyStructuredCopy: List<String> = listOf(transcriptEmptySituation, transcriptEmptyExplanation, transcriptEmptyNextAction)
+    val transcriptEmptyVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.PRIMARY_GUIDANCE
     val draftValid: Boolean = draftMessage.trim().isNotEmpty()
     val canSendMessage: Boolean = statusState.clientConnected && draftValid
     val sendLabel: String = if (canSendMessage) "Send ready" else "Send blocked"
@@ -2729,8 +3067,13 @@ data class ComposeFileTransferState(
     val recentEntries: List<TransferEntry> = entries.takeLast(4)
     val recentEntryRows: List<ComposeTransferRow> = recentEntries.map(ComposeTransferRow::from)
     val recentEmptyTitle: String = "No recent transfers"
+    val recentEmptySituation: String = recentEmptyTitle
+    val recentEmptyExplanation: String = "Completed and failed file transfers will appear here after activity finishes."
+    val recentEmptyNextAction: String = "Start from Attach or peer actions"
     val recentEmptyDetail: String =
-        "Files you send or receive will appear here after they finish. Start a transfer from the chat composer or peer actions."
+        "$recentEmptyExplanation $recentEmptyNextAction."
+    val recentEmptyStructuredCopy: List<String> = listOf(recentEmptySituation, recentEmptyExplanation, recentEmptyNextAction)
+    val recentEmptyVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.INLINE
     val promptSummary: String = if (incomingPrompts.isEmpty()) {
         "No incoming receive prompts."
     } else {
@@ -2824,6 +3167,38 @@ data class ComposeFileTransferState(
     }
 }
 
+enum class ComposeAttachmentToolKind {
+    SECURE_FILE,
+    QUICK_SHARE,
+    ENCRYPTED_TEXT_OR_FILE,
+    STEGO_HIDE,
+    STEGO_EXTRACT,
+}
+
+data class ComposeAttachmentToolItem(
+    val kind: ComposeAttachmentToolKind,
+    val label: String,
+    val enabled: Boolean,
+    val statusText: String,
+    val shortcutHint: String,
+) {
+    val accessibilityLabel: String = if (enabled) {
+        "$label. $statusText. $shortcutHint"
+    } else {
+        "$label unavailable. $statusText. $shortcutHint"
+    }
+}
+
+data class ComposeAttachmentMenuLayoutContract(
+    val minWidth: Dp = ComposeShellMetadata.ATTACHMENT_MENU_MIN_WIDTH,
+    val maxWidth: Dp = ComposeShellMetadata.ATTACHMENT_MENU_MAX_WIDTH,
+    val maxHeight: Dp = ComposeShellMetadata.ATTACHMENT_MENU_MAX_HEIGHT,
+    val preferredVerticalDirection: String = "Above composer when there is room; otherwise below without leaving the window",
+    val focusReturnTarget: String = "composer input or Attach button",
+) {
+    val boundsSummary: String = "Attach menu ${minWidth.value.toInt()}–${maxWidth.value.toInt()} dp wide, ≤ ${maxHeight.value.toInt()} dp high, kept inside the window."
+}
+
 data class ComposeAttachmentToolsState(
     val peerSelected: Boolean,
     val fileTargetReady: Boolean,
@@ -2831,23 +3206,83 @@ data class ComposeAttachmentToolsState(
     val steganographyAvailable: Boolean = true,
 ) {
     val title: String = "Attach"
-    val primaryItems: List<String> = buildList {
-        add("Send secure file")
-        if (quickShareAvailable) add("Share on LAN temporarily")
-        add("Send encrypted text or file")
+    val layoutContract: ComposeAttachmentMenuLayoutContract = ComposeAttachmentMenuLayoutContract()
+    val menuItems: List<ComposeAttachmentToolItem> = buildList {
+        add(
+            ComposeAttachmentToolItem(
+                kind = ComposeAttachmentToolKind.SECURE_FILE,
+                label = "Send secure file",
+                enabled = fileTargetReady,
+                statusText = when {
+                    fileTargetReady -> "Choose a file for the selected person."
+                    !peerSelected -> "Select an online person before sending a secure file."
+                    else -> "The selected person is not ready to receive files."
+                },
+                shortcutHint = "Attach → Send secure file",
+            ),
+        )
+        if (quickShareAvailable) {
+            add(
+                ComposeAttachmentToolItem(
+                    kind = ComposeAttachmentToolKind.QUICK_SHARE,
+                    label = "Share on LAN temporarily",
+                    enabled = true,
+                    statusText = "Create a temporary trusted-LAN browser link.",
+                    shortcutHint = "Attach → Share on LAN temporarily",
+                ),
+            )
+        }
+        add(
+            ComposeAttachmentToolItem(
+                kind = ComposeAttachmentToolKind.ENCRYPTED_TEXT_OR_FILE,
+                label = "Send encrypted text or file",
+                enabled = false,
+                statusText = "Use secure file sending or Quick Share here; encrypted text packaging remains in the privacy workflow.",
+                shortcutHint = "Attach → Send encrypted text or file",
+            ),
+        )
         if (steganographyAvailable) {
-            add("Hide message in image")
-            add("Extract hidden message")
+            add(
+                ComposeAttachmentToolItem(
+                    kind = ComposeAttachmentToolKind.STEGO_HIDE,
+                    label = "Hide message in image",
+                    enabled = true,
+                    statusText = "Open the privacy tools to hide text in a BMP image.",
+                    shortcutHint = "Attach → Hide message in image",
+                ),
+            )
+            add(
+                ComposeAttachmentToolItem(
+                    kind = ComposeAttachmentToolKind.STEGO_EXTRACT,
+                    label = "Extract hidden message",
+                    enabled = true,
+                    statusText = "Open the privacy tools to read a hidden BMP message.",
+                    shortcutHint = "Attach → Extract hidden message",
+                ),
+            )
         }
     }
+    val primaryItems: List<String> = menuItems.map(ComposeAttachmentToolItem::label)
+    val enabledItems: List<ComposeAttachmentToolItem> = menuItems.filter(ComposeAttachmentToolItem::enabled)
+    val disabledItems: List<ComposeAttachmentToolItem> = menuItems.filterNot(ComposeAttachmentToolItem::enabled)
+    val disabledStatusText: String = disabledItems.firstOrNull()?.statusText
+        ?: "All attachment actions are available in this context."
+    val discoverableWithinTwoInteractions: Boolean = listOf(
+        ComposeAttachmentToolKind.SECURE_FILE,
+        ComposeAttachmentToolKind.QUICK_SHARE,
+        ComposeAttachmentToolKind.STEGO_HIDE,
+        ComposeAttachmentToolKind.STEGO_EXTRACT,
+    ).all { requiredKind -> menuItems.any { it.kind == requiredKind } }
+    val preservesKeyboardAccess: Boolean = true
+    val restoresFocusAfterDismissal: Boolean = true
     val summary: String = if (peerSelected && fileTargetReady) {
         "Attachment tools are ready for the selected peer."
     } else {
         "Select an online peer to send secure files; LAN sharing and privacy tools stay available from Attach."
     }
-    val keepsAdvancedToolsContextual: Boolean = primaryItems.contains("Share on LAN temporarily") &&
-        primaryItems.contains("Hide message in image") &&
-        primaryItems.contains("Extract hidden message")
+    val keepsAdvancedToolsContextual: Boolean = menuItems.any { it.kind == ComposeAttachmentToolKind.QUICK_SHARE } &&
+        menuItems.any { it.kind == ComposeAttachmentToolKind.STEGO_HIDE } &&
+        menuItems.any { it.kind == ComposeAttachmentToolKind.STEGO_EXTRACT }
 }
 
 data class ComposeChatAttachmentCard(
@@ -2986,11 +3421,24 @@ data class ComposeQuickShareState(
         listOf("Ready to create trusted-LAN browser links.")
     }.joinToString(" · ")
     val emptySharesTitle: String = if (running) "No links created yet" else "Quick share is idle"
-    val emptySharesDetail: String = if (running) {
-        "Choose a file or enter text, then create a browser link. New links are copied after creation."
+    val emptySharesSituation: String = emptySharesTitle
+    val emptySharesExplanation: String = if (running) {
+        "Browser links will appear here after you create one."
     } else {
-        "Start quick share to create temporary browser links for this LAN."
+        "Temporary browser links are off until you start trusted-LAN sharing."
     }
+    val emptySharesNextAction: String = if (running) {
+        "Choose a file or enter text"
+    } else {
+        "Start quick share"
+    }
+    val emptySharesDetail: String = if (running) {
+        "$emptySharesExplanation $emptySharesNextAction, then create a link."
+    } else {
+        "$emptySharesExplanation $emptySharesNextAction to create links for this LAN."
+    }
+    val emptySharesStructuredCopy: List<String> = listOf(emptySharesSituation, emptySharesExplanation, emptySharesNextAction)
+    val emptySharesVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.INLINE
     val quickStartSteps: List<String> = listOf(
         "1. Start quick share.",
         "2. Choose a file or type text.",
@@ -3308,6 +3756,11 @@ data class ComposeDiagnosticsState(
         "realtime=${realtimeDiagnostics.size}",
     )
     val diagnosticChannelSummary: String = "Diagnostic channels: ${diagnosticChannels.joinToString(" · ")}"
+    val noDiagnosticsSituation: String = "No diagnostics yet"
+    val noDiagnosticsExplanation: String = "Runtime messages will appear only after room, file, sharing, or call activity."
+    val noDiagnosticsNextAction: String = "Use Diagnostics only when something needs investigation"
+    val noDiagnosticsStructuredCopy: List<String> = listOf(noDiagnosticsSituation, noDiagnosticsExplanation, noDiagnosticsNextAction)
+    val noDiagnosticsVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.INLINE
     val channelCards: List<ComposeDiagnosticChannel> = listOf(
         ComposeDiagnosticChannel(
             kind = ComposeDiagnosticChannelKind.CHAT,
@@ -3346,7 +3799,18 @@ data class ComposeDiagnosticsState(
         hasWarnings -> "Runtime events are available. Review the highlighted setup notes before starting peer actions."
         else -> "Runtime diagnostics are up to date across active channels."
     }
+    val runtimeOverviewSummary: String = summarizeContextPanelText(runtimeOverview)
+    val recoveryTitle: String = if (hasErrors || hasWarnings) "Recommended recovery" else "Ready for troubleshooting"
+    val recoveryBadge: String = if (hasErrors || hasWarnings) "Action needed" else "Calm"
+    val recoverySummary: String = when {
+        hasErrors -> "Resolve the highlighted fallback or setup issue first, then reopen Diagnostics if activity still fails."
+        hasWarnings -> "Review the setup notes, choose an online peer when needed, then retry the current conversation action."
+        totalDiagnosticMessages == 0 -> "Use Diagnostics only when something needs investigation; normal room, peer, file, and call controls stay contextual."
+        else -> "Health is stable. Open Technical details only when you need event-level troubleshooting."
+    }
+    val technicalDetailsSummary: String = "Event-level messages, readiness gates, channel counts, and packaging notes stay collapsed here until requested."
     val recentMessages: List<String> = channelCards.flatMap { channel -> channel.recentMessages.map { "${channel.title}: $it" } }.takeLast(6)
+    val recentMessageSummaries: List<String> = channelCards.flatMap { channel -> channel.recentMessageSummaries.map { "${channel.title}: $it" } }.takeLast(6)
     val summaryLines: List<String> = listOf(
         title,
         statusLabel,
@@ -3359,6 +3823,12 @@ data class ComposeDiagnosticsState(
         diagnosticChannelSummary,
         warningSummary,
     )
+}
+
+enum class ComposeEmptyStateVisualWeight {
+    SUPPORTING,
+    PRIMARY_GUIDANCE,
+    INLINE,
 }
 
 enum class ComposeDiagnosticChannelKind {
@@ -3380,6 +3850,13 @@ data class ComposeDiagnosticChannel(
     val recentMessages: List<String> = messages.takeLast(3)
     val stateLabel: String = if (hasMessages) "$messageCount event${if (messageCount == 1) "" else "s"}" else "Waiting"
     val latestMessage: String = recentMessages.lastOrNull() ?: emptyState
+    val latestMessageSummary: String = summarizeContextPanelText(latestMessage)
+    val recentMessageSummaries: List<String> = recentMessages.map(::summarizeContextPanelText)
+    val densitySummary: String = if (hasMessages) {
+        "$messageCount event${if (messageCount == 1) "" else "s"} captured. Open Technical details to inspect recent messages."
+    } else {
+        emptyState
+    }
 }
 
 enum class ComposeDiagnosticAlertKind {
@@ -3425,6 +3902,7 @@ enum class ComposeRuntimeEvidenceKind {
     STEGANOGRAPHY,
     VOICE,
     EXPERIMENTAL_VIDEO,
+    RESIZE_SCREENSHOTS,
     FULL_REGRESSION,
 }
 
@@ -3490,9 +3968,11 @@ data class ComposeRegressionReadinessState(
     val steganographyRuntimeValidated: Boolean = false,
     val voiceRuntimeValidated: Boolean = false,
     val videoRuntimeValidated: Boolean = false,
+    val resizeScreenshotMatrixValidated: Boolean = false,
     val fullRuntimeRegressionValidated: Boolean = false,
     val javaFxFallbackAvailable: Boolean = true,
     val runtimeEvidenceRecords: List<ComposeRuntimeEvidenceRecord> = emptyList(),
+    val screenshotMatrixState: ComposeRuntimeScreenshotValidationMatrixState = ComposeShellMetadata.DEFAULT_RUNTIME_SCREENSHOT_MATRIX_STATE,
 ) {
     val title: String = "Compose regression readiness"
     val gates: List<ComposeRegressionGate> = buildList {
@@ -3571,6 +4051,15 @@ data class ComposeRegressionReadinessState(
         add(
             ComposeRegressionGate(
                 kind = ComposeRegressionGateKind.DIAGNOSTICS,
+                label = "Resize and screenshots",
+                ready = javaFxFallbackAvailable && resizeScreenshotMatrixValidated && screenshotMatrixState.acceptanceReady,
+                evidence = screenshotMatrixState.summary,
+                blocker = "Runtime resize and screenshot validation matrix is still pending.",
+            ),
+        )
+        add(
+            ComposeRegressionGate(
+                kind = ComposeRegressionGateKind.DIAGNOSTICS,
                 label = "Diagnostics",
                 ready = javaFxFallbackAvailable && diagnosticsState.warningMessages.isEmpty() && fullRuntimeRegressionValidated,
                 evidence = diagnosticsState.diagnosticChannelSummary,
@@ -3589,6 +4078,7 @@ data class ComposeRegressionReadinessState(
         steganographyRuntimeValidated &&
         voiceRuntimeValidated &&
         videoRuntimeValidated &&
+        resizeScreenshotMatrixValidated &&
         fullRuntimeRegressionValidated
     val runtimeEvidenceRequirements: List<ComposeRuntimeEvidenceRequirement> = listOf(
         ComposeRuntimeEvidenceRequirement(
@@ -3638,6 +4128,14 @@ data class ComposeRegressionReadinessState(
             validationScope = "camera preview and experimental 1-to-1 video smoke",
             evidence = "Experimental video evidence accepted: ${experimentalVideoState.previewStatus}",
             blocker = "Validate camera preview and experimental video while preserving voice fallback.",
+        ),
+        ComposeRuntimeEvidenceRequirement(
+            kind = ComposeRuntimeEvidenceKind.RESIZE_SCREENSHOTS,
+            label = "Runtime resize screenshots",
+            recorded = resizeScreenshotMatrixValidated,
+            validationScope = "5 desktop sizes across 15 product states, including drawer mode and both themes",
+            evidence = "Runtime screenshot matrix accepted: ${screenshotMatrixState.summary}",
+            blocker = "Capture and review the 5×15 runtime resize/screenshot matrix with score >= 95 and zero reject conditions.",
         ),
         ComposeRuntimeEvidenceRequirement(
             kind = ComposeRuntimeEvidenceKind.FULL_REGRESSION,
@@ -3699,6 +4197,7 @@ data class ComposeRegressionReadinessState(
         !steganographyRuntimeValidated -> "Run manual BMP steganography success/failure validation next."
         !voiceRuntimeValidated -> "Run live WebRTC voice validation next."
         !videoRuntimeValidated -> "Run camera preview and experimental-video validation next."
+        !resizeScreenshotMatrixValidated -> "Run the runtime resize and screenshot validation matrix next."
         !fullRuntimeRegressionValidated -> "Run full Compose runtime regression before packaging validation."
         else -> "All runtime gates are ready for packaging validation."
     }

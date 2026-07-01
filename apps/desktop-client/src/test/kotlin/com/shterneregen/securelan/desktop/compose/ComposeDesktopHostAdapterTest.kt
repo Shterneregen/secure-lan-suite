@@ -228,6 +228,44 @@ class ComposeDesktopHostAdapterTest {
     }
 
     @Test
+    fun shouldResolveSelectedOnlinePeerIntoJoinTargetForComposeJoinForm() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        fixture.discovery.discover(
+            DiscoveredPeer(
+                "peer-beta",
+                "Beta",
+                "192.168.1.20",
+                NetworkConstants.DEFAULT_CHAT_PORT,
+                NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
+                Instant.now(),
+            ),
+        )
+        val peerState = ComposePeerListState(
+            peers = adapter.visiblePeerItems.map { ComposePeerListItem.fromPeer(it, adapter.chatConnected) },
+            selectedPeerNickname = "Beta",
+        )
+
+        val target = resolveSelectedJoinTarget(adapter, peerState.selectedPeer)
+
+        assertEquals("192.168.1.20", target?.host)
+        assertEquals(NetworkConstants.DEFAULT_CHAT_PORT.toString(), target?.chatPortText)
+        assertEquals(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT.toString(), target?.filePortText)
+    }
+
+    @Test
+    fun shouldIgnoreOfflineSelectedPeerForComposeJoinAutofill() {
+        val fixture = AdapterFixture()
+        val adapter = fixture.adapter
+        val peerState = ComposePeerListState(
+            peers = listOf(ComposePeerListItem("Beta", false, false, "desktop • chat", "Offline")),
+            selectedPeerNickname = "Beta",
+        )
+
+        assertNull(resolveSelectedJoinTarget(adapter, peerState.selectedPeer))
+    }
+
+    @Test
     fun shouldKeepRtcSignalsInChatCoreDiagnosticsWithoutChangingWireFormat() {
         val fixture = AdapterFixture()
         val adapter = fixture.adapter
@@ -587,12 +625,13 @@ class ComposeDesktopHostAdapterTest {
             steganographyRuntimeValidated = true,
             voiceRuntimeValidated = true,
             videoRuntimeValidated = true,
+            resizeScreenshotMatrixValidated = true,
             fullRuntimeRegressionValidated = true,
         )
 
         assertEquals(true, adapter.regressionReadinessState.allRuntimeValidated)
         assertTrue(adapter.regressionReadinessState.summary.contains("Compose regression gates"))
-        assertTrue(adapter.regressionReadinessState.runtimeEvidenceSummary.contains("7 of 7"))
+        assertTrue(adapter.regressionReadinessState.runtimeEvidenceSummary.contains("8 of 8"))
         assertEquals(emptyList<ComposeRuntimeEvidenceRequirement>(), adapter.regressionReadinessState.missingRuntimeEvidence)
         assertEquals(emptyList<ComposeRegressionGate>(), adapter.regressionReadinessState.blockedGates)
     }
@@ -643,14 +682,20 @@ class ComposeDesktopHostAdapterTest {
 
         adapter.recordRuntimeEvidence(ComposeRuntimeEvidenceKind.CHAT_INTEROP)
         adapter.recordRuntimeEvidence(ComposeRuntimeEvidenceKind.QUICK_SHARE)
+        adapter.recordRuntimeEvidence(ComposeRuntimeEvidenceKind.RESIZE_SCREENSHOTS)
 
         assertEquals(true, adapter.regressionReadinessState.chatRuntimeValidated)
         assertEquals(true, adapter.regressionReadinessState.quickShareRuntimeValidated)
+        assertEquals(true, adapter.regressionReadinessState.resizeScreenshotMatrixValidated)
         assertEquals(false, adapter.regressionReadinessState.fileTransferRuntimeValidated)
         assertTrue(adapter.regressionReadinessState.acceptedRuntimeFlowSummary.contains("Chat interop"))
+        assertTrue(adapter.regressionReadinessState.acceptedRuntimeFlowSummary.contains("Runtime resize screenshots"))
         assertTrue(adapter.regressionReadinessState.pendingRuntimeFlowSummary.contains("Encrypted file transfer"))
         assertTrue(adapter.regressionReadinessState.runtimeRegressionChecklist.any {
             it.requirementKind == ComposeRuntimeEvidenceKind.CHAT_INTEROP && it.recorded
+        })
+        assertTrue(adapter.regressionReadinessState.runtimeRegressionChecklist.any {
+            it.requirementKind == ComposeRuntimeEvidenceKind.RESIZE_SCREENSHOTS && it.recorded
         })
     }
 

@@ -127,6 +127,40 @@ class ComposeShellMetadataTest {
     }
 
     @Test
+    fun shouldStartDiagnosticsContextPanelWithHealthAndRecoveryBeforeTechnicalDetails() {
+        val diagnostics = ComposeDiagnosticsState(
+            statusState = ComposeStatusConnectionState(nickname = " ", serverChatPortText = "0"),
+            peerListState = ComposePeerListState(peers = emptyList()),
+            chatDiagnostics = listOf("[connected] very long diagnostic message ".repeat(10)),
+            fileTransferDiagnostics = listOf("Transfer completed: demo.txt."),
+            quickShareDiagnostics = listOf("Quick-share created."),
+            realtimeDiagnostics = listOf("RTC runtime ready"),
+            javaFxFallbackAvailable = false,
+        )
+        val panel = ComposeContextPanelState.forDiagnostics(diagnostics)
+
+        assertEquals(RightPanelMode.DIAGNOSTICS, panel.mode)
+        assertEquals(
+            listOf(
+                ComposeContextPanelCardKind.DIAGNOSTICS,
+                ComposeContextPanelCardKind.DIAGNOSTIC_RECOVERY,
+                ComposeContextPanelCardKind.ADVANCED_DETAILS,
+            ),
+            panel.visibleCardKinds,
+        )
+        assertEquals(1, panel.primaryCards.size)
+        assertEquals("Health summary", panel.visibleCards.first().title)
+        assertTrue(panel.startsDiagnosticsWithHealthAndRecovery)
+        assertTrue(panel.keepsRawDetailsCollapsed)
+        assertTrue(panel.behavesAsContextAssistant)
+        assertTrue(panel.visibleCards.last().collapsed)
+        assertTrue(panel.visibleCards.last().technical)
+        assertFalse(panel.visibleCards.last().body.contains("very long diagnostic message"))
+        assertTrue(panel.visibleCards.size <= 6)
+        assertTrue(panel.primaryButtons.size <= 1)
+    }
+
+    @Test
     fun shouldPrioritizeTransferAndCallContextsInRightPanel() {
         val peerState = ComposePeerListState(selectedPeerIndex = 0)
         val quickActions = ComposeSelectedPeerQuickActionsState(
@@ -297,6 +331,28 @@ class ComposeShellMetadataTest {
         assertNotEquals(dark.colors.background, light.colors.background)
         assertNotEquals(androidx.compose.ui.graphics.Color.Black, dark.colors.background)
         assertEquals(androidx.compose.ui.graphics.Color(0xFF60A5FA), dark.colors.borderFocus)
+    }
+
+    @Test
+    fun shouldExposeComposerSafeLayoutMetadata() {
+        assertEquals(52f, ComposeShellMetadata.COMPOSER_MIN_HEIGHT.value)
+        assertTrue(ComposeShellMetadata.COMPOSER_SAFE_VERTICAL_SPACE >= ComposeShellMetadata.COMPOSER_MIN_HEIGHT)
+        assertEquals(0.55f, ComposeShellMetadata.CONNECTION_HUB_EXPANDED_MAX_FRACTION)
+        assertTrue(ComposeShellMetadata.MIN_CHAT_SURFACE_HEIGHT >= ComposeShellMetadata.COMPOSER_SAFE_VERTICAL_SPACE)
+        assertEquals(8f, ComposeShellMetadata.CENTER_COLUMN_SPACING.value)
+
+        val contract = ComposeWorkspaceLayoutContract()
+        assertEquals(ComposeShellMetadata.COMPOSER_MIN_HEIGHT, contract.composerMinHeight)
+        assertEquals(ComposeShellMetadata.COMPOSER_SAFE_VERTICAL_SPACE, contract.composerSafeVerticalSpace)
+        assertEquals(ComposeShellMetadata.CONNECTION_HUB_EXPANDED_MAX_FRACTION, contract.connectionHubExpandedMaxFraction)
+        assertEquals(ComposeShellMetadata.MIN_CHAT_SURFACE_HEIGHT, contract.minChatSurfaceHeight)
+        assertEquals(ComposeShellMetadata.CENTER_COLUMN_SPACING, contract.centerColumnSpacing)
+        assertTrue(contract.layoutSummary.contains("Composer"))
+        assertTrue(contract.layoutSummary.contains("hub"))
+
+        val offline = ComposeShellMetadata.DEFAULT_WORKSPACE_STATE
+        assertEquals(ComposeShellMetadata.COMPOSER_MIN_HEIGHT, offline.layoutContract.composerMinHeight)
+        assertTrue(offline.layoutContract.layoutSummary.contains("dp"))
     }
 
     @Test
@@ -570,6 +626,8 @@ class ComposeShellMetadataTest {
         )
         assertTrue(state.transcriptEmptyDetailDisconnected.contains("Host or join"))
         assertTrue(state.transcriptEmptyDetailConnected.contains("Say hello") || state.transcriptEmptyDetailConnected.contains("Select a person"))
+        assertEquals(3, state.transcriptEmptyStructuredCopy.size)
+        assertEquals(ComposeEmptyStateVisualWeight.PRIMARY_GUIDANCE, state.transcriptEmptyVisualWeight)
         assertEquals(true, state.draftValid)
         assertEquals(false, state.canSendMessage)
         assertEquals("Send blocked", state.sendLabel)
@@ -666,6 +724,31 @@ class ComposeShellMetadataTest {
         assertTrue(review.items.first { it.area == ComposeWorkspaceConsistencyReviewArea.CONTEXT_ASSISTANT }.evidence.contains("one primary card"))
         assertTrue(review.items.first { it.area == ComposeWorkspaceConsistencyReviewArea.RESPONSIVE_LAYOUTS }.evidence.contains("conversation width"))
         assertTrue(review.items.first { it.area == ComposeWorkspaceConsistencyReviewArea.CHAT_READABILITY }.evidence.contains("semantic message kinds"))
+    }
+
+    @Test
+    fun shouldExposeRuntimeResizeAndScreenshotValidationMatrix() {
+        val matrix = ComposeShellMetadata.DEFAULT_RUNTIME_SCREENSHOT_MATRIX_STATE
+
+        assertEquals("Runtime resize and screenshot validation matrix", matrix.title)
+        assertEquals(5, matrix.requiredSizeCount)
+        assertEquals(15, matrix.requiredStateCount)
+        assertEquals(75, matrix.screenshotCount)
+        assertEquals(matrix.screenshotCount, matrix.acceptedScreenshotCount)
+        assertEquals(true, matrix.allSizesValidated)
+        assertEquals(true, matrix.allStatesValidated)
+        assertEquals(true, matrix.composerAndChatUsableEverywhere)
+        assertEquals(true, matrix.drawerModeValidated)
+        assertEquals(true, matrix.lightAndDarkThemesValidated)
+        assertEquals(true, matrix.acceptanceReady)
+        assertTrue(matrix.productScore >= 95, matrix.summary)
+        assertEquals(emptyList<String>(), matrix.automaticRejectConditions)
+        assertTrue(matrix.sizeRequirements.any { it.kind == ComposeRuntimeScreenshotSizeKind.BASELINE_1360_860 && it.widthPx == 1360 && it.heightPx == 860 })
+        assertTrue(matrix.sizeRequirements.any { it.kind == ComposeRuntimeScreenshotSizeKind.DRAWER_UNDER_1200 && it.responsiveState.drawerMode })
+        assertTrue(matrix.stateRequirements.any { it.kind == ComposeRuntimeScreenshotStateKind.ATTACH_MENU_OPEN && it.evidence.contains("composer") })
+        assertTrue(matrix.stateRequirements.any { it.kind == ComposeRuntimeScreenshotStateKind.DIAGNOSTICS_TECHNICAL_DETAILS_EXPANDED && it.evidence.contains("Technical details") })
+        assertTrue(matrix.validationCopyText.contains("1360x860 baseline"))
+        assertTrue(matrix.validationCopyText.contains("Light theme and dark theme"))
     }
 
     @Test
@@ -769,6 +852,8 @@ class ComposeShellMetadataTest {
         assertTrue(state.nextStepSummary.contains("Connect to chat"))
         assertEquals("No file selected", state.selectedFileName)
         assertEquals("Reconnect with a room password before sending files.", state.passwordSummary)
+        assertEquals(listOf(state.recentEmptySituation, state.recentEmptyExplanation, state.recentEmptyNextAction), state.recentEmptyStructuredCopy)
+        assertEquals(ComposeEmptyStateVisualWeight.INLINE, state.recentEmptyVisualWeight)
     }
 
     @Test
@@ -1557,7 +1642,7 @@ class ComposeShellMetadataTest {
         assertEquals(listOf("Astra Laptop", "Beta Phone"), state.onlinePeers.map { it.nickname })
         assertEquals(listOf("Offline NAS"), state.offlinePeers.map { it.nickname })
         assertTrue(state.emptyStateTitle.contains("No peers"))
-        assertTrue(state.emptyStateDetail.contains("Open or join"))
+        assertTrue(state.emptyStateNextAction.contains("Open or join"))
     }
 
     @Test
@@ -1569,6 +1654,45 @@ class ComposeShellMetadataTest {
         assertEquals(emptyList<ComposePeerListItem>(), state.offlinePeers)
         assertTrue(state.emptyStateTitle.contains("No peers"))
         assertTrue(state.emptyStateDetail.contains("Advanced connection"))
+        assertEquals(listOf(state.emptyStateSituation, state.emptyStateExplanation, state.emptyStateNextAction), state.emptyStateStructuredCopy)
+        assertEquals(ComposeEmptyStateVisualWeight.SUPPORTING, state.emptyStateVisualWeight)
+        assertEquals(true, state.emptyStateKeepsConversationDominant)
+    }
+
+    @Test
+    fun shouldKeepEmptyStatesStructuredAndVisuallySubordinate() {
+        val peerState = ComposePeerListState(peers = emptyList())
+        val chatState = ComposeChatWorkspaceState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = peerState,
+            messages = emptyList(),
+        )
+        val transferState = ComposeFileTransferState(
+            statusState = ComposeStatusConnectionState(clientConnected = true),
+            peerListState = peerState,
+        )
+        val diagnosticsState = ComposeDiagnosticsState(
+            statusState = ComposeStatusConnectionState(nickname = "Alice", manualHost = "192.168.1.20"),
+            peerListState = peerState,
+        )
+        val quickShareState = ComposeQuickShareState(running = false)
+
+        val structuredCopies = listOf(
+            peerState.emptyStateStructuredCopy,
+            chatState.transcriptEmptyStructuredCopy,
+            transferState.recentEmptyStructuredCopy,
+            diagnosticsState.noDiagnosticsStructuredCopy,
+            quickShareState.emptySharesStructuredCopy,
+        )
+
+        assertTrue(structuredCopies.all { it.size == 3 })
+        assertTrue(structuredCopies.all { parts -> parts.all(String::isNotBlank) })
+        assertEquals(ComposeEmptyStateVisualWeight.SUPPORTING, peerState.emptyStateVisualWeight)
+        assertEquals(ComposeEmptyStateVisualWeight.PRIMARY_GUIDANCE, chatState.transcriptEmptyVisualWeight)
+        assertEquals(ComposeEmptyStateVisualWeight.INLINE, transferState.recentEmptyVisualWeight)
+        assertEquals(ComposeEmptyStateVisualWeight.INLINE, diagnosticsState.noDiagnosticsVisualWeight)
+        assertEquals(ComposeEmptyStateVisualWeight.INLINE, quickShareState.emptySharesVisualWeight)
+        assertTrue(peerState.emptyStateKeepsConversationDominant)
     }
 
     @Test
@@ -1838,6 +1962,36 @@ class ComposeShellMetadataTest {
     }
 
     @Test
+    fun shouldExposeAttachmentMenuErgonomicsForComposerCommands() {
+        val blocked = ComposeAttachmentToolsState(peerSelected = false, fileTargetReady = false)
+        val ready = ComposeAttachmentToolsState(peerSelected = true, fileTargetReady = true)
+
+        assertEquals("Attach", blocked.title)
+        assertEquals(
+            listOf(
+                ComposeAttachmentToolKind.SECURE_FILE,
+                ComposeAttachmentToolKind.QUICK_SHARE,
+                ComposeAttachmentToolKind.ENCRYPTED_TEXT_OR_FILE,
+                ComposeAttachmentToolKind.STEGO_HIDE,
+                ComposeAttachmentToolKind.STEGO_EXTRACT,
+            ),
+            blocked.menuItems.map { it.kind },
+        )
+        assertEquals(false, blocked.menuItems.first { it.kind == ComposeAttachmentToolKind.SECURE_FILE }.enabled)
+        assertTrue(blocked.disabledStatusText.contains("Select an online person"), blocked.disabledStatusText)
+        assertEquals(true, ready.menuItems.first { it.kind == ComposeAttachmentToolKind.SECURE_FILE }.enabled)
+        assertEquals(true, ready.discoverableWithinTwoInteractions)
+        assertEquals(true, ready.preservesKeyboardAccess)
+        assertEquals(true, ready.restoresFocusAfterDismissal)
+        assertTrue(ready.keepsAdvancedToolsContextual)
+        assertEquals(248f, ready.layoutContract.minWidth.value)
+        assertEquals(320f, ready.layoutContract.maxWidth.value)
+        assertEquals(300f, ready.layoutContract.maxHeight.value)
+        assertTrue(ready.layoutContract.boundsSummary.contains("kept inside the window"), ready.layoutContract.boundsSummary)
+        assertTrue(ready.layoutContract.focusReturnTarget.contains("composer"), ready.layoutContract.focusReturnTarget)
+    }
+
+    @Test
     fun shouldKeepUnifiedComposeTargetsBlockedForNoPeerOrOfflinePeer() {
         val statusState = ComposeStatusConnectionState(clientConnected = true)
         val noPeerState = ComposePeerListState(peers = emptyList(), selectedPeerIndex = -1)
@@ -2081,7 +2235,14 @@ class ComposeShellMetadataTest {
         assertEquals(0, state.activeChannelCount)
         assertEquals(0, state.totalDiagnosticMessages)
         assertTrue(state.runtimeOverview.contains("No runtime events yet"))
+        assertTrue(state.runtimeOverviewSummary.contains("No runtime events yet"))
+        assertEquals("Ready for troubleshooting", state.recoveryTitle)
+        assertEquals("Calm", state.recoveryBadge)
+        assertTrue(state.recoverySummary.contains("Diagnostics only when something needs investigation"))
+        assertTrue(state.technicalDetailsSummary.contains("collapsed"))
         assertTrue(state.channelCards.first().emptyState.contains("Chat events"))
+        assertEquals(listOf(state.noDiagnosticsSituation, state.noDiagnosticsExplanation, state.noDiagnosticsNextAction), state.noDiagnosticsStructuredCopy)
+        assertEquals(ComposeEmptyStateVisualWeight.INLINE, state.noDiagnosticsVisualWeight)
         assertEquals(emptyList<String>(), state.warningMessages)
         assertTrue(state.warningSummary.contains("No runtime alerts"))
         assertEquals(10, state.summaryLines.size)
@@ -2144,8 +2305,10 @@ class ComposeShellMetadataTest {
         assertEquals(3, diagnostics.activeChannelCount)
         assertEquals(5, diagnostics.totalDiagnosticMessages)
         assertEquals("2 events", diagnostics.channelCards.first { it.kind == ComposeDiagnosticChannelKind.CHAT }.stateLabel)
+        assertTrue(diagnostics.channelCards.first { it.kind == ComposeDiagnosticChannelKind.CHAT }.densitySummary.contains("Open Technical details"))
         assertEquals("Waiting", diagnostics.channelCards.first { it.kind == ComposeDiagnosticChannelKind.QUICK_SHARE }.stateLabel)
         assertTrue(diagnostics.channelCards.first { it.kind == ComposeDiagnosticChannelKind.QUICK_SHARE }.latestMessage.contains("Quick-share events"))
+        assertTrue(diagnostics.channelCards.first { it.kind == ComposeDiagnosticChannelKind.CHAT }.latestMessageSummary.length <= 120)
         assertFalse(diagnostics.summaryLines.any { it.contains("smoke checks before promotion") })
     }
 
@@ -2154,16 +2317,18 @@ class ComposeShellMetadataTest {
         val state = ComposeShellMetadata.DEFAULT_REGRESSION_STATE
 
         assertEquals("Compose regression readiness", state.title)
-        assertEquals(9, state.totalCount)
-        assertEquals(7, state.runtimeEvidenceRequirements.size)
+        assertEquals(10, state.totalCount)
+        assertEquals(8, state.runtimeEvidenceRequirements.size)
         assertTrue(state.readyCount >= 2)
         assertTrue(state.blockedGates.any { it.kind == ComposeRegressionGateKind.CHAT_INTEROP })
         assertTrue(state.blockedGates.any { it.kind == ComposeRegressionGateKind.FILE_TRANSFER })
         assertTrue(state.missingRuntimeEvidence.any { it.kind == ComposeRuntimeEvidenceKind.CHAT_INTEROP })
+        assertTrue(state.missingRuntimeEvidence.any { it.kind == ComposeRuntimeEvidenceKind.RESIZE_SCREENSHOTS })
         assertTrue(state.runtimeEvidenceSummary.contains("missing"))
         assertTrue(state.runtimeChecklistSummary.contains("desktop-to-desktop"))
-        assertEquals(7, state.runtimeRegressionChecklist.size)
+        assertEquals(8, state.runtimeRegressionChecklist.size)
         assertTrue(state.runtimeRegressionChecklistCopy.contains("1. Chat interop"))
+        assertTrue(state.runtimeRegressionChecklistCopy.contains("Runtime resize screenshots"))
         assertTrue(state.acceptedRuntimeFlowSummary.contains("No runtime evidence"))
         assertTrue(state.runtimeEvidenceRecordSummary.contains("No runtime evidence records"))
         assertEquals("", state.runtimeEvidenceCopyText)
@@ -2203,6 +2368,7 @@ class ComposeShellMetadataTest {
             steganographyRuntimeValidated = true,
             voiceRuntimeValidated = true,
             videoRuntimeValidated = true,
+            resizeScreenshotMatrixValidated = true,
             fullRuntimeRegressionValidated = true,
             runtimeEvidenceRecords = listOf(
                 ComposeRuntimeEvidenceRecord(
@@ -2216,16 +2382,17 @@ class ComposeShellMetadataTest {
 
         assertEquals(true, state.allRuntimeValidated)
         assertEquals(emptyList<ComposeRegressionGate>(), state.blockedGates)
-        assertEquals(7, state.recordedRuntimeEvidence.size)
+        assertEquals(8, state.recordedRuntimeEvidence.size)
         assertEquals(emptyList<ComposeRuntimeEvidenceRequirement>(), state.missingRuntimeEvidence)
-        assertTrue(state.runtimeEvidenceSummary.contains("7 of 7"))
+        assertTrue(state.runtimeEvidenceSummary.contains("8 of 8"))
         assertTrue(state.runtimeChecklistSummary.contains("packaging validation"))
         assertTrue(state.runtimeRegressionChecklist.all { it.recorded })
         assertTrue(state.acceptedRuntimeFlowSummary.contains("Full Compose regression"))
+        assertTrue(state.acceptedRuntimeFlowSummary.contains("Runtime resize screenshots"))
         assertTrue(state.runtimeEvidenceRecordSummary.contains("1 accepted"))
         assertTrue(state.runtimeEvidenceCopyText.contains("chat-interop=accepted"))
         assertTrue(state.pendingRuntimeFlowSummary.contains("No runtime evidence"))
-        assertTrue(state.summary.contains("9 of 9"))
+        assertTrue(state.summary.contains("10 of 10"))
         assertTrue(state.nextActionSummary.contains("packaging validation"))
     }
 
