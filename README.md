@@ -1,13 +1,13 @@
 # Secure LAN Suite
 
-Secure LAN Suite is a local-network secure communication suite with a Compose-first desktop client, a deprecated JavaFX desktop fallback, and an experimental Android client. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, Android, and future feature modules separated.
+Secure LAN Suite is a local-network secure communication suite with a Compose desktop client, a separately packaged deprecated JavaFX client, and an experimental Android client. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, Android, and future feature modules separated.
 
 ## Tech stack
 - Java 25
 - Kotlin 2.2.21 for the Android client and migrated JVM core modules
 - Gradle 9.1+ recommended
 - Compose Multiplatform 1.9.0 for the desktop Compose shell
-- JavaFX 25.0.2 as the deprecated packaged desktop fallback until explicit Compose promotion/removal
+- JavaFX 25.0.2 for the separately packaged deprecated desktop fallback
 - Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3 for the experimental Android client
 - `webrtc-java` 0.14.0 for realtime data, voice, and experimental video transport
 - `jpackage` for native application images and installers
@@ -16,7 +16,8 @@ Secure LAN Suite is a local-network secure communication suite with a Compose-fi
 ## Project structure
 
 ### Applications
-- `apps/desktop-client` — Compose-first desktop client, deprecated JavaFX fallback, and application packaging tasks
+- `apps/desktop-client` — primary Compose desktop client and its packaging tasks
+- `apps/javafx-client` — deprecated JavaFX desktop fallback and its packaging tasks
 - `apps/android-client` — experimental native Android client for LAN discovery, secure chat, and encrypted file transfer interoperability with the desktop client
 
 ### Modules
@@ -61,7 +62,7 @@ Secure LAN Suite is a local-network secure communication suite with a Compose-fi
   - actions, media status, transfers, and advanced tools on the right
 
 ### Current UI layout
-The desktop client uses a **messenger-style workspace**. New desktop UI/UX work targets the Compose UI. The JavaFX UI is deprecated and remains only for critical fixes, packaging continuity, and rollback until a separate accepted removal or Compose-promotion task.
+The primary desktop client uses a **messenger-style Compose workspace**. The JavaFX UI is isolated in `apps/javafx-client` and remains only for critical fixes and rollback.
 
 - **Top status bar** — compact colored indicators for server, connection, selected peer, voice state, and file transfers
 - **Header** — local profile/hosting controls and manual connection fallback
@@ -122,7 +123,7 @@ Development, build, run, smoke-test, and packaging details are intentionally kep
 - payloads are embedded into color-channel least-significant bits with a compact SecureLanSuite header containing magic, version, flags, content type, and payload length
 - service APIs support binary payloads, UTF-8 text convenience methods, and password-based encrypt-then-hide workflows through `crypto-core`
 - the desktop client exposes a Steganography panel in the Actions column for selecting PNG/BMP/JPG/JPEG images, inspecting capacity, hiding text, extracting text, and using optional password encryption; non-BMP cover images are converted to BMP output before embedding
-- no JavaFX code is present in `stego-core`; UI integration stays in `apps/desktop-client`
+- no JavaFX code is present in `stego-core`; Compose integration stays in `apps/desktop-client`, while the deprecated JavaFX integration stays in `apps/javafx-client`
 
 ## Current limitations
 - `common-net` still contains only the shared network baseline; richer reusable transport abstractions are not finished

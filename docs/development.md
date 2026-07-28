@@ -43,7 +43,7 @@ Build the whole project:
 ./gradlew clean build
 ```
 
-Run the desktop client. The standard task still launches the deprecated JavaFX fallback while Compose remains on its dedicated task until explicit launcher promotion:
+Run the primary Compose desktop client:
 
 ```bash
 ./gradlew :apps:desktop-client:run
@@ -56,13 +56,19 @@ On Windows, use `gradlew.bat`:
 .\gradlew.bat :apps:desktop-client:run
 ```
 
-Run the Compose desktop shell for new UI/UX work:
+The previous Compose-specific task remains as a compatibility alias:
 
 ```powershell
 .\gradlew.bat :apps:desktop-client:runComposeShell
 ```
 
-New desktop UI/UX improvements should target Compose. JavaFX is deprecated and should receive only critical fixes needed to protect users before final removal or Compose promotion.
+Run the deprecated JavaFX fallback from its own module:
+
+```powershell
+.\gradlew.bat :apps:javafx-client:run
+```
+
+New desktop UI/UX improvements should target Compose. JavaFX is deprecated and should receive only critical fixes needed to protect users before final removal.
 
 ## Android client build
 
@@ -82,7 +88,7 @@ Detailed Android SDK setup, release signing, APK verification, install, troubles
 
 ## Desktop workflow smoke test
 
-Use the Compose shell for Phase 11 UI/UX validation. The JavaFX launcher is still available only as the deprecated fallback and packaging baseline.
+Use `apps/desktop-client` for Compose UI/UX validation. The JavaFX launcher is available separately through `apps/javafx-client`.
 
 1. Enter a nickname and shared room password.
 2. Click **Open room** to host locally, or wait for discovered peers in the left column.
@@ -130,11 +136,11 @@ Safety constraints:
 
 ## Desktop packaging
 
-All desktop packaging tasks live in `apps/desktop-client`.
+Each desktop application owns its packaging tasks: Compose tasks live in `apps/desktop-client`, and deprecated JavaFX tasks live in `apps/javafx-client`.
 
 ### Portable build
 
-Build the deprecated JavaFX fallback portable application image and ZIP archive:
+Build the primary Compose portable application image and ZIP archive:
 
 ```bash
 ./gradlew :apps:desktop-client:buildPortable
@@ -156,23 +162,23 @@ The intermediate application image is created under:
 
 This task uses `jpackage --type app-image`, so it does not require WiX.
 
-### Compose portable build
+### JavaFX fallback portable build
 
-Build the Compose desktop shell as a separate portable application image and ZIP archive. This is the target artifact for new desktop UI/UX validation, but it still does not change the packaged JavaFX launcher by itself:
+Build the deprecated JavaFX fallback as a separate portable application image and ZIP archive:
 
 ```powershell
-.\gradlew.bat :apps:desktop-client:buildComposePortable
+.\gradlew.bat :apps:javafx-client:buildPortable
 ```
 
 Example output:
 
-- `apps/desktop-client/build/distributions/SecureLanSuite-Compose-<version>-portable.zip`
+- `apps/javafx-client/build/distributions/SecureLanSuite-<version>-portable.zip`
 
-The intermediate Compose application image is created under:
+The intermediate JavaFX application image is created under:
 
-- `apps/desktop-client/build/compose-packaging/SecureLanSuiteCompose/`
+- `apps/javafx-client/build/packaging/SecureLanSuite/`
 
-This task also uses `jpackage --type app-image`, so it does not require WiX. It packages the Compose entrypoint without changing the existing JavaFX `buildPortable` task, JavaFX launcher, manifest main class, or JavaFX fallback packaging flow.
+This task also uses `jpackage --type app-image`, so it does not require WiX. `:apps:desktop-client:buildComposePortable` remains an alias for the primary Compose `buildPortable` task.
 
 ### Windows EXE installer
 
@@ -195,6 +201,12 @@ Output directory:
 Example output file:
 
 - `apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe`
+
+To build the deprecated JavaFX installer instead, use:
+
+```powershell
+.\gradlew.bat :apps:javafx-client:buildExe
+```
 
 Notes:
 

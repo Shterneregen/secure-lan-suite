@@ -7,18 +7,21 @@ import java.nio.file.StandardCopyOption
 
 plugins {
     id 'org.jetbrains.kotlin.jvm'
-    id 'org.jetbrains.kotlin.plugin.compose'
-    id 'org.jetbrains.compose'
     id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
 }
 
-def composeMainClass = 'com.shterneregen.securelan.desktop.compose.ComposeDesktopMainKt'
-
 application {
-    mainClass = composeMainClass
+    mainClass = 'com.shterneregen.securelan.desktop.Main'
     applicationDefaultJvmArgs = [
+            '--enable-native-access=javafx.graphics',
             '--enable-native-access=ALL-UNNAMED'
     ]
+}
+
+javafx {
+    version = '25.0.2'
+    modules = ['javafx.controls']
 }
 
 dependencies {
@@ -31,9 +34,6 @@ dependencies {
     implementation project(':modules:audio-core')
     implementation project(':modules:webrtc-core')
     implementation project(':modules:stego-core')
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
-    implementation compose.desktop.currentOs
-    implementation compose.materialIconsExtended
 }
 
 def appName = 'SecureLanSuite'
@@ -76,14 +76,6 @@ def prepareJpackageDirectory = {
                 StandardCopyOption.REPLACE_EXISTING
         )
     }
-}
-
-tasks.register('runComposeShell', JavaExec) {
-    group = 'application'
-    description = 'Run the Compose desktop client (compatibility alias for run).'
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = composeMainClass
-    jvmArgs = application.applicationDefaultJvmArgs
 }
 
 tasks.named('distTar') {
@@ -160,14 +152,8 @@ tasks.register('portableDistZip', Zip) {
 
 tasks.register('buildPortable') {
     group = 'distribution'
-    description = 'Build the portable ZIP distribution for the Compose desktop client.'
+    description = 'Build the portable ZIP distribution for the legacy JavaFX client.'
     dependsOn tasks.named('portableDistZip')
-}
-
-tasks.register('buildComposePortable') {
-    group = 'distribution'
-    description = 'Compatibility alias for buildPortable.'
-    dependsOn tasks.named('buildPortable')
 }
 
 def isWindows = System.getProperty('os.name').toLowerCase().contains('win')
@@ -224,6 +210,6 @@ tasks.register('createExe', Exec) {
 
 tasks.register('buildExe') {
     group = 'distribution'
-    description = 'Build the Windows EXE installer for the Compose desktop client.'
+    description = 'Build the Windows EXE installer for the legacy JavaFX client.'
     dependsOn tasks.named('createExe')
 }

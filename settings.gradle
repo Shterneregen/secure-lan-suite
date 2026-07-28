@@ -17,6 +17,7 @@ pluginManagement {
 rootProject.name = 'secure-lan-suite'
 
 include ':apps:desktop-client'
+include ':apps:javafx-client'
 include ':apps:android-client'
 
 include ':modules:common-model'
@@ -30,6 +31,7 @@ include ':modules:webcam-core'
 include ':modules:stego-core'
 
 project(':apps:desktop-client').projectDir = file('apps/desktop-client')
+project(':apps:javafx-client').projectDir = file('apps/javafx-client')
 project(':apps:android-client').projectDir = file('apps/android-client')
 
 project(':modules:common-model').projectDir = file('modules/common-model')
