@@ -3,7 +3,7 @@ package com.shterneregen.securelan.desktop.compose.ui.quickshare
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import com.shterneregen.securelan.desktop.compose.ComposeQuickShareState
+import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
 
 @Composable
 internal fun QuickShareLinksPanel(

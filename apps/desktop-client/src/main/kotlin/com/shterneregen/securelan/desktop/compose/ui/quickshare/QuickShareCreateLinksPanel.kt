@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeQuickShareState
+import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
@@ -41,7 +41,6 @@ private enum class LinkCreationMode { FILE, TEXT }
 internal fun QuickShareCreateLinksPanel(
     state: ComposeQuickShareState,
     filePath: String,
-    onFilePathChange: (String) -> Unit,
     onChooseFile: () -> Unit,
     onCreateFile: () -> Unit,
     textDraft: String,

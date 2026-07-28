@@ -12,9 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.ui.MediaDeviceChoice
-import com.shterneregen.securelan.desktop.compose.ui.components.CalmFocusButton
 
 @Composable
 internal fun DeviceChoiceDropdown(

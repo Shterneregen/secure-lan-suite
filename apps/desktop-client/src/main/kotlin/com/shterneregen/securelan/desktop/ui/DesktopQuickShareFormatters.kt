@@ -24,14 +24,14 @@ object DesktopQuickShareFormatters {
     }
 
     @JvmStatic
-    fun formatServerStatus(port: Int): String = "Quick share is active"
+    fun formatServerStatus(): String = "Quick share is active"
 
     @JvmStatic
     fun formatLandingValue(landingUrls: List<String>): String =
         if (landingUrls.isEmpty()) "No local address detected. Check your network or firewall." else "Index: ${landingUrls.joinToString(" • ")}"
 
     @JvmStatic
-    fun formatServerStartedMessage(port: Int): String =
+    fun formatServerStartedMessage(): String =
         "[system] Quick Share is active. Temporary LAN links are available on this device."
 
     @JvmStatic
@@ -82,7 +82,7 @@ object DesktopQuickShareFormatters {
             val scheme = uri.scheme
             val authority = uri.authority
             if (scheme.isNullOrBlank() || authority.isNullOrBlank()) null else "$scheme://$authority/"
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
@@ -92,7 +92,7 @@ object DesktopQuickShareFormatters {
             val path = uri.path ?: ""
             val query = uri.query?.let { "?$it" } ?: ""
             newBase.removeSuffix("/") + path + query
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             originalUrl
         }
 

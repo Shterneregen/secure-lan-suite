@@ -6,8 +6,6 @@ public data class ComposePeerListState(
     val peers: List<ComposePeerListItem> = ComposePeerListItem.defaultPreviewItems(clientConnected = false),
     val selectedPeerIndex: Int = 0,
     val selectedPeerNickname: String? = null,
-    val selectedTargetKind: ComposePeerTargetCommandKind? = null,
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Contacts / Peers"
     val hint: String = "Discovered peers appear here. Select one to chat, send files, or call."
@@ -58,18 +56,7 @@ public data class ComposePeerListState(
     val noPeerActionTitle: String = "Choose a peer to start"
     val noPeerActionDetail: String =
         "Select an online peer to start messaging, files, or calls. Other tools stay hidden until you need them."
-    val actionSummary: String = selectedTargetKind?.let { kind ->
-        selectedPeer?.let { "${kind.displayName} target selected for ${it.nickname}. Available once the connection is ready." }
-    } ?: selectedPeer?.actionSummary ?: "Select an online peer to send messages, files, or start calls."
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX peer list remains production fallback" else "JavaFX peer list fallback unavailable"
     val targetActions: ComposePeerTargetActions = ComposePeerTargetActions.from(selectedPeer)
-    val targetControlPlan: ComposePeerTargetControlPlan =
-        ComposePeerTargetControlPlan.from(selectedPeer, targetActions, javaFxFallbackAvailable, selectedTargetKind)
-    val peerListLifecyclePlan: ComposePeerListLifecyclePlan = ComposePeerListLifecyclePlan.from(this)
-    val peerListTransitionPlan: ComposePeerListTransitionPlan =
-        ComposePeerListTransitionPlan.from(this, peerListLifecyclePlan, targetControlPlan)
-    val peerListAdapterEventRouting: ComposePeerListAdapterEventRouting = ComposePeerListAdapterEventRouting.from(this)
 
     fun selectionKeyFor(index: Int): String? = visiblePeers.getOrNull(index)?.nickname
 

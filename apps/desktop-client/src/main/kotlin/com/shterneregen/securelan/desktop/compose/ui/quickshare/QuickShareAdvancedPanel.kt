@@ -17,7 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeQuickShareState
+import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField

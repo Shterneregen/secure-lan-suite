@@ -6,7 +6,6 @@ import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnec
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerTargetCommandKind
 import com.shterneregen.securelan.desktop.compose.state.shell.*
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyMode
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
@@ -30,7 +29,6 @@ internal fun LiveComposeShellContent(
     val inMessengerMode = hostAdapter.statusState.localServerRunning || hostAdapter.statusState.clientConnected
 
     var selectedPeerKey by remember { mutableStateOf<String?>(null) }
-    var selectedTargetKind by remember { mutableStateOf<ComposePeerTargetCommandKind?>(null) }
     var selectedJoinTarget by remember { mutableStateOf<ComposeConnectionJoinTarget?>(null) }
     val peers =
         hostAdapter.visiblePeerItems.map { peer -> ComposePeerListItem.fromPeer(peer, hostAdapter.chatConnected) }
@@ -43,11 +41,9 @@ internal fun LiveComposeShellContent(
         peers = peers,
         selectedPeerIndex = defaultSelectedPeerIndex,
         selectedPeerNickname = selectedPeerKey,
-        selectedTargetKind = selectedTargetKind,
     )
     if (selectedPeerKey != null && peerState.selectedPeer == null) {
         selectedPeerKey = null
-        selectedTargetKind = null
     }
     LaunchedEffect(peerState.selectedPeer) {
         selectedJoinTarget = resolveSelectedJoinTarget(hostAdapter, peerState.selectedPeer)
@@ -102,7 +98,6 @@ internal fun LiveComposeShellContent(
     ) {
         val rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title
         MainWorkspaceRow(
-            workspaceState = workspaceState,
             layout = ComposeShellMetadata.DEFAULT_WORKSPACE_LAYOUT,
             peersTooltip = peerState.hint,
             rightColumnTitle = rightColumnTitle,
@@ -116,16 +111,9 @@ internal fun LiveComposeShellContent(
             },
             peersColumn = {
                 LivePeerListCard(
-                    hostAdapter = hostAdapter,
                     peerState = peerState,
                     onPeerSelected = { key ->
                         selectedPeerKey = key
-                        selectedTargetKind = null
-                    },
-                    onTargetKindSelected = { kind -> selectedTargetKind = kind },
-                    onManualPeersCleared = {
-                        selectedPeerKey = null
-                        selectedTargetKind = null
                     },
                 )
             },

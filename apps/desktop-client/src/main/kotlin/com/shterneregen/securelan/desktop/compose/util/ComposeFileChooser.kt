@@ -24,7 +24,7 @@ internal fun openComposeFileChooser(
 ): Path? {
     val dialog = createNativeFileDialog(title, save).apply {
         filter?.let { chooserFilter ->
-            filenameFilter = java.io.FilenameFilter { _, name -> chooserFilter.accepts(name) }
+            filenameFilter = FilenameFilter { _, name -> chooserFilter.accepts(name) }
         }
         initialFile?.toAbsolutePath()?.normalize()?.let { path ->
             directory = path.parent?.toString()

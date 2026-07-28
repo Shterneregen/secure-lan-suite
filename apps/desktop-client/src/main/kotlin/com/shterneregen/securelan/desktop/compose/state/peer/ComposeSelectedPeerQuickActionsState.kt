@@ -1,18 +1,12 @@
 package com.shterneregen.securelan.desktop.compose.state.peer
 
-/**
- * JavaFX → Compose mapping for the Actions-column selected-peer header:
- * selectedPeerTitleValue / selectedPeerMetaValue become deterministic selected-peer summary copy;
- * Attach / Voice call / Video call / End call become quick-action readiness flags;
- * JavaFX disabled states become explicit enabled flags plus blocked reasons.
- */
+/** Presentation state for the selected-peer summary and quick actions. */
 public data class ComposeSelectedPeerQuickActionsState(
     val peerListState: ComposePeerListState,
     val clientConnected: Boolean,
     val voiceRuntimeReady: Boolean = true,
     val videoRuntimeReady: Boolean = true,
     val hangUpReady: Boolean = false,
-    val javaFxFallbackAvailable: Boolean = peerListState.javaFxFallbackAvailable,
 ) {
     val title: String = peerListState.selectedPeerTitle
     val meta: String = peerListState.selectedPeerMeta
@@ -22,10 +16,10 @@ public data class ComposeSelectedPeerQuickActionsState(
     val voiceTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.voiceCapable
     val videoTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.videoCapable
     val realtimeTargetReady: Boolean = selectedPeer?.online == true && selectedPeer.realtimeCapable
-    val attachEnabled: Boolean = clientConnected && fileTargetReady && javaFxFallbackAvailable
-    val voiceEnabled: Boolean = clientConnected && voiceTargetReady && voiceRuntimeReady && javaFxFallbackAvailable
-    val videoEnabled: Boolean = clientConnected && videoTargetReady && videoRuntimeReady && javaFxFallbackAvailable
-    val hangUpEnabled: Boolean = hangUpReady && realtimeTargetReady && javaFxFallbackAvailable
+    val attachEnabled: Boolean = clientConnected && fileTargetReady
+    val voiceEnabled: Boolean = clientConnected && voiceTargetReady && voiceRuntimeReady
+    val videoEnabled: Boolean = clientConnected && videoTargetReady && videoRuntimeReady
+    val hangUpEnabled: Boolean = hangUpReady && realtimeTargetReady
     val attachLabel: String = if (attachEnabled) "Attach ready" else "Attach blocked"
     val voiceLabel: String = if (voiceEnabled) "Voice call ready" else "Voice call blocked"
     val videoLabel: String = if (videoEnabled) "Video call ready" else "Video call blocked"
@@ -73,9 +67,6 @@ public data class ComposeSelectedPeerQuickActionsState(
         }
         if (clientConnected && videoTargetReady && !videoRuntimeReady) {
             add("Video is not ready yet; wait before calling.")
-        }
-        if (!javaFxFallbackAvailable) {
-            add("JavaFX fallback is unavailable; keep live Compose quick actions disabled.")
         }
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {

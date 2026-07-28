@@ -5,9 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 
 @Composable
 internal fun FileTransferPreviewCard(state: ComposeFileTransferState) {

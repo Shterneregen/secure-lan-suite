@@ -18,7 +18,6 @@ public data class ComposeQuickShareState(
     val serverError: String? = null,
     val entries: List<QuickShareEntry> = emptyList(),
     val landingUrls: List<String> = emptyList(),
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Share by browser link"
     val subtitle: String = "Create temporary file or text links that people on this trusted LAN can open in a browser."
@@ -36,7 +35,7 @@ public data class ComposeQuickShareState(
     val hasText: Boolean = textDraft.trim().isNotEmpty()
     val activeEntries: List<QuickShareEntry> = entries.filter { it.active() }
     val inactiveEntries: List<QuickShareEntry> = entries.filterNot { it.active() }
-    val statusText: String = if (running && port != null) DesktopQuickShareFormatters.formatServerStatus(port) else "Quick share is stopped"
+    val statusText: String = if (running && port != null) DesktopQuickShareFormatters.formatServerStatus() else "Quick share is stopped"
     val statusDetail: String = if (running) {
         "Links are available until their time or access limit is reached."
     } else {
@@ -45,13 +44,13 @@ public data class ComposeQuickShareState(
     val landingText: String = DesktopQuickShareFormatters.formatLandingValue(landingUrls)
     val trustedLanWarning: String =
         "Trusted LAN only. These links have no login, so stop shares when everyone has downloaded them."
-    val canStartServer: Boolean = !running && port != null && javaFxFallbackAvailable
-    val canStopServer: Boolean = running && javaFxFallbackAvailable
-    val canCreateFileShare: Boolean = hasSelectedFile && expirationPolicyValid && accessPolicyValid && javaFxFallbackAvailable
-    val canCreateTextShare: Boolean = hasText && expirationPolicyValid && accessPolicyValid && javaFxFallbackAvailable
+    val canStartServer: Boolean = !running && port != null
+    val canStopServer: Boolean = running
+    val canCreateFileShare: Boolean = hasSelectedFile && expirationPolicyValid && accessPolicyValid
+    val canCreateTextShare: Boolean = hasText && expirationPolicyValid && accessPolicyValid
     val canCreateFileLinkNow: Boolean = canCreateFileShare && running
     val canCreateTextLinkNow: Boolean = canCreateTextShare && running
-    val canCopyIndex: Boolean = running && landingUrls.isNotEmpty() && javaFxFallbackAvailable
+    val canCopyIndex: Boolean = running && landingUrls.isNotEmpty()
     val shareRows: List<String> = entries.map { DesktopQuickShareFormatters.formatSnapshotMeta(it.snapshot()) }
     val activeShareCountLabel: String = when (activeEntries.size) {
         0 -> "No active links"
@@ -97,7 +96,6 @@ public data class ComposeQuickShareState(
         if (!expirationPolicyValid) add("Set expiration to at least 1 minute.")
         if (!accessPolicyValid) add("Set the download limit to at least 1.")
         serverError?.takeIf { it.isNotBlank() }?.let(::add)
-        if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; live quick-share actions stay disabled.")
     }.ifEmpty {
         listOf(policySentence)
     }.joinToString(" · ")

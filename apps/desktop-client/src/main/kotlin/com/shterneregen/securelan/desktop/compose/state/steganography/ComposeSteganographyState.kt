@@ -15,7 +15,6 @@ public data class ComposeSteganographyState(
     val capacity: BmpCapacity? = null,
     val extractedMessage: String = "",
     val statusText: String = "Choose a BMP cover or input image to start.",
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Steganography"
     val coverPath = coverPathText.trim()
@@ -34,16 +33,14 @@ public data class ComposeSteganographyState(
     val passwordRequiredForExtract: Boolean = encryptedExtract
     val passwordReady: Boolean = passwordDraft.isNotEmpty()
     val capacityText: String = capacity?.let(DesktopMainViewHelpers::formatStegoCapacity) ?: "Capacity unavailable until a BMP is inspected."
-    val canInspectCover: Boolean = hasCover && javaFxFallbackAvailable
+    val canInspectCover: Boolean = hasCover
     val canHideMessage: Boolean = hasCover && hasOutput && hasMessage && messageFitsCapacity &&
-        (!passwordRequiredForHide || passwordReady) && javaFxFallbackAvailable
-    val canExtractMessage: Boolean = hasInput && (!passwordRequiredForExtract || passwordReady) && javaFxFallbackAvailable
+        (!passwordRequiredForHide || passwordReady)
+    val canExtractMessage: Boolean = hasInput && (!passwordRequiredForExtract || passwordReady)
     val hideLabel: String = if (canHideMessage) "Hide message ready" else "Hide message blocked"
     val extractLabel: String = if (canExtractMessage) "Extract ready" else "Extract blocked"
     val extractedSummary: String = if (extractedMessage.isBlank()) "No extracted message yet." else "Extracted ${extractedMessage.length} characters."
     val extractedEmptyHint: String = "Choose a BMP input image and press Extract to reveal a hidden message."
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX steganography workspace remains production fallback" else "JavaFX steganography fallback unavailable"
     val blockedReasons: List<String> = buildList {
         if (!hasCover) add("Choose a cover image before hiding or inspecting capacity.")
         if (!hasOutput) add("Choose an output BMP path before hiding a message.")
@@ -51,7 +48,6 @@ public data class ComposeSteganographyState(
         if (!messageFitsCapacity) add("The message is larger than the selected image capacity.")
         if (!hasInput) add("Choose an input BMP before extracting a message.")
         if ((passwordRequiredForHide || passwordRequiredForExtract) && !passwordReady) add("Enter a password for encrypted steganography workflows.")
-        if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; keep live Compose steganography actions disabled.")
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
         "Steganography controls are ready for BMP hide/extract workflows."

@@ -11,7 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.ComposeShellMetadata
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionHubMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget

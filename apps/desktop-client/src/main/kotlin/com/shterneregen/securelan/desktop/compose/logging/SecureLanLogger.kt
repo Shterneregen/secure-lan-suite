@@ -42,7 +42,6 @@ object SecureLanLogger {
     }
 
     fun logConnection(message: String) = log("CONNECTION", message)
-    fun logChat(message: String) = log("CHAT", message)
     fun logTransfer(message: String) = log("TRANSFER", message)
     fun logQuickShare(message: String) = log("QUICKSHARE", message)
     fun logRealtime(message: String) = log("REALTIME", message)

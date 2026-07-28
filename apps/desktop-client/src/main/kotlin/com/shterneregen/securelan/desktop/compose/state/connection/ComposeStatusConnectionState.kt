@@ -17,7 +17,6 @@ data class ComposeStatusConnectionState(
     val discoveryStatus: String = "Room discovery not started",
     val localServerRunning: Boolean = false,
     val clientConnected: Boolean = false,
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val serverChatPort: Int? = parsePort(serverChatPortText)
     val serverFilePort: Int? = parsePort(serverFilePortText)
@@ -53,18 +52,7 @@ data class ComposeStatusConnectionState(
         clientConnected -> "Already connected to a room; disconnect first."
         else -> "Ready to open or join a room."
     }
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX fallback available" else "JavaFX fallback unavailable"
     val discoverableLabel: String = if (discoverable) "Discoverable" else "Hidden"
-    val actionState: ComposeConnectionActionState = ComposeConnectionActionState.from(this)
-    val runtimePlan: ComposeConnectionRuntimePlan = ComposeConnectionRuntimePlan.from(this)
-    val eventPreview: ComposeConnectionEventPreview = ComposeConnectionEventPreview.from(this)
-    val controlPlan: ComposeConnectionControlPlan = ComposeConnectionControlPlan.from(this)
-    val lifecyclePlan: ComposeConnectionLifecyclePlan = ComposeConnectionLifecyclePlan.from(this, runtimePlan)
-    val transitionPlan: ComposeConnectionTransitionPlan =
-        ComposeConnectionTransitionPlan.from(this, lifecyclePlan, controlPlan)
-    val adapterEventRouting: ComposeAdapterEventRouting =
-        ComposeAdapterEventRouting.from(this, lifecyclePlan, runtimePlan)
 
     private companion object {
         const val CLIENT_FILE_PORT_OFFSET: Int = 1000

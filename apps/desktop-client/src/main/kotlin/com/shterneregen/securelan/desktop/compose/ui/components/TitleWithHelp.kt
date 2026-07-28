@@ -20,7 +20,7 @@ internal fun TitleWithHelp(
     title: String,
     tooltip: String,
     modifier: Modifier = Modifier,
-    titleStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.subtitle2,
+    titleStyle: TextStyle = MaterialTheme.typography.subtitle2,
 ) {
     Row(
         modifier = modifier,

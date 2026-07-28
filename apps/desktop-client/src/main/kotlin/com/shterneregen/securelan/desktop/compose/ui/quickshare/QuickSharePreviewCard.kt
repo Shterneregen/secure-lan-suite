@@ -11,7 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeQuickShareState
+import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 
 @Composable

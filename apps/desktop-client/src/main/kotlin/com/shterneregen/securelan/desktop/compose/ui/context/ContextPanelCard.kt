@@ -15,8 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeContextPanelCard
-import com.shterneregen.securelan.desktop.compose.ComposeContextPanelCardKind
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCard
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons

@@ -10,7 +10,6 @@ public data class ComposeChatWorkspaceState(
     val peerListState: ComposePeerListState,
     val draftMessage: String = "Hello from Compose preview",
     val messages: List<ComposeChatMessage> = defaultPreviewMessages(),
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Shared room chat"
     val subtitle: String = peerListState.selectedPeer?.let { peer ->
@@ -46,8 +45,6 @@ public data class ComposeChatWorkspaceState(
     val draftValid: Boolean = draftMessage.trim().isNotEmpty()
     val canSendMessage: Boolean = statusState.clientConnected && draftValid
     val sendLabel: String = if (canSendMessage) "Send ready" else "Send blocked"
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX chat workspace remains production fallback" else "JavaFX chat workspace fallback unavailable"
     val microinteractionChecklist: List<String> = listOf(
         "Hover highlights interactive rows without changing layout.",
         "Focus uses the design-system focus border and keeps keyboard navigation visible.",
@@ -61,9 +58,6 @@ public data class ComposeChatWorkspaceState(
         }
         if (!draftValid) {
             add("Type a non-empty message before sending.")
-        }
-        if (!javaFxFallbackAvailable) {
-            add("JavaFX fallback is unavailable; keep live Compose chat sending disabled.")
         }
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {

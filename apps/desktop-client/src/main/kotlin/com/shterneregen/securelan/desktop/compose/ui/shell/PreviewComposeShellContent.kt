@@ -35,7 +35,6 @@ internal fun PreviewComposeShellContent(
         onThemeToggle = onThemeToggle,
     ) {
         MainWorkspaceRow(
-            workspaceState = previewWorkspaceState,
             layout = ComposeShellMetadata.DEFAULT_WORKSPACE_LAYOUT,
             peersTooltip = previewPeerState.hint,
             rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,

@@ -17,9 +17,6 @@ import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTran
 object ComposeShellMetadata {
     const val WINDOW_TITLE: String = "SecureLanSuite Chat"
     const val APP_NAME: String = "SecureLanSuite"
-    const val STATUS_TEXT: String = "Compose Multiplatform shell is available. JavaFX remains the production fallback."
-    const val FALLBACK_TEXT: String =
-        "Use the standard desktop launcher for the stable JavaFX client while Compose screens are migrated. Compose now reuses the packaged app icon resource."
     val DEFAULT_WINDOW_WIDTH: Dp = 1360.dp
     val DEFAULT_WINDOW_HEIGHT: Dp = 860.dp
 

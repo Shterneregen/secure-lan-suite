@@ -7,8 +7,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ui.context.ContextPanelCard
-import com.shterneregen.securelan.desktop.compose.ui.context.ContextPanelSummary
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 

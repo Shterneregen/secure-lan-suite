@@ -16,7 +16,6 @@ public data class ComposeFileTransferState(
     val entries: List<TransferEntry> = emptyList(),
     val incomingPrompts: List<ComposeIncomingTransferPrompt> = emptyList(),
     val autoAcceptFiles: Boolean = false,
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Encrypted file transfer"
     val selectedPeer = peerListState.selectedPeer
@@ -26,7 +25,7 @@ public data class ComposeFileTransferState(
     val passwordReady: Boolean = sessionPassword.isNotEmpty()
     val sendTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.fileCapable
     val listenerReady: Boolean = statusState.resolvedLocalFilePort != null
-    val canSendSelectedFile: Boolean = sendTargetReady && hasSelectedFile && senderReady && passwordReady && javaFxFallbackAvailable
+    val canSendSelectedFile: Boolean = sendTargetReady && hasSelectedFile && senderReady && passwordReady
     val activeCount: Long = entries.count { it.active() }.toLong()
     val completedCount: Int = entries.count { it.status == "Completed" }
     val failedCount: Int = entries.count { it.status == "Failed" }
@@ -104,8 +103,6 @@ public data class ComposeFileTransferState(
     val senderSummary: String = if (senderReady) "Sending as ${senderId.trim()}" else "Reconnect with your name before sending files."
     val sendLabel: String = if (canSendSelectedFile) "Send file ready" else "Send file blocked"
     val receiveLabel: String = if (listenerReady) "Receive listener ready" else "Receive listener blocked"
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX transfer workspace remains production fallback" else "JavaFX transfer workspace fallback unavailable"
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) {
             add("Connect to chat before sending encrypted files.")
@@ -128,9 +125,6 @@ public data class ComposeFileTransferState(
         }
         if (!listenerReady) {
             add("Configure a valid local file-transfer listener port.")
-        }
-        if (!javaFxFallbackAvailable) {
-            add("JavaFX fallback is unavailable; keep live Compose file-transfer actions disabled.")
         }
     }
     val nextStepSummary: String = blockedReasons.firstOrNull() ?: "Ready to send encrypted file to $selectedPeerName."

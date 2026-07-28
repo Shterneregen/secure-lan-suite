@@ -37,22 +37,18 @@ data class ComposeConnectionHubState(
     val password: String = statusState.roomPasswordPlaceholder
     val roomName: String = "Secure LAN room"
 
-    val primaryActionEnabled: Boolean = statusState.javaFxFallbackAvailable && when (mode) {
+    val primaryActionEnabled: Boolean = when (mode) {
         ComposeConnectionHubMode.HOST -> statusState.canOpenRoom
         ComposeConnectionHubMode.JOIN -> statusState.canConnect
     }
 
     val primaryActionLabel: String = when {
-        !statusState.javaFxFallbackAvailable -> when (mode) {
-            ComposeConnectionHubMode.HOST -> "Host Room unavailable"
-            ComposeConnectionHubMode.JOIN -> "Join Room unavailable"
-        }
         mode == ComposeConnectionHubMode.HOST -> "Start secure room"
         mode == ComposeConnectionHubMode.JOIN -> "Join Room"
         else -> "Join Room"
     }
 
-    val secondaryActionEnabled: Boolean = statusState.javaFxFallbackAvailable && when (mode) {
+    val secondaryActionEnabled: Boolean = when (mode) {
         ComposeConnectionHubMode.HOST -> statusState.localServerRunning
         ComposeConnectionHubMode.JOIN -> statusState.clientConnected
     }
@@ -84,7 +80,6 @@ data class ComposeConnectionHubState(
     }
 
     val blockedReason: String? = when {
-        !statusState.javaFxFallbackAvailable -> "JavaFX fallback is unavailable; keep live Compose connection actions disabled."
         !statusState.nicknameValid -> "Enter your name before opening or joining a room."
         mode == ComposeConnectionHubMode.HOST && statusState.serverChatPort == null -> "Room chat port must be a number from 1 to 65535."
         mode == ComposeConnectionHubMode.HOST && statusState.serverFilePort == null -> "Room file port must be a number from 1 to 65535."
@@ -102,7 +97,7 @@ data class ComposeConnectionHubState(
     }
 
     val primaryActionBlockedReason: String = blockedReason ?: "Action is not available in this state."
-    val discoverableToggleEnabled: Boolean = statusState.javaFxFallbackAvailable
+    val discoverableToggleEnabled: Boolean = true
     val discoverableLabel: String = statusState.discoverableLabel
     val showAdvancedSettings: Boolean = true
     val advancedSettingsTitle: String = "Advanced settings"

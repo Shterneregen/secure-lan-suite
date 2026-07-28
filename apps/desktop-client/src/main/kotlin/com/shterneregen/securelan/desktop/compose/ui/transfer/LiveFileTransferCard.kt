@@ -9,8 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.ComposeFileTransferState
-import com.shterneregen.securelan.desktop.compose.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.ui.components.SubtleContentSurface
 import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
 import java.nio.file.Path
@@ -64,7 +64,6 @@ internal fun LiveFileTransferCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
             SendEncryptedFilePanel(
                 transferState = transferState,
                 filePath = filePath,
-                onFilePathChange = { filePath = it },
                 onChooseFile = {
                     openComposeFileChooser("Choose file to send to ${transferState.selectedPeerName}")?.let {
                         filePath = it.toString()

@@ -12,12 +12,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceState
 
@@ -30,7 +28,6 @@ internal fun WorkspaceCenterColumn(
     chatSurface: @Composable () -> Unit,
     hubTooltip: String? = null,
 ) {
-    val tokens = LocalSecureLanDesignTokens.current
     val layoutContract = workspaceState.layoutContract
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val spacing = layoutContract.centerColumnSpacing

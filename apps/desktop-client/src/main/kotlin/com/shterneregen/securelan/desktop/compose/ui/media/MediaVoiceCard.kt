@@ -9,8 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.ComposeMediaVoiceState
-import com.shterneregen.securelan.desktop.compose.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceState
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.ui.components.DeviceChoiceDropdown

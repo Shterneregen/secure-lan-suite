@@ -5,14 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.Button
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeSteganographyState
+import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import java.nio.file.Path

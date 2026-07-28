@@ -8,7 +8,7 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 import org.jetbrains.skia.Image
 
-internal fun com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent.toPreviewImageBitmap(): ImageBitmap? {
+internal fun RtcVideoFrameEvent.toPreviewImageBitmap(): ImageBitmap? {
     return try {
         val image = BufferedImage(width(), height(), BufferedImage.TYPE_INT_ARGB)
         val bgra = bgraPixels()
@@ -25,7 +25,7 @@ internal fun com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent.toPrevie
         }
         val output = ByteArrayOutputStream()
         ImageIO.write(image, "png", output)
-        org.jetbrains.skia.Image.makeFromEncoded(output.toByteArray()).toComposeImageBitmap()
+        Image.makeFromEncoded(output.toByteArray()).toComposeImageBitmap()
     } catch (_: Exception) {
         null
     }

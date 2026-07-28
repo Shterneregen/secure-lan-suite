@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListSectionPresentation
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState

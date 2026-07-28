@@ -11,14 +11,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.*
+import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
+import com.shterneregen.securelan.desktop.compose.LocalReducedMotion
+import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatWorkspaceState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.state.shell.AttachmentPanelMode
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolKind
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyMode
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
@@ -100,7 +103,7 @@ internal fun LiveChatWorkspaceCard(
                 label = "ChatTranscriptContent",
             ) { hasContent ->
                 if (!hasContent) {
-                    ChatTranscriptEmptyState(chatState, hostAdapter.chatConnected)
+                    ChatTranscriptEmptyState(chatState)
                 } else {
                     val tokens = LocalSecureLanDesignTokens.current
                     LazyColumn(

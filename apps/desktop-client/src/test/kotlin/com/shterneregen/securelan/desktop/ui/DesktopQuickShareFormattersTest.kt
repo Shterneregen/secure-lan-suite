@@ -74,7 +74,7 @@ class DesktopQuickShareFormattersTest {
 
     @Test
     fun shouldFormatRunningServerStatus() {
-        assertEquals("Quick share is active", DesktopQuickShareFormatters.formatServerStatus(8090))
+        assertEquals("Quick share is active", DesktopQuickShareFormatters.formatServerStatus())
     }
 
     @Test
@@ -97,7 +97,7 @@ class DesktopQuickShareFormattersTest {
     fun shouldFormatQuickShareLifecycleMessages() {
         assertEquals(
             "[system] Quick Share is active. Temporary LAN links are available on this device.",
-            DesktopQuickShareFormatters.formatServerStartedMessage(8090),
+            DesktopQuickShareFormatters.formatServerStartedMessage(),
         )
         assertEquals(
             "[system] Quick Share is stopped. Temporary links are no longer available.",

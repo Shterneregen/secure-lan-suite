@@ -18,7 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeTransferRow
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeTransferRow
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.util.MicrointeractionTone

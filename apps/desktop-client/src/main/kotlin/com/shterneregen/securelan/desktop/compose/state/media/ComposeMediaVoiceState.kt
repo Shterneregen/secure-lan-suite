@@ -22,7 +22,6 @@ data class ComposeMediaVoiceState(
     val remoteAudioLevel: Double = 0.0,
     val microphoneTestStatus: String = "Not tested",
     val speakerTestStatus: String = "Not tested",
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Media devices and voice"
     val selectedPeer = peerListState.selectedPeer
@@ -64,18 +63,15 @@ data class ComposeMediaVoiceState(
     val remoteAudioLabel: String = DesktopRealtimeFormatters.formatAudioLevel(remoteAudioLevel > 0.01, false, selectedPeer?.nickname, remoteAudioLevel)
     val localAudioPercent: Int = (localAudioLevel.coerceIn(0.0, 1.0) * 100).toInt()
     val voiceTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.voiceCapable
-    val canRefreshDevices: Boolean = javaFxFallbackAvailable
-    val canTestMicrophone: Boolean = microphones.isNotEmpty() && javaFxFallbackAvailable
-    val canTestSpeaker: Boolean = outputDevices.isNotEmpty() && javaFxFallbackAvailable
-    val canStartVoice: Boolean = voiceTargetReady && javaFxFallbackAvailable
-    val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state) && javaFxFallbackAvailable
+    val canRefreshDevices: Boolean = true
+    val canTestMicrophone: Boolean = microphones.isNotEmpty()
+    val canTestSpeaker: Boolean = outputDevices.isNotEmpty()
+    val canStartVoice: Boolean = voiceTargetReady
+    val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state)
     val startVoiceLabel: String = if (canStartVoice) "Start voice call" else "Voice call blocked"
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX voice workspace remains production fallback" else "JavaFX voice fallback unavailable"
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) add("Connect to chat before starting a voice call.")
         if (selectedPeer == null) add("Select an online peer before starting voice.") else if (!selectedPeer.online) add("Selected peer is offline; voice must remain blocked.") else if (!selectedPeer.voiceCapable) add("Selected peer does not advertise voice support; voice must remain blocked.")
-        if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; keep live Compose voice actions disabled.")
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
         "Voice controls are ready."

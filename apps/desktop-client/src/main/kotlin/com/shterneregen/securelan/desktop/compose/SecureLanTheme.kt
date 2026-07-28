@@ -151,11 +151,6 @@ val LocalSecureLanDesignTokens = staticCompositionLocalOf { SecureLanThemeTokens
 val LocalReducedMotion = staticCompositionLocalOf { false }
 
 @Composable
-internal fun motionDuration(millis: Int): Int {
-    return if (LocalReducedMotion.current) 0 else millis
-}
-
-@Composable
 internal fun <T> motionTween(
     durationMillis: Int = LocalSecureLanDesignTokens.current.motion.durationDefault,
     delayMillis: Int = 0,

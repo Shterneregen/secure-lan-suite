@@ -9,7 +9,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.ui.components.SubtleContentSurface
 import com.shterneregen.securelan.desktop.compose.ui.components.TransferInfoChip
 

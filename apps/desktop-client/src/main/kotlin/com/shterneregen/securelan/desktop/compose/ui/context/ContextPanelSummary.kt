@@ -6,9 +6,9 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.style.TextOverflow
-import com.shterneregen.securelan.desktop.compose.ComposeContextPanelResponsiveMode
-import com.shterneregen.securelan.desktop.compose.ComposeContextPanelResponsiveState
-import com.shterneregen.securelan.desktop.compose.ComposeContextPanelState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveMode
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 
 @Composable

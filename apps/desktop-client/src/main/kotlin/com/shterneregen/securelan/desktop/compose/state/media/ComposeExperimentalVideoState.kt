@@ -25,7 +25,6 @@ data class ComposeExperimentalVideoState(
     val latestLocalVideoFrame: RtcVideoFrameEvent? = null,
     val latestRemoteVideoFrame: RtcVideoFrameEvent? = null,
     val cameraTestStatus: String = "Not tested",
-    val javaFxFallbackAvailable: Boolean = true,
 ) {
     val title: String = "Experimental camera and video"
     val selectedPeer = peerListState.selectedPeer
@@ -85,22 +84,19 @@ data class ComposeExperimentalVideoState(
         else -> "Choose a camera and start preview to check image and lighting."
     }
     val videoTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.videoCapable
-    val canRefreshCameras: Boolean = javaFxFallbackAvailable
-    val canTestCamera: Boolean = cameras.isNotEmpty() && javaFxFallbackAvailable
-    val canStartPreview: Boolean = cameras.isNotEmpty() && !previewRunning && javaFxFallbackAvailable
-    val canStopPreview: Boolean = previewRunning && javaFxFallbackAvailable
-    val canStartVideo: Boolean = videoTargetReady && javaFxFallbackAvailable
-    val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state) && javaFxFallbackAvailable
+    val canRefreshCameras: Boolean = true
+    val canTestCamera: Boolean = cameras.isNotEmpty()
+    val canStartPreview: Boolean = cameras.isNotEmpty() && !previewRunning
+    val canStopPreview: Boolean = previewRunning
+    val canStartVideo: Boolean = videoTargetReady
+    val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state)
     val startVideoLabel: String = if (canStartVideo) "Start video call" else "Video call blocked"
     val startPreviewLabel: String = if (canStartPreview) "Start camera preview" else "Preview unavailable"
     val stopPreviewLabel: String = if (canStopPreview) "Stop camera preview" else "Stop preview unavailable"
     val previewConfigurationLabel: String = "Self preview ${if (localPreviewEnabled) "on" else "off"} • remote preview ${if (remotePreviewEnabled) "on" else "off"}"
-    val fallbackLabel: String =
-        if (javaFxFallbackAvailable) "JavaFX experimental video workspace remains production fallback" else "JavaFX video fallback unavailable"
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) add("Connect to chat before starting experimental video.")
         if (selectedPeer == null) add("Select an online peer before starting video.") else if (!selectedPeer.online) add("Selected peer is offline; video must remain blocked.") else if (!selectedPeer.videoCapable) add("Selected peer does not advertise video support; video must remain blocked.")
-        if (!javaFxFallbackAvailable) add("JavaFX fallback is unavailable; keep live Compose video actions disabled.")
     }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
         "Experimental video controls are ready."

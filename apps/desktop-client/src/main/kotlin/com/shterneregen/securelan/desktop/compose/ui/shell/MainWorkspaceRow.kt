@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,12 +18,10 @@ import androidx.compose.ui.semantics.semantics
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceLayout
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 
 @Composable
 internal fun MainWorkspaceRow(
-    workspaceState: ComposeWorkspaceState,
     layout: ComposeWorkspaceLayout,
     peersTooltip: String? = null,
     chatTooltip: String? = null,

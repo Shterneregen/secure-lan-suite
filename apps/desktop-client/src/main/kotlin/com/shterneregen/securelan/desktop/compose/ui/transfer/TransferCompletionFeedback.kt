@@ -5,10 +5,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import com.shterneregen.securelan.desktop.compose.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.ui.components.MicroFeedbackPill
 import com.shterneregen.securelan.desktop.compose.util.MicrointeractionTone

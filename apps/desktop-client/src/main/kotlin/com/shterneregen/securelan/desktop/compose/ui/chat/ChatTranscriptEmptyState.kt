@@ -15,12 +15,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeShellMetadata
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatWorkspaceState
 
 @Composable
-internal fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState, connected: Boolean) {
+internal fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState) {
     val tokens = LocalSecureLanDesignTokens.current
     Box(modifier = Modifier.fillMaxSize().padding(tokens.spacing.md), contentAlignment = Alignment.Center) {
         Column(

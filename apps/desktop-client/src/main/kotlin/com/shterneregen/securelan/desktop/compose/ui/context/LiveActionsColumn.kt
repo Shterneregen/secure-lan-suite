@@ -8,7 +8,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.shterneregen.securelan.desktop.compose.*
+import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
+import com.shterneregen.securelan.desktop.compose.LocalReducedMotion
+import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.motionTween
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.ui.quickshare.LiveQuickShareCard
 import com.shterneregen.securelan.desktop.compose.ui.transfer.LiveFileTransferCard
 
@@ -20,7 +28,6 @@ internal fun LiveActionsColumn(
     expandedCardKind: ComposeContextPanelCardKind?,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
-    val reducedMotion = LocalReducedMotion.current
     val panelScrollState = rememberScrollState()
     Box(
         modifier = Modifier.fillMaxSize(),

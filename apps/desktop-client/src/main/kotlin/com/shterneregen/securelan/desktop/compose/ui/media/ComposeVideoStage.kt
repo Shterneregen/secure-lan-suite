@@ -12,9 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeExperimentalVideoState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimentalVideoState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
-import com.shterneregen.securelan.desktop.compose.ui.components.*
 import com.shterneregen.securelan.desktop.compose.util.toPreviewImageBitmap
 import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent
 

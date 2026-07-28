@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import com.shterneregen.securelan.desktop.compose.ComposeExperimentalVideoState
-import com.shterneregen.securelan.desktop.compose.ComposeMediaVoiceState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimentalVideoState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.ui.components.TransferInfoChip
 

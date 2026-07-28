@@ -16,7 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.ComposeIncomingTransferPrompt
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPrompt
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 

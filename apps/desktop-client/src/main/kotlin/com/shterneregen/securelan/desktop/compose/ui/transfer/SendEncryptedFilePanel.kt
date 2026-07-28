@@ -15,7 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.ComposeAdvancedPane
@@ -24,7 +24,6 @@ import com.shterneregen.securelan.desktop.compose.ui.components.ComposeAdvancedP
 internal fun SendEncryptedFilePanel(
     transferState: ComposeFileTransferState,
     filePath: String,
-    onFilePathChange: (String) -> Unit,
     onChooseFile: () -> Unit,
     onSend: () -> Unit,
     sendEnabled: Boolean,

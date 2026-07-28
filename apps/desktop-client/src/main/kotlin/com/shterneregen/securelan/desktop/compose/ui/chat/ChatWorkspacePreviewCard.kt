@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
@@ -25,7 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.ComposeShellMetadata
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.LocalReducedMotion
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
@@ -60,7 +59,7 @@ internal fun ChatWorkspacePreviewCard(initialState: ComposeChatWorkspaceState) {
                 label = "ChatTranscriptContentPreview",
             ) { hasContent ->
                 if (!hasContent) {
-                    ChatTranscriptEmptyState(previewState, connected = false)
+                    ChatTranscriptEmptyState(previewState)
                 } else {
                     val tokens = LocalSecureLanDesignTokens.current
                     LazyColumn(

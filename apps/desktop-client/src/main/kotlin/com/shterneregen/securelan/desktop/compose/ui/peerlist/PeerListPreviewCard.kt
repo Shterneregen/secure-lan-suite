@@ -3,7 +3,6 @@ package com.shterneregen.securelan.desktop.compose.ui.peerlist
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.LocalReducedMotion

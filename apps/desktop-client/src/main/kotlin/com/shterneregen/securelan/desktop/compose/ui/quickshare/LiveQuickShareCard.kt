@@ -15,8 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.ComposeQuickShareState
-import com.shterneregen.securelan.desktop.compose.ComposeShellMetadata
+import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.util.copyToSystemClipboard
 import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
@@ -75,7 +75,6 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
         QuickShareCreateLinksPanel(
             state = quickShareState,
             filePath = filePath,
-            onFilePathChange = { filePath = it },
             onChooseFile = {
                 openComposeFileChooser("Choose file to share by LAN browser link")?.let { filePath = it.toString() }
             },

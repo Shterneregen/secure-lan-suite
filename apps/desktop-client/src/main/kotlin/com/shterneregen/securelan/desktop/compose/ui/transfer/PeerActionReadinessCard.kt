@@ -2,8 +2,8 @@ package com.shterneregen.securelan.desktop.compose.ui.transfer
 
 import androidx.compose.runtime.Composable
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.ComposeFileTransferState
-import com.shterneregen.securelan.desktop.compose.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 
 @Composable
 internal fun PeerActionReadinessCard(peerState: ComposePeerListState, hostAdapter: ComposeDesktopHostAdapter) {

@@ -16,7 +16,6 @@ import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.compose.logging.SecureLanLogger
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventKind
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventRouting
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEvent
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEventKind
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
@@ -66,10 +65,7 @@ import javax.swing.SwingUtilities
  *
  * Wraps [ChatServerService], [ChatClientService], [PeerDiscoveryService], and optional [ChatEventPublisher]
  * to manage room hosting, manual connection, discovery visibility, peer snapshots, and shared-room chat.
- * Publishes [ComposeConnectionEvent] events that match the [ComposeAdapterEventRouting] contract
- * from [ComposeShellMetadata].
- *
- * JavaFX remains the production path; this adapter is used only by the Compose shell.
+ * Publishes [ComposeConnectionEvent] events consumed by the Compose shell.
  */
 class ComposeDesktopHostAdapter(
     private val chatServerService: ChatServerService,
@@ -126,7 +122,7 @@ class ComposeDesktopHostAdapter(
             .distinctBy { it.peerId }
             .sortedWith(Comparator.comparing(DiscoveredPeer::nickname, String.CASE_INSENSITIVE_ORDER))
 
-    /** Combined JavaFX-parity peer list: discovered/manual LAN targets plus connected chat participants. */
+    /** Combined peer list: discovered/manual LAN targets plus connected chat participants. */
     val visiblePeerItems: List<PeerPresence>
         get() {
             val merged = LinkedHashMap<String, PeerPresence>()
@@ -214,7 +210,7 @@ class ComposeDesktopHostAdapter(
     var quickShareLandingUrls: List<String> by mutableStateOf(quickShareService.landingUrls())
         private set
 
-    /** Local LAN addresses shown by the Compose profile card, matching the JavaFX startup info line. */
+    /** Local LAN addresses shown by the Compose profile card. */
     var localNetworkInfo: String by mutableStateOf(DesktopMainViewHelpers.localNetworkInfoMessage(emptyList()))
         private set
 
@@ -252,7 +248,7 @@ class ComposeDesktopHostAdapter(
                 appendChatTranscript(formatChatMessage(if (systemLikeMessage) "system" else sender, text))
             }
             is ChatMessageSentEvent -> {
-                // JavaFX shows the message through the normal chat receive flow; keep Compose parity and avoid duplicates.
+                // The message is already shown through the normal chat receive flow; avoid duplicates.
             }
             is ChatUserJoinedEvent -> {
                 // The server already broadcasts a "[system] <nickname> joined the chat" message,
@@ -562,7 +558,7 @@ class ComposeDesktopHostAdapter(
     /** Generate a default random nickname. */
     fun generateNickname(): String = randomNicknameService.generate()
 
-    /** Restart JavaFX-parity UDP discovery listener using the current hosting state. */
+    /** Restart the UDP discovery listener using the current hosting state. */
     fun refreshPeerDiscovery() {
         if (shuttingDown.get()) return
         startPeerDiscoveryListener()
@@ -702,7 +698,7 @@ class ComposeDesktopHostAdapter(
                 .substringBeforeLast(':')
                 .takeIf { it.isNotBlank() && it != remoteAddress }
 
-    /** Mirror the JavaFX auto-accept checkbox into the live file-transfer listener callback. */
+    /** Apply the auto-accept setting to the live file-transfer listener callback. */
     fun updateAutoAcceptIncomingFiles(enabled: Boolean) {
         if (autoAcceptIncomingFiles == enabled) {
             return
@@ -764,7 +760,7 @@ class ComposeDesktopHostAdapter(
             quickShareService.start(QuickShareServerConfig(port))
             quickShareError = null
             refreshQuickShareState()
-            appendChatTranscript(DesktopQuickShareFormatters.formatServerStartedMessage(quickShareService.port()))
+            appendChatTranscript(DesktopQuickShareFormatters.formatServerStartedMessage())
             SecureLanLogger.logQuickShare(DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(quickShareService.landingUrls()))
         } catch (e: Exception) {
             val message = "Quick-share start failed: ${e.message ?: "unknown error"}"
@@ -1418,7 +1414,7 @@ class ComposeDesktopHostAdapter(
         quickShareRunning = quickShareService.isRunning()
         quickShareLandingUrls = quickShareService.landingUrls()
         if (quickShareRunning) {
-            quickShareStatus = DesktopQuickShareFormatters.formatServerStatus(quickShareService.port())
+            quickShareStatus = DesktopQuickShareFormatters.formatServerStatus()
             quickShareLanding = DesktopQuickShareFormatters.formatLandingValue(quickShareLandingUrls)
         } else {
             quickShareStatus = "Quick share idle"

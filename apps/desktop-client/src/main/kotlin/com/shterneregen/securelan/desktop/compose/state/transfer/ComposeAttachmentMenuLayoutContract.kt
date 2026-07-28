@@ -1,7 +1,6 @@
 package com.shterneregen.securelan.desktop.compose.state.transfer
 
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 
 public data class ComposeAttachmentMenuLayoutContract(

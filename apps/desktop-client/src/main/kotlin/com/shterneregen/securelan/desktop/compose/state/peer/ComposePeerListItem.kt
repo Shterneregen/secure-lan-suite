@@ -8,15 +8,6 @@ import com.shterneregen.securelan.desktop.ui.DesktopPeerFormatters
 import com.shterneregen.securelan.desktop.ui.PeerPresence
 import java.time.Instant
 
-public val ComposePeerTargetCommandKind.displayName: String
-    get() = when (this) {
-        ComposePeerTargetCommandKind.CHAT_TARGET -> "Chat"
-        ComposePeerTargetCommandKind.FILE_TARGET -> "File"
-        ComposePeerTargetCommandKind.VOICE_TARGET -> "Voice"
-        ComposePeerTargetCommandKind.VIDEO_TARGET -> "Video"
-        ComposePeerTargetCommandKind.DATA_TARGET -> "Real-time data"
-    }
-
 public data class ComposePeerListItem(
     val nickname: String,
     val online: Boolean,

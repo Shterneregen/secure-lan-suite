@@ -19,7 +19,6 @@ object SecureLanIcons {
     val Video: ImageVector = Icons.Outlined.Videocam
     val File: ImageVector = Icons.Outlined.Description
     val Encryption: ImageVector = Icons.Outlined.Lock
-    val Lan: ImageVector = Icons.Outlined.Wifi
     val Diagnostics: ImageVector = Icons.Outlined.MonitorHeart
     val QuickShare: ImageVector = Icons.Outlined.Share
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
