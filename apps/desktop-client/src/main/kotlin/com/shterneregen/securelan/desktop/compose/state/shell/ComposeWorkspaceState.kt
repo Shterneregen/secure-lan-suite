@@ -47,8 +47,8 @@ data class ComposeWorkspaceState(
                 ComposeWorkspaceMode.HOSTING -> "Waiting for peers"
                 ComposeWorkspaceMode.CONNECTED -> "Shared room"
                 ComposeWorkspaceMode.PEER_SELECTED -> "Shared room"
-                ComposeWorkspaceMode.VOICE_CALL -> "Voice call"
-                ComposeWorkspaceMode.VIDEO_CALL -> "Video call"
+                ComposeWorkspaceMode.VOICE_CALL -> "Voice call with ${voiceState.selectedPeerName}"
+                ComposeWorkspaceMode.VIDEO_CALL -> "Video call with ${videoState.selectedPeerName}"
                 ComposeWorkspaceMode.FILE_TRANSFER -> "File transfer"
             }
             val subtitle = when (mode) {
@@ -56,8 +56,8 @@ data class ComposeWorkspaceState(
                 ComposeWorkspaceMode.HOSTING -> "Waiting for people to join this room."
                 ComposeWorkspaceMode.CONNECTED -> ""
                 ComposeWorkspaceMode.PEER_SELECTED -> "Ready to message, send files, or start a call."
-                ComposeWorkspaceMode.VOICE_CALL -> voiceState.callTransitionLabel
-                ComposeWorkspaceMode.VIDEO_CALL -> videoState.callTransitionLabel
+                ComposeWorkspaceMode.VOICE_CALL -> voiceState.voiceStatusText
+                ComposeWorkspaceMode.VIDEO_CALL -> videoState.stageBadge
                 ComposeWorkspaceMode.FILE_TRANSFER -> "Transfer in progress. Details are in the Context Assistant."
             }
             return ComposeWorkspaceState(mode, title, subtitle)

@@ -31,6 +31,7 @@ internal fun ContextPanelCard(
     var expanded by remember(card.kind, card.title, card.collapsed, initialExpanded) {
         mutableStateOf(initialExpanded ?: !card.collapsed)
     }
+    val canCollapse = card.collapsed || expandedContent != null
     val borderAlpha = if (card.primary) 0.40f else 0.16f
     Surface(
         modifier = Modifier.fillMaxWidth().wrapContentHeight(),
@@ -81,7 +82,7 @@ internal fun ContextPanelCard(
                         )
                     }
                 }
-                if (expandedContent != null) {
+                if (canCollapse) {
                     Text(
                         text = if (expanded) "Hide" else "Show",
                         modifier = Modifier.clickable { expanded = !expanded }
@@ -91,36 +92,38 @@ internal fun ContextPanelCard(
                     )
                 }
             }
-            Text(
-                card.body,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f),
-                maxLines = card.maxBodyLines.coerceAtLeast(1),
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!card.metadata.isNullOrBlank()) {
-                CapabilityChipRow(summary = card.metadata)
-            }
-            if (!card.primaryAction.isNullOrBlank()) {
-                Surface(
-                    shape = RoundedCornerShape(tokens.radius.small),
-                    border = BorderStroke(tokens.border.subtle, MaterialTheme.colors.primary.copy(alpha = 0.30f)),
-                    color = tokens.colors.surfaceLevel2.copy(alpha = 0.64f)
-                ) {
-                    Text(
-                        text = card.primaryAction,
-                        modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.primary,
-                    )
-                }
-            }
             AnimatedVisibility(
-                visible = expanded && expandedContent != null,
+                visible = expanded || !canCollapse,
                 enter = fadeIn(motionTween()) + expandVertically(motionTween(), expandFrom = Alignment.Top),
                 exit = shrinkVertically(motionTween(), shrinkTowards = Alignment.Top) + fadeOut(motionTween()),
             ) {
-                expandedContent?.invoke()
+                Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                    Text(
+                        card.body,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.74f),
+                        maxLines = card.maxBodyLines.coerceAtLeast(1),
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!card.metadata.isNullOrBlank()) {
+                        CapabilityChipRow(summary = card.metadata)
+                    }
+                    if (!card.primaryAction.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(tokens.radius.small),
+                            border = BorderStroke(tokens.border.subtle, MaterialTheme.colors.primary.copy(alpha = 0.30f)),
+                            color = tokens.colors.surfaceLevel2.copy(alpha = 0.64f)
+                        ) {
+                            Text(
+                                text = card.primaryAction,
+                                modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
+                                style = MaterialTheme.typography.caption,
+                                color = MaterialTheme.colors.primary,
+                            )
+                        }
+                    }
+                    expandedContent?.invoke()
+                }
             }
         }
     }
@@ -169,7 +172,6 @@ private fun contextPanelCardIcon(kind: ComposeContextPanelCardKind): ImageVector
     ComposeContextPanelCardKind.ROOM_STATUS -> SecureLanIcons.Room
     ComposeContextPanelCardKind.PEER_PROFILE -> SecureLanIcons.Person
     ComposeContextPanelCardKind.RECENT_FILES -> SecureLanIcons.History
-    ComposeContextPanelCardKind.SECURITY -> SecureLanIcons.Security
     ComposeContextPanelCardKind.QUICK_SHARE -> SecureLanIcons.QuickShare
     ComposeContextPanelCardKind.TRANSFER_DETAILS -> SecureLanIcons.File
     ComposeContextPanelCardKind.CALL_CONTROLS -> SecureLanIcons.Voice

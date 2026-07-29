@@ -15,6 +15,7 @@ import com.shterneregen.securelan.desktop.compose.ui.context.ChatCallActions
 import com.shterneregen.securelan.desktop.compose.ui.context.LiveActionsColumn
 import com.shterneregen.securelan.desktop.compose.ui.media.ComposeVideoStage
 import com.shterneregen.securelan.desktop.compose.ui.peerlist.LivePeerListCard
+import com.shterneregen.securelan.desktop.compose.ui.quickshare.LiveQuickShareDialog
 import com.shterneregen.securelan.desktop.compose.ui.settings.LiveSettingsDialog
 import com.shterneregen.securelan.desktop.compose.ui.steganography.LiveSteganographyDialog
 import com.shterneregen.securelan.desktop.compose.util.resolveAttachCandidatePeer
@@ -70,7 +71,7 @@ internal fun LiveComposeShellContent(
         voiceState = voiceState,
         videoState = videoState,
     )
-    var expandedCardKind by remember { mutableStateOf<ComposeContextPanelCardKind?>(null) }
+    var quickShareDialogOpen by remember { mutableStateOf(false) }
     var steganographyDialogMode by remember { mutableStateOf<ComposeSteganographyMode?>(null) }
     var settingsDialogOpen by remember { mutableStateOf(false) }
     val productState = ComposeProductScreenState.from(
@@ -79,10 +80,13 @@ internal fun LiveComposeShellContent(
         connectionHubMode = ComposeConnectionHubMode.HOST,
         selectedPeer = peerState.selectedPeer,
     )
-    val topBarLabel = if (inMessengerMode) {
-        hostAdapter.statusState.nickname.ifBlank { "Secure room" }
-    } else {
-        ComposeShellMetadata.DEFAULT_ONBOARDING_STATE.headline
+    val topBarLabel = hostAdapter.statusState.nickname.ifBlank { "SecureLanSuite" }
+    val topBarStatus = when {
+        hostAdapter.statusState.clientConnected ->
+            "Secure room · Connected · ${peerState.onlinePeers.size} online"
+        hostAdapter.statusState.localServerRunning ->
+            "Secure room · Hosting · ${peerState.onlinePeers.size} online"
+        else -> "Secure room · Offline"
     }
     SecureLanAppShell(
         shellState = ComposeAppShellState(
@@ -92,6 +96,7 @@ internal fun LiveComposeShellContent(
             workspaceState = workspaceState,
         ),
         topBarLabel = topBarLabel,
+        topBarStatus = topBarStatus,
         darkTheme = darkTheme,
         onSettingsClick = { settingsDialogOpen = true },
         onThemeToggle = onThemeToggle,
@@ -104,6 +109,7 @@ internal fun LiveComposeShellContent(
             peersColumn = {
                 LivePeerListCard(
                     peerState = peerState,
+                    activeCallPeer = videoState.currentSession?.remotePeer ?: voiceState.currentSession?.remotePeer,
                     onPeerSelected = { key ->
                         selectedPeerKey = key
                     },
@@ -128,9 +134,7 @@ internal fun LiveComposeShellContent(
                         LiveChatWorkspaceCard(
                             hostAdapter,
                             peerState,
-                            onExpandedCardKindChange = { kind ->
-                                expandedCardKind = if (expandedCardKind == kind) null else kind
-                            },
+                            onOpenQuickShare = { quickShareDialogOpen = true },
                             onOpenSteganography = { mode -> steganographyDialogMode = mode },
                         ) {
                             ComposeVideoStage(hostAdapter.experimentalVideoState.copy(peerListState = peerState))
@@ -143,9 +147,15 @@ internal fun LiveComposeShellContent(
                     hostAdapter = hostAdapter,
                     peerState = peerState,
                     responsiveState = responsiveState,
-                    expandedCardKind = expandedCardKind,
+                    onOpenQuickShare = { quickShareDialogOpen = true },
                 )
             },
+        )
+    }
+    if (quickShareDialogOpen) {
+        LiveQuickShareDialog(
+            hostAdapter = hostAdapter,
+            onClose = { quickShareDialogOpen = false },
         )
     }
     steganographyDialogMode?.let { mode ->

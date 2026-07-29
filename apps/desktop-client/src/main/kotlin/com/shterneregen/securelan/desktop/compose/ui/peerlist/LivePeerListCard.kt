@@ -14,6 +14,7 @@ import com.shterneregen.securelan.desktop.compose.ui.components.PeerListContentS
 @Composable
 internal fun LivePeerListCard(
     peerState: ComposePeerListState,
+    activeCallPeer: String? = null,
     onPeerSelected: (String?) -> Unit,
 ) {
     val reduced = LocalReducedMotion.current
@@ -38,6 +39,7 @@ internal fun LivePeerListCard(
                         PeerListGroup(
                             section = section,
                             peerState = peerState,
+                            activeCallPeer = activeCallPeer,
                             onPeerSelected = onPeerSelected,
                         )
                     }

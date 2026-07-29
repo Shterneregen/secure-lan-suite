@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceLayout
@@ -33,6 +35,12 @@ internal fun MainWorkspaceRow(
     val tokens = LocalSecureLanDesignTokens.current
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
         val responsiveState = ComposeContextPanelResponsiveState.forWidth(maxWidth.value.toInt())
+        val peersWidth = when {
+            maxWidth >= 1440.dp -> 240.dp
+            maxWidth >= 1000.dp -> 220.dp
+            else -> 190.dp
+        }
+        val contextWidth = if (maxWidth >= 1600.dp) 320.dp else 300.dp
         var contextDrawerOpen by remember(responsiveState.mode) { mutableStateOf(false) }
         Row(
             modifier = Modifier
@@ -43,7 +51,7 @@ internal fun MainWorkspaceRow(
             MainWorkspaceColumn(
                 title = layout.peersColumn.title,
                 tooltip = peersTooltip,
-                modifier = Modifier.weight(layout.peersColumn.weight).fillMaxHeight(),
+                modifier = Modifier.width(peersWidth).fillMaxHeight(),
                 content = peersColumn,
             )
             MainWorkspaceColumn(
@@ -66,7 +74,7 @@ internal fun MainWorkspaceRow(
             if (responsiveState.inlinePanelVisible) {
                 MainWorkspaceColumn(
                     title = rightColumnTitle,
-                    modifier = Modifier.weight(layout.actionsColumn.weight).fillMaxHeight(),
+                    modifier = Modifier.width(contextWidth).fillMaxHeight(),
                     content = { actionsColumn(responsiveState) },
                 )
             }

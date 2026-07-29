@@ -37,6 +37,12 @@ internal fun StatusIndicator(text: String) {
         text.contains("running", ignoreCase = true) || text.contains(
             "connected",
             ignoreCase = true
+        ) || text.contains(
+            "hosting",
+            ignoreCase = true
+        ) || text.contains(
+            "online",
+            ignoreCase = true
         ) -> MaterialTheme.colors.primary
 
         text.contains("error", ignoreCase = true) || text.contains(

@@ -12,6 +12,7 @@ import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListStat
 internal fun PeerListGroup(
     section: ComposePeerListSectionPresentation,
     peerState: ComposePeerListState,
+    activeCallPeer: String? = null,
     onPeerSelected: (String?) -> Unit,
 ) {
     if (section.rows.isEmpty()) return
@@ -24,6 +25,7 @@ internal fun PeerListGroup(
                 PeerPreviewRow(
                     row = row,
                     selected = index == peerState.resolvedSelectedPeerIndex,
+                    inCall = row.peer.nickname.equals(activeCallPeer, ignoreCase = true),
                     onSelect = { onPeerSelected(row.peer.nickname) },
                 )
             }

@@ -9,6 +9,7 @@ import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickS
 internal fun QuickShareLinksPanel(
     state: ComposeQuickShareState,
     onCopy: (String) -> Unit,
+    onOpen: (String) -> Unit,
     onStop: (String) -> Unit,
 ) {
     if (!state.running && state.shareRowsDetailed.isEmpty()) {
@@ -27,7 +28,7 @@ internal fun QuickShareLinksPanel(
             )
         } else {
             state.shareRowsDetailed.forEach { row ->
-                QuickShareLinkRow(row = row, onCopy = onCopy, onStop = onStop)
+                QuickShareLinkRow(row = row, onCopy = onCopy, onOpen = onOpen, onStop = onStop)
             }
         }
     }

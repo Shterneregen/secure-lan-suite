@@ -30,6 +30,7 @@ internal fun PreviewComposeShellContent(
             workspaceState = previewWorkspaceState,
         ),
         topBarLabel = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE.headline,
+        topBarStatus = "Secure room · Offline",
         darkTheme = darkTheme,
         onSettingsClick = { settingsDialogOpen = true },
         onThemeToggle = onThemeToggle,

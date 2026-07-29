@@ -20,6 +20,7 @@ import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetada
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.util.copyToSystemClipboard
 import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
+import com.shterneregen.securelan.desktop.compose.util.openInBrowser
 import com.shterneregen.securelan.desktop.ui.DesktopQuickShareFormatters
 import java.nio.file.Path
 
@@ -113,6 +114,7 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
         QuickShareLinksPanel(
             state = quickShareState,
             onCopy = { copyToSystemClipboard(it) },
+            onOpen = { openInBrowser(it) },
             onStop = { hostAdapter.stopQuickShareEntry(it) },
         )
     }

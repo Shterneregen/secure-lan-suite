@@ -2,7 +2,7 @@
 
 ## Scope
 
-This plan records the completed Java-to-Kotlin migration for reusable core modules, the finalized desktop Kotlin interop slice, the closed initial Compose desktop parity implementation, the closed Phase 10 Compose runtime/release-readiness work, and the active Phase 11 Compose-first desktop UX hardening work. It also tracks post-migration Kotlin/Java interoperability changes that affect the migration exit criteria, such as protocol capability metadata, Compose packaging, Android interoperability, remaining Java callback boundaries, and JavaFX deprecation.
+This plan records the completed Java-to-Kotlin migration for reusable core modules, the finalized desktop Kotlin interop slice, the completed Compose runtime and workspace hardening phases, and the active Phase 14 product-polish work. It also tracks post-migration Kotlin/Java interoperability changes that affect the migration exit criteria, such as protocol capability metadata, Compose packaging, Android interoperability, and remaining Java callback boundaries.
 
 Reusable core module scope:
 
@@ -18,10 +18,10 @@ Reusable core module scope:
 
 Application-module scope:
 
-- [`apps/desktop-client`](../../apps/desktop-client/build.gradle) is tracked through the desktop Kotlin interop, Compose parity, Compose release-readiness, and Phase 11 Compose-first UX phases because it contains deprecated JavaFX fallback boundaries, Compose desktop code, and packaging tasks.
+- [`apps/desktop-client`](../../apps/desktop-client/build.gradle) is tracked through the desktop Kotlin interop, Compose release-readiness, workspace hardening, and active Phase 14 product-polish work.
 - [`apps/android-client`](../../apps/android-client/build.gradle) already uses Kotlin for production sources and keeps protocol compatibility tests under [`apps/android-client/src/test/kotlin`](../../apps/android-client/src/test/kotlin).
 
-Detailed phase records now live in [`phase-1.md`](phase-1.md) through [`phase-13.md`](phase-13.md). The original build-foundation Phase 0 is preserved as the build foundation prerequisite inside [`phase-1.md`](phase-1.md#build-foundation-prerequisite) so the documentation set uses the requested phase file range.
+Detailed phase records now live in [`phase-1.md`](phase-1.md) through [`phase-14.md`](phase-14.md). The original build-foundation Phase 0 is preserved as the build foundation prerequisite inside [`phase-1.md`](phase-1.md#build-foundation-prerequisite) so the documentation set uses the requested phase file range.
 
 ## Current repository context
 
@@ -29,10 +29,9 @@ Detailed phase records now live in [`phase-1.md`](phase-1.md) through [`phase-13
 - The current JVM baseline is Java 25 through [`languageVersion`](../../build.gradle:21) and [`options.release`](../../build.gradle:26).
 - Kotlin JVM modules currently compile with JVM target 24 while the Java toolchain remains Java 25.
 - The Android client uses [`org.jetbrains.kotlin.android`](../../apps/android-client/build.gradle:3), with a JVM target configured in [`kotlinOptions`](../../apps/android-client/build.gradle:53).
-- The desktop client uses the Application plugin and JavaFX plugin in [`apps/desktop-client/build.gradle`](../../apps/desktop-client/build.gradle:3).
-- Desktop packaging uses [`jpackage`](../../apps/desktop-client/build.gradle:80), [`buildPortable`](../../apps/desktop-client/build.gradle:100), and [`buildExe`](../../apps/desktop-client/build.gradle:158).
-- The Phase 10 closure added a separate experimental Compose portable path through [`buildComposePortable`](../../apps/desktop-client/build.gradle), without replacing the JavaFX [`buildPortable`](../../apps/desktop-client/build.gradle:100) or JavaFX launcher.
-- Phase 11 deprecates JavaFX for desktop UI evolution: new UI/UX improvements target Compose, while JavaFX remains only as packaged launcher, rollback fallback, and critical-fix path until a separate accepted promotion/removal task.
+- The desktop client uses the Kotlin JVM, Compose, Application, and packaging plugins in [`apps/desktop-client/build.gradle`](../../apps/desktop-client/build.gradle:3).
+- Desktop packaging uses `jpackage` through `buildPortable`, `buildComposePortable`, and `buildExe`.
+- Compose is the active desktop UI and launcher; the obsolete JavaFX workspace-parity layer has been removed.
 - Desktop Compose runtime work now uses Kotlin coroutines inside [`apps/desktop-client`](../../apps/desktop-client/build.gradle) for non-blocking file-transfer work; this is intentionally kept out of reusable modules unless a separate API design is approved.
 - Chat handshake and peer presence now carry capability metadata through [`PeerCapabilities.kt`](../../modules/chat-core/src/main/kotlin/com/shterneregen/securelan/chat/protocol/handshake/PeerCapabilities.kt), while compatibility constructors preserve older Java/Kotlin call sites.
 - The WebRTC module depends on [`webrtc-java`](../../modules/webrtc-core/build.gradle:3), so callback-heavy runtime code remains a high-risk migration area.
@@ -56,6 +55,7 @@ flowchart TD
     K --> L[Phase 11 Compose-first UX hardening]
     L --> M[Phase 12 workspace UX and product polish]
     M --> N[Phase 13 runtime UI hardening and release candidate polish]
+    N --> O[Phase 14 product polish and UX refinement]
 ```
 
 ## Phase index
@@ -74,7 +74,8 @@ flowchart TD
 | Phase 10 | Closed               | Compose runtime stabilization baseline, capability-aware desktop/Android peer targeting, UX modernization start, packaging readiness model, rollback planning, and explicit decision to keep JavaFX as deprecated packaged fallback.                                                                                   | [`phase-10.md`](phase-10.md) |
 | Phase 11 | Completed            | Compose-first desktop UX hardening: JavaFX deprecated for new UI work; improve Compose navigation, peer-list states, chat, file transfer, session settings, diagnostics, errors, and release-gate evidence.                                                                                                            | [`phase-11.md`](phase-11.md) |
 | Phase 12 | Completed            | Workspace UX and product polish: single contextual workspace, motion, microinteractions, empty states, visual polish, and consistency review.                                                                                                                                                                          | [`phase-12.md`](phase-12.md) |
-| Phase 13 | Planned              | Runtime UI hardening and release-candidate polish driven by screenshot review: focus-ring halo, composer clipping, connection-hub compaction, Context Assistant runtime density, attachment ergonomics, resize matrix, and release gates.                                                                              | [`phase-13.md`](phase-13.md) |
+| Phase 13 | Completed            | Runtime UI hardening and release-candidate polish driven by screenshot review: focus-ring halo, composer clipping, connection-hub compaction, Context Assistant runtime density, attachment ergonomics, resize matrix, and release gates.                                                                              | [`phase-13.md`](phase-13.md) |
+| Phase 14 | In progress          | Product polish and UX refinement: call controls, focused Context Assistant modes, dedicated Quick Share/Steganography/Settings windows, video-stage ergonomics, transcript events, adaptive columns, and final consistency validation.                                                                                | [`phase-14.md`](phase-14.md) |
 
 ## Kotlin migration trade-offs
 
@@ -100,8 +101,7 @@ flowchart TD
 - Crypto, protocol, and transfer modules are sensitive to subtle behavior changes from automatic conversion.
 - The project gains a second JVM language in core modules, increasing review and maintenance requirements.
 - Adding Kotlin protocol models after the core migration can still change Java source/binary expectations; compatibility constructors and Java-style accessors must be preserved for shared handshake/request/event types.
-- Compose runtime dependencies, including coroutine dependencies, are packaging-sensitive and must be validated in both JavaFX and Compose portable artifacts before launcher promotion.
-- JavaFX is deprecated but still packaging-sensitive because it remains the fallback launcher until Compose promotion/removal is accepted.
+- Compose runtime dependencies, including coroutine dependencies, remain packaging-sensitive and must be validated in portable and installer artifacts.
 
 ## Acceptance criteria
 
@@ -111,11 +111,10 @@ flowchart TD
 - Unit and integration tests pass for every migrated module.
 - UDP discovery, secure chat handshake, encrypted file transfer, RTC signaling, and desktop Android interoperability stay compatible.
 - Public module dependency directions remain acyclic and aligned with architecture rules.
-- Portable ZIP packaging through [`buildPortable`](../../apps/desktop-client/build.gradle:100) still includes all required runtime dependencies.
-- Experimental Compose portable ZIP packaging through [`buildComposePortable`](../../apps/desktop-client/build.gradle) still includes Kotlin, coroutine, and Compose runtime dependencies without changing JavaFX packaging.
+- Portable ZIP packaging through `buildPortable` and `buildComposePortable` includes all required Kotlin, coroutine, and Compose runtime dependencies.
 - Windows EXE packaging through [`buildExe`](../../apps/desktop-client/build.gradle:158) still works on a WiX-enabled Windows environment.
 - Documentation is updated where the official language stack, build process, or product status changes.
 
 ## Recommended next decision
 
-Focus next on the active Phase 11 plan in [`phase-11.md`](phase-11.md): Compose-first navigation, peer-list state clarity, chat/transcript polish, file-transfer UX, session settings, diagnostics, error recovery, runtime interoperability checks, portable ZIP validation, Windows EXE validation, and then a separate explicit Compose launcher promotion or JavaFX removal decision.
+Finish the active Phase 14 consistency pass in [`phase-14.md`](phase-14.md): validate the dedicated Quick Share window, call-focused Context Assistant, adaptive side columns, video overlay/full-window controls, structured transcript events, keyboard traversal, and the runtime screenshot matrix before packaging.

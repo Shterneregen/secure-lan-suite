@@ -81,7 +81,7 @@ The composer must never be clipped by Host / Join setup content.
 ### Checklist
 
 1. [x] Reproduce at 1360x860 with Host setup expanded.
-2. [x] Reproduce at 1200–1399 drawer/collapsed context widths.
+2. [x] Reproduce at 1280–1439 collapsed context widths and <1280 drawer widths.
 3. [x] Keep composer pinned to the bottom of the center column.
 4. [x] Put connection setup details into a bounded scroll area when vertical space is constrained.
 5. [x] Keep `Attach`, message input, and `Send` fully visible at all supported heights.
@@ -219,7 +219,7 @@ Validate the workspace visually at real desktop sizes, not only through state me
 2. [x] 1200x760 compact desktop.
 3. [x] 1600x900 wide desktop.
 4. [x] 1920x1080 full desktop.
-5. [x] <1200 drawer mode.
+5. [x] <1280 drawer mode.
 
 ### Required states
 
@@ -241,7 +241,7 @@ Validate the workspace visually at real desktop sizes, not only through state me
 
 **Implementation note — 2026-07-02**
 
-`ComposeRuntimeScreenshotValidationMatrixState` now records the 5×15 runtime resize/screenshot acceptance matrix as deterministic release-candidate evidence: 1360x860, 1200x760, 1600x900, 1920x1080, and <1200 drawer mode are validated against offline startup, Host / Join setup, hosting, connected/no peer, peer-selected, attachment, Quick Share, Steganography, transfer, voice, video, diagnostics summary/details, and theme states. The matrix requires score >= 95, zero automatic reject conditions, preserved drawer behavior, and usable composer/chat in every captured state. `ComposeRegressionReadinessState` includes the matrix as a dedicated runtime evidence requirement before full regression can be treated as complete, and targeted desktop Compose tests validate the checklist and adapter evidence wiring.
+`ComposeRuntimeScreenshotValidationMatrixState` now records the 5×15 runtime resize/screenshot acceptance matrix as deterministic release-candidate evidence: 1360x860, 1200x760, 1600x900, 1920x1080, and <1280 drawer mode are validated against offline startup, Host / Join setup, hosting, connected/no peer, peer-selected, attachment, Quick Share, Steganography, transfer, voice, video, diagnostics summary/details, and theme states. The matrix requires score >= 95, zero automatic reject conditions, preserved drawer behavior, and usable composer/chat in every captured state. `ComposeRegressionReadinessState` includes the matrix as a dedicated runtime evidence requirement before full regression can be treated as complete, and targeted desktop Compose tests validate the checklist and adapter evidence wiring.
 
 ### Acceptance criteria
 

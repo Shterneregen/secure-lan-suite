@@ -31,6 +31,7 @@ import com.shterneregen.securelan.desktop.compose.util.rememberInteractiveSurfac
 internal fun PeerPreviewRow(
     row: ComposePeerListItemPresentation,
     selected: Boolean,
+    inCall: Boolean = false,
     onSelect: () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -51,7 +52,7 @@ internal fun PeerPreviewRow(
             .heightIn(min = tokens.density.sidebarRowMinHeight)
             .calmFocusRing(interactive.focused, tokens.radius.medium)
             .semantics(mergeDescendants = true) {
-                contentDescription = row.accessibilityLabel
+                contentDescription = row.accessibilityLabel + if (inCall) ", currently in call" else ""
                 stateDescription = if (selected) "Selected" else "Not selected"
             }
             .clickable(
@@ -91,10 +92,35 @@ internal fun PeerPreviewRow(
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                     )
+                    if (inCall || selected) {
+                        PeerRowStateBadge(if (inCall) "In call" else "Selected", inCall)
+                    }
                 }
                 PeerCapabilityStrip(row.capabilityChips, row.capabilitySummary, peer.online)
             }
         }
+    }
+}
+
+@Composable
+private fun PeerRowStateBadge(
+    label: String,
+    inCall: Boolean,
+) {
+    val tokens = LocalSecureLanDesignTokens.current
+    val color = if (inCall) tokens.colors.success else MaterialTheme.colors.primary
+    Surface(
+        shape = RoundedCornerShape(tokens.radius.pill),
+        color = color.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.42f)),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.caption,
+            color = color,
+            maxLines = 1,
+        )
     }
 }
 

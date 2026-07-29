@@ -6,6 +6,7 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.image.BufferedImage
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
@@ -41,6 +42,12 @@ internal fun openInFileManager(path: Path): Boolean = runCatching {
     val target = path.toAbsolutePath().normalize().let { if (Files.isDirectory(it)) it else it.parent ?: it }
     if (!Desktop.isDesktopSupported()) return@runCatching false
     Desktop.getDesktop().open(target.toFile())
+    true
+}.getOrDefault(false)
+
+internal fun openInBrowser(url: String): Boolean = runCatching {
+    if (url.isBlank() || !Desktop.isDesktopSupported()) return@runCatching false
+    Desktop.getDesktop().browse(URI(url))
     true
 }.getOrDefault(false)
 

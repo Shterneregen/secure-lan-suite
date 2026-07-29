@@ -17,7 +17,6 @@ import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPane
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
-import com.shterneregen.securelan.desktop.compose.ui.quickshare.LiveQuickShareCard
 import com.shterneregen.securelan.desktop.compose.ui.transfer.LiveFileTransferCard
 
 @Composable
@@ -25,7 +24,7 @@ internal fun LiveActionsColumn(
     hostAdapter: ComposeDesktopHostAdapter,
     peerState: ComposePeerListState,
     responsiveState: ComposeContextPanelResponsiveState,
-    expandedCardKind: ComposeContextPanelCardKind?,
+    onOpenQuickShare: () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     val panelScrollState = rememberScrollState()
@@ -69,7 +68,7 @@ internal fun LiveActionsColumn(
             LaunchedEffect(contextPanelState.mode, contextPanelState.visibleCardKinds.firstOrNull()) {
                 panelScrollState.scrollTo(0)
             }
-            ContextPanelSummary(state = contextPanelState, responsiveState = responsiveState)
+            ContextPanelSummary(state = contextPanelState)
             val contextCardsReduced = LocalReducedMotion.current
             AnimatedContent(
                 targetState = contextPanelState.mode,
@@ -90,19 +89,15 @@ internal fun LiveActionsColumn(
                                 { LiveFileTransferCard(hostAdapter, peerState) }
                             }
 
-                            ComposeContextPanelCardKind.CALL_CONTROLS -> {
-                                { CallStatusPanel(voiceState, videoState) }
-                            }
-
-                            ComposeContextPanelCardKind.QUICK_SHARE -> {
-                                { LiveQuickShareCard(hostAdapter) }
-                            }
-
                             else -> null
                         }
-                        val initialExpanded = expandedCardKind?.let { it == card.kind }
-                        ContextPanelCard(card, expandedContent, initialExpanded = initialExpanded)
+                        ContextPanelCard(card, expandedContent)
                     }
+                    QuickShareActivitySummary(
+                        running = hostAdapter.quickShareRunning,
+                        activeLinkCount = hostAdapter.quickShareEntries.count { it.active() },
+                        onManage = onOpenQuickShare,
+                    )
                 }
             }
         }

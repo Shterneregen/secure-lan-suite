@@ -16,8 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareRow
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareRow
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 
@@ -25,38 +25,43 @@ import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTon
 internal fun QuickShareLinkRow(
     row: ComposeQuickShareRow,
     onCopy: (String) -> Unit,
+    onOpen: (String) -> Unit,
     onStop: (String) -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
-        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
-        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
+        shape = RoundedCornerShape(tokens.radius.small),
+        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+        color = tokens.colors.surfaceLevel2,
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(
                     text = row.title,
                     style = MaterialTheme.typography.subtitle2,
+                    modifier = Modifier.weight(1f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = "${row.typeLabel} · ${row.detail}",
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-                        modifier = Modifier.weight(1f, fill = false),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    QuickShareStatusPill(row.statusLabel, active = row.active)
-                }
+                QuickShareStatusPill(row.statusLabel, active = row.active)
             }
+            Text(
+                text = "${row.typeLabel} · ${row.detail}",
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -64,8 +69,8 @@ internal fun QuickShareLinkRow(
                     text = row.url.ifBlank { "URL unavailable" },
                     style = MaterialTheme.typography.caption,
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
-                    modifier = Modifier.weight(1f, fill = false),
-                    maxLines = 2,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 CompactButton(
@@ -74,6 +79,11 @@ internal fun QuickShareLinkRow(
                     modifier = Modifier.heightIn(min = 28.dp),
                 ) { Text("Copy") }
                 if (row.active) {
+                    CompactButton(
+                        onClick = { onOpen(row.url) },
+                        enabled = row.url.isNotBlank(),
+                        modifier = Modifier.heightIn(min = 28.dp),
+                    ) { Text("Open") }
                     CompactButton(
                         onClick = { onStop(row.id) },
                         tone = CompactButtonTone.SECONDARY,

@@ -76,12 +76,6 @@ data class ComposeContextPanelState(
                     body = "${peerListState.onlinePeers.size} online · ${transferState.transferCountSummary}",
                     badge = if (peerListState.onlinePeers.isEmpty()) "Waiting" else "Ready",
                 ),
-                ComposeContextPanelCard(
-                    kind = ComposeContextPanelCardKind.QUICK_SHARE,
-                    title = "Quick Share",
-                    body = "Share files through a temporary LAN browser link.",
-                    collapsed = true,
-                ),
             ),
         )
 
@@ -116,22 +110,6 @@ data class ComposeContextPanelState(
                             collapsed = true,
                         )
                     )
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.SECURITY,
-                            title = "Security",
-                            body = "Messages and files stay inside the current secure LAN room.",
-                            collapsed = true,
-                        )
-                    )
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.QUICK_SHARE,
-                            title = "Quick Share",
-                            body = "Share files through a temporary LAN browser link.",
-                            collapsed = true,
-                        )
-                    )
                 },
             )
         }
@@ -152,7 +130,6 @@ data class ComposeContextPanelState(
                             badge = transferState.transferCountSummary,
                             primaryAction = if (transferState.waitingPromptCount > 0) "Review files" else null,
                             primary = true,
-                            collapsed = true,
                         )
                     )
                     if (peer != null) {
@@ -167,14 +144,6 @@ data class ComposeContextPanelState(
                             )
                         )
                     }
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.QUICK_SHARE,
-                            title = "Quick Share",
-                            body = "Share files through a temporary LAN browser link.",
-                            collapsed = true,
-                        )
-                    )
                 },
             )
         }
@@ -186,23 +155,18 @@ data class ComposeContextPanelState(
         ): ComposeContextPanelState {
             val peer = peerListState.selectedPeer
             val isVideo = videoState.currentSession != null || videoState.previewRunning
-            val callStatus = when {
-                isVideo -> videoState.stageBadge
-                voiceState.currentSession != null -> voiceState.voiceStatusText
-                else -> "Ready to call"
-            }
             val callKind = if (isVideo) "Video call" else "Voice call"
+            val callStatus = if (isVideo) videoState.stageBadge else voiceState.voiceStatusText
             return ComposeContextPanelState(
                 mode = RightPanelMode.CALL,
                 cards = buildList {
                     add(
                         ComposeContextPanelCard(
                             kind = ComposeContextPanelCardKind.CALL_CONTROLS,
-                            title = "$callKind status",
-                            body = callStatus,
-                            badge = peer?.availabilityLabel ?: "Unknown",
+                            title = callKind,
+                            body = if (peer == null) callStatus else "$callStatus with ${peer.nickname}.",
+                            badge = callStatus,
                             primary = true,
-                            collapsed = true,
                         )
                     )
                     if (peer != null) {
@@ -217,14 +181,6 @@ data class ComposeContextPanelState(
                             )
                         )
                     }
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.QUICK_SHARE,
-                            title = "Quick Share",
-                            body = "Share files through a temporary LAN browser link.",
-                            collapsed = true,
-                        )
-                    )
                 },
             )
         }

@@ -24,12 +24,13 @@ object SecureLanIcons {
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
     val Close: ImageVector = Icons.Outlined.Close
+    val LightTheme: ImageVector = Icons.Outlined.LightMode
+    val DarkTheme: ImageVector = Icons.Outlined.DarkMode
 
     // Context Assistant product concepts.
     val Person: ImageVector = Icons.Outlined.Person
     val Guidance: ImageVector = Icons.Outlined.Info
     val History: ImageVector = Icons.Outlined.History
-    val Security: ImageVector = Encryption
     val Room: ImageVector = Icons.Outlined.MeetingRoom
 
     val PresenceOnline: ImageVector = Icons.Filled.Circle

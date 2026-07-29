@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Icon
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -23,12 +25,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.SecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLinePresentation
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
+import com.shterneregen.securelan.desktop.compose.util.copyToSystemClipboard
+import com.shterneregen.securelan.desktop.compose.util.openInBrowser
 
 @Composable
 internal fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: String = "") {
@@ -63,10 +70,60 @@ internal fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: Stri
                     shape = bubbleShape,
                     color = style.backgroundColor,
                 ) {
-                    ChatTranscriptLineContent(presentation, style, tokens)
+                    if (presentation.kind == ComposeChatTranscriptLineKind.QUICK_SHARE) {
+                        QuickShareTranscriptEvent(presentation, tokens)
+                    } else {
+                        ChatTranscriptLineContent(presentation, style, tokens)
+                    }
                 }
             } else {
                 ChatTranscriptLineContent(presentation, style, tokens)
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickShareTranscriptEvent(
+    presentation: ComposeChatTranscriptLinePresentation,
+    tokens: SecureLanDesignTokens,
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = SecureLanIcons.QuickShare,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colors.primary,
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+        ) {
+            Text(
+                text = presentation.body.substringBefore("http").trim().trimEnd(':'),
+                style = MaterialTheme.typography.body2,
+                color = tokens.colors.textPrimary,
+            )
+            presentation.actionUrl?.let { url ->
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.caption,
+                    color = tokens.colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        presentation.actionUrl?.let { url ->
+            CompactButton(onClick = { copyToSystemClipboard(url) }) {
+                Text("Copy")
+            }
+            CompactButton(onClick = { openInBrowser(url) }) {
+                Text("Open")
             }
         }
     }
@@ -197,6 +254,17 @@ internal fun rememberChatTranscriptLineStyle(kind: ComposeChatTranscriptLineKind
                 bodyColor = tokens.colors.textSecondary,
                 bodyTextStyle = body2Style,
                 showMeta = true,
+                textAlign = TextAlign.Start,
+            )
+            ComposeChatTranscriptLineKind.QUICK_SHARE -> ChatTranscriptLineStyle(
+                alignment = Alignment.Center,
+                width = 0.96f,
+                framed = true,
+                backgroundColor = tokens.colors.accent.copy(alpha = 0.08f),
+                accentColor = tokens.colors.accent,
+                bodyColor = tokens.colors.textPrimary,
+                bodyTextStyle = body2Style,
+                showMeta = false,
                 textAlign = TextAlign.Start,
             )
             ComposeChatTranscriptLineKind.SECURITY -> ChatTranscriptLineStyle(

@@ -79,7 +79,7 @@ Peer selection no longer changes the workspace mode before a connection exists. 
 
 **Implementation note — 2026-06-30**
 
-`ComposeContextPanelState` now enforces a maximum of five visible cards and a single primary card. The peer context no longer includes the duplicated `MEDIA`/`Calls` card; the primary card explains the selected peer, while `QUICK_ACTIONS`, `RECENT_FILES`, and `SECURITY` are secondary and collapsed by default. `MAX_PRIMARY_BUTTONS` is reduced to one so the assistant presents exactly one primary task at a time.
+`ComposeContextPanelState` now enforces a maximum of five visible cards and a single primary card. The peer context no longer includes the duplicated `MEDIA`/`Calls` card; the primary card explains the selected peer, while `QUICK_ACTIONS` and `RECENT_FILES` are secondary and collapsed by default. The non-actionable `SECURITY` summary was later removed from Context Assistant in Phase 14 because it repeated the product-wide secure-room status. `MAX_PRIMARY_BUTTONS` is reduced to one so the assistant presents exactly one primary task at a time.
 
 `LiveActionsColumn` wraps the card list in an `AnimatedContent` keyed by the panel mode, so switching context (room → peer → transfer → call) replaces the cards with a 200 ms fade instead of stacking unrelated cards. The `ContextPanelSummary` stays visible above the animation so the current state is explained before any controls appear.
 

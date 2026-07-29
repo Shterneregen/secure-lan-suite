@@ -28,8 +28,8 @@ data class ComposeContextPanelResponsiveState(
             val normalizedWidth = widthPx.coerceAtLeast(0)
             val mode = when {
                 normalizedWidth >= 1600 -> ComposeContextPanelResponsiveMode.FULL_PANEL
-                normalizedWidth >= 1400 -> ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY
-                normalizedWidth >= 1200 -> ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY
+                normalizedWidth >= 1440 -> ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY
+                normalizedWidth >= 1280 -> ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY
                 else -> ComposeContextPanelResponsiveMode.DRAWER
             }
             return ComposeContextPanelResponsiveState(normalizedWidth, mode)

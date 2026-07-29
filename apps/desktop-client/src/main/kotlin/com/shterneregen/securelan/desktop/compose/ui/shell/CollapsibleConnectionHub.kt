@@ -83,7 +83,7 @@ internal fun CollapsibleConnectionHub(
                 }
                 headerActions()
                 CompactButton(onClick = onToggle) {
-                    Text(if (expanded) "Hide" else "Show")
+                    Text(if (expanded) "Hide setup" else "Room setup")
                 }
             }
             AnimatedVisibility(

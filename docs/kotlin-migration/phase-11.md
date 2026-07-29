@@ -113,7 +113,6 @@ Visible:
 - Quick actions
 - Recent files
 - Media
-- Security
 
 Hidden:
 
@@ -123,6 +122,8 @@ Hidden:
 - Validation
 - Port information
 - Raw logs
+
+Security warnings remain structured transcript events; the generic security summary is not a Context Assistant card.
 
 ### Active transfer
 
@@ -150,7 +151,6 @@ Visible:
 
 - Video controls
 - Peer
-- Security
 
 Hide unrelated modules.
 
@@ -200,13 +200,13 @@ Raw logs stay hidden.
 - [x] >=1600 px — Full panel.
 - [x] 1400–1600 px — Collapse secondary cards.
 - [x] 1200–1400 px — Collapse history.
-- [x] <1200 px — Drawer mode.
+- [x] <1280 px — Drawer mode (threshold raised during Phase 14 polish).
 
 **Implementation note — 2026-06-30**
 
 Responsive Context Assistant metadata now maps desktop width to full panel, collapsed-secondary, collapsed-history, and drawer states. The Compose workspace consumes that state so the inline right panel is shown only when appropriate, secondary/history cards collapse before the conversation loses priority, and the conversation remains the primary surface.
 
-The `<1200 px` drawer interaction is now implemented with a narrow-width Context entry point, overlay drawer surface, human-readable drawer labels, screen-reader descriptions, outside-click dismissal, and Escape-to-close behavior. Follow-up accessibility hardening should still runtime-check focus restoration and tab order in the live Compose shell.
+The `<1280 px` drawer interaction is now implemented with a narrow-width Context entry point, overlay drawer surface, human-readable drawer labels, screen-reader descriptions, outside-click dismissal, and Escape-to-close behavior. Follow-up accessibility hardening should still runtime-check focus restoration and tab order in the live Compose shell.
 
 **Definition of Done**
 

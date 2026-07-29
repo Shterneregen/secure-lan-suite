@@ -20,7 +20,6 @@ import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListStat
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolKind
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyMode
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
@@ -33,12 +32,14 @@ import com.shterneregen.securelan.desktop.compose.util.resolveAttachCandidatePee
 internal fun LiveChatWorkspaceCard(
     hostAdapter: ComposeDesktopHostAdapter,
     peerState: ComposePeerListState,
-    onExpandedCardKindChange: (ComposeContextPanelCardKind?) -> Unit,
+    onOpenQuickShare: () -> Unit,
     onOpenSteganography: (ComposeSteganographyMode) -> Unit,
     videoStageContent: @Composable () -> Unit,
 ) {
     var draftMessage by remember { mutableStateOf("") }
-    val transcript = hostAdapter.chatMessages
+    val transcript = hostAdapter.chatMessages.filterIndexed { index, message ->
+        index == 0 || message.displayText != hostAdapter.chatMessages[index - 1].displayText
+    }
     val selectedPeer = peerState.selectedPeer
     val selectedFilePeer = resolveAttachCandidatePeer(selectedPeer, hostAdapter::discoveredPeerFor)
     val attachmentTools = ComposeAttachmentToolsState(
@@ -157,7 +158,7 @@ internal fun LiveChatWorkspaceCard(
                         }
                         ComposeAttachmentToolKind.QUICK_SHARE -> {
                             dismissAttachMenu(restoreComposerFocus = false)
-                            onExpandedCardKindChange(ComposeContextPanelCardKind.QUICK_SHARE)
+                            onOpenQuickShare()
                         }
                         ComposeAttachmentToolKind.STEGANOGRAPHY -> {
                             dismissAttachMenu(restoreComposerFocus = false)

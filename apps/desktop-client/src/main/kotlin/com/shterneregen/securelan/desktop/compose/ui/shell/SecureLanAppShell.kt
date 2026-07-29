@@ -13,11 +13,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeAppShellState
+import com.shterneregen.securelan.desktop.compose.ui.components.StatusChip
 
 @Composable
 internal fun SecureLanAppShell(
     shellState: ComposeAppShellState,
     topBarLabel: String = shellState.currentContextLabel,
+    topBarStatus: String = "",
     darkTheme: Boolean,
     onSettingsClick: () -> Unit,
     onThemeToggle: () -> Unit,
@@ -40,13 +42,20 @@ internal fun SecureLanAppShell(
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
                         text = topBarLabel,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.subtitle2,
                     )
+                    if (topBarStatus.isNotBlank()) {
+                        StatusChip(topBarStatus)
+                    }
                 }
                 SettingsButton(onClick = onSettingsClick)
                 ThemeToggleButton(darkTheme = darkTheme, onThemeToggle = onThemeToggle)

@@ -8,7 +8,6 @@ enum class ComposeContextPanelCardKind {
     QUICK_SHARE,
     RECENT_FILES,
     MEDIA,
-    SECURITY,
     TRANSFER_DETAILS,
     CALL_CONTROLS,
 }

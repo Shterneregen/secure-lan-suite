@@ -6,6 +6,7 @@ public enum class ComposeChatTranscriptLineKind {
     SYSTEM,
     PRESENCE,
     TRANSFER,
+    QUICK_SHARE,
     SECURITY,
     DIAGNOSTIC,
     CALL,
