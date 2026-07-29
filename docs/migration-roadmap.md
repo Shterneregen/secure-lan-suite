@@ -16,7 +16,7 @@ Use it to:
 - Current runtime target: Java 25
 - Current Android build target: Android SDK 35 with Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3
 - Current product direction: secure chat + encrypted files + LAN discovery + voice-first realtime, experimental video, and Android desktop-interoperability MVP
-- Current desktop UX: Compose-first messenger-style workspace under active hardening; JavaFX is deprecated and remains only as packaged launcher, rollback fallback, and critical-fix path until explicit removal/promotion
+- Current desktop UX: `apps/desktop-client` is the primary Compose desktop application; `apps/javafx-client` is deprecated and remains only as a separately packaged rollback fallback and critical-fix path
 - Current Android UX: native Compose MVP with peer discovery, secure chat, encrypted file send/receive, transfer progress, dark theme toggle, and diagnostics logs
 
 ---
@@ -42,7 +42,8 @@ Use it to:
 | Done | Area | Step | Target Module | Notes |
 |---|---|---|---|---|
 | [x] | Project setup | Create Gradle multi-module skeleton | root project | Java 25, Gradle multi-project, module registration |
-| [x] | Project setup | Add `apps/desktop-client` | `apps/desktop-client` | Runnable JavaFX desktop app |
+| [x] | Project setup | Add the primary Compose desktop application | `apps/desktop-client` | Runnable primary desktop client and packaging tasks |
+| [x] | Project setup | Isolate the legacy JavaFX application | `apps/javafx-client` | Deprecated, separately packaged rollback fallback |
 | [x] | Project setup | Add `apps/android-client` | `apps/android-client` | Experimental Android application module using Android Gradle Plugin, Kotlin, and Compose |
 | [x] | Shared models | Create immutable records for peer/chat/file/event/realtime models | `modules/common-model` | Records and enums reused across modules |
 | [x] | Shared networking | Add reusable transport abstractions and utilities | `modules/common-net` | Shared network constants, TCP endpoint/socket factories, text and frame channels, reusable accept loop, close helper, and UDP broadcast address resolver are available and reused by chat/file-transfer modules |
@@ -180,7 +181,7 @@ Source repository:
 
 | Done | Milestone | Step | Target | Notes |
 |---|---|---|---|---|
-| [x] | Desktop shell | Create JavaFX application shell | `apps/desktop-client` | Main window and lifecycle |
+| [x] | Desktop shell | Create the primary Compose application shell | `apps/desktop-client` | Main window and lifecycle |
 | [x] | Desktop shell | Replace old tabbed flow with messenger-style workspace layout | `apps/desktop-client` | Status bar + peer list + chat feed + action sidebar |
 | [x] | MVP | Add peer list view | `apps/desktop-client` | Populated from LAN discovery and chat/session activity |
 | [x] | MVP | Add chat view | `apps/desktop-client` | Send/receive text messages |
@@ -286,7 +287,7 @@ Source repository:
 | [ ] | webcam-core | Camera/media services either extracted or intentionally superseded by the WebRTC runtime path |
 | [x] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free |
 | [x] | webrtc-core | Session state, signaling, `RTCDataChannel`, voice, experimental video, device enumeration, diagnostics, and native runtime integration are wired in |
-| [ ] | desktop-client | JavaFX client delivers a stable day-to-day workflow for chat, discovery, files, and voice across target machines |
+| [ ] | desktop-client | Primary Compose client delivers a stable day-to-day workflow for chat, discovery, files, and voice across target machines |
 | [ ] | android-client | Android client can be considered stable only after cross-device validation of discovery, chat, file send/receive, permissions, signed APK install/update behavior, and failure diagnostics |
 
 ---
@@ -315,7 +316,7 @@ Source repository:
 
 - Prefer **incremental migration** over large rewrites.
 - The current product direction is **chat + secure files + discovery + voice-first realtime**.
-- New desktop UI/UX improvements target Compose first. JavaFX is deprecated and should receive only critical fixes until explicit removal or promotion work is accepted.
+- New desktop UI/UX improvements target the primary Compose client in `apps/desktop-client`. The deprecated JavaFX client in `apps/javafx-client` should receive only critical fixes until final removal.
 - Keep video **experimental** until capture, preview, and remote video behavior are stable across machines.
 - UDP LAN discovery is implemented, but complex-network hardening remains a stabilization task.
 - Audio, webcam, and steganography migrations can be revisited after the messenger-style MVP is more stable.
