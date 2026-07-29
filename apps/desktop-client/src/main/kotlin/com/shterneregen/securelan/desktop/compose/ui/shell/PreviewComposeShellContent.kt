@@ -38,20 +38,21 @@ internal fun PreviewComposeShellContent(
             layout = ComposeShellMetadata.DEFAULT_WORKSPACE_LAYOUT,
             peersTooltip = previewPeerState.hint,
             rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title,
-            chatActions = {
-                if (previewPeerState.selectedPeer != null) {
-                    CompactButton(onClick = {}, enabled = false) { Text("Voice call") }
-                    CompactButton(onClick = {}, enabled = false) { Text("Video call") }
-                    CompactButton(onClick = {}, enabled = false) { Text("End call") }
-                }
-            },
             peersColumn = { PeerListPreviewCard(previewPeerState) },
-            chatColumn = {
+            chatColumn = { responsiveHeaderActions ->
                 MessengerCenterPanel(
                     hostAdapter = null,
                     workspaceState = previewWorkspaceState,
                     selectedJoinTarget = null,
                     hubTooltip = hubTooltip,
+                    headerActions = {
+                        if (previewPeerState.selectedPeer != null) {
+                            CompactButton(onClick = {}, enabled = false) { Text("Voice call") }
+                            CompactButton(onClick = {}, enabled = false) { Text("Video call") }
+                            CompactButton(onClick = {}, enabled = false) { Text("End call") }
+                        }
+                        responsiveHeaderActions()
+                    },
                     chatSurface = { ChatWorkspacePreviewCard(previewChatState) },
                 )
             },

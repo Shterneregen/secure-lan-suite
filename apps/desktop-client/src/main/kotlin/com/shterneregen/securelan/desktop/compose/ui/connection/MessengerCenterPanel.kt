@@ -2,6 +2,7 @@ package com.shterneregen.securelan.desktop.compose.ui.connection
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +25,7 @@ internal fun MessengerCenterPanel(
     workspaceState: ComposeWorkspaceState,
     selectedJoinTarget: ComposeConnectionJoinTarget?,
     hubTooltip: String? = null,
+    headerActions: @Composable RowScope.() -> Unit = {},
     chatSurface: @Composable () -> Unit,
 ) {
     var connectionHubExpanded by remember(workspaceState.connectionHubExpandedByDefault) {
@@ -49,6 +51,7 @@ internal fun MessengerCenterPanel(
         },
         chatSurface = chatSurface,
         hubTooltip = hubTooltip,
+        headerActions = headerActions,
     )
 }
 

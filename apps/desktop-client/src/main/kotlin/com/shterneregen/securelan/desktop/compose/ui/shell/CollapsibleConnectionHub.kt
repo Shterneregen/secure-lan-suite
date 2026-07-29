@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -35,6 +36,7 @@ internal fun CollapsibleConnectionHub(
     onToggle: () -> Unit,
     workspaceState: ComposeWorkspaceState,
     tooltip: String? = null,
+    headerActions: @Composable RowScope.() -> Unit = {},
     expandedContent: @Composable () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -79,6 +81,7 @@ internal fun CollapsibleConnectionHub(
                         )
                     }
                 }
+                headerActions()
                 CompactButton(onClick = onToggle) {
                     Text(if (expanded) "Hide" else "Show")
                 }

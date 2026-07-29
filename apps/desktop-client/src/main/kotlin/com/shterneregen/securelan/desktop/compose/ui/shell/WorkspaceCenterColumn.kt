@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -27,6 +28,7 @@ internal fun WorkspaceCenterColumn(
     startupSurface: @Composable () -> Unit,
     chatSurface: @Composable () -> Unit,
     hubTooltip: String? = null,
+    headerActions: @Composable RowScope.() -> Unit = {},
 ) {
     val layoutContract = workspaceState.layoutContract
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -52,6 +54,7 @@ internal fun WorkspaceCenterColumn(
                     onToggle = onConnectionHubToggle,
                     workspaceState = workspaceState,
                     tooltip = hubTooltip,
+                    headerActions = headerActions,
                     expandedContent = startupSurface,
                 )
             }

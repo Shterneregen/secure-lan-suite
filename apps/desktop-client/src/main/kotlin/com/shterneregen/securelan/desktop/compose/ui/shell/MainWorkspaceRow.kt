@@ -26,9 +26,8 @@ internal fun MainWorkspaceRow(
     peersTooltip: String? = null,
     chatTooltip: String? = null,
     rightColumnTitle: String = layout.actionsColumn.title,
-    chatActions: @Composable RowScope.() -> Unit = {},
     peersColumn: @Composable () -> Unit,
-    chatColumn: @Composable () -> Unit,
+    chatColumn: @Composable (@Composable RowScope.() -> Unit) -> Unit,
     actionsColumn: @Composable (ComposeContextPanelResponsiveState) -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -50,19 +49,19 @@ internal fun MainWorkspaceRow(
             MainWorkspaceColumn(
                 title = null,
                 tooltip = chatTooltip,
-                headerActions = {
-                    chatActions()
-                    if (responsiveState.drawerEntryVisible) {
-                        CompactButton(
-                            onClick = { contextDrawerOpen = true },
-                            modifier = Modifier.semantics {
-                                contentDescription = responsiveState.drawerOpenContentDescription
-                            },
-                        ) { Text("Context") }
+                modifier = Modifier.weight(layout.conversationColumn.weight).fillMaxHeight(),
+                content = {
+                    chatColumn {
+                        if (responsiveState.drawerEntryVisible) {
+                            CompactButton(
+                                onClick = { contextDrawerOpen = true },
+                                modifier = Modifier.semantics {
+                                    contentDescription = responsiveState.drawerOpenContentDescription
+                                },
+                            ) { Text("Context") }
+                        }
                     }
                 },
-                modifier = Modifier.weight(layout.conversationColumn.weight).fillMaxHeight(),
-                content = chatColumn,
             )
             if (responsiveState.inlinePanelVisible) {
                 MainWorkspaceColumn(

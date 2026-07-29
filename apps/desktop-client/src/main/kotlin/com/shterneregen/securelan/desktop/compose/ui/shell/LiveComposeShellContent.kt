@@ -101,14 +101,6 @@ internal fun LiveComposeShellContent(
             layout = ComposeShellMetadata.DEFAULT_WORKSPACE_LAYOUT,
             peersTooltip = peerState.hint,
             rightColumnTitle = rightColumnTitle,
-            chatActions = {
-                if (peerState.selectedPeer != null) {
-                    ChatCallActions(
-                        hostAdapter = hostAdapter,
-                        selectedPeer = peerState.selectedPeer,
-                    )
-                }
-            },
             peersColumn = {
                 LivePeerListCard(
                     peerState = peerState,
@@ -117,12 +109,21 @@ internal fun LiveComposeShellContent(
                     },
                 )
             },
-            chatColumn = {
+            chatColumn = { responsiveHeaderActions ->
                 MessengerCenterPanel(
                     hostAdapter = hostAdapter,
                     workspaceState = workspaceState,
                     selectedJoinTarget = selectedJoinTarget,
                     hubTooltip = hubTooltip,
+                    headerActions = {
+                        if (peerState.selectedPeer != null) {
+                            ChatCallActions(
+                                hostAdapter = hostAdapter,
+                                selectedPeer = peerState.selectedPeer,
+                            )
+                        }
+                        responsiveHeaderActions()
+                    },
                     chatSurface = {
                         LiveChatWorkspaceCard(
                             hostAdapter,
