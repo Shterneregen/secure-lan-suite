@@ -2,7 +2,7 @@ package com.shterneregen.securelan.desktop.compose.state.chat
 
 import java.time.Instant
 
-public data class ComposeChatTranscriptLinePresentation(
+data class ComposeChatTranscriptLinePresentation(
     val kind: ComposeChatTranscriptLineKind,
     val label: String,
     val body: String,

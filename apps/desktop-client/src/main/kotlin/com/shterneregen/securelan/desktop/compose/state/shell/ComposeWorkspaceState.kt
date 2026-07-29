@@ -13,18 +13,10 @@ data class ComposeWorkspaceState(
     val layoutContract: ComposeWorkspaceLayoutContract = ComposeWorkspaceLayoutContract(),
 ) {
     val chatVisible: Boolean = true
-    val startupSurfaceVisible: Boolean = true
     val connectionHubExpandedByDefault: Boolean = mode == ComposeWorkspaceMode.OFFLINE
     val videoStageVisible: Boolean = mode == ComposeWorkspaceMode.VIDEO_CALL
     val callBannerVisible: Boolean = mode == ComposeWorkspaceMode.VOICE_CALL
     val inlineTransferVisible: Boolean = mode == ComposeWorkspaceMode.FILE_TRANSFER
-    val rightPanelMode: RightPanelMode = when (mode) {
-        ComposeWorkspaceMode.OFFLINE -> RightPanelMode.HIDDEN
-        ComposeWorkspaceMode.HOSTING, ComposeWorkspaceMode.CONNECTED -> RightPanelMode.ROOM_INFO
-        ComposeWorkspaceMode.PEER_SELECTED -> RightPanelMode.PEER_INFO
-        ComposeWorkspaceMode.FILE_TRANSFER -> RightPanelMode.TRANSFERS
-        ComposeWorkspaceMode.VOICE_CALL, ComposeWorkspaceMode.VIDEO_CALL -> RightPanelMode.CALL
-    }
 
     companion object {
         fun from(

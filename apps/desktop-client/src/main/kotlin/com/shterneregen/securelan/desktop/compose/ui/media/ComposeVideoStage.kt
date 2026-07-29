@@ -40,8 +40,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.Dimension
+import kotlin.time.Duration.Companion.seconds
 
-private const val VIDEO_CONTROLS_HIDE_DELAY_MS = 2_000L
+private val VIDEO_CONTROLS_HIDE_DELAY = 2.seconds
 
 @Composable
 internal fun ComposeVideoStage(
@@ -134,13 +135,13 @@ private fun VideoStageSurface(
         controlsVisible = true
         hideControlsJob[0]?.cancel()
         hideControlsJob[0] = controlsScope.launch {
-            delay(VIDEO_CONTROLS_HIDE_DELAY_MS)
+            delay(VIDEO_CONTROLS_HIDE_DELAY)
             controlsVisible = false
         }
     }
 
     LaunchedEffect(Unit) {
-        delay(VIDEO_CONTROLS_HIDE_DELAY_MS)
+        delay(VIDEO_CONTROLS_HIDE_DELAY)
         controlsVisible = false
     }
 

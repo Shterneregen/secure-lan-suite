@@ -107,22 +107,18 @@ class ComposeDesktopHostAdapter(
     var discoveredPeers: List<DiscoveredPeer> by mutableStateOf(emptyList())
         private set
 
-    /** Manual peers entered from the Compose peer-list validation shell. */
-    var manualPeers: List<DiscoveredPeer> by mutableStateOf(emptyList())
-        private set
-
     /** Chat-room peers observed through USER_JOINED, chat, signal, and USER_LEFT events. */
     var chatPeers: List<PeerPresence> by mutableStateOf(emptyList())
         private set
 
-    /** Combined peer list rendered by the Compose shell. */
+    /** Discovered peer list rendered by the Compose shell. */
     val visiblePeers: List<DiscoveredPeer>
-        get() = (discoveredPeers + manualPeers)
+        get() = discoveredPeers
             .filterNot(::isLocalPeer)
             .distinctBy { it.peerId }
             .sortedWith(Comparator.comparing(DiscoveredPeer::nickname, String.CASE_INSENSITIVE_ORDER))
 
-    /** Combined peer list: discovered/manual LAN targets plus connected chat participants. */
+    /** Combined peer list: discovered LAN targets plus connected chat participants. */
     val visiblePeerItems: List<PeerPresence>
         get() {
             val merged = LinkedHashMap<String, PeerPresence>()
@@ -507,31 +503,9 @@ class ComposeDesktopHostAdapter(
         refreshState()
     }
 
-    /** Add a manual peer target when UDP discovery is unavailable during validation. */
-    fun addManualPeer(
-        nickname: String,
-        host: String,
-        chatPort: Int,
-        filePort: Int,
-    ) {
-        if (shuttingDown.get()) return
-        val trimmedNick = nickname.trim()
-        val trimmedHost = host.trim()
-        if (trimmedNick.isEmpty() || trimmedHost.isEmpty()) {
-            SecureLanLogger.logConnection("Manual peer rejected: nickname and host are required.")
-            return
-        }
-        val peerId = "manual-${trimmedNick.lowercase()}-${trimmedHost.lowercase()}-$chatPort-$filePort"
-            .replace(Regex("[^a-z0-9.-]+"), "-")
-        val peer = DiscoveredPeer(peerId, trimmedNick, trimmedHost, chatPort, filePort, Instant.now())
-        manualPeers = (manualPeers.filterNot { it.peerId == peer.peerId } + peer)
-            .sortedWith(Comparator.comparing(DiscoveredPeer::nickname, String.CASE_INSENSITIVE_ORDER))
-        SecureLanLogger.logConnection("Manual peer added: ${peer.nickname}@${peer.host}; visible=${visiblePeers.size}.")
-    }
-
     /** Resolve a selected Compose peer row to its advertised LAN file endpoint. */
     fun discoveredPeerFor(nickname: String): DiscoveredPeer? {
-        val discovered = (discoveredPeers + manualPeers).firstOrNull { it.nickname.equals(nickname, ignoreCase = true) }
+        val discovered = discoveredPeers.firstOrNull { it.nickname.equals(nickname, ignoreCase = true) }
         if (discovered != null) {
             return discovered
         }
@@ -553,21 +527,8 @@ class ComposeDesktopHostAdapter(
         ?.takeIf { it.host.isNotBlank() && it.chatPort > 0 && it.filePort > 0 }
         ?.let(ComposeConnectionJoinTarget::fromDiscoveredPeer)
 
-    /** Clear manually added Compose peer targets. */
-    fun clearManualPeers() {
-        manualPeers = emptyList()
-        SecureLanLogger.logConnection("Manual peer targets cleared; visible=${visiblePeers.size}.")
-    }
-
     /** Generate a default random nickname. */
     fun generateNickname(): String = randomNicknameService.generate()
-
-    /** Restart the UDP discovery listener using the current hosting state. */
-    fun refreshPeerDiscovery() {
-        if (shuttingDown.get()) return
-        startPeerDiscoveryListener()
-        refreshState()
-    }
 
     /** Send a chat message through the connected client. */
     fun sendMessage(text: String) {
@@ -975,11 +936,8 @@ class ComposeDesktopHostAdapter(
 
     fun testMicrophone(deviceId: String? = mediaVoiceState.selectedMicrophone.deviceId): String {
         val mediaService = rtcMediaDeviceService
-        val result = if (mediaService == null) {
-            "Microphone test unavailable: RTC media device service is not configured."
-        } else {
-            mediaService.testAudioCaptureDevice(deviceId)
-        }
+        val result = mediaService?.testAudioCaptureDevice(deviceId)
+            ?: "Microphone test unavailable: RTC media device service is not configured."
         mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty(), microphoneTestStatus = result)
         SecureLanLogger.logRealtime(result)
         return result
@@ -992,11 +950,8 @@ class ComposeDesktopHostAdapter(
 
     fun testSpeaker(deviceId: String? = mediaVoiceState.selectedOutputDevice.deviceId): String {
         val mediaService = rtcMediaDeviceService
-        val result = if (mediaService == null) {
-            "Speaker test unavailable: RTC media device service is not configured."
-        } else {
-            mediaService.testAudioRenderDevice(deviceId)
-        }
+        val result = mediaService?.testAudioRenderDevice(deviceId)
+            ?: "Speaker test unavailable: RTC media device service is not configured."
         mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty(), speakerTestStatus = result)
         SecureLanLogger.logRealtime(result)
         return result
@@ -1009,11 +964,8 @@ class ComposeDesktopHostAdapter(
 
     fun testCamera(deviceId: String? = experimentalVideoState.selectedCamera.deviceId): String {
         val mediaService = rtcMediaDeviceService
-        val result = if (mediaService == null) {
-            "Camera test unavailable: RTC media device service is not configured."
-        } else {
-            mediaService.testVideoCaptureDevice(deviceId)
-        }
+        val result = mediaService?.testVideoCaptureDevice(deviceId)
+            ?: "Camera test unavailable: RTC media device service is not configured."
         experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty(), cameraTestStatus = result)
         SecureLanLogger.logRealtime(result)
         return result
@@ -1321,7 +1273,7 @@ class ComposeDesktopHostAdapter(
         var normalized = text?.trim().orEmpty()
         val normalizedSender = Regex.escape(sender.trim())
         if (normalizedSender.isNotEmpty()) {
-            normalized = normalized.replace(Regex("^(?:$normalizedSender):\\s*", RegexOption.IGNORE_CASE), "")
+            normalized = normalized.replace(Regex("^$normalizedSender:\\s*", RegexOption.IGNORE_CASE), "")
         }
         normalized = normalized
             .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "")
@@ -1489,10 +1441,10 @@ class ComposeDesktopHostAdapter(
                 SecureLanLogger.logRealtime(DesktopRealtimeFormatters.rtcWarningDiagnostics(event.message.orEmpty()))
             }
             is RtcAudioLevelEvent -> {
-                if (event.local) {
-                    mediaVoiceState = mediaVoiceState.copy(localAudioLevel = event.level)
+                mediaVoiceState = if (event.local) {
+                    mediaVoiceState.copy(localAudioLevel = event.level)
                 } else {
-                    mediaVoiceState = mediaVoiceState.copy(remoteAudioLevel = event.level)
+                    mediaVoiceState.copy(remoteAudioLevel = event.level)
                 }
             }
             is RtcVideoFrameEvent -> {

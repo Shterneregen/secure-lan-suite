@@ -25,8 +25,6 @@ data class ComposeStatusConnectionState(
 
     val serverChatPort: Int? = parsePort(serverChatPortText)
     val serverFilePort: Int? = parsePort(serverFilePortText)
-    val chatPort: Int = serverChatPort ?: NetworkConstants.DEFAULT_CHAT_PORT
-    val filePort: Int = serverFilePort ?: NetworkConstants.DEFAULT_FILE_TRANSFER_PORT
     val clientChatPort: Int? = parsePort(clientChatPortText)
     val clientFilePort: Int? = parsePort(clientFilePortText)
     val nicknameValid: Boolean = nickname.trim().isNotEmpty()
@@ -44,18 +42,6 @@ data class ComposeStatusConnectionState(
         )
     } else {
         null
-    }
-    val portSummary: String =
-        "Room chat ${serverChatPortText.trim()} · Room files ${serverFilePortText.trim()} · Join chat ${clientChatPortText.trim()} · Join files ${clientFilePortText.trim()}"
-    val validationSummary: String = when {
-        !nicknameValid -> "Enter a name before opening or joining a room."
-        serverChatPort == null || serverFilePort == null -> "Room chat and file ports must be numbers from 1 to 65535."
-        !manualHostValid -> "Enter a room address before connecting manually."
-        clientChatPort == null || clientFilePort == null -> "Connection ports must be numbers from 1 to 65535."
-        localServerRunning && clientConnected -> "Room is open and this client is already connected."
-        localServerRunning -> "Room is open; stop hosting before opening another room."
-        clientConnected -> "Already connected to a room; disconnect first."
-        else -> "Ready to open or join a room."
     }
     val discoverableLabel: String = if (discoverable) "Discoverable" else "Hidden"
 

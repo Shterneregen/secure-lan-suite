@@ -9,7 +9,6 @@ import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
 import com.shterneregen.securelan.chat.service.ChatClientService
-import com.shterneregen.securelan.chat.service.ChatEventPublisher
 import com.shterneregen.securelan.chat.service.ChatServerConfig
 import com.shterneregen.securelan.chat.service.ChatServerService
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
@@ -34,13 +33,11 @@ class SecureChatIntegrationTest {
     @Test
     fun secureHandshakeAndMessageExchangeShouldSucceed() {
         val events = CopyOnWriteArrayList<ChatCoreEvent>()
-        val publisher = ChatEventPublisher { events.add(it) }
-
         val port = freePort()
-        val server = track(DefaultChatServerService(publisher))
+        val server = track(DefaultChatServerService { events.add(it) })
         server.start(ChatServerConfig(port, "chatpass"))
 
-        val client = track(DefaultChatClientService(publisher))
+        val client = track(DefaultChatClientService(eventPublisher = { events.add(it) }))
         assertTrue(client.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")))
         assertTrue(await(events, { it is ChatConnectedEvent }, 2_000))
 
@@ -51,13 +48,11 @@ class SecureChatIntegrationTest {
     @Test
     fun wrongPasswordShouldBeRejected() {
         val events = CopyOnWriteArrayList<ChatCoreEvent>()
-        val publisher = ChatEventPublisher { events.add(it) }
-
         val port = freePort()
-        val server = track(DefaultChatServerService(publisher))
+        val server = track(DefaultChatServerService { events.add(it) })
         server.start(ChatServerConfig(port, "chatpass"))
 
-        val client = track(DefaultChatClientService(publisher))
+        val client = track(DefaultChatClientService(eventPublisher = { events.add(it) }))
         assertFalse(client.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "wrong")))
         assertTrue(await(events, { it is ChatErrorEvent && it.message?.contains("Wrong session password") == true }, 2_000))
     }
@@ -69,14 +64,14 @@ class SecureChatIntegrationTest {
         val bobEvents = CopyOnWriteArrayList<ChatCoreEvent>()
 
         val port = freePort()
-        val server = track(DefaultChatServerService(ChatEventPublisher { serverEvents.add(it) }))
+        val server = track(DefaultChatServerService { serverEvents.add(it) })
         server.start(ChatServerConfig(port, "chatpass"))
 
-        val alice = track(DefaultChatClientService(ChatEventPublisher { aliceEvents.add(it) }))
+        val alice = track(DefaultChatClientService(eventPublisher = { aliceEvents.add(it) }))
         assertTrue(alice.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")))
         assertTrue(await(aliceEvents, { it is ChatConnectedEvent }, 2_000))
 
-        val bob = track(DefaultChatClientService(ChatEventPublisher { bobEvents.add(it) }))
+        val bob = track(DefaultChatClientService(eventPublisher = { bobEvents.add(it) }))
         assertTrue(bob.connect(ChatClientConnectRequest("127.0.0.1", port, "bob", "chatpass")))
         assertTrue(await(bobEvents, { it is ChatConnectedEvent }, 2_000))
         assertTrue(await(bobEvents, { it is ChatUserJoinedEvent && it.nickname == "alice" }, 2_000))
@@ -90,14 +85,14 @@ class SecureChatIntegrationTest {
         val bobEvents = CopyOnWriteArrayList<ChatCoreEvent>()
 
         val port = freePort()
-        val server = track(DefaultChatServerService(ChatEventPublisher { serverEvents.add(it) }))
+        val server = track(DefaultChatServerService { serverEvents.add(it) })
         server.start(ChatServerConfig(port, "chatpass"))
 
-        val alice = track(DefaultChatClientService(ChatEventPublisher { aliceEvents.add(it) }))
+        val alice = track(DefaultChatClientService(eventPublisher = { aliceEvents.add(it) }))
         assertTrue(alice.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")))
         assertTrue(await(aliceEvents, { it is ChatConnectedEvent }, 2_000))
 
-        val bob = track(DefaultChatClientService(ChatEventPublisher { bobEvents.add(it) }))
+        val bob = track(DefaultChatClientService(eventPublisher = { bobEvents.add(it) }))
         assertTrue(bob.connect(ChatClientConnectRequest("127.0.0.1", port, "bob", "chatpass")))
         assertTrue(await(bobEvents, { it is ChatConnectedEvent }, 2_000))
 

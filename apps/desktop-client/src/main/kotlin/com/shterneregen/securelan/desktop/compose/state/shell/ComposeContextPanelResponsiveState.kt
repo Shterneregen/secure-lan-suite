@@ -7,15 +7,12 @@ data class ComposeContextPanelResponsiveState(
     val inlinePanelVisible: Boolean = mode != ComposeContextPanelResponsiveMode.DRAWER
     val drawerMode: Boolean = mode == ComposeContextPanelResponsiveMode.DRAWER
     val drawerEntryVisible: Boolean = drawerMode
-    val drawerOpenLabel: String = "Open Context Assistant"
-    val drawerCloseLabel: String = "Close Context Assistant"
     val drawerContentDescription: String = "Context Assistant drawer"
     val drawerOpenContentDescription: String = "Open Context Assistant drawer"
     val drawerCloseContentDescription: String = "Close Context Assistant drawer"
     val collapseSecondaryCards: Boolean = mode == ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY
     val collapseHistory: Boolean = mode == ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY || drawerMode
     val preservesConversationFirst: Boolean = true
-    val escapeClosesDrawer: Boolean = drawerMode
     val summary: String = when (mode) {
         ComposeContextPanelResponsiveMode.FULL_PANEL -> "Context Assistant visible."
         ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY -> "Secondary cards collapsed to preserve conversation."

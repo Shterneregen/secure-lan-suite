@@ -25,16 +25,16 @@ Detailed phase records now live in [`phase-1.md`](phase-1.md) through [`phase-14
 
 ## Current repository context
 
-- The root build applies Java Library configuration to all non-Android subprojects in [`build.gradle`](../../build.gradle:15).
-- The current JVM baseline is Java 25 through [`languageVersion`](../../build.gradle:21) and [`options.release`](../../build.gradle:26).
+- The root build applies Java Library configuration to all non-Android subprojects in [`build.gradle`](../../build.gradle).
+- The current JVM baseline is Java 25 through [`languageVersion`](../../build.gradle) and [`options.release`](../../build.gradle).
 - Kotlin JVM modules currently compile with JVM target 24 while the Java toolchain remains Java 25.
-- The Android client uses [`org.jetbrains.kotlin.android`](../../apps/android-client/build.gradle:3), with a JVM target configured in [`kotlinOptions`](../../apps/android-client/build.gradle:53).
-- The desktop client uses the Kotlin JVM, Compose, Application, and packaging plugins in [`apps/desktop-client/build.gradle`](../../apps/desktop-client/build.gradle:3).
+- The Android client uses [`org.jetbrains.kotlin.android`](../../apps/android-client/build.gradle), with a JVM target configured in [`kotlinOptions`](../../apps/android-client/build.gradle).
+- The desktop client uses the Kotlin JVM, Compose, Application, and packaging plugins in [`apps/desktop-client/build.gradle`](../../apps/desktop-client/build.gradle).
 - Desktop packaging uses `jpackage` through `buildPortable`, `buildComposePortable`, and `buildExe`.
 - Compose is the active desktop UI and launcher; the obsolete JavaFX workspace-parity layer has been removed.
 - Desktop Compose runtime work now uses Kotlin coroutines inside [`apps/desktop-client`](../../apps/desktop-client/build.gradle) for non-blocking file-transfer work; this is intentionally kept out of reusable modules unless a separate API design is approved.
 - Chat handshake and peer presence now carry capability metadata through [`PeerCapabilities.kt`](../../modules/chat-core/src/main/kotlin/com/shterneregen/securelan/chat/protocol/handshake/PeerCapabilities.kt), while compatibility constructors preserve older Java/Kotlin call sites.
-- The WebRTC module depends on [`webrtc-java`](../../modules/webrtc-core/build.gradle:3), so callback-heavy runtime code remains a high-risk migration area.
+- The WebRTC module depends on [`webrtc-java`](../../modules/webrtc-core/build.gradle), so callback-heavy runtime code remains a high-risk migration area.
 
 ## Target approach
 
@@ -69,13 +69,13 @@ flowchart TD
 | Phase 5  | Completed            | [`chat-core`](../../modules/chat-core/build.gradle) and [`file-transfer-core`](../../modules/file-transfer-core/build.gradle) migration while preserving UDP discovery, secure chat, RTC signaling transport, quick share, and encrypted transfer behavior.                                                            | [`phase-5.md`](phase-5.md)   |
 | Phase 6  | Partially completed  | Low-risk [`webrtc-core`](../../modules/webrtc-core/build.gradle) events, services, orchestration, diagnostics, capability selection, and frame conversion migrated; callback-heavy runtime code remains Java.                                                                                                          | [`phase-6.md`](phase-6.md)   |
 | Phase 7  | Completed            | Reusable-module tests and documentation moved to Kotlin test sources where appropriate, with development docs updated for Kotlin/Gradle validation.                                                                                                                                                                    | [`phase-7.md`](phase-7.md)   |
-| Phase 8  | Completed and closed | Desktop Kotlin interop slice: Kotlin JVM enabled in [`apps/desktop-client`](../../apps/desktop-client/build.gradle), public [`MainView.kt`](../../apps/desktop-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) compatibility shell added, JavaFX delegate and launcher boundaries preserved. | [`phase-8.md`](phase-8.md)   |
+| Phase 8  | Completed and closed | Desktop Kotlin interop slice: Kotlin JVM enabled in [`apps/desktop-client`](../../apps/desktop-client/build.gradle), public [`MainView.kt`](../../apps/javafx-client/src/main/kotlin/com/shterneregen/securelan/desktop/ui/MainView.kt) compatibility shell added, JavaFX delegate and launcher boundaries preserved.  | [`phase-8.md`](phase-8.md)   |
 | Phase 9  | Closed               | Initial Compose desktop parity implementation: Compose shell, host adapter, JavaFX-style workspace, feature surfaces, diagnostics, and fallback guardrails exist while JavaFX remains packaged launcher.                                                                                                               | [`phase-9.md`](phase-9.md)   |
 | Phase 10 | Closed               | Compose runtime stabilization baseline, capability-aware desktop/Android peer targeting, UX modernization start, packaging readiness model, rollback planning, and explicit decision to keep JavaFX as deprecated packaged fallback.                                                                                   | [`phase-10.md`](phase-10.md) |
 | Phase 11 | Completed            | Compose-first desktop UX hardening: JavaFX deprecated for new UI work; improve Compose navigation, peer-list states, chat, file transfer, session settings, diagnostics, errors, and release-gate evidence.                                                                                                            | [`phase-11.md`](phase-11.md) |
 | Phase 12 | Completed            | Workspace UX and product polish: single contextual workspace, motion, microinteractions, empty states, visual polish, and consistency review.                                                                                                                                                                          | [`phase-12.md`](phase-12.md) |
 | Phase 13 | Completed            | Runtime UI hardening and release-candidate polish driven by screenshot review: focus-ring halo, composer clipping, connection-hub compaction, Context Assistant runtime density, attachment ergonomics, resize matrix, and release gates.                                                                              | [`phase-13.md`](phase-13.md) |
-| Phase 14 | In progress          | Product polish and UX refinement: call controls, focused Context Assistant modes, dedicated Quick Share/Steganography/Settings windows, video-stage ergonomics, transcript events, adaptive columns, and final consistency validation.                                                                                | [`phase-14.md`](phase-14.md) |
+| Phase 14 | In progress          | Product polish and UX refinement: call controls, focused Context Assistant modes, dedicated Quick Share/Steganography/Settings windows, video-stage ergonomics, transcript events, adaptive columns, and final consistency validation.                                                                                 | [`phase-14.md`](phase-14.md) |
 
 ## Kotlin migration trade-offs
 
@@ -95,7 +95,7 @@ flowchart TD
 - Kotlin compiler target compatibility with Java 25 must be verified before adopting Kotlin across all core modules.
 - Mixed Java and Kotlin builds can fail if Java and Kotlin target settings drift.
 - Public API compatibility may change, especially if Java records are replaced by Kotlin data classes.
-- Desktop packaging must include Kotlin runtime dependencies in the runtime classpath used by [`jpackage`](../../apps/desktop-client/build.gradle:80).
+- Desktop packaging must include Kotlin runtime dependencies in the runtime classpath used by [`jpackage`](../../apps/desktop-client/build.gradle).
 - Compile time may increase.
 - Kotlin interop with callback-heavy Java APIs can be less obvious in [`modules/webrtc-core`](../../modules/webrtc-core/build.gradle).
 - Crypto, protocol, and transfer modules are sensitive to subtle behavior changes from automatic conversion.
@@ -112,7 +112,7 @@ flowchart TD
 - UDP discovery, secure chat handshake, encrypted file transfer, RTC signaling, and desktop Android interoperability stay compatible.
 - Public module dependency directions remain acyclic and aligned with architecture rules.
 - Portable ZIP packaging through `buildPortable` and `buildComposePortable` includes all required Kotlin, coroutine, and Compose runtime dependencies.
-- Windows EXE packaging through [`buildExe`](../../apps/desktop-client/build.gradle:158) still works on a WiX-enabled Windows environment.
+- Windows EXE packaging through [`buildExe`](../../apps/desktop-client/build.gradle) still works on a WiX-enabled Windows environment.
 - Documentation is updated where the official language stack, build process, or product status changes.
 
 ## Recommended next decision

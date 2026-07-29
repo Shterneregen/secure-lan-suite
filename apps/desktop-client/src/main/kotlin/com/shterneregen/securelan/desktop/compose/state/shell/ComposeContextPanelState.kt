@@ -14,7 +14,6 @@ data class ComposeContextPanelState(
     val visibleCards: List<ComposeContextPanelCard> = cards.take(visibleCardLimit)
     val primaryCards: List<ComposeContextPanelCard> = visibleCards.filter { it.primary }
     val primaryButtons: List<String> = visibleCards.mapNotNull { it.primaryAction }
-    val collapsedCards: List<ComposeContextPanelCard> = visibleCards.filter { it.collapsed }
     val visibleCardTitles: List<String> = visibleCards.map { it.title }
     val visibleCardKinds: List<ComposeContextPanelCardKind> = visibleCards.map { it.kind }
     val hiddenFeatureNames: List<String> = when (mode) {
@@ -41,8 +40,6 @@ data class ComposeContextPanelState(
         hidesTechnicalControlsByDefault &&
         keepsRawDetailsCollapsed
 
-    fun responsiveStateFor(widthPx: Int): ComposeContextPanelResponsiveState = ComposeContextPanelResponsiveState.forWidth(widthPx)
-
     fun visibleCardsFor(responsiveState: ComposeContextPanelResponsiveState): List<ComposeContextPanelCard> = visibleCards.map { card ->
         when {
             responsiveState.collapseSecondaryCards && !card.primary -> card.copy(collapsed = true)
@@ -50,8 +47,6 @@ data class ComposeContextPanelState(
             else -> card
         }
     }
-
-    fun visibleCardsForWidth(widthPx: Int): List<ComposeContextPanelCard> = visibleCardsFor(responsiveStateFor(widthPx))
 
     companion object {
         private const val MAX_VISIBLE_CARDS: Int = 6
