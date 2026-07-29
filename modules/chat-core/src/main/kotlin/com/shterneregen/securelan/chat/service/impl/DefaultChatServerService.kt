@@ -76,7 +76,14 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
             broadcastService.addClient(nickname, session, response.capabilities())
             broadcastService.publishUserJoined(nickname, response.capabilities())
             eventPublisher.publish(ChatUserJoinedEvent(nickname, session.remoteAddress(), response.capabilities()))
-            ServerChatSessionHandler(session, nickname, broadcastService, nicknameRegistry, eventPublisher).run()
+            ServerChatSessionHandler(
+                session = session,
+                nickname = nickname,
+                broadcastService = broadcastService,
+                nicknameRegistry = nicknameRegistry,
+                eventPublisher = eventPublisher,
+                reportSessionErrors = running::get,
+            ).run()
         } catch (e: IOException) {
             eventPublisher.publish(ChatErrorEvent("Error while handling client", e))
             SocketClose.closeQuietly(session)

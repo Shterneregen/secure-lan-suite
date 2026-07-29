@@ -3,6 +3,7 @@ package com.shterneregen.securelan.chat
 import com.shterneregen.securelan.chat.event.ChatConnectedEvent
 import com.shterneregen.securelan.chat.event.ChatCoreEvent
 import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent
+import com.shterneregen.securelan.chat.event.ChatDisconnectReasons
 import com.shterneregen.securelan.chat.event.ChatErrorEvent
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
@@ -84,11 +85,12 @@ class SecureChatIntegrationTest {
 
     @Test
     fun stopShouldDisconnectClientsAndPreventFurtherChat() {
+        val serverEvents = CopyOnWriteArrayList<ChatCoreEvent>()
         val aliceEvents = CopyOnWriteArrayList<ChatCoreEvent>()
         val bobEvents = CopyOnWriteArrayList<ChatCoreEvent>()
 
         val port = freePort()
-        val server = track(DefaultChatServerService(ChatEventPublisher { }))
+        val server = track(DefaultChatServerService(ChatEventPublisher { serverEvents.add(it) }))
         server.start(ChatServerConfig(port, "chatpass"))
 
         val alice = track(DefaultChatClientService(ChatEventPublisher { aliceEvents.add(it) }))
@@ -102,10 +104,17 @@ class SecureChatIntegrationTest {
         server.stop()
 
         assertFalse(server.isRunning())
-        assertTrue(await(aliceEvents, { it is ChatDisconnectedEvent }, 2_000))
-        assertTrue(await(bobEvents, { it is ChatDisconnectedEvent }, 2_000))
+        assertTrue(await(aliceEvents, {
+            it is ChatDisconnectedEvent && it.reason == ChatDisconnectReasons.REMOTE_HOST_CLOSED
+        }, 2_000))
+        assertTrue(await(bobEvents, {
+            it is ChatDisconnectedEvent && it.reason == ChatDisconnectReasons.REMOTE_HOST_CLOSED
+        }, 2_000))
         assertFalse(alice.isConnected())
         assertFalse(bob.isConnected())
+        assertFalse(await(serverEvents, {
+            it is ChatErrorEvent && it.message?.startsWith("Server session error") == true
+        }, 300))
 
         alice.sendMessage("message after stop")
         assertFalse(await(bobEvents, { it is ChatMessageReceivedEvent && it.text == "message after stop" }, 300))

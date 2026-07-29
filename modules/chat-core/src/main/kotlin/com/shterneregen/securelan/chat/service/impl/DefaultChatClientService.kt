@@ -2,6 +2,7 @@ package com.shterneregen.securelan.chat.service.impl
 
 import com.shterneregen.securelan.chat.event.ChatConnectedEvent
 import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent
+import com.shterneregen.securelan.chat.event.ChatDisconnectReasons
 import com.shterneregen.securelan.chat.event.ChatErrorEvent
 import com.shterneregen.securelan.chat.event.ChatMessageSentEvent
 import com.shterneregen.securelan.chat.protocol.WireMessage
@@ -74,7 +75,7 @@ class DefaultChatClientService @JvmOverloads constructor(
             session = null
         }
         if (wasConnected || nickname != null) {
-            eventPublisher.publish(ChatDisconnectedEvent(nickname ?: "", "Client disconnected"))
+            eventPublisher.publish(ChatDisconnectedEvent(nickname ?: "", ChatDisconnectReasons.CLIENT_REQUEST))
         }
     }
 

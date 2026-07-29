@@ -232,9 +232,13 @@ class ComposeDesktopHostAdapter(
                 clearChatPeers()
             }
             is ChatDisconnectedEvent -> {
-                appendChatTranscript("[disconnected] ${event.nickname ?: "unknown"} - ${event.reason ?: "unknown"}")
-                clearChatPeers()
-                publish(ComposeConnectionEventKind.INFO, "Chat disconnected: ${event.reason ?: "unknown"}")
+                dispatchUiStateUpdate {
+                    appendChatTranscript(disconnectedTranscriptLine(event))
+                    clearChatPeers()
+                    statusState = statusState.withClientDisconnected()
+                    refreshRealtimeState()
+                    publish(ComposeConnectionEventKind.INFO, event.reason ?: "Chat disconnected")
+                }
             }
             is ChatMessageReceivedEvent -> {
                 val sender = event.senderNickname ?: "unknown"
@@ -1305,6 +1309,13 @@ class ComposeDesktopHostAdapter(
     private fun normalizeTranscriptLine(line: String): String = line.trim()
         .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "[system] ")
         .replace(Regex("^\\[system]\\s*system:\\s*", RegexOption.IGNORE_CASE), "[system] ")
+
+    private fun disconnectedTranscriptLine(event: ChatDisconnectedEvent): String = when (event.reason) {
+        ChatDisconnectReasons.REMOTE_HOST_CLOSED -> "[system] Room closed by host"
+        ChatDisconnectReasons.CLIENT_REQUEST -> "[system] Disconnected from room"
+        ChatDisconnectReasons.CONNECTION_LOST -> "[disconnected] Connection lost"
+        else -> "[disconnected] ${event.reason ?: "Chat disconnected"}"
+    }
 
     private fun normalizeChatText(text: String?, sender: String): String {
         var normalized = text?.trim().orEmpty()

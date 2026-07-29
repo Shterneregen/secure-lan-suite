@@ -18,6 +18,11 @@ data class ComposeStatusConnectionState(
     val localServerRunning: Boolean = false,
     val clientConnected: Boolean = false,
 ) {
+    fun withClientDisconnected(): ComposeStatusConnectionState = copy(
+        clientConnected = false,
+        connectionStatus = "Connection idle",
+    )
+
     val serverChatPort: Int? = parsePort(serverChatPortText)
     val serverFilePort: Int? = parsePort(serverFilePortText)
     val chatPort: Int = serverChatPort ?: NetworkConstants.DEFAULT_CHAT_PORT

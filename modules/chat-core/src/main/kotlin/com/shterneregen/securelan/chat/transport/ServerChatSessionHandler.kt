@@ -14,6 +14,7 @@ class ServerChatSessionHandler(
     private val broadcastService: ChatBroadcastService,
     private val nicknameRegistry: NicknameRegistryService,
     private val eventPublisher: ChatEventPublisher,
+    private val reportSessionErrors: () -> Boolean = { true },
 ) : Runnable {
     override fun run() {
         try {
@@ -29,7 +30,9 @@ class ServerChatSessionHandler(
                 }
             }
         } catch (e: IOException) {
-            eventPublisher.publish(ChatErrorEvent("Server session error for $nickname", e))
+            if (reportSessionErrors()) {
+                eventPublisher.publish(ChatErrorEvent("Server session error for $nickname", e))
+            }
         } finally {
             cleanup()
         }

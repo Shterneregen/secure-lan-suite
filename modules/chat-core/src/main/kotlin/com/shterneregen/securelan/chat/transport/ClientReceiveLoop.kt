@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.chat.transport
 
 import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent
+import com.shterneregen.securelan.chat.event.ChatDisconnectReasons
 import com.shterneregen.securelan.chat.event.ChatErrorEvent
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent
 import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent
@@ -20,6 +21,7 @@ class ClientReceiveLoop(
     private val eventPublisher: ChatEventPublisher,
 ) : Runnable {
     override fun run() {
+        var disconnectReason = ChatDisconnectReasons.REMOTE_HOST_CLOSED
         try {
             while (connected.get()) {
                 val message = session.readMessage() ?: break
@@ -33,11 +35,12 @@ class ClientReceiveLoop(
             }
         } catch (e: IOException) {
             if (connected.get()) {
+                disconnectReason = ChatDisconnectReasons.CONNECTION_LOST
                 eventPublisher.publish(ChatErrorEvent("Connection lost", e))
             }
         } finally {
             if (connected.getAndSet(false)) {
-                eventPublisher.publish(ChatDisconnectedEvent(nickname, "Client disconnected"))
+                eventPublisher.publish(ChatDisconnectedEvent(nickname, disconnectReason))
                 try {
                     session.close()
                 } catch (_: IOException) {
