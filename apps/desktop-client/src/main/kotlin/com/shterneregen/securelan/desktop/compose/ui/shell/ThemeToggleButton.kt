@@ -3,9 +3,11 @@ package com.shterneregen.securelan.desktop.compose.ui.shell
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
@@ -17,7 +19,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
-import com.shterneregen.securelan.desktop.compose.ui.components.CalmFocusButton
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -44,10 +46,12 @@ internal fun ThemeToggleButton(
             }
         },
     ) {
-        CalmFocusButton(
+        CompactButton(
             onClick = onThemeToggle,
             modifier = Modifier
-                .heightIn(min = 26.dp)
+                .defaultMinSize(minWidth = 0.dp, minHeight = 0.dp)
+                .width(38.dp)
+                .height(30.dp)
                 .semantics { contentDescription = actionLabel },
         ) {
             Icon(

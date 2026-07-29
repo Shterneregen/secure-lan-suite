@@ -31,10 +31,10 @@ public data class ComposeChatTranscriptLinePresentation(
                 quickShareEvent -> ComposeChatTranscriptLineKind.QUICK_SHARE
                 lower.startsWith("[error]") || lower.startsWith("[warning]") ->
                     ComposeChatTranscriptLineKind.SECURITY
-                lower.startsWith("[disconnected]") || lower.startsWith("[system]") ||
-                    lower.startsWith("system:") -> ComposeChatTranscriptLineKind.SYSTEM
                 lower.startsWith("[join]") || lower.startsWith("[left]") || presencePattern.containsMatchIn(trimmed) ->
                     ComposeChatTranscriptLineKind.PRESENCE
+                lower.startsWith("[disconnected]") || lower.startsWith("[system]") ||
+                    lower.startsWith("system:") -> ComposeChatTranscriptLineKind.SYSTEM
                 lower.startsWith("[info]") || lower.startsWith("[discovery]") || lower.startsWith("[quick-share]") ||
                     lower.startsWith("[stego]") || lower.startsWith("[rtc]") -> ComposeChatTranscriptLineKind.DIAGNOSTIC
                 lower.contains(" failed") || lower.contains(" error") ->

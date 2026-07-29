@@ -81,13 +81,16 @@ internal fun LiveComposeShellContent(
         selectedPeer = peerState.selectedPeer,
     )
     val topBarLabel = hostAdapter.statusState.nickname.ifBlank { "SecureLanSuite" }
-    val topBarStatus = when {
+    val roomConnectionStatus = when {
         hostAdapter.statusState.clientConnected ->
             "Secure room · Connected · ${peerState.onlinePeers.size} online"
         hostAdapter.statusState.localServerRunning ->
             "Secure room · Hosting · ${peerState.onlinePeers.size} online"
         else -> "Secure room · Offline"
     }
+    val topBarStatus = compactRoomNetworkStatus(hostAdapter.localNetworkInfo)?.let { address ->
+        "$roomConnectionStatus · $address"
+    } ?: roomConnectionStatus
     SecureLanAppShell(
         shellState = ComposeAppShellState(
             productState = productState,
@@ -136,8 +139,11 @@ internal fun LiveComposeShellContent(
                             peerState,
                             onOpenQuickShare = { quickShareDialogOpen = true },
                             onOpenSteganography = { mode -> steganographyDialogMode = mode },
-                        ) {
-                            ComposeVideoStage(hostAdapter.experimentalVideoState.copy(peerListState = peerState))
+                        ) { modifier ->
+                            ComposeVideoStage(
+                                state = hostAdapter.experimentalVideoState.copy(peerListState = peerState),
+                                modifier = modifier,
+                            )
                         }
                     },
                 )

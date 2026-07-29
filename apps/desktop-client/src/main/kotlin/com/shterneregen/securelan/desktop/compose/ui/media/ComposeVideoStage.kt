@@ -1,40 +1,27 @@
 package com.shterneregen.securelan.desktop.compose.ui.media
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.*
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -43,22 +30,33 @@ import androidx.compose.ui.window.rememberDialogState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimentalVideoState
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeVideoPreviewCorner
+import com.shterneregen.securelan.desktop.compose.state.media.settleVideoPreviewCorner
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.util.toPreviewImageBitmap
 import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.awt.Dimension
 
+private const val VIDEO_CONTROLS_HIDE_DELAY_MS = 2_000L
+
 @Composable
-internal fun ComposeVideoStage(state: ComposeExperimentalVideoState) {
+internal fun ComposeVideoStage(
+    state: ComposeExperimentalVideoState,
+    modifier: Modifier = Modifier,
+) {
     var fillVideo by remember { mutableStateOf(false) }
     var localIsPrimary by remember { mutableStateOf(false) }
     var detailsVisible by remember { mutableStateOf(false) }
     var expandedWindowOpen by remember { mutableStateOf(false) }
+    var previewCorner by remember { mutableStateOf(ComposeVideoPreviewCorner.BOTTOM_END) }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.fillMaxSize().padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             VideoStageSurface(
@@ -70,7 +68,9 @@ internal fun ComposeVideoStage(state: ComposeExperimentalVideoState) {
                 onSwap = { localIsPrimary = !localIsPrimary },
                 onToggleDetails = { detailsVisible = !detailsVisible },
                 onExpand = { expandedWindowOpen = true },
-                modifier = Modifier.fillMaxWidth().height(270.dp),
+                previewCorner = previewCorner,
+                onPreviewCornerChange = { previewCorner = it },
+                modifier = Modifier.fillMaxWidth().weight(1f),
             )
             AnimatedVisibility(
                 visible = detailsVisible,
@@ -89,11 +89,14 @@ internal fun ComposeVideoStage(state: ComposeExperimentalVideoState) {
             localIsPrimary = localIsPrimary,
             onToggleScale = { fillVideo = !fillVideo },
             onSwap = { localIsPrimary = !localIsPrimary },
+            previewCorner = previewCorner,
+            onPreviewCornerChange = { previewCorner = it },
             onClose = { expandedWindowOpen = false },
         )
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun VideoStageSurface(
     state: ComposeExperimentalVideoState,
@@ -104,6 +107,8 @@ private fun VideoStageSurface(
     onSwap: () -> Unit,
     onToggleDetails: (() -> Unit)?,
     onExpand: () -> Unit,
+    previewCorner: ComposeVideoPreviewCorner,
+    onPreviewCornerChange: (ComposeVideoPreviewCorner) -> Unit,
     modifier: Modifier,
 ) {
     val primaryFrame = if (localIsPrimary) state.localFrame else state.remoteFrame
@@ -113,9 +118,43 @@ private fun VideoStageSurface(
     val primaryPlaceholder = if (localIsPrimary) state.localFrameCaption else state.remoteFrameCaption
     val secondaryPlaceholder = if (localIsPrimary) state.remoteFrameCaption else state.localFrameCaption
     val contentScale = if (fillVideo) ContentScale.Crop else ContentScale.Fit
+    var controlsVisible by remember { mutableStateOf(true) }
+    var previewDragX by remember { mutableFloatStateOf(0f) }
+    var previewDragY by remember { mutableFloatStateOf(0f) }
+    val controlsScope = rememberCoroutineScope()
+    val hideControlsJob = remember { arrayOfNulls<Job>(1) }
+    val previewAlignment = when (previewCorner) {
+        ComposeVideoPreviewCorner.TOP_START -> Alignment.TopStart
+        ComposeVideoPreviewCorner.TOP_END -> Alignment.TopEnd
+        ComposeVideoPreviewCorner.BOTTOM_START -> Alignment.BottomStart
+        ComposeVideoPreviewCorner.BOTTOM_END -> Alignment.BottomEnd
+    }
+
+    fun revealControls() {
+        controlsVisible = true
+        hideControlsJob[0]?.cancel()
+        hideControlsJob[0] = controlsScope.launch {
+            delay(VIDEO_CONTROLS_HIDE_DELAY_MS)
+            controlsVisible = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        delay(VIDEO_CONTROLS_HIDE_DELAY_MS)
+        controlsVisible = false
+    }
 
     Surface(
-        modifier = modifier,
+        modifier = modifier
+            .onPointerEvent(PointerEventType.Enter) {
+                revealControls()
+            }
+            .onPointerEvent(PointerEventType.Move) {
+                revealControls()
+            }
+            .onPointerEvent(PointerEventType.Exit) {
+                controlsVisible = false
+            },
         color = MaterialTheme.colors.background,
         shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
     ) {
@@ -125,6 +164,11 @@ private fun VideoStageSurface(
                 frame = primaryFrame,
                 placeholder = primaryPlaceholder,
                 contentScale = contentScale,
+                labelAlignment = if (previewCorner == ComposeVideoPreviewCorner.TOP_START) {
+                    Alignment.TopEnd
+                } else {
+                    Alignment.TopStart
+                },
                 modifier = Modifier.fillMaxSize(),
             )
             VideoFrameSurface(
@@ -133,38 +177,72 @@ private fun VideoStageSurface(
                 placeholder = secondaryPlaceholder,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
+                    .align(previewAlignment)
                     .padding(12.dp)
                     .width(if (expanded) 280.dp else 190.dp)
-                    .height(if (expanded) 170.dp else 112.dp),
-            )
-            Surface(
-                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
-                color = MaterialTheme.colors.surface.copy(alpha = 0.90f),
-                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-            ) {
-                FlowRow(
-                    modifier = Modifier.padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    CompactButton(onClick = onToggleScale, tone = CompactButtonTone.TERTIARY) {
-                        Text(if (fillVideo) "Fit" else "Fill")
+                    .height(if (expanded) 170.dp else 112.dp)
+                    .graphicsLayer {
+                        translationX = previewDragX
+                        translationY = previewDragY
                     }
-                    CompactButton(
-                        onClick = onSwap,
-                        enabled = state.localFrame != null && state.remoteFrame != null,
-                        tone = CompactButtonTone.TERTIARY,
-                    ) {
-                        Text("Swap")
-                    }
-                    if (onToggleDetails != null) {
-                        CompactButton(onClick = onToggleDetails, tone = CompactButtonTone.TERTIARY) {
-                            Text("Details")
+                    .pointerInput(previewCorner) {
+                        detectDragGestures(
+                            onDragEnd = {
+                                onPreviewCornerChange(
+                                    settleVideoPreviewCorner(
+                                        current = previewCorner,
+                                        dragX = previewDragX,
+                                        dragY = previewDragY,
+                                    )
+                                )
+                                previewDragX = 0f
+                                previewDragY = 0f
+                            },
+                            onDragCancel = {
+                                previewDragX = 0f
+                                previewDragY = 0f
+                            },
+                        ) { change, dragAmount ->
+                            change.consume()
+                            previewDragX += dragAmount.x
+                            previewDragY += dragAmount.y
+                            revealControls()
                         }
-                    }
-                    CompactButton(onClick = onExpand, tone = CompactButtonTone.TERTIARY) {
-                        Text(if (expanded) "Close" else "Expand")
+                    },
+            )
+            AnimatedVisibility(
+                visible = controlsVisible,
+                modifier = Modifier.align(Alignment.TopCenter).padding(10.dp),
+                enter = fadeIn(motionTween()),
+                exit = fadeOut(motionTween()),
+            ) {
+                Surface(
+                    color = MaterialTheme.colors.surface.copy(alpha = 0.90f),
+                    shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
+                ) {
+                    FlowRow(
+                        modifier = Modifier.padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        CompactButton(onClick = onToggleScale, tone = CompactButtonTone.TERTIARY) {
+                            Text(if (fillVideo) "Fit" else "Fill")
+                        }
+                        CompactButton(
+                            onClick = onSwap,
+                            enabled = state.localFrame != null && state.remoteFrame != null,
+                            tone = CompactButtonTone.TERTIARY,
+                        ) {
+                            Text("Swap")
+                        }
+                        if (onToggleDetails != null) {
+                            CompactButton(onClick = onToggleDetails, tone = CompactButtonTone.TERTIARY) {
+                                Text("Details")
+                            }
+                        }
+                        CompactButton(onClick = onExpand, tone = CompactButtonTone.TERTIARY) {
+                            Text(if (expanded) "Close" else "Expand")
+                        }
                     }
                 }
             }
@@ -179,6 +257,8 @@ private fun ExpandedVideoWindow(
     localIsPrimary: Boolean,
     onToggleScale: () -> Unit,
     onSwap: () -> Unit,
+    previewCorner: ComposeVideoPreviewCorner,
+    onPreviewCornerChange: (ComposeVideoPreviewCorner) -> Unit,
     onClose: () -> Unit,
 ) {
     DialogWindow(
@@ -211,6 +291,8 @@ private fun ExpandedVideoWindow(
                 onSwap = onSwap,
                 onToggleDetails = null,
                 onExpand = onClose,
+                previewCorner = previewCorner,
+                onPreviewCornerChange = onPreviewCornerChange,
                 modifier = Modifier.fillMaxSize().padding(12.dp),
             )
         }
@@ -251,6 +333,7 @@ private fun VideoFrameSurface(
     frame: RtcVideoFrameEvent?,
     placeholder: String,
     contentScale: ContentScale,
+    labelAlignment: Alignment = Alignment.TopStart,
     modifier: Modifier,
 ) {
     val image: ImageBitmap? = remember(frame) { frame?.toPreviewImageBitmap() }
@@ -267,7 +350,7 @@ private fun VideoFrameSurface(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = contentScale,
                 )
-                VideoLabel(title, Modifier.align(Alignment.TopStart))
+                VideoLabel(title, Modifier.align(labelAlignment))
             }
         }
     } else {

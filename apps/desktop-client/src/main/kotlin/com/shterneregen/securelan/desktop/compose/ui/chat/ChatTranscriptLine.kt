@@ -64,7 +64,12 @@ internal fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: Stri
         exit = fadeOut(motionTween()),
     ) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = style.alignment) {
-            if (style.framed) {
+            if (
+                presentation.kind == ComposeChatTranscriptLineKind.SYSTEM ||
+                presentation.kind == ComposeChatTranscriptLineKind.PRESENCE
+            ) {
+                CompactSystemTranscriptEvent(presentation, tokens)
+            } else if (style.framed) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(style.width),
                     shape = bubbleShape,
@@ -79,6 +84,36 @@ internal fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: Stri
             } else {
                 ChatTranscriptLineContent(presentation, style, tokens)
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactSystemTranscriptEvent(
+    presentation: ComposeChatTranscriptLinePresentation,
+    tokens: SecureLanDesignTokens,
+) {
+    Surface(
+        shape = RoundedCornerShape(tokens.radius.pill),
+        color = tokens.colors.surfaceLevel3.copy(alpha = 0.78f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = presentation.body,
+                style = MaterialTheme.typography.caption,
+                color = tokens.colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = presentation.displayTime,
+                style = MaterialTheme.typography.caption,
+                color = tokens.colors.textTertiary,
+            )
         }
     }
 }

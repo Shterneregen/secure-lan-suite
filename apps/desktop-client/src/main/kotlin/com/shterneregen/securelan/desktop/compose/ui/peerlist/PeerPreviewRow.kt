@@ -175,12 +175,13 @@ private fun PeerCapabilityChip(
             if (capabilityIcon != null) {
                 Icon(
                     imageVector = capabilityIcon,
-                    contentDescription = null,
-                    modifier = Modifier.size(12.dp),
+                    contentDescription = label,
+                    modifier = Modifier.size(14.dp),
                     tint = content,
                 )
+            } else {
+                Text(label, style = MaterialTheme.typography.caption, color = content, maxLines = 1)
             }
-            Text(label, style = MaterialTheme.typography.caption, color = content, maxLines = 1)
         }
     }
 }

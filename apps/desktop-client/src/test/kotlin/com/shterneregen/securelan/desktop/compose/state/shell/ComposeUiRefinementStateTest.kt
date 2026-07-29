@@ -1,7 +1,10 @@
 package com.shterneregen.securelan.desktop.compose.state.shell
 
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeCallWorkspaceFocusMode
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLinePresentation
+import com.shterneregen.securelan.desktop.compose.state.media.ComposeVideoPreviewCorner
+import com.shterneregen.securelan.desktop.compose.state.media.settleVideoPreviewCorner
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -74,5 +77,46 @@ class ComposeUiRefinementStateTest {
         assertEquals("Quick Share", presentation.label)
         assertTrue(presentation.body.startsWith("File link created"))
         assertEquals(url, presentation.actionUrl)
+    }
+
+    @Test
+    fun shouldKeepCallWorkspaceFocusModesExplicit() {
+        assertTrue(ComposeCallWorkspaceFocusMode.SPLIT.splitResizable)
+        assertTrue(ComposeCallWorkspaceFocusMode.VIDEO.showsVideo)
+        assertFalse(ComposeCallWorkspaceFocusMode.VIDEO.showsChat)
+        assertTrue(ComposeCallWorkspaceFocusMode.CHAT.showsChat)
+        assertFalse(ComposeCallWorkspaceFocusMode.CHAT.showsVideo)
+    }
+
+    @Test
+    fun shouldPresentPresenceAsCompactSystemEvent() {
+        val presentation = ComposeChatTranscriptLinePresentation.from(
+            "[system] Sybil joined the chat"
+        )
+
+        assertEquals(ComposeChatTranscriptLineKind.PRESENCE, presentation.kind)
+        assertEquals("Sybil joined the chat", presentation.body)
+    }
+
+    @Test
+    fun shouldCompactLocalNetworkAddressForRoomStatus() {
+        assertEquals("192.168.1.50", compactRoomNetworkStatus("local network IP: 192.168.1.50"))
+        assertEquals(
+            "10.0.0.5 +1",
+            compactRoomNetworkStatus("local network IPs: 10.0.0.5, 192.168.1.50"),
+        )
+        assertEquals(null, compactRoomNetworkStatus("local network IP is unavailable right now"))
+    }
+
+    @Test
+    fun shouldSnapLocalVideoPreviewBetweenCorners() {
+        assertEquals(
+            ComposeVideoPreviewCorner.TOP_START,
+            settleVideoPreviewCorner(ComposeVideoPreviewCorner.BOTTOM_END, dragX = -80f, dragY = -60f),
+        )
+        assertEquals(
+            ComposeVideoPreviewCorner.BOTTOM_START,
+            settleVideoPreviewCorner(ComposeVideoPreviewCorner.TOP_START, dragX = 0f, dragY = 60f),
+        )
     }
 }

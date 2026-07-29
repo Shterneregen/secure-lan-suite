@@ -1325,7 +1325,6 @@ class ComposeDesktopHostAdapter(
         } catch (e: Exception) {
             DesktopMainViewHelpers.localNetworkInfoErrorMessage(e.message)
         }
-        appendChatTranscript(localNetworkInfo)
         SecureLanLogger.logConnection(localNetworkInfo)
     }
 
