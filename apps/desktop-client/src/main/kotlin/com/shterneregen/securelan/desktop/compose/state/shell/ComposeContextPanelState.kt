@@ -16,34 +16,33 @@ data class ComposeContextPanelState(
     val primaryButtons: List<String> = visibleCards.mapNotNull { it.primaryAction }
     val visibleCardTitles: List<String> = visibleCards.map { it.title }
     val visibleCardKinds: List<ComposeContextPanelCardKind> = visibleCards.map { it.kind }
-    val hiddenFeatureNames: List<String> = when (mode) {
-        RightPanelMode.ROOM_INFO -> listOf("Transfers", "Calls")
-        RightPanelMode.PEER_INFO -> listOf("Port information")
-        RightPanelMode.TRANSFERS -> listOf("Device settings")
-        RightPanelMode.CALL -> listOf("Transfer setup")
-        RightPanelMode.HIDDEN -> emptyList()
-    }
-    val hiddenFeatureSummary: String = if (hiddenFeatureNames.isEmpty()) {
-        "Only the current conversation context is shown."
-    } else {
-        "More tools stay hidden until you need them."
-    }
-    val nextActionSummary: String = primaryCards.firstOrNull()?.body ?: visibleCards.firstOrNull()?.body.orEmpty()
-    val answersCurrentContext: Boolean = visibleCards.isNotEmpty() && visibleCards.all { it.title.isNotBlank() && it.body.isNotBlank() }
+    val persistentToolKinds: Set<ComposeContextPanelCardKind> =
+        setOf(ComposeContextPanelCardKind.TRANSFER_DETAILS)
+    val keepsPersistentToolsVisible: Boolean = persistentToolKinds.all(visibleCardKinds::contains)
+    val nextActionSummary: String =
+        primaryCards.firstOrNull()?.body ?: visibleCards.firstOrNull()?.body.orEmpty()
+    val answersCurrentContext: Boolean =
+        visibleCards.isNotEmpty() && visibleCards.all { it.title.isNotBlank() && it.body.isNotBlank() }
     val hasOnePrimaryContext: Boolean = primaryCards.size <= 1
-    val withinVisualComplexityLimit: Boolean = visibleCards.size <= visibleCardLimit && primaryButtons.size <= MAX_PRIMARY_BUTTONS
+    val withinVisualComplexityLimit: Boolean =
+        visibleCards.size <= visibleCardLimit && primaryButtons.size <= MAX_PRIMARY_BUTTONS
     val keepsRawDetailsCollapsed: Boolean = visibleCards.filter { it.technical }.all { it.collapsed }
     val hidesTechnicalControlsByDefault: Boolean = visibleCards.none { it.technical }
     val behavesAsContextAssistant: Boolean = answersCurrentContext &&
         hasOnePrimaryContext &&
         withinVisualComplexityLimit &&
+        keepsPersistentToolsVisible &&
         hidesTechnicalControlsByDefault &&
         keepsRawDetailsCollapsed
 
-    fun visibleCardsFor(responsiveState: ComposeContextPanelResponsiveState): List<ComposeContextPanelCard> = visibleCards.map { card ->
+    fun visibleCardsFor(
+        responsiveState: ComposeContextPanelResponsiveState,
+    ): List<ComposeContextPanelCard> = visibleCards.map { card ->
         when {
+            card.kind in persistentToolKinds -> card.copy(collapsed = false)
             responsiveState.collapseSecondaryCards && !card.primary -> card.copy(collapsed = true)
-            responsiveState.collapseHistory && card.kind == ComposeContextPanelCardKind.RECENT_FILES -> card.copy(collapsed = true)
+            responsiveState.collapseHistory && card.kind == ComposeContextPanelCardKind.RECENT_FILES ->
+                card.copy(collapsed = true)
             else -> card
         }
     }
@@ -71,6 +70,7 @@ data class ComposeContextPanelState(
                     body = "${peerListState.onlinePeers.size} online · ${transferState.transferCountSummary}",
                     badge = if (peerListState.onlinePeers.isEmpty()) "Waiting" else "Ready",
                 ),
+                persistentTransferCard(transferState),
             ),
         )
 
@@ -81,31 +81,17 @@ data class ComposeContextPanelState(
             val peer = peerListState.selectedPeer
             return ComposeContextPanelState(
                 mode = RightPanelMode.PEER_INFO,
-                cards = buildList {
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.PEER_PROFILE,
-                            title = peer?.nickname ?: peerListState.selectedPeerTitle,
-                            body = peer?.selectedMeta ?: peerListState.selectedPeerMeta,
-                            badge = peer?.availabilityLabel ?: "No peer",
-                            metadata = peer?.capabilitySummary,
-                            primary = true,
-                        )
-                    )
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.RECENT_FILES,
-                            title = "Recent files",
-                            body = if (transferState.recentEntryRows.isEmpty()) {
-                                transferState.recentEmptyDetail
-                            } else {
-                                transferState.recentEntryRows.joinToString(" · ") { it.title }
-                            },
-                            badge = transferState.transferCountSummary,
-                            collapsed = true,
-                        )
-                    )
-                },
+                cards = listOf(
+                    ComposeContextPanelCard(
+                        kind = ComposeContextPanelCardKind.PEER_PROFILE,
+                        title = peer?.nickname ?: peerListState.selectedPeerTitle,
+                        body = peer?.selectedMeta ?: peerListState.selectedPeerMeta,
+                        badge = peer?.availabilityLabel ?: "No peer",
+                        metadata = peer?.capabilitySummary,
+                        primary = true,
+                    ),
+                    persistentTransferCard(transferState),
+                ),
             )
         }
 
@@ -117,16 +103,7 @@ data class ComposeContextPanelState(
             return ComposeContextPanelState(
                 mode = RightPanelMode.TRANSFERS,
                 cards = buildList {
-                    add(
-                        ComposeContextPanelCard(
-                            kind = ComposeContextPanelCardKind.TRANSFER_DETAILS,
-                            title = transferState.heroTitle,
-                            body = transferState.nextStepSummary,
-                            badge = transferState.transferCountSummary,
-                            primaryAction = if (transferState.waitingPromptCount > 0) "Review files" else null,
-                            primary = true,
-                        )
-                    )
+                    add(persistentTransferCard(transferState, primary = true))
                     if (peer != null) {
                         add(
                             ComposeContextPanelCard(
@@ -147,6 +124,7 @@ data class ComposeContextPanelState(
             peerListState: ComposePeerListState,
             voiceState: ComposeMediaVoiceState,
             videoState: ComposeExperimentalVideoState,
+            transferState: ComposeFileTransferState,
         ): ComposeContextPanelState {
             val peer = peerListState.selectedPeer
             val isVideo = videoState.currentSession != null || videoState.previewRunning
@@ -164,6 +142,7 @@ data class ComposeContextPanelState(
                             primary = true,
                         )
                     )
+                    add(persistentTransferCard(transferState))
                     if (peer != null) {
                         add(
                             ComposeContextPanelCard(
@@ -179,5 +158,17 @@ data class ComposeContextPanelState(
                 },
             )
         }
+
+        private fun persistentTransferCard(
+            transferState: ComposeFileTransferState,
+            primary: Boolean = false,
+        ): ComposeContextPanelCard = ComposeContextPanelCard(
+            kind = ComposeContextPanelCardKind.TRANSFER_DETAILS,
+            title = "Transfers",
+            body = transferState.heroTitle,
+            badge = transferState.transferCountSummary,
+            primaryAction = if (transferState.waitingPromptCount > 0) "Review files" else null,
+            primary = primary,
+        )
     }
 }

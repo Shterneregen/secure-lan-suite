@@ -12,14 +12,14 @@ import org.junit.jupiter.api.Test
 
 class ComposeUiRefinementStateTest {
     @Test
-    fun shouldShowHiddenToolsHintOnlyOnceInRoomContext() {
+    fun shouldKeepTransfersAvailableInRoomContext() {
         val state = ComposeContextPanelState.forRoom(
             ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
         )
 
-        assertEquals("More tools stay hidden until you need them.", state.hiddenFeatureSummary)
-        assertFalse(state.nextActionSummary.contains("tools stay hidden", ignoreCase = true))
+        assertTrue(state.keepsPersistentToolsVisible)
+        assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in state.visibleCardKinds)
     }
 
     @Test
@@ -34,9 +34,12 @@ class ComposeUiRefinementStateTest {
                 peerState,
                 ComposeShellMetadata.DEFAULT_MEDIA_VOICE_STATE,
                 ComposeShellMetadata.DEFAULT_VIDEO_STATE,
+                transferState,
             ),
         )
 
+        assertTrue(states.all { it.keepsPersistentToolsVisible })
+        assertTrue(states.all { ComposeContextPanelCardKind.TRANSFER_DETAILS in it.visibleCardKinds })
         assertTrue(states.all { ComposeContextPanelCardKind.QUICK_SHARE !in it.visibleCardKinds })
         assertTrue(states.all { state ->
             state.visibleCardTitles.none { it.equals("Security", ignoreCase = true) }
@@ -53,6 +56,48 @@ class ComposeUiRefinementStateTest {
                 .first { it.mode == RightPanelMode.CALL }
                 .visibleCards
                 .first { it.kind == ComposeContextPanelCardKind.CALL_CONTROLS }
+                .collapsed
+        )
+    }
+
+    @Test
+    fun shouldNotAutoCollapsePersistentTransferPanel() {
+        val state = ComposeContextPanelState.forPeer(
+            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
+            ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
+        )
+        val responsiveStates = listOf(
+            ComposeContextPanelResponsiveState.forWidth(1600),
+            ComposeContextPanelResponsiveState.forWidth(1440),
+            ComposeContextPanelResponsiveState.forWidth(1280),
+            ComposeContextPanelResponsiveState.forWidth(1199),
+        )
+
+        assertTrue(responsiveStates.all { responsive ->
+            state.visibleCardsFor(responsive)
+                .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
+                .collapsed
+                .not()
+        })
+    }
+
+    @Test
+    fun shouldKeepTransferPanelWhenReceiveDecisionReturnsContextToPeer() {
+        val peerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
+        val beforeDecision = ComposeContextPanelState.forTransfer(
+            ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
+            peerState,
+        )
+        val afterDecision = ComposeContextPanelState.forPeer(
+            peerState,
+            ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
+        )
+
+        assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in beforeDecision.visibleCardKinds)
+        assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in afterDecision.visibleCardKinds)
+        assertFalse(
+            afterDecision.visibleCards
+                .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
                 .collapsed
         )
     }

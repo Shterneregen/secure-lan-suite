@@ -55,6 +55,7 @@ internal fun LiveActionsColumn(
                     peerState,
                     voiceState,
                     videoState,
+                    transferState,
                 )
 
                 transferState.activeCount > 0 || transferState.waitingPromptCount > 0 -> ComposeContextPanelState.forTransfer(

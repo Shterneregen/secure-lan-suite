@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.ui.components.SubtleContentSurface
 import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
 import java.nio.file.Path
 
@@ -33,53 +32,51 @@ internal fun LiveFileTransferCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
         autoAcceptFiles = autoAcceptFiles,
     )
 
-    SubtleContentSurface(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            TransferHeroPanel(transferState)
-            ReceiveModePanel(
-                transferState = transferState,
-                autoAcceptFiles = autoAcceptFiles,
-                onAutoAcceptChanged = hostAdapter::updateAutoAcceptIncomingFiles,
-            )
-            RecentTransfersPanel(transferState)
-            val waitingPrompts = transferState.incomingPrompts.filter { it.waitingForDecision }
-            val recentDecisions = transferState.incomingPrompts.filterNot { it.waitingForDecision }.takeLast(3)
-            if (waitingPrompts.isNotEmpty() || recentDecisions.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    waitingPrompts.forEach { prompt ->
-                        IncomingTransferPromptRow(prompt, hostAdapter)
-                    }
-                    recentDecisions.forEach { prompt ->
-                        Text(
-                            "${prompt.statusLabel}: ${prompt.fileName} from ${prompt.senderId}",
-                            style = MaterialTheme.typography.caption,
-                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-                        )
-                    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        TransferHeroPanel(transferState)
+        val waitingPrompts = transferState.incomingPrompts.filter { it.waitingForDecision }
+        val recentDecisions = transferState.incomingPrompts.filterNot { it.waitingForDecision }.takeLast(3)
+        if (waitingPrompts.isNotEmpty() || recentDecisions.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                waitingPrompts.forEach { prompt ->
+                    IncomingTransferPromptRow(prompt, hostAdapter)
+                }
+                recentDecisions.forEach { prompt ->
+                    Text(
+                        "${prompt.statusLabel}: ${prompt.fileName} from ${prompt.senderId}",
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+                    )
                 }
             }
-            SendEncryptedFilePanel(
-                transferState = transferState,
-                filePath = filePath,
-                onChooseFile = {
-                    openComposeFileChooser("Choose file to send to ${transferState.selectedPeerName}")?.let {
-                        filePath = it.toString()
-                    }
-                },
-                onSend = {
-                    val peer = selectedPeer ?: return@SendEncryptedFilePanel
-                    hostAdapter.sendFileToPeer(
-                        Path.of(filePath),
-                        hostAdapter.statusState.nickname,
-                        peer,
-                        hostAdapter.currentRoomPassword
-                    )
-                },
-                sendEnabled = transferState.canSendSelectedFile && selectedPeer != null,
-            )
         }
+        RecentTransfersPanel(transferState)
+        ReceiveModePanel(
+            transferState = transferState,
+            autoAcceptFiles = autoAcceptFiles,
+            onAutoAcceptChanged = hostAdapter::updateAutoAcceptIncomingFiles,
+        )
+        SendEncryptedFilePanel(
+            transferState = transferState,
+            filePath = filePath,
+            onChooseFile = {
+                openComposeFileChooser("Choose file to send to ${transferState.selectedPeerName}")?.let {
+                    filePath = it.toString()
+                }
+            },
+            onSend = {
+                val peer = selectedPeer ?: return@SendEncryptedFilePanel
+                hostAdapter.sendFileToPeer(
+                    Path.of(filePath),
+                    hostAdapter.statusState.nickname,
+                    peer,
+                    hostAdapter.currentRoomPassword
+                )
+            },
+            sendEnabled = transferState.canSendSelectedFile && selectedPeer != null,
+        )
     }
 }

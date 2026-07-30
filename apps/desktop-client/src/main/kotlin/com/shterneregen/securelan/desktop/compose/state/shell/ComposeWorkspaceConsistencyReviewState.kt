@@ -37,7 +37,7 @@ data class ComposeWorkspaceConsistencyReviewState(
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.CARDS,
             label = "Cards",
-            evidence = "Cards have one responsibility, use distinct surface levels for workspace, content, and primary context, avoid nested dashboard weight, and keep secondary information collapsible.",
+            evidence = "Cards have one responsibility, avoid nested dashboard weight, and keep persistent workflows available across context changes.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.DIALOGS,
@@ -67,12 +67,12 @@ data class ComposeWorkspaceConsistencyReviewState(
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.RESPONSIVE_LAYOUTS,
             label = "Responsive layouts",
-            evidence = "The Context Assistant collapses secondary cards, then history, then moves to a drawer before conversation width is sacrificed.",
+            evidence = "The Context Assistant keeps persistent workflows expanded, collapses optional history, then moves to a drawer before conversation width is sacrificed.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.CONTEXT_ASSISTANT,
             label = "Context Assistant behavior",
-            evidence = "The right panel answers the current context with one primary card, at most five visible cards, and hidden advanced tools.",
+            evidence = "The right panel answers the current context with one primary card while persistent workflows such as Transfers remain available.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.CHAT_READABILITY,

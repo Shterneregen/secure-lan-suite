@@ -19,7 +19,6 @@ internal fun TransferHeroPanel(transferState: ComposeFileTransferState) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text("Transfers", style = MaterialTheme.typography.subtitle1)
         Text(transferState.heroTitle, style = MaterialTheme.typography.subtitle2)
         if (transferState.heroSubtitle != transferState.peerListState.selectedPeerMeta) {
             Text(
