@@ -36,6 +36,8 @@ data class ComposeConnectionHubState(
     val nickname: String = statusState.nickname
     val password: String = statusState.roomPasswordPlaceholder
     val roomName: String = "Secure LAN room"
+    val credentialFieldsEnabled: Boolean =
+        !statusState.localServerRunning && !statusState.clientConnected
 
     val primaryActionEnabled: Boolean = when (mode) {
         ComposeConnectionHubMode.HOST -> statusState.canOpenRoom

@@ -51,6 +51,7 @@ internal fun ConnectionHubContent(
     onSetDiscoverable: (Boolean) -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
+    val credentialFieldsEnabled = state.credentialFieldsEnabled && actionInFlight == null
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
@@ -65,11 +66,13 @@ internal fun ConnectionHubContent(
                 onNicknameChange,
                 label = "Your name",
                 modifier = Modifier.weight(1f),
+                enabled = credentialFieldsEnabled,
                 trailingContent = {
                     CompactIconButton(
                         onClick = onGenerateNickname,
                         icon = SecureLanIcons.GenerateNickname,
                         contentDescription = "Generate a new nickname",
+                        enabled = credentialFieldsEnabled,
                     )
                 },
             )
@@ -79,11 +82,13 @@ internal fun ConnectionHubContent(
                 label = "Room password",
                 modifier = Modifier.weight(1f),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                enabled = credentialFieldsEnabled,
                 trailingContent = {
                     CompactIconButton(
                         onClick = { onPasswordVisibleChange(!passwordVisible) },
                         icon = if (passwordVisible) SecureLanIcons.VisibilityOff else SecureLanIcons.Visibility,
                         contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        enabled = credentialFieldsEnabled,
                     )
                 },
             )
