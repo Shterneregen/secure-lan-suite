@@ -12,6 +12,17 @@ import org.junit.jupiter.api.Test
 
 class ComposeUiRefinementStateTest {
     @Test
+    fun shouldShowHiddenToolsHintOnlyOnceInRoomContext() {
+        val state = ComposeContextPanelState.forRoom(
+            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
+            ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
+        )
+
+        assertEquals("More tools stay hidden until you need them.", state.hiddenFeatureSummary)
+        assertFalse(state.nextActionSummary.contains("tools stay hidden", ignoreCase = true))
+    }
+
+    @Test
     fun shouldKeepDedicatedAndNonActionableToolsOutOfContextAssistant() {
         val peerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
         val transferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE

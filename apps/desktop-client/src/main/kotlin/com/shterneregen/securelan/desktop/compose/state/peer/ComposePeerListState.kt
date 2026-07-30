@@ -1,8 +1,6 @@
 package com.shterneregen.securelan.desktop.compose.state.peer
 
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeEmptyStateVisualWeight
-
-public data class ComposePeerListState(
+data class ComposePeerListState(
     val peers: List<ComposePeerListItem> = ComposePeerListItem.defaultPreviewItems(clientConnected = false),
     val selectedPeerIndex: Int = 0,
     val selectedPeerNickname: String? = null,
@@ -14,7 +12,6 @@ public data class ComposePeerListState(
             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.nickname },
     )
     val onlinePeers: List<ComposePeerListItem> = visiblePeers.filter { it.online }
-    val offlinePeers: List<ComposePeerListItem> = visiblePeers.filterNot { it.online }
     val visiblePeerRows: List<ComposePeerListItemPresentation> = visiblePeers.map(ComposePeerListItemPresentation::from)
     val peerSections: List<ComposePeerListSectionPresentation> = listOf(
         ComposePeerListSectionPresentation(
@@ -30,22 +27,11 @@ public data class ComposePeerListState(
             rows = visiblePeerRows.filter { it.availability == ComposePeerAvailabilityKind.OFFLINE },
         ),
     ).filter { it.rows.isNotEmpty() }
-    val peerGroupingSummary: String = when {
-        visiblePeers.isEmpty() -> "No people visible"
-        offlinePeers.isEmpty() -> "${onlinePeers.size} online"
-        onlinePeers.isEmpty() -> "${offlinePeers.size} offline"
-        else -> "${onlinePeers.size} online · ${offlinePeers.size} offline"
-    }
     val hasAnyPeers: Boolean = visiblePeers.isNotEmpty()
     val emptyStateTitle: String = "No peers visible yet"
     val emptyStateSituation: String = emptyStateTitle
     val emptyStateExplanation: String = "People appear here once you join a room."
     val emptyStateNextAction: String = "Open or join a room"
-    val emptyStateDetail: String = "$emptyStateExplanation Use Advanced connection if a peer is hidden."
-    val emptyStateActionLabel: String = emptyStateNextAction
-    val emptyStateStructuredCopy: List<String> = listOf(emptyStateSituation, emptyStateExplanation, emptyStateNextAction)
-    val emptyStateVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.SUPPORTING
-    val emptyStateKeepsConversationDominant: Boolean = true
     val resolvedSelectedPeerIndex: Int = resolveSelectedPeerIndex()
     val selectedPeer: ComposePeerListItem? = visiblePeers.getOrNull(resolvedSelectedPeerIndex)
     val selectedPeerTitle: String = selectedPeer?.nickname ?: "No peer selected"
@@ -55,11 +41,7 @@ public data class ComposePeerListState(
         selectedPeer?.let { if (it.online) "Peer ${it.nickname}" else "Peer offline" } ?: "Peer not selected"
     val noPeerActionTitle: String = "Choose a peer to start"
     val noPeerActionDetail: String =
-        "Select an online peer to start messaging, files, or calls. Other tools stay hidden until you need them."
-    val targetActions: ComposePeerTargetActions = ComposePeerTargetActions.from(selectedPeer)
-
-    fun selectionKeyFor(index: Int): String? = visiblePeers.getOrNull(index)?.nickname
-
+        "Select an online peer to start messaging, files, or calls."
     private fun resolveSelectedPeerIndex(): Int {
         val indexByNickname = selectedPeerNickname?.let { selectedNickname ->
             visiblePeers.indexOfFirst { it.nickname.equals(selectedNickname, ignoreCase = true) }
