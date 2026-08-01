@@ -18,20 +18,20 @@ object SecureLanIcons {
     val Voice: ImageVector = Icons.Outlined.Mic
     val Video: ImageVector = Icons.Outlined.Videocam
     val File: ImageVector = Icons.Outlined.Description
-    val Encryption: ImageVector = Icons.Outlined.Lock
     val Diagnostics: ImageVector = Icons.Outlined.MonitorHeart
     val QuickShare: ImageVector = Icons.Outlined.Share
     val Tools: ImageVector = Icons.Outlined.Build
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
     val Close: ImageVector = Icons.Outlined.Close
+    val Notifications: ImageVector = Icons.Outlined.NotificationsNone
+    val Network: ImageVector = Icons.Outlined.Lan
     val LightTheme: ImageVector = Icons.Outlined.LightMode
     val IntermediateTheme: ImageVector = Icons.Outlined.Brightness6
     val DarkTheme: ImageVector = Icons.Outlined.DarkMode
 
     // Context Assistant product concepts.
     val Person: ImageVector = Icons.Outlined.Person
-    val Guidance: ImageVector = Icons.Outlined.Info
     val History: ImageVector = Icons.Outlined.History
     val Room: ImageVector = Icons.Outlined.MeetingRoom
 

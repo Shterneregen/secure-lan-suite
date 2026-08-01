@@ -45,6 +45,8 @@ bin/
 
 ### Other ###
 *.log
+*.lck
+*.properties
 *.jks
 /apps/desktop-client/downloads/
 

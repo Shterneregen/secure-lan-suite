@@ -233,7 +233,6 @@ class ComposeDesktopHostAdapter(
     /** Whether the chat client is connected (for send readiness). */
     val chatConnected: Boolean get() = chatClientService.isConnected()
     val preferredConnectionMode: DesktopConnectionMode get() = settingsController.settings.network.lastConnectionMode
-    val configuredDownloadsPath: Path get() = downloadsPath
 
     /** Whether quick share is running. */
     var quickShareRunning: Boolean by mutableStateOf(quickShareService.isRunning())
