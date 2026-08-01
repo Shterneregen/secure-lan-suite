@@ -10,11 +10,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 
 @Composable
 internal fun ComposeShellContent(
     hostAdapter: ComposeDesktopHostAdapter? = null,
-    darkTheme: Boolean,
+    themeMode: SecureLanThemeMode,
     onThemeToggle: () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -26,9 +27,9 @@ internal fun ComposeShellContent(
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         if (hostAdapter != null) {
-            LiveComposeShellContent(hostAdapter, darkTheme, onThemeToggle)
+            LiveComposeShellContent(hostAdapter, themeMode, onThemeToggle)
         } else {
-            PreviewComposeShellContent(darkTheme, onThemeToggle)
+            PreviewComposeShellContent(themeMode, onThemeToggle)
         }
     }
 }

@@ -19,16 +19,18 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ThemeToggleButton(
-    darkTheme: Boolean,
+    themeMode: SecureLanThemeMode,
     onThemeToggle: () -> Unit,
 ) {
-    val actionLabel = if (darkTheme) "Switch to light theme" else "Switch to dark theme"
+    val nextTheme = themeMode.next()
+    val actionLabel = "Switch to ${nextTheme.displayName} theme"
     val tokens = LocalSecureLanDesignTokens.current
     TooltipArea(
         tooltip = {
@@ -55,7 +57,11 @@ internal fun ThemeToggleButton(
                 .semantics { contentDescription = actionLabel },
         ) {
             Icon(
-                imageVector = if (darkTheme) SecureLanIcons.LightTheme else SecureLanIcons.DarkTheme,
+                imageVector = when (nextTheme) {
+                    SecureLanThemeMode.DARK -> SecureLanIcons.DarkTheme
+                    SecureLanThemeMode.INTERMEDIATE -> SecureLanIcons.IntermediateTheme
+                    SecureLanThemeMode.LIGHT -> SecureLanIcons.LightTheme
+                },
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
             )

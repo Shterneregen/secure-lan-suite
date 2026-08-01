@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeAppShellState
 import com.shterneregen.securelan.desktop.compose.ui.components.StatusChip
 
@@ -20,7 +21,7 @@ internal fun SecureLanAppShell(
     shellState: ComposeAppShellState,
     topBarLabel: String = shellState.currentContextLabel,
     topBarStatus: String = "",
-    darkTheme: Boolean,
+    themeMode: SecureLanThemeMode,
     onSettingsClick: () -> Unit,
     onThemeToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
@@ -58,7 +59,7 @@ internal fun SecureLanAppShell(
                     }
                 }
                 SettingsButton(onClick = onSettingsClick)
-                ThemeToggleButton(darkTheme = darkTheme, onThemeToggle = onThemeToggle)
+                ThemeToggleButton(themeMode = themeMode, onThemeToggle = onThemeToggle)
             }
         }
         content()

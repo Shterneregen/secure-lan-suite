@@ -12,18 +12,18 @@ fun SecureLanComposeApp(
     hostAdapter: ComposeDesktopHostAdapter? = null,
     reducedMotion: Boolean = false,
 ) {
-    var darkTheme by remember { mutableStateOf(true) }
+    var themeMode by remember { mutableStateOf(SecureLanThemeMode.DARK) }
 
     CompositionLocalProvider(LocalReducedMotion provides reducedMotion) {
-        SecureLanTheme(darkTheme = darkTheme) {
+        SecureLanTheme(themeMode = themeMode) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colors.background,
             ) {
                 ComposeShellContent(
                     hostAdapter = hostAdapter,
-                    darkTheme = darkTheme,
-                    onThemeToggle = { darkTheme = !darkTheme },
+                    themeMode = themeMode,
+                    onThemeToggle = { themeMode = themeMode.next() },
                 )
             }
         }

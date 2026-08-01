@@ -3,6 +3,7 @@ package com.shterneregen.securelan.desktop.compose.ui.shell
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 
+import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeAppShellState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.ui.chat.ChatWorkspacePreviewCard
@@ -14,7 +15,7 @@ import com.shterneregen.securelan.desktop.compose.ui.settings.PreviewSettingsDia
 
 @Composable
 internal fun PreviewComposeShellContent(
-    darkTheme: Boolean,
+    themeMode: SecureLanThemeMode,
     onThemeToggle: () -> Unit,
 ) {
     var settingsDialogOpen by remember { mutableStateOf(false) }
@@ -31,7 +32,7 @@ internal fun PreviewComposeShellContent(
         ),
         topBarLabel = ComposeShellMetadata.DEFAULT_ONBOARDING_STATE.headline,
         topBarStatus = "Secure room · Offline",
-        darkTheme = darkTheme,
+        themeMode = themeMode,
         onSettingsClick = { settingsDialogOpen = true },
         onThemeToggle = onThemeToggle,
     ) {

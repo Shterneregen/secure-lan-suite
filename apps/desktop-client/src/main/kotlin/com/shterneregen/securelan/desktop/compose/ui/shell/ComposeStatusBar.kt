@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeGlobalStatusIndicatorState
 import com.shterneregen.securelan.desktop.compose.ui.components.StatusChip
@@ -27,7 +28,7 @@ internal fun ComposeStatusBar(
     peerStatus: String = "Peer not selected",
     voiceStatus: String = "Voice idle",
     transferStatus: String = "Transfers idle",
-    darkTheme: Boolean,
+    themeMode: SecureLanThemeMode,
     onThemeToggle: () -> Unit,
 ) {
     Card(
@@ -57,7 +58,7 @@ internal fun ComposeStatusBar(
                 style = MaterialTheme.typography.caption,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
             )
-            ThemeToggleButton(darkTheme = darkTheme, onThemeToggle = onThemeToggle)
+            ThemeToggleButton(themeMode = themeMode, onThemeToggle = onThemeToggle)
         }
     }
 }

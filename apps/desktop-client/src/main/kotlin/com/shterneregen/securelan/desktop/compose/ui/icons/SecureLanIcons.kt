@@ -25,6 +25,7 @@ object SecureLanIcons {
     val Settings: ImageVector = Icons.Outlined.Settings
     val Close: ImageVector = Icons.Outlined.Close
     val LightTheme: ImageVector = Icons.Outlined.LightMode
+    val IntermediateTheme: ImageVector = Icons.Outlined.Brightness6
     val DarkTheme: ImageVector = Icons.Outlined.DarkMode
 
     // Context Assistant product concepts.

@@ -109,6 +109,18 @@ data class SecureLanDesignTokens(
     val motion: SecureLanMotionTokens = SecureLanMotionTokens(),
 )
 
+enum class SecureLanThemeMode(val displayName: String) {
+    DARK("dark"),
+    INTERMEDIATE("intermediate"),
+    LIGHT("light");
+
+    fun next(): SecureLanThemeMode = when (this) {
+        DARK -> INTERMEDIATE
+        INTERMEDIATE -> LIGHT
+        LIGHT -> DARK
+    }
+}
+
 object SecureLanThemeTokens {
     val DarkColors: SecureLanColorTokens = SecureLanColorTokens(
         background = Color(0xFF0B111A),
@@ -142,8 +154,31 @@ object SecureLanThemeTokens {
         borderFocus = Color(0xFF2563EB),
     )
 
+    val IntermediateColors: SecureLanColorTokens = SecureLanColorTokens(
+        background = Color(0xFF202733),
+        surfaceLevel1 = Color(0xFF293241),
+        surfaceLevel2 = Color(0xFF333E50),
+        surfaceLevel3 = Color(0xFF3D4A60),
+        accent = Color(0xFF4B8BF5),
+        success = Color(0xFF43C77A),
+        warning = Color(0xFFE7A43A),
+        error = Color(0xFFEF7373),
+        textPrimary = Color(0xFFF3F6FA),
+        textSecondary = Color(0xFFC2CBD8),
+        textTertiary = Color(0xFF909CAE),
+        borderSubtle = Color(0x455B6C84),
+        borderFocus = Color(0xFF60A5FA),
+    )
+
     val Dark: SecureLanDesignTokens = SecureLanDesignTokens(colors = DarkColors)
+    val Intermediate: SecureLanDesignTokens = SecureLanDesignTokens(colors = IntermediateColors)
     val Light: SecureLanDesignTokens = SecureLanDesignTokens(colors = LightColors)
+
+    fun forMode(mode: SecureLanThemeMode): SecureLanDesignTokens = when (mode) {
+        SecureLanThemeMode.DARK -> Dark
+        SecureLanThemeMode.INTERMEDIATE -> Intermediate
+        SecureLanThemeMode.LIGHT -> Light
+    }
 }
 
 val LocalSecureLanDesignTokens = staticCompositionLocalOf { SecureLanThemeTokens.Dark }
@@ -214,16 +249,29 @@ private fun secureLanDesktopTypography(tokens: SecureLanTypographyTokens): Typog
 
 @Composable
 fun SecureLanTheme(
-    darkTheme: Boolean = true,
+    themeMode: SecureLanThemeMode = SecureLanThemeMode.DARK,
     content: @Composable () -> Unit,
 ) {
-    val tokens = if (darkTheme) SecureLanThemeTokens.Dark else SecureLanThemeTokens.Light
+    val tokens = SecureLanThemeTokens.forMode(themeMode)
 
     CompositionLocalProvider(LocalSecureLanDesignTokens provides tokens) {
         MaterialTheme(
-            colors = if (darkTheme) tokens.colors.toMaterialDarkColors() else tokens.colors.toMaterialLightColors(),
+            colors = if (themeMode == SecureLanThemeMode.LIGHT) {
+                tokens.colors.toMaterialLightColors()
+            } else {
+                tokens.colors.toMaterialDarkColors()
+            },
             typography = secureLanDesktopTypography(tokens.typography),
             content = content,
         )
     }
 }
+
+@Composable
+fun SecureLanTheme(
+    darkTheme: Boolean,
+    content: @Composable () -> Unit,
+) = SecureLanTheme(
+    themeMode = if (darkTheme) SecureLanThemeMode.DARK else SecureLanThemeMode.LIGHT,
+    content = content,
+)
