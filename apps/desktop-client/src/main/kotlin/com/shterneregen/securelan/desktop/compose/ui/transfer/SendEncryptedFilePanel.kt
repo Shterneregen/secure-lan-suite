@@ -18,7 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
-import com.shterneregen.securelan.desktop.compose.ui.components.ComposeAdvancedPane
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
+import com.shterneregen.securelan.desktop.compose.ui.components.HelpTooltip
 
 @Composable
 internal fun SendEncryptedFilePanel(
@@ -28,80 +29,110 @@ internal fun SendEncryptedFilePanel(
     onSend: () -> Unit,
     sendEnabled: Boolean,
 ) {
-    ComposeAdvancedPane("Send encrypted file") {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val targetAccent = if (transferState.selectedPeer == null) {
+            tokens.colors.warning
+        } else {
+            MaterialTheme.colors.primary
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Send to ${transferState.selectedPeerName}", style = MaterialTheme.typography.subtitle2)
+            Text("Send to", style = MaterialTheme.typography.subtitle2)
+            Surface(
+                shape = RoundedCornerShape(tokens.radius.pill),
+                border = BorderStroke(1.dp, targetAccent.copy(alpha = 0.55f)),
+                color = targetAccent.copy(alpha = 0.10f),
+            ) {
                 Text(
-                    transferState.targetSummary,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                    text = transferState.selectedPeerName,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
+                    style = MaterialTheme.typography.subtitle2,
+                    color = targetAccent,
                 )
             }
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val compact = maxWidth < 360.dp
-                if (compact) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SelectedFileSummary(
-                            filePath = filePath,
-                            fallbackSummary = transferState.selectedFileSummary,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+            HelpTooltip(
+                if (transferState.selectedPeer == null) {
+                    "Select an online peer before choosing and sending a file."
+                } else {
+                    "Files are encrypted using the secure connection and the current room password."
+                }
+            )
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(tokens.radius.medium),
+            color = tokens.colors.surfaceLevel1.copy(alpha = 0.72f),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(tokens.spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val compact = maxWidth < 360.dp
+                    if (filePath.isBlank()) {
                         CompactButton(
                             onClick = onChooseFile,
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text(if (filePath.isBlank()) "Choose file" else "Choose another file") }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SelectedFileSummary(
-                            filePath = filePath,
-                            fallbackSummary = transferState.selectedFileSummary,
-                            modifier = Modifier.weight(1f),
-                        )
-                        CompactButton(onClick = onChooseFile) { Text("Browse") }
+                        ) { Text("Choose file") }
+                    } else if (compact) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            SelectedFileSummary(
+                                filePath = filePath,
+                                fallbackSummary = transferState.selectedFileSummary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            CompactButton(
+                                onClick = onChooseFile,
+                                tone = CompactButtonTone.TERTIARY,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Choose another file") }
+                            CompactButton(
+                                onClick = onSend,
+                                enabled = sendEnabled,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Send file") }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SelectedFileSummary(
+                                filePath = filePath,
+                                fallbackSummary = transferState.selectedFileSummary,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CompactButton(
+                                    onClick = onChooseFile,
+                                    tone = CompactButtonTone.TERTIARY,
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("Change") }
+                                CompactButton(
+                                    onClick = onSend,
+                                    enabled = sendEnabled,
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("Send file") }
+                            }
+                        }
                     }
                 }
-            }
-            Text(
-                "Uses the secure connection and room password already active for this peer.",
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
-            )
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-                border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
-                color = if (sendEnabled) {
-                    MaterialTheme.colors.primary.copy(alpha = 0.08f)
-                } else {
-                    LocalSecureLanDesignTokens.current.colors.surfaceLevel2
-                },
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                if (filePath.isNotBlank() && !sendEnabled) {
                     Text(
                         transferState.nextStepSummary,
                         style = MaterialTheme.typography.caption,
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.70f),
                     )
-                    CompactButton(
-                        onClick = onSend,
-                        enabled = sendEnabled,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Send encrypted file") }
                 }
             }
         }

@@ -3,14 +3,22 @@ package com.shterneregen.securelan.desktop.compose.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
@@ -35,11 +43,13 @@ internal fun TitleWithHelp(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun HelpTooltip(text: String) {
+    var focused by remember { mutableStateOf(false) }
+    val tokens = LocalSecureLanDesignTokens.current
     TooltipArea(
         tooltip = {
             Surface(
-                shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small),
-                border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
+                shape = RoundedCornerShape(tokens.radius.small),
+                border = BorderStroke(1.dp, tokens.colors.borderSubtle),
                 color = MaterialTheme.colors.surface,
             ) {
                 Text(
@@ -52,9 +62,16 @@ internal fun HelpTooltip(text: String) {
         },
     ) {
         Surface(
-            shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.pill),
-            border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
-            color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
+            modifier = Modifier
+                .onFocusChanged { focused = it.isFocused }
+                .semantics { contentDescription = text }
+                .focusable(),
+            shape = RoundedCornerShape(tokens.radius.pill),
+            border = BorderStroke(
+                1.dp,
+                if (focused) MaterialTheme.colors.primary else tokens.colors.borderSubtle,
+            ),
+            color = tokens.colors.surfaceLevel2,
         ) {
             Text(
                 text = "?",

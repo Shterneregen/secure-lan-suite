@@ -36,7 +36,6 @@ internal fun LiveFileTransferCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        TransferHeroPanel(transferState)
         val waitingPrompts = transferState.incomingPrompts.filter { it.waitingForDecision }
         val recentDecisions = transferState.incomingPrompts.filterNot { it.waitingForDecision }.takeLast(3)
         if (waitingPrompts.isNotEmpty() || recentDecisions.isNotEmpty()) {
@@ -53,12 +52,9 @@ internal fun LiveFileTransferCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
                 }
             }
         }
-        RecentTransfersPanel(transferState)
-        ReceiveModePanel(
-            transferState = transferState,
-            autoAcceptFiles = autoAcceptFiles,
-            onAutoAcceptChanged = hostAdapter::updateAutoAcceptIncomingFiles,
-        )
+        if (transferState.hasRecentTransfers) {
+            RecentTransfersPanel(transferState)
+        }
         SendEncryptedFilePanel(
             transferState = transferState,
             filePath = filePath,
@@ -77,6 +73,11 @@ internal fun LiveFileTransferCard(hostAdapter: ComposeDesktopHostAdapter, peerSt
                 )
             },
             sendEnabled = transferState.canSendSelectedFile && selectedPeer != null,
+        )
+        ReceiveModePanel(
+            transferState = transferState,
+            autoAcceptFiles = autoAcceptFiles,
+            onAutoAcceptChanged = hostAdapter::updateAutoAcceptIncomingFiles,
         )
     }
 }

@@ -58,7 +58,7 @@ internal fun LiveActionsColumn(
                     transferState,
                 )
 
-                transferState.activeCount > 0 || transferState.waitingPromptCount > 0 -> ComposeContextPanelState.forTransfer(
+                transferState.requiresAttention -> ComposeContextPanelState.forTransfer(
                     transferState,
                     peerState,
                 )

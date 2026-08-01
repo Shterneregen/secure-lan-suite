@@ -4,7 +4,9 @@ import com.shterneregen.securelan.desktop.compose.state.chat.ComposeCallWorkspac
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLinePresentation
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeVideoPreviewCorner
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.media.settleVideoPreviewCorner
+import com.shterneregen.securelan.desktop.ui.TransferEntry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -20,6 +22,8 @@ class ComposeUiRefinementStateTest {
 
         assertTrue(state.keepsPersistentToolsVisible)
         assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in state.visibleCardKinds)
+        assertFalse(state.visibleCardTitles.any { it == "Choose someone to start" })
+        assertFalse(state.primaryButtons.any { it == "Select a peer" })
     }
 
     @Test
@@ -61,7 +65,7 @@ class ComposeUiRefinementStateTest {
     }
 
     @Test
-    fun shouldNotAutoCollapsePersistentTransferPanel() {
+    fun shouldCollapseInactiveTransferPanelWithoutRemovingIt() {
         val state = ComposeContextPanelState.forPeer(
             ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
@@ -77,7 +81,6 @@ class ComposeUiRefinementStateTest {
             state.visibleCardsFor(responsive)
                 .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
                 .collapsed
-                .not()
         })
     }
 
@@ -95,11 +98,46 @@ class ComposeUiRefinementStateTest {
 
         assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in beforeDecision.visibleCardKinds)
         assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in afterDecision.visibleCardKinds)
-        assertFalse(
+        assertTrue(
             afterDecision.visibleCards
                 .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
                 .collapsed
         )
+    }
+
+    @Test
+    fun shouldExpandTransferDetailsOnlyWhenTransferNeedsAttention() {
+        val activeTransferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE.copy(
+            entries = listOf(
+                TransferEntry("send-1", "archive.zip", true, "Sending", 40, 1024),
+            ),
+        )
+        val state = ComposeContextPanelState.forTransfer(
+            activeTransferState,
+            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
+        )
+        val transferCard = state.visibleCards.first {
+            it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS
+        }
+
+        assertFalse(transferCard.collapsed)
+        assertEquals("1 active", transferCard.badge)
+    }
+
+    @Test
+    fun shouldOmitRoomStatusAndHideZeroTransferCountersInIdleRoomContext() {
+        val peerState = ComposePeerListState(peers = emptyList())
+        val state = ComposeContextPanelState.forRoom(
+            peerState,
+            ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE.copy(peerListState = peerState),
+        )
+        val transferCard = state.visibleCards.first {
+            it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS
+        }
+
+        assertFalse(state.visibleCardTitles.any { it == "Room status" })
+        assertEquals(null, transferCard.badge)
+        assertTrue(transferCard.collapsed)
     }
 
     @Test

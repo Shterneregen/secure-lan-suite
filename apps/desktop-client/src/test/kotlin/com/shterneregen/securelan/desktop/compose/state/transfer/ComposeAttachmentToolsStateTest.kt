@@ -36,4 +36,22 @@ class ComposeAttachmentToolsStateTest {
         assertFalse(state.discoverableWithinTwoInteractions)
         assertFalse(state.keepsAdvancedToolsContextual)
     }
+
+    @Test
+    fun shouldSuggestQuickShareWhenDirectSendingIsUnavailable() {
+        val state = ComposeAttachmentToolsState(
+            peerSelected = true,
+            fileTargetReady = false,
+        )
+        val directSend = state.menuItems.single {
+            it.kind == ComposeAttachmentToolKind.SECURE_FILE
+        }
+
+        assertFalse(directSend.enabled)
+        assertTrue(directSend.statusText.contains("Share on LAN temporarily"))
+        assertEquals(
+            "Direct sending is unavailable. Share on LAN temporarily instead.",
+            state.summary,
+        )
+    }
 }

@@ -39,7 +39,6 @@ data class ComposeContextPanelState(
         responsiveState: ComposeContextPanelResponsiveState,
     ): List<ComposeContextPanelCard> = visibleCards.map { card ->
         when {
-            card.kind in persistentToolKinds -> card.copy(collapsed = false)
             responsiveState.collapseSecondaryCards && !card.primary -> card.copy(collapsed = true)
             responsiveState.collapseHistory && card.kind == ComposeContextPanelCardKind.RECENT_FILES ->
                 card.copy(collapsed = true)
@@ -57,19 +56,6 @@ data class ComposeContextPanelState(
         ): ComposeContextPanelState = ComposeContextPanelState(
             mode = RightPanelMode.ROOM_INFO,
             cards = listOf(
-                ComposeContextPanelCard(
-                    kind = ComposeContextPanelCardKind.GUIDANCE,
-                    title = "Choose someone to start",
-                    body = peerListState.noPeerActionDetail,
-                    primaryAction = "Select a peer",
-                    primary = true,
-                ),
-                ComposeContextPanelCard(
-                    kind = ComposeContextPanelCardKind.ROOM_STATUS,
-                    title = "Room status",
-                    body = "${peerListState.onlinePeers.size} online · ${transferState.transferCountSummary}",
-                    badge = if (peerListState.onlinePeers.isEmpty()) "Waiting" else "Ready",
-                ),
                 persistentTransferCard(transferState),
             ),
         )
@@ -165,10 +151,12 @@ data class ComposeContextPanelState(
         ): ComposeContextPanelCard = ComposeContextPanelCard(
             kind = ComposeContextPanelCardKind.TRANSFER_DETAILS,
             title = "Transfers",
-            body = transferState.heroTitle,
-            badge = transferState.transferCountSummary,
+            body = transferState.transferCardSummary,
+            badge = transferState.transferCardBadge,
             primaryAction = if (transferState.waitingPromptCount > 0) "Review files" else null,
             primary = primary,
+            collapsed = !primary,
+            tooltip = transferState.transferCardTooltip,
         )
     }
 }

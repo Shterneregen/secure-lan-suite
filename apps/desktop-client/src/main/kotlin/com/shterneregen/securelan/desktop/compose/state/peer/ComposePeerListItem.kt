@@ -21,7 +21,7 @@ public data class ComposePeerListItem(
     val fileCapableOverride: Boolean? = null,
 ) {
     val fileCapable: Boolean = fileCapableOverride ?: (discovered || filePort > 0)
-    val fileCapabilityAdvertised: Boolean = discovered || filePort > 0 || fileCapable
+    val fileCapabilityAdvertised: Boolean = fileCapable
     val realtimeCapable: Boolean = voiceCapable || videoCapable || dataChannelCapable
     val availabilityLabel: String = if (online) "Online" else "Offline"
     val capabilityLabels: List<String> = buildList {
@@ -34,8 +34,10 @@ public data class ComposePeerListItem(
         !online -> "Offline target; wait for chat or discovery refresh before enabling actions."
         !realtimeCapable && fileCapable -> "Chat and encrypted file transfer are available; voice, video, and real-time data are not."
         !realtimeCapable -> "Only chat is available; voice, video, file transfer, and real-time data are not."
-        discovered -> "Chat, encrypted file transfer, voice, and experimental video are available for this peer after connection."
-        filePort > 0 -> "Chat, encrypted file transfer, voice, and experimental video are available; file receiver was inferred from chat."
+        fileCapable && discovered ->
+            "Chat, encrypted file transfer, voice, and experimental video are available for this peer after connection."
+        fileCapable ->
+            "Chat, encrypted file transfer, voice, and experimental video are available; file receiver was inferred from chat."
         else -> "Chat, voice, and experimental video are available; encrypted file transfer needs a file receiver endpoint."
     }
 

@@ -11,4 +11,5 @@ data class ComposeContextPanelCard(
     val technical: Boolean = false,
     val maxBodyLines: Int = 3,
     val metadata: String? = null,
+    val tooltip: String? = null,
 )

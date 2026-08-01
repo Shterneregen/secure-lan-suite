@@ -2,6 +2,8 @@ package com.shterneregen.securelan.desktop.compose
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.SnapshotMutationPolicy
 import androidx.compose.runtime.setValue
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
@@ -59,6 +61,9 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities
+
+internal val transferEntriesMutationPolicy: SnapshotMutationPolicy<List<TransferEntry>> =
+    referentialEqualityPolicy()
 
 /**
  * Live desktop host adapter for status/connection, peer-list, and chat workspace wiring.
@@ -151,7 +156,12 @@ class ComposeDesktopHostAdapter(
         private set
 
     /** File transfer rows for encrypted-transfer workspace wiring. */
-    var transferEntries: List<TransferEntry> by mutableStateOf(emptyList())
+    // TransferEntry keeps mutable speed/progress counters. Compare list snapshots by identity so
+    // every published event invalidates Compose even when the list contains the same entry objects.
+    var transferEntries: List<TransferEntry> by mutableStateOf(
+        emptyList(),
+        transferEntriesMutationPolicy,
+    )
         private set
 
     /** Incoming receive prompts captured before acceptance decisions. */
@@ -1359,7 +1369,7 @@ class ComposeDesktopHostAdapter(
                 SecureLanLogger.logTransfer("Transfer failed: ${entry.fileName}: $message.")
             }
         }
-        transferEntries = transferEntryMap.values.toList()
+        transferEntries = ArrayList(transferEntryMap.values)
     }
 
     private fun handleQuickShareEvent(event: QuickShareEvent) {

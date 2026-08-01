@@ -19,6 +19,7 @@ import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPane
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
+import com.shterneregen.securelan.desktop.compose.ui.components.TitleWithHelp
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 
 @Composable
@@ -70,10 +71,17 @@ internal fun ContextPanelCard(
                     modifier = Modifier.weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 ) {
-                    Text(
-                        card.title,
-                        style = if (card.primary) MaterialTheme.typography.subtitle1 else MaterialTheme.typography.subtitle2
-                    )
+                    val titleStyle =
+                        if (card.primary) MaterialTheme.typography.subtitle1 else MaterialTheme.typography.subtitle2
+                    if (card.tooltip == null) {
+                        Text(card.title, style = titleStyle)
+                    } else {
+                        TitleWithHelp(
+                            title = card.title,
+                            tooltip = card.tooltip,
+                            titleStyle = titleStyle,
+                        )
+                    }
                     if (!card.badge.isNullOrBlank()) {
                         Text(
                             card.badge,
@@ -168,8 +176,6 @@ private fun CapabilityChipRow(summary: String) {
 }
 
 private fun contextPanelCardIcon(kind: ComposeContextPanelCardKind): ImageVector? = when (kind) {
-    ComposeContextPanelCardKind.GUIDANCE -> SecureLanIcons.Guidance
-    ComposeContextPanelCardKind.ROOM_STATUS -> SecureLanIcons.Room
     ComposeContextPanelCardKind.PEER_PROFILE -> SecureLanIcons.Person
     ComposeContextPanelCardKind.RECENT_FILES -> SecureLanIcons.History
     ComposeContextPanelCardKind.QUICK_SHARE -> SecureLanIcons.QuickShare

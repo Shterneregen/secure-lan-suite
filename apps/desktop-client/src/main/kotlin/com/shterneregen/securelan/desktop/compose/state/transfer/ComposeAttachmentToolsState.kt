@@ -17,7 +17,7 @@ public data class ComposeAttachmentToolsState(
                 statusText = when {
                     fileTargetReady -> "Choose a file for the selected person."
                     !peerSelected -> "Select an online person before sending a secure file."
-                    else -> "The selected person is not ready to receive files."
+                    else -> "Direct sending is unavailable for this person. Use Share on LAN temporarily below."
                 },
                 shortcutHint = "Attach → Send secure file",
             ),
@@ -66,10 +66,10 @@ public data class ComposeAttachmentToolsState(
     ).all { requiredKind -> menuItems.any { it.kind == requiredKind } }
     val preservesKeyboardAccess: Boolean = true
     val restoresFocusAfterDismissal: Boolean = true
-    val summary: String = if (peerSelected && fileTargetReady) {
-        "Attachment tools are ready for the selected peer."
-    } else {
-        "Select an online peer to send secure files; LAN sharing and privacy tools stay available from Attach."
+    val summary: String = when {
+        peerSelected && fileTargetReady -> "Choose how to add a file to this conversation."
+        peerSelected -> "Direct sending is unavailable. Share on LAN temporarily instead."
+        else -> "Select an online peer to send secure files; LAN sharing and privacy tools stay available."
     }
     val keepsAdvancedToolsContextual: Boolean = menuItems.any { it.kind == ComposeAttachmentToolKind.QUICK_SHARE } &&
         menuItems.any { it.kind == ComposeAttachmentToolKind.STEGANOGRAPHY }
