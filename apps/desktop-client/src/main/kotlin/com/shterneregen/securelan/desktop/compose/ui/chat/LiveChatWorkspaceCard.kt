@@ -179,7 +179,6 @@ internal fun LiveChatWorkspaceCard(
             )
         }
         var attachMenuExpanded by remember { mutableStateOf(false) }
-        var attachmentStatusText by remember(attachmentTools.disabledStatusText) { mutableStateOf(attachmentTools.disabledStatusText) }
         val attachButtonFocusRequester = remember { FocusRequester() }
         fun dismissAttachMenu(restoreComposerFocus: Boolean) {
             attachMenuExpanded = false
@@ -198,14 +197,7 @@ internal fun LiveChatWorkspaceCard(
                 AttachmentComposerMenu(
                     tools = attachmentTools,
                     expanded = attachMenuExpanded,
-                    statusText = attachmentStatusText,
-                    onExpandedChange = { expanded ->
-                        attachMenuExpanded = expanded
-                        if (expanded) {
-                            attachmentStatusText = attachmentTools.summary
-                        }
-                    },
-                    onStatusTextChange = { attachmentStatusText = it },
+                    onExpandedChange = { attachMenuExpanded = it },
                     onDismiss = { dismissAttachMenu(restoreComposerFocus = true) },
                     onItemSelected = { item ->
                         when (item.kind) {
@@ -220,9 +212,6 @@ internal fun LiveChatWorkspaceCard(
                             ComposeAttachmentToolKind.STEGANOGRAPHY -> {
                                 dismissAttachMenu(restoreComposerFocus = false)
                                 onOpenSteganography(ComposeSteganographyMode.HIDE)
-                            }
-                            ComposeAttachmentToolKind.ENCRYPTED_TEXT_OR_FILE -> {
-                                attachmentStatusText = item.statusText
                             }
                         }
                     },

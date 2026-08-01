@@ -14,7 +14,6 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -33,7 +32,6 @@ import com.shterneregen.securelan.desktop.compose.util.rememberInteractiveSurfac
 internal fun AttachmentComposerMenuItem(
     item: ComposeAttachmentToolItem,
     icon: ImageVector,
-    onStatusTextChange: (String) -> Unit,
     onSelected: () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -85,11 +83,6 @@ internal fun AttachmentComposerMenuItem(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-    }
-    LaunchedEffect(interactive.hovered, interactive.focused, item.statusText) {
-        if (interactive.hovered || interactive.focused) {
-            onStatusTextChange(item.statusText)
         }
     }
 }

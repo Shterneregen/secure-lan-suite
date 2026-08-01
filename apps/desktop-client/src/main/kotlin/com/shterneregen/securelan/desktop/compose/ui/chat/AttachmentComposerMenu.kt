@@ -36,9 +36,7 @@ import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 internal fun AttachmentComposerMenu(
     tools: ComposeAttachmentToolsState,
     expanded: Boolean,
-    statusText: String,
     onExpandedChange: (Boolean) -> Unit,
-    onStatusTextChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onItemSelected: (ComposeAttachmentToolItem) -> Unit,
     attachButtonFocusRequester: FocusRequester,
@@ -109,12 +107,10 @@ internal fun AttachmentComposerMenu(
                         AttachmentComposerMenuItem(
                             item = item,
                             icon = attachmentMenuIcon(item.kind),
-                            onStatusTextChange = onStatusTextChange,
                             onSelected = { onItemSelected(item) },
                         )
                     }
                 }
-                AttachmentComposerStatus(statusText)
             }
         }
     }
@@ -138,7 +134,6 @@ private fun buildAttachmentMenuGroups(items: List<ComposeAttachmentToolItem>): L
         AttachmentMenuGroup(
             title = "Privacy tools",
             items = listOf(
-                ComposeAttachmentToolKind.ENCRYPTED_TEXT_OR_FILE,
                 ComposeAttachmentToolKind.STEGANOGRAPHY,
             ).mapNotNull(byKind::get),
         ),
@@ -148,6 +143,5 @@ private fun buildAttachmentMenuGroups(items: List<ComposeAttachmentToolItem>): L
 private fun attachmentMenuIcon(kind: ComposeAttachmentToolKind): ImageVector = when (kind) {
     ComposeAttachmentToolKind.SECURE_FILE -> SecureLanIcons.File
     ComposeAttachmentToolKind.QUICK_SHARE -> SecureLanIcons.QuickShare
-    ComposeAttachmentToolKind.ENCRYPTED_TEXT_OR_FILE -> SecureLanIcons.EncryptedTextOrFile
     ComposeAttachmentToolKind.STEGANOGRAPHY -> SecureLanIcons.Steganography
 }

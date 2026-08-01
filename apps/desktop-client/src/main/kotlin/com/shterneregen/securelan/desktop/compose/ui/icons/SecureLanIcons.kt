@@ -37,8 +37,7 @@ object SecureLanIcons {
     val PresenceOffline: ImageVector = Icons.Outlined.Circle
     val Devices: ImageVector = Icons.Outlined.SettingsInputHdmi
 
-    // Attachment-menu specific privacy tools reuse the encryption / image concepts.
-    val EncryptedTextOrFile: ImageVector = Encryption
+    // Attachment-menu specific privacy tool.
     val Steganography: ImageVector = Icons.Outlined.Image
 
     // Inline field actions.

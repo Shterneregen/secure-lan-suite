@@ -49,9 +49,5 @@ class ComposeAttachmentToolsStateTest {
 
         assertFalse(directSend.enabled)
         assertTrue(directSend.statusText.contains("Share on LAN temporarily"))
-        assertEquals(
-            "Direct sending is unavailable. Share on LAN temporarily instead.",
-            state.summary,
-        )
     }
 }
