@@ -1,10 +1,9 @@
 package com.shterneregen.securelan.desktop.compose
 
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.*
 import com.shterneregen.securelan.chat.discovery.impl.UdpBroadcastPeerDiscoveryService
 import com.shterneregen.securelan.chat.service.ChatEventPublisher
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
@@ -15,15 +14,24 @@ import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferC
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
 import com.shterneregen.securelan.filetransfer.quickshare.impl.DefaultQuickShareService
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
+import com.shterneregen.securelan.desktop.compose.settings.PropertiesDesktopAppSettingsStore
+import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
+import com.shterneregen.securelan.desktop.compose.settings.DesktopWindowSettings
 import com.shterneregen.securelan.webrtc.event.RtcEvent
 import com.shterneregen.securelan.webrtc.service.RtcEventPublisher
 import com.shterneregen.securelan.webrtc.service.RtcSignalingGateway
 import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcMediaDeviceService
 import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcSessionService
+import kotlin.math.roundToInt
 
 @Suppress("DEPRECATION")
 fun main() = application {
     val appIcon = painterResource(ComposeDesktopResources.APP_ICON_PNG)
+    val settingsStore = remember { PropertiesDesktopAppSettingsStore.default() }
+    val settingsController = remember(settingsStore) {
+        DesktopAppSettingsController(settingsStore.load(), settingsStore)
+    }
+    val initialSettings = remember(settingsController) { settingsController.settings }
 
     val hostAdapter = remember {
         val sharedPublisher = ComposeDesktopChatEventBridge()
@@ -41,6 +49,7 @@ fun main() = application {
             fileTransferClientService = DefaultFileTransferClientService(fileTransferBridge),
             rtcSessionService = DefaultRtcSessionService(rtcBridge, signalingBridge),
             rtcMediaDeviceService = DefaultRtcMediaDeviceService(),
+            settingsController = settingsController,
         ).also {
             sharedPublisher.delegate = it.chatEventPublisher
             fileTransferBridge.delegate = it.fileTransferEventPublisher
@@ -50,19 +59,43 @@ fun main() = application {
         }
     }
 
+    val initialWindow = initialSettings.window
+    val windowState = rememberWindowState(
+        placement = if (initialWindow.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
+        position = if (initialWindow.x != null && initialWindow.y != null) {
+            WindowPosition.Absolute(initialWindow.x.dp, initialWindow.y.dp)
+        } else {
+            WindowPosition.PlatformDefault
+        },
+        width = initialWindow.width.dp,
+        height = initialWindow.height.dp,
+    )
+
     Window(
         icon = appIcon,
         onCloseRequest = {
+            val absolutePosition = windowState.position as? WindowPosition.Absolute
+            settingsController.update { settings ->
+                settings.copy(
+                    window = DesktopWindowSettings(
+                        width = windowState.size.width.value.roundToInt(),
+                        height = windowState.size.height.value.roundToInt(),
+                        x = absolutePosition?.x?.value?.roundToInt(),
+                        y = absolutePosition?.y?.value?.roundToInt(),
+                        maximized = windowState.placement == WindowPlacement.Maximized,
+                    ),
+                )
+            }
             hostAdapter.shutdown()
             exitApplication()
         },
-        state = rememberWindowState(
-            width = ComposeShellMetadata.DEFAULT_WINDOW_WIDTH,
-            height = ComposeShellMetadata.DEFAULT_WINDOW_HEIGHT,
-        ),
+        state = windowState,
         title = ComposeShellMetadata.WINDOW_TITLE,
     ) {
-        SecureLanComposeApp(hostAdapter)
+        SecureLanComposeApp(
+            hostAdapter = hostAdapter,
+            settingsController = settingsController,
+        )
     }
 }
 

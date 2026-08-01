@@ -3,6 +3,7 @@ package com.shterneregen.securelan.desktop.compose.ui.shell
 import androidx.compose.runtime.*
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
+import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionHubMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
@@ -26,6 +27,7 @@ import com.shterneregen.securelan.desktop.compose.util.resolveSelectedJoinTarget
 internal fun LiveComposeShellContent(
     hostAdapter: ComposeDesktopHostAdapter,
     themeMode: SecureLanThemeMode,
+    settingsController: DesktopAppSettingsController,
     onThemeToggle: () -> Unit,
 ) {
     val inMessengerMode = hostAdapter.statusState.localServerRunning || hostAdapter.statusState.clientConnected
@@ -179,6 +181,7 @@ internal fun LiveComposeShellContent(
         LiveSettingsDialog(
             hostAdapter = hostAdapter,
             peerState = peerState,
+            settingsController = settingsController,
             onClose = { settingsDialogOpen = false },
         )
     }

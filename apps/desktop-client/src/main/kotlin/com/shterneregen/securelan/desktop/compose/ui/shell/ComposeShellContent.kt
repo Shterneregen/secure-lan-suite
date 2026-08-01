@@ -11,11 +11,13 @@ import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
+import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
 
 @Composable
 internal fun ComposeShellContent(
     hostAdapter: ComposeDesktopHostAdapter? = null,
     themeMode: SecureLanThemeMode,
+    settingsController: DesktopAppSettingsController,
     onThemeToggle: () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -27,7 +29,7 @@ internal fun ComposeShellContent(
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         if (hostAdapter != null) {
-            LiveComposeShellContent(hostAdapter, themeMode, onThemeToggle)
+            LiveComposeShellContent(hostAdapter, themeMode, settingsController, onThemeToggle)
         } else {
             PreviewComposeShellContent(themeMode, onThemeToggle)
         }

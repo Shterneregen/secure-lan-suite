@@ -1,8 +1,8 @@
 package com.shterneregen.securelan.desktop.compose.logging
 
+import com.shterneregen.securelan.desktop.compose.settings.DesktopAppPaths
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.logging.*
@@ -11,13 +11,12 @@ import java.util.logging.*
  * File logger for SecureLanSuite desktop application events.
  *
  * Replaces the on-screen Diagnostics panel. Runtime events are written to
- * [user-home]/.securelan/logs/securelan-%g.log and rotated so the latest
+ * [application-directory]/logs/securelan-%g.log and rotated so the latest
  * files are always available for troubleshooting.
  */
 object SecureLanLogger {
     private const val MAX_LOG_BYTES: Int = 2 * 1024 * 1024
     private const val MAX_LOG_FILES: Int = 3
-    private const val LOG_DIRECTORY: String = ".securelan/logs"
     private const val LOG_FILE_PATTERN: String = "securelan-%g.log"
 
     private val logger: Logger = Logger.getLogger("SecureLanSuite").apply {
@@ -37,8 +36,7 @@ object SecureLanLogger {
     }
 
     private fun resolveLogDirectory(): Path {
-        val userHome = System.getProperty("user.home")
-        return Paths.get(userHome, LOG_DIRECTORY)
+        return DesktopAppPaths.logsDirectory()
     }
 
     fun logConnection(message: String) = log("CONNECTION", message)

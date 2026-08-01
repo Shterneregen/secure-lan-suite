@@ -16,6 +16,7 @@ import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.compose.logging.SecureLanLogger
+import com.shterneregen.securelan.desktop.compose.settings.*
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventKind
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEvent
@@ -83,12 +84,24 @@ class ComposeDesktopHostAdapter(
     private val steganographyService: SteganographyService = StegoServices.createDefault().steganographyService(),
     private val rtcSessionService: RtcSessionService? = null,
     private val rtcMediaDeviceService: RtcMediaDeviceService? = null,
-    private val downloadsPath: Path = Path.of("downloads").toAbsolutePath().normalize(),
+    private val settingsController: DesktopAppSettingsController = DesktopAppSettingsController(),
+    downloadsPath: Path = settingsController.settings.downloadsPath(),
     private val uiStateDispatcher: (((() -> Unit)) -> Unit)? = null,
 ) : AutoCloseable {
+    private var downloadsPath: Path = downloadsPath.toAbsolutePath().normalize()
+
     /** Live status/connection state, updated after each action. */
     var statusState: ComposeStatusConnectionState by mutableStateOf(
-        ComposeStatusConnectionState(nickname = randomNicknameService.generate()),
+        ComposeStatusConnectionState(
+            nickname = settingsController.settings.displayName
+                ?: randomNicknameService.generate(),
+            manualHost = settingsController.settings.network.recentRooms.firstOrNull()?.host ?: "127.0.0.1",
+            serverChatPortText = settingsController.settings.network.serverChatPort.toString(),
+            serverFilePortText = settingsController.settings.network.serverFilePort.toString(),
+            clientChatPortText = settingsController.settings.network.clientChatPort.toString(),
+            clientFilePortText = settingsController.settings.network.clientFilePort.toString(),
+            discoverable = settingsController.settings.network.discoverable,
+        ),
     )
         private set
 
@@ -97,7 +110,10 @@ class ComposeDesktopHostAdapter(
         private set
 
     /** Mirrors the transfer checkbox used by the listener acceptance callback. */
-    var autoAcceptIncomingFiles: Boolean by mutableStateOf(false)
+    var autoAcceptIncomingFiles: Boolean by mutableStateOf(
+        settingsController.settings.transfers.incomingFileConfirmation ==
+            IncomingFileConfirmationMode.AUTO_ACCEPT_KNOWN_PEERS,
+    )
         private set
 
     /** Adapter events since the last clear, in chronological order. */
@@ -195,18 +211,29 @@ class ComposeDesktopHostAdapter(
 
     /** Media/voice UI state for Compose wiring. */
     var mediaVoiceState: ComposeMediaVoiceState by mutableStateOf(
-        ComposeMediaVoiceState(statusState = statusState, peerListState = ComposePeerListState(peers = emptyList())),
+        ComposeMediaVoiceState(
+            statusState = statusState,
+            peerListState = ComposePeerListState(peers = emptyList()),
+            selectedMicrophoneId = settingsController.settings.media.microphoneDeviceId,
+            selectedOutputDeviceId = settingsController.settings.media.outputDeviceId,
+        ),
     )
         private set
 
     /** Experimental camera/video UI state for Compose wiring. */
     var experimentalVideoState: ComposeExperimentalVideoState by mutableStateOf(
-        ComposeExperimentalVideoState(statusState = statusState, peerListState = ComposePeerListState(peers = emptyList())),
+        ComposeExperimentalVideoState(
+            statusState = statusState,
+            peerListState = ComposePeerListState(peers = emptyList()),
+            selectedCameraId = settingsController.settings.media.cameraDeviceId,
+        ),
     )
         private set
 
     /** Whether the chat client is connected (for send readiness). */
     val chatConnected: Boolean get() = chatClientService.isConnected()
+    val preferredConnectionMode: DesktopConnectionMode get() = settingsController.settings.network.lastConnectionMode
+    val configuredDownloadsPath: Path get() = downloadsPath
 
     /** Whether quick share is running. */
     var quickShareRunning: Boolean by mutableStateOf(quickShareService.isRunning())
@@ -356,6 +383,17 @@ class ComposeDesktopHostAdapter(
                 serverFilePortText = filePort.toString(),
                 discoverable = discoverable,
             )
+            settingsController.update { settings ->
+                settings.copy(
+                    displayName = trimmedNick,
+                    network = settings.network.copy(
+                        discoverable = discoverable,
+                        serverChatPort = chatPort,
+                        serverFilePort = filePort,
+                        lastConnectionMode = DesktopConnectionMode.HOST,
+                    ),
+                )
+            }
             chatServerService.start(ChatServerConfig(chatPort, password))
             startFileTransferListener(filePort, password)
             publish(ComposeConnectionEventKind.SUCCESS, "Room opened. Chat on $chatPort, files on $filePort.")
@@ -449,9 +487,24 @@ class ComposeDesktopHostAdapter(
                 clientChatPortText = chatPort.toString(),
                 clientFilePortText = filePort.toString(),
             )
+            settingsController.update { settings ->
+                settings.copy(
+                    displayName = trimmedNick,
+                    network = settings.network.copy(
+                        clientChatPort = chatPort,
+                        clientFilePort = filePort,
+                        lastConnectionMode = DesktopConnectionMode.JOIN,
+                    ),
+                )
+            }
             val request = ChatClientConnectRequest(trimmedHost, chatPort, trimmedNick, password, desktopCapabilities(filePort))
             val connected = chatClientService.connect(request)
             if (connected) {
+                settingsController.update { settings ->
+                    settings.copy(
+                        network = settings.network.withRecentRoom(DesktopRecentRoom(trimmedHost, chatPort, filePort)),
+                    )
+                }
                 startFileTransferListener(filePort, password)
                 startPeerDiscoveryListenOnly(trimmedNick)
                 publish(ComposeConnectionEventKind.SUCCESS, "Connected to $trimmedHost as $trimmedNick.")
@@ -501,6 +554,9 @@ class ComposeDesktopHostAdapter(
         }
         try {
             discoveryService.setAnnounceEnabled(enabled)
+            settingsController.update { settings ->
+                settings.copy(network = settings.network.copy(discoverable = enabled))
+            }
             discoveredPeers = discoveryService.snapshot()
             val label = if (enabled) "Discoverable" else "Hidden"
             publish(ComposeConnectionEventKind.SUCCESS, "Room set to $label mode.")
@@ -602,6 +658,7 @@ class ComposeDesktopHostAdapter(
 
             val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.WAITING)
             incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
+            playTransferNotificationSound(completion = false)
             SecureLanLogger.logTransfer("Incoming file prompt waiting for user decision: ${prompt.header}.")
             val decision = CompletableFuture<Boolean>()
             pendingIncomingTransferDecisions[prompt.id] = decision
@@ -679,6 +736,53 @@ class ComposeDesktopHostAdapter(
             return
         }
         autoAcceptIncomingFiles = enabled
+        settingsController.update { settings ->
+            settings.copy(
+                transfers = settings.transfers.copy(
+                    incomingFileConfirmation = if (enabled) {
+                        IncomingFileConfirmationMode.AUTO_ACCEPT_KNOWN_PEERS
+                    } else {
+                        IncomingFileConfirmationMode.ASK
+                    },
+                ),
+            )
+        }
+    }
+
+    fun updateLastConnectionMode(mode: DesktopConnectionMode) {
+        settingsController.update { settings ->
+            settings.copy(network = settings.network.copy(lastConnectionMode = mode))
+        }
+    }
+
+    fun updateDownloadsDirectory(path: Path) {
+        downloadsPath = path.toAbsolutePath().normalize()
+        settingsController.update { settings -> settings.copy(downloadsDirectory = downloadsPath.toString()) }
+    }
+
+    fun updatePreferredNickname(nickname: String) {
+        val trimmed = nickname.trim()
+        settingsController.update { settings -> settings.copy(displayName = trimmed.takeIf(String::isNotEmpty)) }
+        if (!statusState.localServerRunning && !statusState.clientConnected && trimmed.isNotEmpty()) {
+            statusState = statusState.copy(nickname = trimmed)
+            refreshRealtimeState()
+        }
+    }
+
+    fun updateNetworkDefaults(network: DesktopNetworkSettings) {
+        val normalized = network.normalized()
+        settingsController.update { settings -> settings.copy(network = normalized) }
+        if (!statusState.localServerRunning && !statusState.clientConnected) {
+            statusState = statusState.copy(
+                discoverable = normalized.discoverable,
+                serverChatPortText = normalized.serverChatPort.toString(),
+                serverFilePortText = normalized.serverFilePort.toString(),
+                clientChatPortText = normalized.clientChatPort.toString(),
+                clientFilePortText = normalized.clientFilePort.toString(),
+                manualHost = normalized.recentRooms.firstOrNull()?.host ?: statusState.manualHost,
+            )
+            refreshRealtimeState()
+        }
     }
 
     fun sendFileToPeer(filePath: Path, senderId: String, recipient: DiscoveredPeer, sessionPassword: String): CompletableFuture<String?> {
@@ -955,6 +1059,9 @@ class ComposeDesktopHostAdapter(
 
     fun selectMicrophone(deviceId: String?) {
         mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty())
+        settingsController.update { settings ->
+            settings.copy(media = settings.media.copy(microphoneDeviceId = deviceId.orEmpty()))
+        }
         SecureLanLogger.logRealtime("Microphone selected: ${mediaVoiceState.selectedMicrophone}.")
     }
 
@@ -969,6 +1076,9 @@ class ComposeDesktopHostAdapter(
 
     fun selectSpeaker(deviceId: String?) {
         mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty())
+        settingsController.update { settings ->
+            settings.copy(media = settings.media.copy(outputDeviceId = deviceId.orEmpty()))
+        }
         SecureLanLogger.logRealtime("Speaker output selected: ${mediaVoiceState.selectedOutputDevice}.")
     }
 
@@ -983,6 +1093,9 @@ class ComposeDesktopHostAdapter(
 
     fun selectCamera(deviceId: String?) {
         experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty())
+        settingsController.update { settings ->
+            settings.copy(media = settings.media.copy(cameraDeviceId = deviceId.orEmpty()))
+        }
         SecureLanLogger.logRealtime("Camera selected: ${experimentalVideoState.selectedCamera}.")
     }
 
@@ -1355,6 +1468,10 @@ class ComposeDesktopHostAdapter(
                 entry.stopSpeedTracking()
                 appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "completed: ${event.path}")
                 SecureLanLogger.logTransfer("Transfer completed: ${entry.fileName}.")
+                if (settingsController.settings.transfers.notifyOnCompletion) {
+                    publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed: ${entry.fileName}")
+                    playTransferNotificationSound(completion = true)
+                }
             }
 
             is FileTransferFailedEvent -> {
@@ -1370,6 +1487,17 @@ class ComposeDesktopHostAdapter(
             }
         }
         transferEntries = ArrayList(transferEntryMap.values)
+    }
+
+    private fun playTransferNotificationSound(completion: Boolean) {
+        val settings = settingsController.settings
+        val notificationEnabled = settings.notifications.enabled &&
+            settings.notifications.transferNotificationsEnabled &&
+            settings.notifications.soundsEnabled &&
+            (!completion || settings.transfers.notifyOnCompletion)
+        if (notificationEnabled) {
+            DesktopNotificationSound.play(settings.media.volumePercent)
+        }
     }
 
     private fun handleQuickShareEvent(event: QuickShareEvent) {

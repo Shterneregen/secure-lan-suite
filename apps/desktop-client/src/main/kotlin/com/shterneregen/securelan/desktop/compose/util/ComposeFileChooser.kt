@@ -6,6 +6,7 @@ import java.awt.Frame
 import java.awt.KeyboardFocusManager
 import java.io.FilenameFilter
 import java.nio.file.Path
+import javax.swing.JFileChooser
 
 internal data class ComposeFileChooserFilter(
     val description: String,
@@ -48,6 +49,20 @@ internal fun createNativeFileDialog(title: String, save: Boolean): FileDialog {
         is Frame -> FileDialog(parentWindow, title, mode)
         is Dialog -> FileDialog(parentWindow, title, mode)
         else -> FileDialog(null as Frame?, title, mode)
+    }
+}
+
+internal fun openComposeDirectoryChooser(title: String, initialDirectory: Path? = null): Path? {
+    val chooser = JFileChooser(initialDirectory?.toFile()).apply {
+        dialogTitle = title
+        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        isAcceptAllFileFilterUsed = false
+    }
+    val parent = KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow
+    return if (chooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION) {
+        chooser.selectedFile?.toPath()?.toAbsolutePath()?.normalize()
+    } else {
+        null
     }
 }
 

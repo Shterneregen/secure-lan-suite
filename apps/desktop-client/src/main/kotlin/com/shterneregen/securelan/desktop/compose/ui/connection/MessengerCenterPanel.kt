@@ -18,6 +18,7 @@ import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnec
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceState
 import com.shterneregen.securelan.desktop.compose.ui.shell.WorkspaceCenterColumn
+import com.shterneregen.securelan.desktop.compose.settings.DesktopConnectionMode
 
 @Composable
 internal fun MessengerCenterPanel(
@@ -60,7 +61,15 @@ private fun LiveConnectionHubSurface(
     hostAdapter: ComposeDesktopHostAdapter,
     selectedJoinTarget: ComposeConnectionJoinTarget?,
 ) {
-    var hubMode by remember { mutableStateOf(ComposeConnectionHubMode.HOST) }
+    var hubMode by remember {
+        mutableStateOf(
+            if (hostAdapter.preferredConnectionMode == DesktopConnectionMode.JOIN) {
+                ComposeConnectionHubMode.JOIN
+            } else {
+                ComposeConnectionHubMode.HOST
+            },
+        )
+    }
     LaunchedEffect(selectedJoinTarget) {
         if (selectedJoinTarget != null) {
             hubMode = ComposeConnectionHubMode.JOIN
@@ -90,7 +99,12 @@ private fun LiveConnectionHubSurface(
             mode = hubMode,
             hostLabel = ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE.hostTabLabel,
             joinLabel = ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE.joinTabLabel,
-            onModeChange = { hubMode = it },
+            onModeChange = {
+                hubMode = it
+                hostAdapter.updateLastConnectionMode(
+                    if (it == ComposeConnectionHubMode.JOIN) DesktopConnectionMode.JOIN else DesktopConnectionMode.HOST,
+                )
+            },
             tooltip = ComposeShellMetadata.DEFAULT_CONNECTION_HUB_STATE.modeSelectorTooltip,
             modifier = Modifier.fillMaxWidth(),
             hostEnabled = hostEnabled,
