@@ -35,7 +35,6 @@ import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachme
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
-import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyMode
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
@@ -48,8 +47,6 @@ import java.awt.Cursor
 internal fun LiveChatWorkspaceCard(
     hostAdapter: ComposeDesktopHostAdapter,
     peerState: ComposePeerListState,
-    onOpenQuickShare: () -> Unit,
-    onOpenSteganography: (ComposeSteganographyMode) -> Unit,
     videoStageContent: @Composable (Modifier) -> Unit,
 ) {
     var draftMessage by remember { mutableStateOf("") }
@@ -204,14 +201,6 @@ internal fun LiveChatWorkspaceCard(
                             ComposeAttachmentToolKind.SECURE_FILE -> {
                                 dismissAttachMenu(restoreComposerFocus = true)
                                 attachSelectedFile()
-                            }
-                            ComposeAttachmentToolKind.QUICK_SHARE -> {
-                                dismissAttachMenu(restoreComposerFocus = false)
-                                onOpenQuickShare()
-                            }
-                            ComposeAttachmentToolKind.STEGANOGRAPHY -> {
-                                dismissAttachMenu(restoreComposerFocus = false)
-                                onOpenSteganography(ComposeSteganographyMode.HIDE)
                             }
                         }
                     },

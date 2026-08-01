@@ -22,7 +22,8 @@ public data class ComposeFileTransferState(
     val hasSelectedFile: Boolean = selectedFilePath.trim().isNotEmpty()
     val senderReady: Boolean = senderId.trim().isNotEmpty()
     val passwordReady: Boolean = sessionPassword.isNotEmpty()
-    val sendTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.fileCapable
+    val sendTargetReady: Boolean =
+        statusState.clientConnected && selectedPeer?.online == true && selectedPeer.fileCapable
     val listenerReady: Boolean = statusState.resolvedLocalFilePort != null
     val canSendSelectedFile: Boolean = sendTargetReady && hasSelectedFile && senderReady && passwordReady
     val activeCount: Long = entries.count { it.active() }.toLong()
@@ -82,7 +83,8 @@ public data class ComposeFileTransferState(
         !statusState.clientConnected -> "Connect to chat before sending a file to $selectedPeerName."
         !selectedPeer.online -> "$selectedPeerName is offline."
         !selectedPeer.fileCapable ->
-            "$selectedPeerName cannot receive files directly. Use Attach → Share on LAN temporarily."
+            "$selectedPeerName cannot receive files directly. Use Tools → Share on LAN."
+
         else -> "Send a file to $selectedPeerName or review recent activity."
     }
     val transferCardTooltip: String = if (selectedPeer != null && !selectedPeer.fileCapable) {
@@ -111,8 +113,10 @@ public data class ComposeFileTransferState(
         ?.let { runCatching { Paths.get(it).fileName?.toString() ?: it }.getOrDefault(it) }
         ?: "No file selected"
     val selectedFileSummary: String = if (hasSelectedFile) selectedFileName else "No file selected"
-    val passwordSummary: String = if (passwordReady) "Using the current room password" else "Reconnect with a room password before sending files."
-    val senderSummary: String = if (senderReady) "Sending as ${senderId.trim()}" else "Reconnect with your name before sending files."
+    val passwordSummary: String =
+        if (passwordReady) "Using the current room password" else "Reconnect with a room password before sending files."
+    val senderSummary: String =
+        if (senderReady) "Sending as ${senderId.trim()}" else "Reconnect with your name before sending files."
     val sendLabel: String = if (canSendSelectedFile) "Send file ready" else "Send file blocked"
     val receiveLabel: String = if (listenerReady) "Receive listener ready" else "Receive listener blocked"
     val blockedReasons: List<String> = buildList {

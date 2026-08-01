@@ -85,8 +85,10 @@ internal fun LiveComposeShellContent(
     val roomConnectionStatus = when {
         hostAdapter.statusState.clientConnected ->
             "Secure room · Connected · ${peerState.onlinePeers.size} online"
+
         hostAdapter.statusState.localServerRunning ->
             "Secure room · Hosting · ${peerState.onlinePeers.size} online"
+
         else -> "Secure room · Offline"
     }
     val topBarStatus = compactRoomNetworkStatus(hostAdapter.localNetworkInfo)?.let { address ->
@@ -102,6 +104,8 @@ internal fun LiveComposeShellContent(
         topBarLabel = topBarLabel,
         topBarStatus = topBarStatus,
         themeMode = themeMode,
+        onOpenQuickShare = { quickShareDialogOpen = true },
+        onOpenSteganography = { steganographyDialogMode = ComposeSteganographyMode.HIDE },
         onSettingsClick = { settingsDialogOpen = true },
         onThemeToggle = onThemeToggle,
     ) {
@@ -138,8 +142,6 @@ internal fun LiveComposeShellContent(
                         LiveChatWorkspaceCard(
                             hostAdapter,
                             peerState,
-                            onOpenQuickShare = { quickShareDialogOpen = true },
-                            onOpenSteganography = { mode -> steganographyDialogMode = mode },
                         ) { modifier ->
                             ComposeVideoStage(
                                 state = hostAdapter.experimentalVideoState.copy(peerListState = peerState),

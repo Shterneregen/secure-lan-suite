@@ -21,6 +21,7 @@ object SecureLanIcons {
     val Encryption: ImageVector = Icons.Outlined.Lock
     val Diagnostics: ImageVector = Icons.Outlined.MonitorHeart
     val QuickShare: ImageVector = Icons.Outlined.Share
+    val Tools: ImageVector = Icons.Outlined.Build
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
     val Close: ImageVector = Icons.Outlined.Close
@@ -38,7 +39,7 @@ object SecureLanIcons {
     val PresenceOffline: ImageVector = Icons.Outlined.Circle
     val Devices: ImageVector = Icons.Outlined.SettingsInputHdmi
 
-    // Attachment-menu specific privacy tool.
+    // Privacy tool.
     val Steganography: ImageVector = Icons.Outlined.Image
 
     // Inline field actions.

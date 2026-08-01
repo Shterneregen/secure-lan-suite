@@ -22,6 +22,8 @@ internal fun SecureLanAppShell(
     topBarLabel: String = shellState.currentContextLabel,
     topBarStatus: String = "",
     themeMode: SecureLanThemeMode,
+    onOpenQuickShare: () -> Unit,
+    onOpenSteganography: () -> Unit,
     onSettingsClick: () -> Unit,
     onThemeToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
@@ -58,6 +60,10 @@ internal fun SecureLanAppShell(
                         StatusChip(topBarStatus)
                     }
                 }
+                AppToolsMenu(
+                    onOpenQuickShare = onOpenQuickShare,
+                    onOpenSteganography = onOpenSteganography,
+                )
                 SettingsButton(onClick = onSettingsClick)
                 ThemeToggleButton(themeMode = themeMode, onThemeToggle = onThemeToggle)
             }
