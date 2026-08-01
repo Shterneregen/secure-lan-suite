@@ -103,6 +103,13 @@ class ComposeUiRefinementStateTest {
                 .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
                 .collapsed
         )
+        assertEquals(
+            listOf(ComposeContextPanelCardKind.TRANSFER_DETAILS),
+            beforeDecision.visibleCardKinds,
+        )
+        assertEquals(beforeDecision.visibleCardKinds, afterDecision.visibleCardKinds)
+        assertTrue(beforeDecision.visibleCards.none { it.title == peerState.selectedPeerTitle })
+        assertTrue(afterDecision.visibleCards.none { it.title == peerState.selectedPeerTitle })
     }
 
     @Test

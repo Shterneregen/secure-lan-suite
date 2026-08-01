@@ -1,17 +1,15 @@
 package com.shterneregen.securelan.desktop.compose.ui.context
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.LocalReducedMotion
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
-import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
@@ -69,22 +67,9 @@ internal fun LiveActionsColumn(
             LaunchedEffect(contextPanelState.mode, contextPanelState.visibleCardKinds.firstOrNull()) {
                 panelScrollState.scrollTo(0)
             }
-            ContextPanelSummary(state = contextPanelState)
-            val contextCardsReduced = LocalReducedMotion.current
-            AnimatedContent(
-                targetState = contextPanelState.mode,
-                transitionSpec = {
-                    fadeIn(motionTween(contextCardsReduced)) + slideInHorizontally(
-                        motionTween(
-                            contextCardsReduced
-                        )
-                    ) { it / 8 } togetherWith
-                            fadeOut(motionTween(contextCardsReduced)) + slideOutHorizontally(motionTween(contextCardsReduced)) { it / 8 }
-                },
-                label = "ContextAssistantCards",
-            ) { _ ->
-                Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-                    contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
+            Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
+                    key(card.kind) {
                         val expandedContent: (@Composable () -> Unit)? = when (card.kind) {
                             ComposeContextPanelCardKind.TRANSFER_DETAILS -> {
                                 { LiveFileTransferCard(hostAdapter, peerState) }
@@ -94,12 +79,12 @@ internal fun LiveActionsColumn(
                         }
                         ContextPanelCard(card, expandedContent)
                     }
-                    QuickShareActivitySummary(
-                        running = hostAdapter.quickShareRunning,
-                        activeLinkCount = hostAdapter.quickShareEntries.count { it.active() },
-                        onManage = onOpenQuickShare,
-                    )
                 }
+                QuickShareActivitySummary(
+                    running = hostAdapter.quickShareRunning,
+                    activeLinkCount = hostAdapter.quickShareEntries.count { it.active() },
+                    onManage = onOpenQuickShare,
+                )
             }
         }
     }

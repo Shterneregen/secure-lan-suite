@@ -17,7 +17,6 @@ internal fun PreviewActionsColumn(responsiveState: ComposeContextPanelResponsive
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ContextPanelSummary(contextPanelState)
         contextPanelState.visibleCardsFor(responsiveState).forEach { card ->
             ContextPanelCard(card)
         }

@@ -176,7 +176,6 @@ private fun CapabilityChipRow(summary: String) {
 }
 
 private fun contextPanelCardIcon(kind: ComposeContextPanelCardKind): ImageVector? = when (kind) {
-    ComposeContextPanelCardKind.PEER_PROFILE -> SecureLanIcons.Person
     ComposeContextPanelCardKind.RECENT_FILES -> SecureLanIcons.History
     ComposeContextPanelCardKind.QUICK_SHARE -> SecureLanIcons.QuickShare
     ComposeContextPanelCardKind.TRANSFER_DETAILS -> SecureLanIcons.File

@@ -19,8 +19,6 @@ data class ComposeContextPanelState(
     val persistentToolKinds: Set<ComposeContextPanelCardKind> =
         setOf(ComposeContextPanelCardKind.TRANSFER_DETAILS)
     val keepsPersistentToolsVisible: Boolean = persistentToolKinds.all(visibleCardKinds::contains)
-    val nextActionSummary: String =
-        primaryCards.firstOrNull()?.body ?: visibleCards.firstOrNull()?.body.orEmpty()
     val answersCurrentContext: Boolean =
         visibleCards.isNotEmpty() && visibleCards.all { it.title.isNotBlank() && it.body.isNotBlank() }
     val hasOnePrimaryContext: Boolean = primaryCards.size <= 1
@@ -63,48 +61,18 @@ data class ComposeContextPanelState(
         fun forPeer(
             peerListState: ComposePeerListState,
             transferState: ComposeFileTransferState,
-        ): ComposeContextPanelState {
-            val peer = peerListState.selectedPeer
-            return ComposeContextPanelState(
-                mode = RightPanelMode.PEER_INFO,
-                cards = listOf(
-                    ComposeContextPanelCard(
-                        kind = ComposeContextPanelCardKind.PEER_PROFILE,
-                        title = peer?.nickname ?: peerListState.selectedPeerTitle,
-                        body = peer?.selectedMeta ?: peerListState.selectedPeerMeta,
-                        badge = peer?.availabilityLabel ?: "No peer",
-                        metadata = peer?.capabilitySummary,
-                        primary = true,
-                    ),
-                    persistentTransferCard(transferState),
-                ),
-            )
-        }
+        ): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.PEER_INFO,
+            cards = listOf(persistentTransferCard(transferState)),
+        )
 
         fun forTransfer(
             transferState: ComposeFileTransferState,
             peerListState: ComposePeerListState,
-        ): ComposeContextPanelState {
-            val peer = peerListState.selectedPeer
-            return ComposeContextPanelState(
-                mode = RightPanelMode.TRANSFERS,
-                cards = buildList {
-                    add(persistentTransferCard(transferState, primary = true))
-                    if (peer != null) {
-                        add(
-                            ComposeContextPanelCard(
-                                kind = ComposeContextPanelCardKind.PEER_PROFILE,
-                                title = peer.nickname,
-                                body = peer.selectedMeta,
-                                badge = peer.availabilityLabel,
-                                metadata = peer.capabilitySummary,
-                                collapsed = true,
-                            )
-                        )
-                    }
-                },
-            )
-        }
+        ): ComposeContextPanelState = ComposeContextPanelState(
+            mode = RightPanelMode.TRANSFERS,
+            cards = listOf(persistentTransferCard(transferState, primary = true)),
+        )
 
         fun forCall(
             peerListState: ComposePeerListState,
@@ -129,18 +97,6 @@ data class ComposeContextPanelState(
                         )
                     )
                     add(persistentTransferCard(transferState))
-                    if (peer != null) {
-                        add(
-                            ComposeContextPanelCard(
-                                kind = ComposeContextPanelCardKind.PEER_PROFILE,
-                                title = peer.nickname,
-                                body = peer.selectedMeta,
-                                badge = peer.availabilityLabel,
-                                metadata = peer.capabilitySummary,
-                                collapsed = true,
-                            )
-                        )
-                    }
                 },
             )
         }
