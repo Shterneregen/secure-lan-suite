@@ -8,6 +8,7 @@ data class ComposeChatTranscriptLinePresentation(
     val body: String,
     val timestamp: Instant = Instant.now(),
     val actionUrl: String? = null,
+    val showsQrCode: Boolean = false,
 ) {
     val displayTime: String = formatComposeChatTimestamp(timestamp)
 
@@ -99,7 +100,8 @@ data class ComposeChatTranscriptLinePresentation(
             } else {
                 null
             }
-            return ComposeChatTranscriptLinePresentation(kind, label, body, timestamp, actionUrl)
+            val showsQrCode = actionUrl != null && body.startsWith("File link created", ignoreCase = true)
+            return ComposeChatTranscriptLinePresentation(kind, label, body, timestamp, actionUrl, showsQrCode)
         }
     }
 }

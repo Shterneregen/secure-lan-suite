@@ -197,6 +197,7 @@ class ComposeUiRefinementStateTest {
         assertEquals(ComposeChatTranscriptLineKind.QUICK_SHARE, presentation.kind)
         assertEquals("Quick Share", presentation.label)
         assertTrue(presentation.body.startsWith("File link created"))
+        assertTrue(presentation.showsQrCode)
         assertEquals(url, presentation.actionUrl)
     }
 
