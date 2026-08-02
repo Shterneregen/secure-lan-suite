@@ -15,6 +15,35 @@ enum class PeerRole {
     CHAT_CLIENT,
 }
 
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK,
+}
+
+enum class AppLanguage {
+    SYSTEM,
+    ENGLISH,
+    RUSSIAN,
+}
+
+enum class NearbyPermissionState {
+    NOT_REQUIRED,
+    REQUIRED,
+    GRANTED,
+    DENIED,
+}
+
+enum class TransferDirection {
+    SENT,
+    RECEIVED,
+}
+
+enum class TransferResult {
+    COMPLETED,
+    FAILED,
+}
+
 data class DiscoveredPeer(
     val peerId: String,
     val nickname: String,
@@ -69,10 +98,28 @@ data class IncomingFileProgress(
         get() = if (totalBytes <= 0) 0f else (bytesReceived.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
 }
 
+data class TransferRecord(
+    val fileName: String,
+    val bytes: Long,
+    val direction: TransferDirection,
+    val result: TransferResult,
+    val peerName: String? = null,
+    val savedPath: String? = null,
+    val timestamp: Instant = Instant.now(),
+)
+
 data class MainUiState(
     val nickname: String = "",
     val sessionPassword: String = "",
-    val darkThemeEnabled: Boolean = true,
+    val manualHost: String = "",
+    val manualChatPort: String = SecureLanPorts.DEFAULT_CHAT_PORT.toString(),
+    val manualFilePort: String = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT.toString(),
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val notificationsEnabled: Boolean = true,
+    val autoReceiveFiles: Boolean = true,
+    val nearbyPermissionState: NearbyPermissionState = NearbyPermissionState.REQUIRED,
+    val networkAvailable: Boolean = true,
     val peers: List<DiscoveredPeer> = emptyList(),
     val selectedPeer: DiscoveredPeer? = null,
     val connectionPeer: DiscoveredPeer? = null,
@@ -83,9 +130,15 @@ data class MainUiState(
     val selectedFile: SelectedFile? = null,
     val fileProgress: FileSendProgress = FileSendProgress(),
     val incomingFileProgress: IncomingFileProgress = IncomingFileProgress(),
+    val recentTransfers: List<TransferRecord> = emptyList(),
     val fileReceiverRunning: Boolean = false,
     val discoveryRunning: Boolean = false,
+    val discoveryTimedOut: Boolean = false,
     val status: String = "Ready",
     val error: String? = null,
     val logs: List<AppLogEntry> = listOf(AppLogEntry(message = "Android client started")),
-)
+) {
+    /** Compatibility for legacy composables kept while the redesigned screens settle. */
+    val darkThemeEnabled: Boolean
+        get() = themeMode == ThemeMode.DARK
+}

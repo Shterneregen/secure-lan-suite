@@ -1,9 +1,17 @@
 package com.shterneregen.securelan.androidclient
 
+import android.annotation.SuppressLint
 import android.Manifest
+import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.LocaleList
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,7 +19,9 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,10 +39,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -40,6 +54,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -47,10 +62,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
@@ -69,6 +88,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -81,7 +102,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -91,22 +115,45 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Wifi
 import com.shterneregen.securelan.androidclient.model.AppLogEntry
+import com.shterneregen.securelan.androidclient.model.AppLanguage
 import com.shterneregen.securelan.androidclient.model.ChatLine
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
 import com.shterneregen.securelan.androidclient.model.MainUiState
+import com.shterneregen.securelan.androidclient.model.NearbyPermissionState
+import com.shterneregen.securelan.androidclient.model.PeerRole
 import com.shterneregen.securelan.androidclient.model.SecureLanPorts
+import com.shterneregen.securelan.androidclient.model.ThemeMode
+import com.shterneregen.securelan.androidclient.model.TransferDirection
+import com.shterneregen.securelan.androidclient.model.TransferRecord
+import com.shterneregen.securelan.androidclient.model.TransferResult
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -114,39 +161,129 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-            LaunchedEffect(Unit) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    permissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
-                }
-                viewModel.startDiscovery()
+            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                viewModel.updateNearbyPermission(if (granted) NearbyPermissionState.GRANTED else NearbyPermissionState.DENIED)
             }
-            SecureLanAndroidApp(viewModel)
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                viewModel.updateNotificationsEnabled(granted)
+            }
+            LaunchedEffect(Unit) {
+                val nearbyState = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    NearbyPermissionState.NOT_REQUIRED
+                } else if (checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    NearbyPermissionState.GRANTED
+                } else {
+                    NearbyPermissionState.REQUIRED
+                }
+                viewModel.updateNearbyPermission(nearbyState)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    viewModel.updateNotificationsEnabled(false)
+                }
+            }
+            DisposableEffect(Unit) {
+                val connectivityManager = getSystemService(ConnectivityManager::class.java)
+                fun updateNetworkState() {
+                    val capabilities = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+                    val available = capabilities?.let {
+                        it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                            it.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                    } == true
+                    viewModel.updateNetworkAvailable(available)
+                }
+                val callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) = updateNetworkState()
+                    override fun onLost(network: Network) = updateNetworkState()
+                    override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) = updateNetworkState()
+                }
+                updateNetworkState()
+                connectivityManager.registerDefaultNetworkCallback(callback)
+                onDispose { connectivityManager.unregisterNetworkCallback(callback) }
+            }
+            SecureLanAndroidApp(
+                viewModel = viewModel,
+                onRequestNearbyPermission = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    }
+                },
+                onNotificationsChange = { enabled ->
+                    if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        viewModel.updateNotificationsEnabled(enabled)
+                    }
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun SecureLanAndroidApp(viewModel: MainViewModel) {
+@SuppressLint("AppBundleLocaleChanges") // Language splitting is disabled in android.bundle.language.
+private fun SecureLanAndroidApp(
+    viewModel: MainViewModel,
+    onRequestNearbyPermission: () -> Unit,
+    onNotificationsChange: (Boolean) -> Unit,
+) {
     val state by viewModel.uiState.collectAsState()
-    val colorScheme = if (state.darkThemeEnabled) SecureLanDarkColors else SecureLanLightColors
-    MaterialTheme(colorScheme = colorScheme) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            MainScreen(
-                state = state,
-                onNicknameChange = viewModel::updateNickname,
-                onPasswordChange = viewModel::updateSessionPassword,
-                onDarkThemeChange = viewModel::updateDarkThemeEnabled,
-                onPeerSelected = viewModel::selectPeer,
-                onConnect = viewModel::connectSelectedPeer,
-                onDisconnect = viewModel::disconnect,
-                onInputChange = viewModel::updateInputMessage,
-                onSendMessage = viewModel::sendTextMessage,
-                onFileSelected = viewModel::selectFile,
-                onSendFile = viewModel::sendSelectedFile,
-                onStartFileReceiver = viewModel::startFileReceiver,
-                onStopFileReceiver = viewModel::stopFileReceiver,
-            )
+    val baseContext = LocalContext.current
+    val activityResultRegistryOwner = requireNotNull(LocalActivityResultRegistryOwner.current) {
+        "SecureLan must be hosted by an ActivityResultRegistryOwner"
+    }
+    val systemConfiguration = LocalConfiguration.current
+    val systemLocaleTags = systemConfiguration.locales.toLanguageTags()
+    val localizedContext = remember(state.appLanguage, systemLocaleTags) {
+        when (state.appLanguage) {
+            AppLanguage.SYSTEM -> baseContext
+            AppLanguage.ENGLISH, AppLanguage.RUSSIAN -> {
+                val locale = if (state.appLanguage == AppLanguage.ENGLISH) Locale.ENGLISH else Locale.forLanguageTag("ru")
+                val configuration = Configuration(systemConfiguration).apply { setLocales(LocaleList(locale)) }
+                baseContext.createConfigurationContext(configuration)
+            }
+        }
+    }
+    val darkTheme = when (state.themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    val colorScheme = if (darkTheme) SecureLanDarkColors else SecureLanLightColors
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        LocalConfiguration provides localizedContext.resources.configuration,
+        LocalActivityResultRegistryOwner provides activityResultRegistryOwner,
+    ) {
+        MaterialTheme(colorScheme = colorScheme) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                RedesignedMainScreen(
+                    state = state,
+                    onNicknameChange = viewModel::updateNickname,
+                    onPasswordChange = viewModel::updateSessionPassword,
+                    onThemeModeChange = viewModel::updateThemeMode,
+                    onLanguageChange = viewModel::updateAppLanguage,
+                    onNotificationsChange = onNotificationsChange,
+                    onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
+                    onPeerSelected = viewModel::selectPeer,
+                    onConnect = viewModel::connectSelectedPeer,
+                    onConnectManual = viewModel::connectManualPeer,
+                    onDisconnect = viewModel::disconnect,
+                    onInputChange = viewModel::updateInputMessage,
+                    onSendMessage = viewModel::sendTextMessage,
+                    onFileSelected = viewModel::selectFile,
+                    onSendFile = viewModel::sendSelectedFile,
+                    onRequestNearbyPermission = onRequestNearbyPermission,
+                    onRetryDiscovery = viewModel::restartDiscovery,
+                )
+            }
         }
     }
 }
@@ -214,6 +351,1077 @@ private fun adaptiveLayoutSpec(screenWidth: Dp): AdaptiveLayoutSpec = when {
         verticalPadding = 16.dp,
         paneSpacing = 16.dp,
     )
+}
+
+private enum class PrimaryDestination(val labelRes: Int, val icon: ImageVector) {
+    DEVICES(R.string.nav_devices, Icons.Outlined.Devices),
+    CHAT(R.string.nav_chat, Icons.AutoMirrored.Outlined.Chat),
+    FILES(R.string.nav_files, Icons.Outlined.Description),
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RedesignedMainScreen(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onLanguageChange: (AppLanguage) -> Unit,
+    onNotificationsChange: (Boolean) -> Unit,
+    onAutoReceiveChange: (Boolean) -> Unit,
+    onPeerSelected: (DiscoveredPeer) -> Unit,
+    onConnect: () -> Unit,
+    onConnectManual: (String, String, String) -> Unit,
+    onDisconnect: () -> Unit,
+    onInputChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    onFileSelected: (android.net.Uri) -> Unit,
+    onSendFile: () -> Unit,
+    onRequestNearbyPermission: () -> Unit,
+    onRetryDiscovery: () -> Unit,
+) {
+    var destination by remember { mutableStateOf(PrimaryDestination.DEVICES) }
+    var settingsVisible by remember { mutableStateOf(false) }
+    var connectionSheetVisible by remember { mutableStateOf(false) }
+    var manualConnectionSheetVisible by remember { mutableStateOf(false) }
+    var discoveryHelpVisible by remember { mutableStateOf(false) }
+    var logsVisible by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val friendlyErrorTitle = state.error?.let { stringResource(it.toFriendlyErrorTitleRes()) }
+    val errorDetailsLabel = stringResource(R.string.error_details)
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            onFileSelected(uri)
+            settingsVisible = false
+            destination = PrimaryDestination.FILES
+        }
+    }
+
+    BackHandler(enabled = settingsVisible) { settingsVisible = false }
+
+    LaunchedEffect(state.connected) {
+        if (state.connected) {
+            connectionSheetVisible = false
+            manualConnectionSheetVisible = false
+            settingsVisible = false
+            destination = PrimaryDestination.CHAT
+        }
+    }
+    LaunchedEffect(friendlyErrorTitle) {
+        if (friendlyErrorTitle != null) {
+            val result = snackbarHostState.showSnackbar(
+                message = friendlyErrorTitle,
+                actionLabel = errorDetailsLabel,
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) logsVisible = true
+        }
+    }
+
+    if (connectionSheetVisible) {
+        ConnectionBottomSheet(
+            state = state,
+            onNicknameChange = onNicknameChange,
+            onPasswordChange = onPasswordChange,
+            onConnect = onConnect,
+            onDismiss = { if (!state.connecting) connectionSheetVisible = false },
+        )
+    }
+    if (manualConnectionSheetVisible) {
+        ManualConnectionBottomSheet(
+            state = state,
+            onNicknameChange = onNicknameChange,
+            onPasswordChange = onPasswordChange,
+            onConnect = onConnectManual,
+            onDismiss = { if (!state.connecting) manualConnectionSheetVisible = false },
+        )
+    }
+    if (discoveryHelpVisible) {
+        AlertDialog(
+            onDismissRequest = { discoveryHelpVisible = false },
+            icon = { Icon(Icons.Outlined.Wifi, contentDescription = null) },
+            title = { Text(stringResource(R.string.no_devices_title)) },
+            text = { Text(stringResource(R.string.no_devices_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    discoveryHelpVisible = false
+                    onRetryDiscovery()
+                }) { Text(stringResource(R.string.search_again)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { discoveryHelpVisible = false }) { Text(stringResource(R.string.close)) }
+            },
+        )
+    }
+    if (logsVisible) LogsDialog(logs = state.logs, onDismiss = { logsVisible = false })
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val layoutSpec = adaptiveLayoutSpec(maxWidth)
+        val showDeviceSidebar = maxWidth >= 1200.dp && !settingsVisible && destination != PrimaryDestination.DEVICES
+        Scaffold(
+            topBar = {
+                RedesignedAppHeader(
+                    state = state,
+                    title = when {
+                        settingsVisible -> stringResource(R.string.settings)
+                        destination == PrimaryDestination.CHAT && state.connected -> state.connectionPeer?.nickname
+                            ?: stringResource(R.string.chat_title)
+                        else -> stringResource(destination.labelRes)
+                    },
+                    settingsVisible = settingsVisible,
+                    onSettingsClick = { settingsVisible = !settingsVisible },
+                )
+            },
+            bottomBar = {
+                if (!layoutSpec.usesNavigationRail) {
+                    RedesignedNavigationBar(
+                        selected = destination,
+                        onSelected = {
+                            settingsVisible = false
+                            destination = it
+                        },
+                    )
+                }
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        ) { innerPadding ->
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                if (layoutSpec.usesNavigationRail) {
+                    RedesignedNavigationRail(
+                        selected = destination,
+                        onSelected = {
+                            settingsVisible = false
+                            destination = it
+                        },
+                    )
+                }
+                if (showDeviceSidebar) {
+                    DeviceSidebar(
+                        state = state,
+                        onPeerClick = {
+                            onPeerSelected(it)
+                            connectionSheetVisible = true
+                        },
+                        onOpenDevices = { destination = PrimaryDestination.DEVICES },
+                        onConnectManual = { manualConnectionSheetVisible = true },
+                        modifier = Modifier.width(304.dp),
+                    )
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
+                }
+                Box(Modifier.fillMaxSize()) {
+                    if (settingsVisible) {
+                        RedesignedSettingsScreen(
+                            state = state,
+                            onNicknameChange = onNicknameChange,
+                            onThemeModeChange = onThemeModeChange,
+                            onLanguageChange = onLanguageChange,
+                            onNotificationsChange = onNotificationsChange,
+                            onAutoReceiveChange = onAutoReceiveChange,
+                            onOpenLogs = { logsVisible = true },
+                            layoutSpec = layoutSpec,
+                        )
+                    } else when (destination) {
+                        PrimaryDestination.DEVICES -> RedesignedDevicesScreen(
+                            state = state,
+                            onPeerClick = {
+                                onPeerSelected(it)
+                                connectionSheetVisible = true
+                            },
+                            onOpenChat = { destination = PrimaryDestination.CHAT },
+                            onDisconnect = onDisconnect,
+                            onRequestNearbyPermission = onRequestNearbyPermission,
+                            onRetryDiscovery = onRetryDiscovery,
+                            onShowHelp = { discoveryHelpVisible = true },
+                            onConnectManual = { manualConnectionSheetVisible = true },
+                            layoutSpec = layoutSpec,
+                        )
+                        PrimaryDestination.CHAT -> RedesignedChatScreen(
+                            state = state,
+                            onInputChange = onInputChange,
+                            onSendMessage = onSendMessage,
+                            onAttachFile = { filePicker.launch(arrayOf("*/*")) },
+                            onChooseDevice = { destination = PrimaryDestination.DEVICES },
+                            onReconnect = onConnect,
+                            layoutSpec = layoutSpec,
+                        )
+                        PrimaryDestination.FILES -> RedesignedFilesScreen(
+                            state = state,
+                            onChooseFile = { filePicker.launch(arrayOf("*/*")) },
+                            onSendFile = onSendFile,
+                            onChooseDevice = { destination = PrimaryDestination.DEVICES },
+                            layoutSpec = layoutSpec,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RedesignedAppHeader(
+    state: MainUiState,
+    title: String,
+    settingsVisible: Boolean,
+    onSettingsClick: () -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                RedesignedConnectionStatus(state)
+            }
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = if (settingsVisible) Icons.AutoMirrored.Outlined.ArrowBack else Icons.Outlined.Settings,
+                    contentDescription = stringResource(if (settingsVisible) R.string.back else R.string.settings),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RedesignedConnectionStatus(state: MainUiState) {
+    val (text, color) = when {
+        state.error != null -> stringResource(R.string.status_attention) to MaterialTheme.colorScheme.error
+        state.connected -> stringResource(R.string.status_connected, state.connectionPeer?.nickname.orEmpty()) to SuccessGreen
+        state.connecting -> stringResource(R.string.status_connecting, state.connectionPeer?.nickname.orEmpty()) to MaterialTheme.colorScheme.tertiary
+        state.discoveryRunning -> stringResource(R.string.status_searching) to MaterialTheme.colorScheme.primary
+        else -> stringResource(R.string.status_offline) to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+}
+
+@Composable
+private fun RedesignedNavigationBar(selected: PrimaryDestination, onSelected: (PrimaryDestination) -> Unit) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+        PrimaryDestination.entries.forEach { destination ->
+            NavigationBarItem(
+                selected = selected == destination,
+                onClick = { onSelected(destination) },
+                icon = { Icon(destination.icon, contentDescription = null) },
+                label = { Text(stringResource(destination.labelRes)) },
+                alwaysShowLabel = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RedesignedNavigationRail(selected: PrimaryDestination, onSelected: (PrimaryDestination) -> Unit) {
+    NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
+        Spacer(Modifier.height(12.dp))
+        PrimaryDestination.entries.forEach { destination ->
+            NavigationRailItem(
+                selected = selected == destination,
+                onClick = { onSelected(destination) },
+                icon = { Icon(destination.icon, contentDescription = null) },
+                label = { Text(stringResource(destination.labelRes)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RedesignedDevicesScreen(
+    state: MainUiState,
+    onPeerClick: (DiscoveredPeer) -> Unit,
+    onOpenChat: () -> Unit,
+    onDisconnect: () -> Unit,
+    onRequestNearbyPermission: () -> Unit,
+    onRetryDiscovery: () -> Unit,
+    onShowHelp: () -> Unit,
+    onConnectManual: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+) {
+    val serverPeers = state.peers.filter { it.role == PeerRole.SERVER }
+    if (layoutSpec.supportsTwoPane) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(layoutSpec.horizontalPadding),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(
+                Modifier.weight(0.9f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PageHeading(stringResource(R.string.devices_title), stringResource(R.string.devices_subtitle))
+                if (state.connected) CurrentDeviceCard(state, onOpenChat, onDisconnect)
+                DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp)
+                ManualConnectionButton(onConnectManual)
+            }
+            Column(
+                Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                DevicesSectionHeader(serverPeers.size)
+                serverPeers.forEach { peer ->
+                    val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
+                    DeviceCard(peer, connected) { selected -> if (connected) onOpenChat() else onPeerClick(selected) }
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { PageHeading(stringResource(R.string.devices_title), stringResource(R.string.devices_subtitle)) }
+            if (state.connected) item { CurrentDeviceCard(state, onOpenChat, onDisconnect) }
+            item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp) }
+            item { ManualConnectionButton(onConnectManual) }
+            if (serverPeers.isNotEmpty()) {
+                item { DevicesSectionHeader(serverPeers.size) }
+                items(serverPeers) { peer ->
+                    val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
+                    DeviceCard(peer, connected) { selected -> if (connected) onOpenChat() else onPeerClick(selected) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PageHeading(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun CurrentDeviceCard(state: MainUiState, onOpenChat: () -> Unit, onDisconnect: () -> Unit) {
+    val peer = state.connectionPeer ?: return
+    RedesignedCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Outlined.Computer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.current_device), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(peer.host, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = SuccessGreen)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = onOpenChat, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.open_chat)) }
+            OutlinedButton(onClick = onDisconnect, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.disconnect)) }
+        }
+    }
+}
+
+@Composable
+private fun DiscoveryStateCard(
+    state: MainUiState,
+    onRequestPermission: () -> Unit,
+    onRetry: () -> Unit,
+    onShowHelp: () -> Unit,
+) {
+    if (!state.networkAvailable) {
+        StateCard(
+            icon = Icons.Outlined.Wifi,
+            title = stringResource(R.string.network_unavailable_title),
+            message = stringResource(R.string.network_unavailable_message),
+            actionLabel = stringResource(R.string.search_again),
+            onAction = onRetry,
+        )
+        return
+    }
+    when (state.nearbyPermissionState) {
+        NearbyPermissionState.REQUIRED, NearbyPermissionState.DENIED -> {
+            val denied = state.nearbyPermissionState == NearbyPermissionState.DENIED
+            StateCard(
+                icon = Icons.Outlined.Wifi,
+                title = stringResource(if (denied) R.string.permission_denied_title else R.string.permission_title),
+                message = stringResource(if (denied) R.string.permission_denied_message else R.string.permission_message),
+                actionLabel = stringResource(R.string.allow),
+                onAction = onRequestPermission,
+            )
+        }
+        else -> {
+            val hasServers = state.peers.any { it.role == PeerRole.SERVER }
+            if (!hasServers) {
+                if (state.discoveryRunning && !state.discoveryTimedOut) {
+                    StateCard(
+                        icon = Icons.Outlined.Wifi,
+                        title = stringResource(R.string.searching_title),
+                        message = stringResource(R.string.searching_message),
+                        actionLabel = stringResource(R.string.search_again),
+                        onAction = onRetry,
+                    )
+                } else {
+                    StateCard(
+                        icon = Icons.Outlined.ErrorOutline,
+                        title = stringResource(R.string.no_devices_title),
+                        message = stringResource(R.string.no_devices_message),
+                        actionLabel = stringResource(R.string.search_again),
+                        onAction = onShowHelp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StateCard(icon: ImageVector, title: String, message: String, actionLabel: String, onAction: () -> Unit) {
+    RedesignedCard {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        FilledTonalButton(onClick = onAction, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
+    }
+}
+
+@Composable
+private fun DevicesSectionHeader(count: Int) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.available_devices), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(pluralStringResource(R.plurals.device_count, count, count), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun DeviceCard(peer: DiscoveredPeer, connected: Boolean, onClick: (DiscoveredPeer) -> Unit) {
+    Card(
+        onClick = { onClick(peer) },
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        border = BorderStroke(1.dp, if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                Icon(Icons.Outlined.Computer, contentDescription = null, modifier = Modifier.padding(10.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("SecureLan Desktop · ${peer.host}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+            Text(if (connected) "✓" else stringResource(R.string.connect), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun ManualConnectionButton(onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+        Icon(Icons.Outlined.Computer, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(R.string.connect_by_ip))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConnectionBottomSheet(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConnect: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+    val peer = state.connectionPeer
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.connect_to, peer?.nickname.orEmpty()), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.connect_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = state.nickname,
+                onValueChange = onNicknameChange,
+                label = { Text(stringResource(R.string.nickname)) },
+                enabled = !state.connecting,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = state.sessionPassword,
+                onValueChange = onPasswordChange,
+                label = { Text(stringResource(R.string.session_password)) },
+                enabled = !state.connecting,
+                singleLine = true,
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password),
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = onConnect,
+                enabled = peer != null && state.nickname.isNotBlank() && !state.connecting && !state.connected,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text(stringResource(if (state.connecting) R.string.connecting else R.string.connect)) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ManualConnectionBottomSheet(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConnect: (String, String, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var host by remember { mutableStateOf(state.manualHost) }
+    var chatPort by remember { mutableStateOf(state.manualChatPort) }
+    var filePort by remember { mutableStateOf(state.manualFilePort) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    val normalizedHost = host.trim().removeSurrounding("[", "]")
+    val hostValid = normalizedHost.isNotBlank() &&
+        normalizedHost.none { it.isWhitespace() } &&
+        "://" !in normalizedHost &&
+        '/' !in normalizedHost
+    val chatPortValid = chatPort.toIntOrNull()?.let { it in 1..65535 } == true
+    val filePortValid = filePort.toIntOrNull()?.let { it in 1..65535 } == true
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.manual_connection_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.manual_connection_message), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = host,
+                onValueChange = { host = it },
+                label = { Text(stringResource(R.string.manual_host)) },
+                enabled = !state.connecting,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                isError = host.isNotEmpty() && !hostValid,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = chatPort,
+                    onValueChange = { chatPort = it.filter(Char::isDigit).take(5) },
+                    label = { Text(stringResource(R.string.chat_port)) },
+                    enabled = !state.connecting,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = chatPort.isNotEmpty() && !chatPortValid,
+                    supportingText = if (chatPort.isNotEmpty() && !chatPortValid) {
+                        { Text(stringResource(R.string.port_range_hint)) }
+                    } else null,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = filePort,
+                    onValueChange = { filePort = it.filter(Char::isDigit).take(5) },
+                    label = { Text(stringResource(R.string.file_port)) },
+                    enabled = !state.connecting,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = filePort.isNotEmpty() && !filePortValid,
+                    supportingText = if (filePort.isNotEmpty() && !filePortValid) {
+                        { Text(stringResource(R.string.port_range_hint)) }
+                    } else null,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            OutlinedTextField(
+                value = state.nickname,
+                onValueChange = onNicknameChange,
+                label = { Text(stringResource(R.string.nickname)) },
+                enabled = !state.connecting,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = state.sessionPassword,
+                onValueChange = onPasswordChange,
+                label = { Text(stringResource(R.string.session_password)) },
+                enabled = !state.connecting,
+                singleLine = true,
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password),
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { onConnect(normalizedHost, chatPort, filePort) },
+                enabled = hostValid && chatPortValid && filePortValid && state.nickname.isNotBlank() && !state.connecting && !state.connected,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text(stringResource(if (state.connecting) R.string.connecting else R.string.connect)) }
+        }
+    }
+}
+
+@Composable
+private fun RedesignedChatScreen(
+    state: MainUiState,
+    onInputChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    onAttachFile: () -> Unit,
+    onChooseDevice: () -> Unit,
+    onReconnect: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
+    }
+    Column(
+        modifier = Modifier.fillMaxSize().widthIn(max = layoutSpec.chatMaxWidth).padding(horizontal = layoutSpec.horizontalPadding),
+    ) {
+        if (!state.connected && state.messages.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                RedesignedEmptyState(
+                    icon = Icons.AutoMirrored.Outlined.Chat,
+                    title = stringResource(R.string.connect_first_title),
+                    message = stringResource(R.string.connect_first_message),
+                    action = stringResource(R.string.choose_device),
+                    onAction = onChooseDevice,
+                )
+            }
+            return@Column
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            state = listState,
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (state.messages.isEmpty()) {
+                item {
+                    RedesignedEmptyState(
+                        icon = Icons.AutoMirrored.Outlined.Chat,
+                        title = stringResource(R.string.no_messages_title),
+                        message = stringResource(R.string.no_messages_message),
+                    )
+                }
+            } else {
+                items(state.messages) { ChatBubble(it, layoutSpec.chatBubbleWidthFraction) }
+            }
+        }
+        if (state.connected) {
+            RedesignedChatComposer(state, onInputChange, onSendMessage, onAttachFile)
+        } else {
+            Button(onClick = if (state.connectionPeer != null) onReconnect else onChooseDevice, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                Text(stringResource(if (state.connectionPeer != null) R.string.reconnect else R.string.choose_device))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RedesignedChatComposer(
+    state: MainUiState,
+    onInputChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    onAttachFile: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).imePadding(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onAttachFile) { Icon(Icons.Outlined.AttachFile, stringResource(R.string.attach_file)) }
+            OutlinedTextField(
+                value = state.inputMessage,
+                onValueChange = onInputChange,
+                placeholder = { Text(stringResource(R.string.message_placeholder)) },
+                modifier = Modifier.weight(1f),
+                minLines = 1,
+                maxLines = 4,
+            )
+            IconButton(onClick = onSendMessage, enabled = state.inputMessage.isNotBlank()) {
+                Icon(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.send_message), tint = if (state.inputMessage.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RedesignedFilesScreen(
+    state: MainUiState,
+    onChooseFile: () -> Unit,
+    onSendFile: () -> Unit,
+    onChooseDevice: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().widthIn(max = layoutSpec.contentMaxWidth),
+        contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            PageHeading(
+                stringResource(R.string.files_title),
+                state.connectionPeer?.let { stringResource(R.string.recipient, it.nickname) }
+                    ?: stringResource(R.string.files_connect_first),
+            )
+        }
+        if (!state.connected) {
+            item {
+                RedesignedEmptyState(
+                    Icons.Outlined.Folder,
+                    stringResource(R.string.connect_first_title),
+                    stringResource(R.string.files_connect_first),
+                    stringResource(R.string.choose_device),
+                    onChooseDevice,
+                )
+            }
+        } else {
+            item { FilePickerCard(state, onChooseFile, onSendFile) }
+            item { ReceiverReadyCard(state) }
+            if (state.fileProgress.active || state.incomingFileProgress.active) item { ActiveTransferCard(state) }
+        }
+        item {
+            Text(stringResource(R.string.recent_transfers), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        }
+        if (state.recentTransfers.isEmpty()) {
+            item { Text(stringResource(R.string.no_transfers), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
+        } else {
+            items(state.recentTransfers) { TransferHistoryRow(it) }
+        }
+    }
+}
+
+@Composable
+private fun FilePickerCard(state: MainUiState, onChooseFile: () -> Unit, onSendFile: () -> Unit) {
+    RedesignedCard {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    if (state.selectedFile == null) stringResource(R.string.choose_file_title) else stringResource(R.string.selected_file),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    state.selectedFile?.name ?: stringResource(R.string.choose_file_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                state.selectedFile?.let {
+                    Text(AndroidUiFormatters.formatBytes(it.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        state.connectionPeer?.let {
+            Text(stringResource(R.string.file_will_be_sent, it.nickname), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onChooseFile, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.choose_file)) }
+            Button(
+                onClick = onSendFile,
+                enabled = state.selectedFile != null && !state.fileProgress.active,
+                modifier = Modifier.weight(1f),
+            ) { Text(stringResource(R.string.send_file)) }
+        }
+    }
+}
+
+@Composable
+private fun ReceiverReadyCard(state: MainUiState) {
+    val ready = state.autoReceiveFiles && state.fileReceiverRunning
+    val unavailable = state.autoReceiveFiles && !state.fileReceiverRunning
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (ready) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (ready) Icons.Outlined.CheckCircle else Icons.Outlined.Close, null, tint = if (ready) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+            Column {
+                Text(
+                    stringResource(
+                        when {
+                            ready -> R.string.receiving_ready
+                            unavailable -> R.string.receiving_unavailable
+                            else -> R.string.receiving_off
+                        },
+                    ),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (ready) Text(stringResource(R.string.receiving_ready_message), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveTransferCard(state: MainUiState) {
+    val incoming = state.incomingFileProgress.active
+    val title = if (incoming) state.incomingFileProgress.fileName else state.fileProgress.fileName
+    val progress = if (incoming) state.incomingFileProgress.percent else state.fileProgress.percent
+    RedesignedCard {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+@Composable
+private fun TransferHistoryRow(record: TransferRecord) {
+    val failed = record.result == TransferResult.FAILED
+    RedesignedCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(
+                if (failed) Icons.Outlined.ErrorOutline else Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = if (failed) MaterialTheme.colorScheme.error else SuccessGreen,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(record.fileName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (failed) stringResource(R.string.transfer_failed)
+                    else stringResource(if (record.direction == TransferDirection.SENT) R.string.transfer_sent else R.string.transfer_received),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                record.savedPath?.let { Text(stringResource(R.string.transfer_saved_to, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            Text(AndroidUiFormatters.formatBytes(record.bytes), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RedesignedSettingsScreen(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onLanguageChange: (AppLanguage) -> Unit,
+    onNotificationsChange: (Boolean) -> Unit,
+    onAutoReceiveChange: (Boolean) -> Unit,
+    onOpenLogs: () -> Unit,
+    layoutSpec: AdaptiveLayoutSpec,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp),
+        contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            SettingsGroup(stringResource(R.string.settings_profile)) {
+                Text(stringResource(R.string.settings_profile_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = state.nickname,
+                    onValueChange = onNicknameChange,
+                    label = { Text(stringResource(R.string.nickname)) },
+                    enabled = !state.connected,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.settings_language)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppLanguage.entries.forEach { language ->
+                        FilterChip(
+                            selected = state.appLanguage == language,
+                            onClick = { onLanguageChange(language) },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (language) {
+                                            AppLanguage.SYSTEM -> R.string.language_system
+                                            AppLanguage.ENGLISH -> R.string.language_english
+                                            AppLanguage.RUSSIAN -> R.string.language_russian
+                                        },
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.settings_theme)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = state.themeMode == mode,
+                            onClick = { onThemeModeChange(mode) },
+                            label = {
+                                Text(stringResource(when (mode) {
+                                    ThemeMode.SYSTEM -> R.string.theme_system
+                                    ThemeMode.LIGHT -> R.string.theme_light
+                                    ThemeMode.DARK -> R.string.theme_dark
+                                }))
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.nav_files)) {
+                ToggleSettingRow(
+                    stringResource(R.string.settings_notifications),
+                    stringResource(R.string.settings_notifications_hint),
+                    state.notificationsEnabled,
+                    onNotificationsChange,
+                )
+                HorizontalDivider()
+                ToggleSettingRow(
+                    stringResource(R.string.settings_auto_receive),
+                    stringResource(R.string.settings_auto_receive_hint),
+                    state.autoReceiveFiles,
+                    onAutoReceiveChange,
+                )
+                HorizontalDivider()
+                SettingsValueRow(stringResource(R.string.settings_download_folder), stringResource(R.string.settings_download_folder_value))
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.settings_diagnostics)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.settings_logs), fontWeight = FontWeight.SemiBold)
+                        Text(pluralStringResource(R.plurals.settings_logs_count, state.logs.size, state.logs.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    OutlinedButton(onClick = onOpenLogs) { Text(stringResource(R.string.open)) }
+                }
+                HorizontalDivider()
+                SettingsValueRow(
+                    stringResource(R.string.network_ports),
+                    stringResource(R.string.network_ports_value, SecureLanPorts.DEFAULT_CHAT_PORT, SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT, SecureLanPorts.DEFAULT_DISCOVERY_PORT),
+                )
+            }
+        }
+        item {
+            SettingsGroup(stringResource(R.string.about)) {
+                SettingsValueRow(stringResource(R.string.app_name), stringResource(R.string.about_value))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    RedesignedCard {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable
+private fun ToggleSettingRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SettingsValueRow(title: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, fontWeight = FontWeight.SemiBold)
+        Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun RedesignedEmptyState(
+    icon: ImageVector,
+    title: String,
+    message: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (action != null && onAction != null) Button(onClick = onAction) { Text(action) }
+    }
+}
+
+@Composable
+private fun RedesignedCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = RoundedCornerShape(18.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
+@Composable
+private fun DeviceSidebar(
+    state: MainUiState,
+    onPeerClick: (DiscoveredPeer) -> Unit,
+    onOpenDevices: () -> Unit,
+    onConnectManual: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(stringResource(R.string.devices_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            IconButton(onClick = onOpenDevices) { Icon(Icons.Outlined.Refresh, stringResource(R.string.search_again)) }
+        }
+        OutlinedButton(onClick = onConnectManual, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.connect_by_ip))
+        }
+        state.peers.filter { it.role == PeerRole.SERVER }.forEach { peer ->
+            val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
+            DeviceCard(peer, connected) { selected -> if (connected) onOpenDevices() else onPeerClick(selected) }
+        }
+    }
 }
 
 @Composable
@@ -514,7 +1722,7 @@ private fun AppNavigationRail(selectedDestination: AppDestination, onDestination
 
 private fun AppDestination.navIcon(): ImageVector = when (this) {
     AppDestination.CONNECTION -> Icons.Outlined.Devices
-    AppDestination.CHAT -> Icons.Outlined.Chat
+    AppDestination.CHAT -> Icons.AutoMirrored.Outlined.Chat
     AppDestination.FILES -> Icons.Outlined.Description
     AppDestination.SETTINGS -> Icons.Outlined.Settings
 }
@@ -1195,11 +2403,11 @@ private fun LogsDialog(logs: List<AppLogEntry>, onDismiss: () -> Unit) {
     val logText = remember(logs) { logs.joinToString(separator = "\n") { AndroidUiFormatters.formatLogEntry(it) } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("SecureLan logs") },
+        title = { Text(stringResource(R.string.logs_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Plain-text diagnostic log. Select any part of it, or copy the full log.",
+                    text = stringResource(R.string.logs_description),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1210,7 +2418,7 @@ private fun LogsDialog(logs: List<AppLogEntry>, onDismiss: () -> Unit) {
                 ) {
                     if (logs.isEmpty()) {
                         Text(
-                            text = "No log entries yet.",
+                            text = stringResource(R.string.logs_empty),
                             modifier = Modifier.padding(12.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -1234,11 +2442,11 @@ private fun LogsDialog(logs: List<AppLogEntry>, onDismiss: () -> Unit) {
         },
         dismissButton = {
             TextButton(onClick = { AndroidClipboard.copyLogs(context, logText) }, enabled = logText.isNotBlank()) {
-                Text("Copy all")
+                Text(stringResource(R.string.copy_all))
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) { Text("Close") }
+            Button(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         },
     )
 }
@@ -1292,7 +2500,7 @@ private fun ChatBubble(line: ChatLine, widthFraction: Float) {
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
-                    text = if (line.outbound) "You" else line.sender,
+                    text = if (line.outbound) stringResource(R.string.you) else line.sender,
                     style = MaterialTheme.typography.labelMedium,
                     color = textColor.copy(alpha = 0.76f),
                 )
@@ -1619,6 +2827,17 @@ private fun StatusDot(active: Boolean) {
 }
 
 private data class FriendlyError(val title: String, val message: String)
+
+private fun String.toFriendlyErrorTitleRes(): Int {
+    val lower = lowercase()
+    return when {
+        "data_too_large" in lower || "too large" in lower -> R.string.error_transfer
+        "econnrefused" in lower || "connection refused" in lower || "failed to connect" in lower -> R.string.error_connection
+        "password" in lower || "handshake" in lower || "rsa" in lower || "decrypt" in lower -> R.string.error_handshake
+        "network" in lower || "timeout" in lower || "unreachable" in lower -> R.string.error_network
+        else -> R.string.error_attention
+    }
+}
 
 private fun String.toFriendlyError(): FriendlyError {
     val lower = lowercase()

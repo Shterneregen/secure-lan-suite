@@ -6,12 +6,12 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 
 - The Android client is currently an experimental MVP, not yet a full feature peer of the desktop client.
 - The UI is implemented with native Android + Jetpack Compose Material 3 inside `apps/android-client`.
-- The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths keep bottom navigation; wider widths use a navigation rail, centered content width, and readable chat width. Expanded tablet/TV-like widths show a three-pane workspace with connection controls on the left, chat in the center, and file actions on the right; settings remain a dedicated diagnostics/configuration page.
+- The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths use labeled Devices, Chat, and Files bottom navigation; wider widths use a labeled navigation rail. At 840 dp the Devices screen becomes two-pane, and at 1200 dp chat/file screens gain a persistent device sidebar.
 - TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
 - Protocol code is minimally reimplemented inside `apps/android-client` to avoid introducing Android/UI dependencies into reusable Java core modules.
 - Supported flows include desktop-compatible UDP discovery, secure chat handshake, encrypted chat messages, AES-GCM/RSA file-transfer handshake, Android-to-desktop file sending, and desktop-to-Android file receiving.
 - The app starts UDP discovery automatically on launch and requests `NEARBY_WIFI_DEVICES` on Android 13+.
-- The UI exposes nickname/password setup, discovered peer selection, connect/disconnect actions, chat, document-picker file selection, send progress, receive progress, a dark-theme switch, and an in-app diagnostics log dialog.
+- The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
 - Voice, WebRTC data channels, camera/video, screen sharing, steganography tools, and the desktop no-auth browser quick-share HTTP flow are not implemented in the Android client yet.
 - For discovery and file receiving, the phone and desktop must be on the same network. Firewalls, VPNs, guest Wi-Fi networks, client-isolated Wi-Fi, and mobile hotspots can block UDP broadcast or inbound TCP connections.
 
@@ -246,9 +246,11 @@ If Android Studio cannot find the SDK, check `local.properties` in the repositor
 4. Keep **Discoverable** enabled.
 5. On Android, grant the `NEARBY_WIFI_DEVICES` permission if the system prompts for it.
 6. In the Android client, enter the same session password.
-7. Wait for the desktop peer to appear in the **Peers** list.
-8. Select the peer and click **Connect**.
-9. After the connection is established, send a test message.
+7. Wait for the desktop computer to appear on **Devices**.
+8. Select it, enter the nickname and password in the connection sheet, and click **Connect**.
+9. After the connection is established, the app opens **Chat** automatically; send a test message.
+
+If **Visible to nearby trusted devices** is disabled on desktop, click **Connect by IP** on Android instead. Enter the desktop IP address or host name, chat/file ports, nickname, and room password. The default ports are chat `5050` and files `5051`; the last manually entered address and ports are remembered locally.
 
 The Android app acts as a chat client. It does not host a desktop-compatible chat room by itself yet.
 
@@ -257,7 +259,7 @@ The Android app acts as a chat client. It does not host a desktop-compatible cha
 ### Android -> desktop
 
 1. Connect to a desktop peer.
-2. Click **Pick file**.
+2. Open **Files** and click **Choose file**. The connected desktop is selected automatically.
 3. Select a file through the Android document picker.
 4. Click **Send file**.
 5. The desktop client must be ready to receive files through its encrypted file-transfer listener.
@@ -265,8 +267,8 @@ The Android app acts as a chat client. It does not host a desktop-compatible cha
 ### Desktop -> Android
 
 1. Enter the session password on Android.
-2. Click **Receive files**.
-3. Android starts listening on the incoming file-transfer port.
+2. Keep **Receive files automatically** enabled in Settings (the default).
+3. Android starts listening on the incoming file-transfer port as soon as the secure chat connection is established.
 4. Send a file from the desktop client to the Android peer.
 5. On Android 10+, received files are saved through `MediaStore` into public Downloads:
 
