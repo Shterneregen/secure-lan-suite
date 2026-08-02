@@ -25,6 +25,8 @@ object SecureLanIcons {
     val Diagnostics: ImageVector = Icons.Outlined.MonitorHeart
     val QuickShare: ImageVector = Icons.Outlined.Share
     val QrCode: ImageVector = secureLanQrCodeIcon
+    val Copy: ImageVector = secureLanCopyIcon
+    val Open: ImageVector = secureLanOpenIcon
     val Tools: ImageVector = Icons.Outlined.Build
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
@@ -62,6 +64,79 @@ object SecureLanIcons {
         "File" -> File
         else -> null
     }
+}
+
+private val secureLanCopyIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Copy",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(16f, 1f)
+            lineTo(4f, 1f)
+            curveTo(2.9f, 1f, 2f, 1.9f, 2f, 3f)
+            lineTo(2f, 17f)
+            lineTo(4f, 17f)
+            lineTo(4f, 3f)
+            lineTo(16f, 3f)
+            close()
+            moveTo(19f, 5f)
+            lineTo(8f, 5f)
+            curveTo(6.9f, 5f, 6f, 5.9f, 6f, 7f)
+            lineTo(6f, 21f)
+            curveTo(6f, 22.1f, 6.9f, 23f, 8f, 23f)
+            lineTo(19f, 23f)
+            curveTo(20.1f, 23f, 21f, 22.1f, 21f, 21f)
+            lineTo(21f, 7f)
+            curveTo(21f, 5.9f, 20.1f, 5f, 19f, 5f)
+            close()
+            moveTo(19f, 21f)
+            lineTo(8f, 21f)
+            lineTo(8f, 7f)
+            lineTo(19f, 7f)
+            close()
+        }
+    }.build()
+}
+
+private val secureLanOpenIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Open",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(19f, 19f)
+            lineTo(5f, 19f)
+            lineTo(5f, 5f)
+            lineTo(12f, 5f)
+            lineTo(12f, 3f)
+            lineTo(5f, 3f)
+            curveTo(3.89f, 3f, 3f, 3.9f, 3f, 5f)
+            lineTo(3f, 19f)
+            curveTo(3f, 20.1f, 3.89f, 21f, 5f, 21f)
+            lineTo(19f, 21f)
+            curveTo(20.1f, 21f, 21f, 20.1f, 21f, 19f)
+            lineTo(21f, 12f)
+            lineTo(19f, 12f)
+            close()
+            moveTo(14f, 3f)
+            lineTo(14f, 5f)
+            lineTo(17.59f, 5f)
+            lineTo(7.76f, 14.83f)
+            lineTo(9.17f, 16.24f)
+            lineTo(19f, 6.41f)
+            lineTo(19f, 10f)
+            lineTo(21f, 10f)
+            lineTo(21f, 3f)
+            close()
+        }
+    }.build()
 }
 
 private val secureLanQrCodeIcon: ImageVector by lazy {

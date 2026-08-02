@@ -187,8 +187,16 @@ private fun QuickShareTranscriptEvent(
                         contentDescription = "Show QR code",
                     )
                 }
-                CompactButton(onClick = { copyToSystemClipboard(url) }) { Text("Copy") }
-                CompactButton(onClick = { openInBrowser(url) }) { Text("Open") }
+                CompactIconButton(
+                    onClick = { copyToSystemClipboard(url) },
+                    icon = SecureLanIcons.Copy,
+                    contentDescription = "Copy link",
+                )
+                CompactIconButton(
+                    onClick = { openInBrowser(url) },
+                    icon = SecureLanIcons.Open,
+                    contentDescription = "Open link",
+                )
             }
         }
     }
