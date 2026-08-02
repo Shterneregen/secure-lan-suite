@@ -204,6 +204,49 @@ class DesktopMainViewHelpersTest {
     }
 
     @Test
+    fun shouldKeepDiscoveryEndpointWhenChatPresenceHasOnlyCapabilities() {
+        val capabilities = PeerCapabilities.desktop("0.5.0", 5556)
+        val chatPeer = PeerPresence("vbook", true, null, null, 0, 5556, null, capabilities)
+        val discoveredPeer = DiscoveredPeer(
+            "peer-vbook",
+            "vbook",
+            "192.168.0.10",
+            5555,
+            5556,
+            Instant.parse("2026-08-02T12:00:00Z"),
+        )
+
+        val merged = DesktopMainViewHelpers.mergeChatAndDiscoveredPeer(chatPeer, discoveredPeer)
+
+        assertEquals("peer-vbook", merged.peerId())
+        assertEquals("192.168.0.10", merged.host())
+        assertEquals(5555, merged.chatPort())
+        assertEquals(5556, merged.filePort())
+        assertEquals(capabilities, merged.capabilities())
+        assertTrue(DesktopMainViewHelpers.selectedPeerFileCapable(merged))
+    }
+
+    @Test
+    fun shouldReuseRunningListenOnlyDiscoveryWhenNicknameChanges() {
+        val active = PeerDiscoveryConfig.listenOnly("local-peer", "omen-before-connect")
+        val requested = PeerDiscoveryConfig.listenOnly("local-peer", "omen")
+
+        assertTrue(DesktopMainViewHelpers.canReuseDiscoverySession(active, requested))
+        assertFalse(
+            DesktopMainViewHelpers.canReuseDiscoverySession(
+                active,
+                PeerDiscoveryConfig.defaults("local-peer", "omen", 5555, 5556),
+            ),
+        )
+        assertFalse(
+            DesktopMainViewHelpers.canReuseDiscoverySession(
+                active,
+                PeerDiscoveryConfig.defaults("local-peer", "omen", 5555, 5556, false),
+            ),
+        )
+    }
+
+    @Test
     fun shouldFormatDiscoveryBroadcastMessage() {
         val config = PeerDiscoveryConfig.defaults("peer-1", "Alice", 5555, 5556, true)
 

@@ -150,7 +150,9 @@ class ComposeDesktopHostAdapter(
                 val existing = chatPeers.firstOrNull { DesktopMainViewHelpers.samePeer(it, peer.nickname, peer.peerId) }
                 if (existing != null) {
                     merged.remove(peerKeyForDiscovered(peer))
-                    merged[peerKey(existing)] = existing
+                    val enriched = DesktopMainViewHelpers.mergeChatAndDiscoveredPeer(existing, peer)
+                    merged.remove(peerKey(existing))
+                    merged[peerKey(enriched)] = enriched
                 } else {
                     val presence = PeerPresence(peer.nickname, true, peer.peerId, peer.host, peer.chatPort, peer.filePort, peer.lastSeen)
                     merged[peerKey(presence)] = presence
@@ -1644,6 +1646,14 @@ class ComposeDesktopHostAdapter(
 
     private fun startPeerDiscovery(discoveryConfig: PeerDiscoveryConfig, hosting: Boolean) {
         if (discoveryConfig.nickname.isBlank()) return
+        if (discoveryService.isRunning() && DesktopMainViewHelpers.canReuseDiscoverySession(currentConfig, discoveryConfig)) {
+            currentConfig = discoveryConfig
+            discoveredPeers = discoveryService.snapshot()
+            SecureLanLogger.logConnection(
+                "Discovery listener reused on port ${discoveryConfig.discoveryPort}; snapshot=${discoveredPeers.size}.",
+            )
+            return
+        }
         currentConfig = discoveryConfig
         discoveryService.start(discoveryConfig, discoveryListener)
         discoveredPeers = discoveryService.snapshot()

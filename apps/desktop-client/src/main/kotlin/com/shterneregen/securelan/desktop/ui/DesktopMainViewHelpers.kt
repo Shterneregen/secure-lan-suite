@@ -126,6 +126,36 @@ object DesktopMainViewHelpers {
     }
 
     @JvmStatic
+    fun mergeChatAndDiscoveredPeer(chatPeer: PeerPresence, discoveredPeer: DiscoveredPeer): PeerPresence = PeerPresence(
+        chatPeer.nickname(),
+        true,
+        chatPeer.peerId()?.takeUnless(String::isBlank) ?: discoveredPeer.peerId,
+        chatPeer.host()?.takeUnless(String::isBlank) ?: discoveredPeer.host,
+        chatPeer.chatPort().takeIf { it > 0 } ?: discoveredPeer.chatPort,
+        chatPeer.filePort().takeIf { it > 0 } ?: discoveredPeer.filePort,
+        discoveredPeer.lastSeen,
+        chatPeer.capabilities(),
+    )
+
+    @JvmStatic
+    fun canReuseDiscoverySession(active: PeerDiscoveryConfig?, requested: PeerDiscoveryConfig): Boolean {
+        if (active == requested) {
+            return true
+        }
+        return active != null &&
+            !active.announceEnabled &&
+            !requested.announceEnabled &&
+            active.chatPort == 0 &&
+            active.filePort == 0 &&
+            requested.chatPort == 0 &&
+            requested.filePort == 0 &&
+            active.peerId == requested.peerId &&
+            active.discoveryPort == requested.discoveryPort &&
+            active.announceInterval == requested.announceInterval &&
+            active.staleTimeout == requested.staleTimeout
+    }
+
+    @JvmStatic
     fun discoveryStartedMessage(discoveryConfig: PeerDiscoveryConfig): String =
         if (discoveryConfig.announceEnabled) {
             "[discovery] broadcasting as ${discoveryConfig.nickname} on UDP ${discoveryConfig.discoveryPort}"
