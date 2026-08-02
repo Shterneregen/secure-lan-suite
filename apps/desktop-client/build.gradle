@@ -33,10 +33,18 @@ dependencies {
     implementation project(':modules:stego-core')
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
     implementation compose.desktop.currentOs
-    implementation compose.materialIconsExtended
+    implementation 'org.jetbrains.compose.material:material-icons-core-desktop:1.7.3'
 }
 
 def appName = 'SecureLanSuite'
+def appRuntimeModules = [
+        'java.base',
+        'java.desktop',
+        'java.instrument',
+        'java.logging',
+        'jdk.httpserver',
+        'jdk.unsupported'
+]
 def rawProjectVersion = project.version.toString()
 def appVersion = rawProjectVersion.replaceAll(/-SNAPSHOT$/, '')
 def mainJarName = "${project.name}-${project.version}.jar"
@@ -99,6 +107,10 @@ tasks.named('installDist') {
 }
 
 tasks.named('jar') {
+    // jpackage reads the ICO directly from src/main/resources. Only app-icon.png
+    // is loaded by the application, so do not ship launcher-only variants in the JAR.
+    exclude 'icons/app-icon-*.png', 'icons/app-icon.ico'
+
     manifest {
         attributes(
                 'Main-Class': application.mainClass.get()
@@ -145,6 +157,7 @@ tasks.register('createAppImage', Exec) {
             '--input', packageInputDir.get().asFile.absolutePath,
             '--main-jar', mainJarName,
             '--main-class', application.mainClass.get(),
+            '--add-modules', appRuntimeModules.join(','),
             '--dest', packageOutputDir.get().asFile.absolutePath,
             '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath
     )
@@ -214,6 +227,7 @@ tasks.register('createExe', Exec) {
             '--input', packageInputDir.get().asFile.absolutePath,
             '--main-jar', mainJarName,
             '--main-class', application.mainClass.get(),
+            '--add-modules', appRuntimeModules.join(','),
             '--dest', packageOutputDir.get().asFile.absolutePath,
             '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath,
             '--win-menu',
