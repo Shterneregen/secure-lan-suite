@@ -148,6 +148,26 @@ class ComposeUiRefinementStateTest {
     }
 
     @Test
+    fun shouldKeepCompletedTransferHistoryDiscoverableOutsideTheTranscript() {
+        val transferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE.copy(
+            entries = listOf(
+                TransferEntry("receive-1", "report.pdf", false, "Completed", 100, 2048),
+                TransferEntry("send-1", "archive.zip", true, "Completed", 100, 4096),
+            ),
+        )
+        val state = ComposeContextPanelState.forRoom(
+            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
+            transferState,
+        )
+        val transferCard = state.visibleCards.first {
+            it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS
+        }
+
+        assertTrue(transferCard.collapsed)
+        assertEquals("2 recent", transferCard.badge)
+    }
+
+    @Test
     fun shouldMoveContextAssistantToDrawerBeforeConversationGetsCramped() {
         assertEquals(
             ComposeContextPanelResponsiveMode.DRAWER,

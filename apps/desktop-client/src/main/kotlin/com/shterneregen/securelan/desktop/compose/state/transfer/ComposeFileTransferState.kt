@@ -75,6 +75,7 @@ public data class ComposeFileTransferState(
         if (activeCount > 0) add("$activeCount active")
         if (waitingPromptCount > 0) add("$waitingPromptCount to review")
         if (failedCount > 0) add("$failedCount failed")
+        if (isEmpty() && recentEntryRows.isNotEmpty()) add("${recentEntryRows.size} recent")
     }.joinToString(" · ").takeIf(String::isNotBlank)
     val transferCardSummary: String = when {
         waitingPromptCount > 0 -> "Review incoming files before they are saved."
@@ -144,14 +145,6 @@ public data class ComposeFileTransferState(
         }
     }
     val nextStepSummary: String = blockedReasons.firstOrNull() ?: "Ready to send encrypted file to $selectedPeerName."
-    val chatAttachmentCards: List<ComposeChatAttachmentCard> = buildList {
-        incomingPrompts.filter { it.waitingForDecision }.forEach { prompt ->
-            add(ComposeChatAttachmentCard.incoming(prompt))
-        }
-        recentEntryRows.forEach { row ->
-            add(ComposeChatAttachmentCard.transfer(row))
-        }
-    }
     val readinessSummary: String = if (blockedReasons.isEmpty()) {
         "File-transfer controls are ready."
     } else {

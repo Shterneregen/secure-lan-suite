@@ -33,7 +33,6 @@ import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolKind
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
-import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
@@ -63,13 +62,6 @@ internal fun LiveChatWorkspaceCard(
         statusState = hostAdapter.statusState,
         peerListState = peerState,
         draftMessage = draftMessage,
-    )
-    val transferState = ComposeFileTransferState(
-        statusState = hostAdapter.statusState,
-        peerListState = peerState,
-        entries = hostAdapter.transferEntries,
-        incomingPrompts = hostAdapter.incomingTransferPrompts,
-        autoAcceptFiles = hostAdapter.autoAcceptIncomingFiles,
     )
     val listState = rememberLazyListState()
     val chatInputFocusRequester = remember { FocusRequester() }
@@ -127,7 +119,6 @@ internal fun LiveChatWorkspaceCard(
                     ComposeCallWorkspaceFocusMode.CHAT ->
                         LiveTranscriptSurface(
                             transcript = transcript,
-                            transferState = transferState,
                             chatState = chatState,
                             localNickname = hostAdapter.statusState.nickname,
                             listState = listState,
@@ -154,7 +145,6 @@ internal fun LiveChatWorkspaceCard(
                         )
                         LiveTranscriptSurface(
                             transcript = transcript,
-                            transferState = transferState,
                             chatState = chatState,
                             localNickname = hostAdapter.statusState.nickname,
                             listState = listState,
@@ -168,7 +158,6 @@ internal fun LiveChatWorkspaceCard(
         } else {
             LiveTranscriptSurface(
                 transcript = transcript,
-                transferState = transferState,
                 chatState = chatState,
                 localNickname = hostAdapter.statusState.nickname,
                 listState = listState,
@@ -308,14 +297,13 @@ private fun VideoChatResizeDivider(onDrag: (Float) -> Unit) {
 @Composable
 private fun LiveTranscriptSurface(
     transcript: List<ComposeChatMessage>,
-    transferState: ComposeFileTransferState,
     chatState: ComposeChatWorkspaceState,
     localNickname: String,
     listState: LazyListState,
     modifier: Modifier,
 ) {
     SubtleContentSurface(modifier = modifier) {
-        val hasTranscript = transcript.isNotEmpty() || transferState.chatAttachmentCards.isNotEmpty()
+        val hasTranscript = transcript.isNotEmpty()
         val reduced = LocalReducedMotion.current
         AnimatedContent(
             targetState = hasTranscript,
@@ -337,9 +325,6 @@ private fun LiveTranscriptSurface(
                 ) {
                     items(transcript.size) { index ->
                         ChatTranscriptLine(transcript[index], localNickname)
-                    }
-                    items(transferState.chatAttachmentCards.size) { index ->
-                        ChatAttachmentCardRow(transferState.chatAttachmentCards[index])
                     }
                 }
             }
