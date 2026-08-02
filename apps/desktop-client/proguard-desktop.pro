@@ -1,6 +1,10 @@
 # Experimental desktop shrinking and bytecode optimization configuration.
 # Keep the first optimization experiment conservative and reproducible.
 -optimizationpasses 1
+# ProGuard 7.8.2 can specialize Kotlin method descriptors without updating all
+# corresponding bytecode types. This produces unverifiable methods in Coroutines
+# and Compose Runtime and makes the jpackage launcher fail before main.
+-optimizations !method/specialization/*
 # Obfuscation remains intentionally disabled for this stage.
 -dontobfuscate
 
