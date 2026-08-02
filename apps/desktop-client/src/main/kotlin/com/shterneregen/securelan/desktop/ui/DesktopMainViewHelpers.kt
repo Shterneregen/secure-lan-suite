@@ -15,6 +15,11 @@ import java.nio.file.Path
 import java.util.Locale
 import javax.imageio.ImageIO
 
+data class LocalNetworkAddress(
+    val address: String,
+    val interfaceLabel: String,
+)
+
 object DesktopMainViewHelpers {
     @JvmStatic
     fun suggestedStegoOutputPath(coverPath: Path): Path {
@@ -205,16 +210,25 @@ object DesktopMainViewHelpers {
 
     @JvmStatic
     @Throws(SocketException::class)
-    fun resolveLocalLanIps(): List<String> {
-        val siteLocalAddresses = mutableListOf<String>()
-        val otherNonLoopbackAddresses = mutableListOf<String>()
+    fun resolveLocalLanAddresses(): List<LocalNetworkAddress> {
+        data class Candidate(
+            val address: LocalNetworkAddress,
+            val siteLocal: Boolean,
+            val interfacePriority: Int,
+        )
+
+        val candidates = mutableListOf<Candidate>()
 
         val networkInterfaces = NetworkInterface.getNetworkInterfaces()
         while (networkInterfaces.hasMoreElements()) {
             val networkInterface = networkInterfaces.nextElement()
-            if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) {
+            if (!networkInterface.isUp || networkInterface.isLoopback) {
                 continue
             }
+
+            val interfaceName = networkInterface.displayName?.takeIf(String::isNotBlank) ?: networkInterface.name
+            val interfaceLabel = localNetworkInterfaceLabel(interfaceName)
+            val interfacePriority = localNetworkInterfacePriority(interfaceName, networkInterface.isVirtual)
 
             val inetAddresses = networkInterface.inetAddresses
             while (inetAddresses.hasMoreElements()) {
@@ -224,17 +238,49 @@ object DesktopMainViewHelpers {
                 }
 
                 val hostAddress = inetAddress.hostAddress
-                if (inetAddress.isSiteLocalAddress) {
-                    siteLocalAddresses += hostAddress
-                } else {
-                    otherNonLoopbackAddresses += hostAddress
-                }
+                candidates += Candidate(
+                    address = LocalNetworkAddress(hostAddress, interfaceLabel),
+                    siteLocal = inetAddress.isSiteLocalAddress,
+                    interfacePriority = interfacePriority,
+                )
             }
         }
 
-        return (if (siteLocalAddresses.isNotEmpty()) siteLocalAddresses else otherNonLoopbackAddresses)
-            .distinct()
-            .sorted()
+        val preferred = if (candidates.any { it.siteLocal }) candidates.filter { it.siteLocal } else candidates
+        return preferred
+            .sortedWith(compareBy<Candidate> { it.interfacePriority }.thenBy { it.address.address })
+            .distinctBy { it.address.address }
+            .map { it.address }
+    }
+
+    @JvmStatic
+    @Throws(SocketException::class)
+    fun resolveLocalLanIps(): List<String> = resolveLocalLanAddresses().map(LocalNetworkAddress::address)
+
+    internal fun localNetworkInterfaceLabel(interfaceName: String): String {
+        val normalized = interfaceName.lowercase(Locale.ROOT)
+        return when {
+            normalized.contains("wi-fi") || normalized.contains("wifi") || normalized.contains("wireless") ||
+                normalized.contains("wlan") -> "Wi-Fi"
+            normalized.contains("wsl") -> "WSL"
+            normalized.contains("docker") -> "Docker"
+            normalized.contains("tailscale") || normalized.contains("wireguard") || normalized.contains("vpn") ||
+                normalized.contains("tunnel") || normalized.contains("tun") -> "VPN"
+            normalized.contains("hyper-v") || normalized.contains("vethernet") || normalized.contains("virtual") ||
+                normalized.contains("vmware") || normalized.contains("virtualbox") || normalized.contains("vbox") ->
+                "Virtual adapter"
+            normalized.contains("ethernet") || normalized.startsWith("eth") -> "Ethernet"
+            else -> interfaceName
+        }
+    }
+
+    internal fun localNetworkInterfacePriority(interfaceName: String, isVirtual: Boolean): Int {
+        val normalized = interfaceName.lowercase(Locale.ROOT)
+        val looksVirtual = isVirtual || listOf(
+            "wsl", "docker", "hyper-v", "vethernet", "virtual", "vmware", "virtualbox", "vbox",
+            "tailscale", "wireguard", "vpn", "tunnel", "tun",
+        ).any(normalized::contains)
+        return if (looksVirtual) 1 else 0
     }
 
     @JvmStatic

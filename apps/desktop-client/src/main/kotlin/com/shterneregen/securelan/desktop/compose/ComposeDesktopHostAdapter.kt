@@ -248,6 +248,10 @@ class ComposeDesktopHostAdapter(
     var localNetworkInfo: String by mutableStateOf(DesktopMainViewHelpers.localNetworkInfoMessage(emptyList()))
         private set
 
+    /** Local IPv4 addresses and their network-interface labels, ordered by usefulness. */
+    var localNetworkAddresses: List<LocalNetworkAddress> by mutableStateOf(emptyList())
+        private set
+
     /** Send an RTC signaling payload through the connected chat transport. */
     fun chatClientServiceSendSignal(signal: com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope?) {
         chatClientService.sendSignal(signal)
@@ -1408,8 +1412,10 @@ class ComposeDesktopHostAdapter(
 
     private fun publishLocalNetworkInfo() {
         localNetworkInfo = try {
-            DesktopMainViewHelpers.localNetworkInfoMessage(DesktopMainViewHelpers.resolveLocalLanIps())
+            localNetworkAddresses = DesktopMainViewHelpers.resolveLocalLanAddresses()
+            DesktopMainViewHelpers.localNetworkInfoMessage(localNetworkAddresses.map(LocalNetworkAddress::address))
         } catch (e: Exception) {
+            localNetworkAddresses = emptyList()
             DesktopMainViewHelpers.localNetworkInfoErrorMessage(e.message)
         }
         SecureLanLogger.logConnection(localNetworkInfo)

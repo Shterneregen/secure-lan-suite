@@ -105,6 +105,7 @@ internal fun LiveComposeShellContent(
         ),
         topBarLabel = topBarLabel,
         topBarStatus = topBarStatus,
+        localNetworkAddresses = hostAdapter.localNetworkAddresses,
         themeMode = themeMode,
         onOpenQuickShare = { quickShareDialogOpen = true },
         onOpenSteganography = { steganographyDialogMode = ComposeSteganographyMode.HIDE },

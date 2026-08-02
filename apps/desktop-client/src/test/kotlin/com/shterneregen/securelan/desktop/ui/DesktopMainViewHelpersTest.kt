@@ -324,6 +324,33 @@ class DesktopMainViewHelpersTest {
     }
 
     @Test
+    fun shouldPresentFriendlyLocalNetworkInterfaceLabels() {
+        assertEquals("Wi-Fi", DesktopMainViewHelpers.localNetworkInterfaceLabel("Intel(R) Wi-Fi 6 AX201"))
+        assertEquals("Ethernet", DesktopMainViewHelpers.localNetworkInterfaceLabel("Realtek Ethernet Controller"))
+        assertEquals("WSL", DesktopMainViewHelpers.localNetworkInterfaceLabel("vEthernet (WSL)"))
+        assertEquals("Docker", DesktopMainViewHelpers.localNetworkInterfaceLabel("DockerNAT"))
+        assertEquals("VPN", DesktopMainViewHelpers.localNetworkInterfaceLabel("Tailscale Tunnel"))
+        assertEquals(
+            "Virtual adapter",
+            DesktopMainViewHelpers.localNetworkInterfaceLabel("VMware Virtual Ethernet Adapter"),
+        )
+    }
+
+    @Test
+    fun shouldPreferPhysicalNetworkInterfacesOverVirtualOnes() {
+        val ethernetPriority = DesktopMainViewHelpers.localNetworkInterfacePriority(
+            interfaceName = "Realtek Ethernet Controller",
+            isVirtual = false,
+        )
+        val wslPriority = DesktopMainViewHelpers.localNetworkInterfacePriority(
+            interfaceName = "vEthernet (WSL)",
+            isVirtual = false,
+        )
+
+        assertTrue(ethernetPriority < wslPriority)
+    }
+
+    @Test
     fun shouldFormatLocalNetworkInfoErrorMessage() {
         assertEquals(
             "failed to determine local network IP: permission denied",

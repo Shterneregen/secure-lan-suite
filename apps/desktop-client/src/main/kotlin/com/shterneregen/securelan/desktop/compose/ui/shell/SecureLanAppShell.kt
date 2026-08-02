@@ -15,12 +15,14 @@ import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeAppShellState
 import com.shterneregen.securelan.desktop.compose.ui.components.StatusChip
+import com.shterneregen.securelan.desktop.ui.LocalNetworkAddress
 
 @Composable
 internal fun SecureLanAppShell(
     shellState: ComposeAppShellState,
     topBarLabel: String = shellState.currentContextLabel,
     topBarStatus: String = "",
+    localNetworkAddresses: List<LocalNetworkAddress> = emptyList(),
     themeMode: SecureLanThemeMode,
     onOpenQuickShare: () -> Unit,
     onOpenSteganography: () -> Unit,
@@ -57,7 +59,11 @@ internal fun SecureLanAppShell(
                         style = MaterialTheme.typography.subtitle2,
                     )
                     if (topBarStatus.isNotBlank()) {
-                        StatusChip(topBarStatus)
+                        if (localNetworkAddresses.isEmpty()) {
+                            StatusChip(topBarStatus)
+                        } else {
+                            NetworkStatusChip(text = topBarStatus, addresses = localNetworkAddresses)
+                        }
                     }
                 }
                 AppToolsMenu(
