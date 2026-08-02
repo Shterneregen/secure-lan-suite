@@ -4,6 +4,16 @@ import org.gradle.api.file.DuplicatesStrategy
 
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.zip.ZipFile
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.guardsquare:proguard-gradle:7.8.2'
+    }
+}
 
 plugins {
     id 'org.jetbrains.kotlin.jvm'
@@ -52,6 +62,13 @@ def mainJarName = "${project.name}-${project.version}.jar"
 def packageInputDir = layout.buildDirectory.dir('package-input')
 def packageOutputDir = layout.buildDirectory.dir('packaging')
 def appImageDir = packageOutputDir.map { it.dir(appName) }
+
+def proguardMainJarName = "${project.name}-${project.version}-proguard.jar"
+def proguardOutputJar = layout.buildDirectory.file("libs/${proguardMainJarName}")
+def proguardReportsDir = layout.buildDirectory.dir('reports/proguard')
+def proguardPackageInputDir = layout.buildDirectory.dir('proguard-package-input')
+def proguardPackageOutputDir = layout.buildDirectory.dir('proguard-packaging')
+def proguardAppImageDir = proguardPackageOutputDir.map { it.dir(appName) }
 
 def sanitizePackageFilePart = { String value ->
     value.replaceAll(/[^A-Za-z0-9_.-]/, '-')
@@ -181,6 +198,169 @@ tasks.register('buildComposePortable') {
     group = 'distribution'
     description = 'Compatibility alias for buildPortable.'
     dependsOn tasks.named('buildPortable')
+}
+
+tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
+    group = 'distribution'
+    description = 'Create an experimental shrink-only JAR containing the desktop app and its runtime dependencies.'
+
+    dependsOn tasks.named('jar')
+    inputs.files(tasks.named('jar'), configurations.runtimeClasspath)
+    inputs.file(file('proguard-desktop.pro'))
+    outputs.file(proguardOutputJar)
+    outputs.dir(proguardReportsDir)
+
+    doFirst {
+        def outputFile = proguardOutputJar.get().asFile
+        def reportsDir = proguardReportsDir.get().asFile
+        delete(outputFile)
+        if (reportsDir.exists()) {
+            delete(reportsDir)
+        }
+        mkdir(outputFile.parentFile)
+        mkdir(reportsDir)
+    }
+
+    def applicationJarFilter = '!module-info.class,!META-INF/versions/**,!META-INF/*.SF,!META-INF/*.RSA,!META-INF/*.DSA'
+    def dependencyJarFilter = "${applicationJarFilter},!META-INF/MANIFEST.MF".toString()
+    injars(tasks.named('jar').flatMap { it.archiveFile }, filter: applicationJarFilter)
+    configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.sort { it.file.absolutePath }.each { artifact ->
+        def artifactFilter = dependencyJarFilter
+        if (artifact.moduleVersion.id.group == 'org.jetbrains.compose.runtime' && artifact.name == 'runtime-desktop') {
+            // This 416-byte Compose compatibility artifact contains a second, empty
+            // META-INF/runtime.kotlin_module. Keep the real AndroidX runtime metadata.
+            artifactFilter = "${artifactFilter},!META-INF/runtime.kotlin_module".toString()
+        }
+        injars(artifact.file, filter: artifactFilter)
+    }
+    outjars(proguardOutputJar)
+
+    def jmodsDir = new File(System.getProperty('java.home'), 'jmods')
+    if (!jmodsDir.isDirectory()) {
+        throw new GradleException("JDK modules directory was not found: ${jmodsDir.absolutePath}")
+    }
+    fileTree(jmodsDir) {
+        include '*.jmod'
+    }.files.sort { it.absolutePath }.each { jmod ->
+        libraryjars(jmod, jarfilter: '!**.jar', filter: '!module-info.class')
+    }
+
+    configuration file('proguard-desktop.pro')
+    printusage proguardReportsDir.map { it.file('usage.txt') }
+    printseeds proguardReportsDir.map { it.file('seeds.txt') }
+    printmapping proguardReportsDir.map { it.file('mapping.txt') }
+    printconfiguration proguardReportsDir.map { it.file('configuration.txt') }
+
+    doLast {
+        def outputFile = proguardOutputJar.get().asFile
+        def requiredResources = [
+                'icons/app-icon.png',
+                'skiko-windows-x64.dll',
+                'skiko-windows-x64.dll.sha256',
+                'icudtl.dat',
+                'webrtc-java-windows-x86_64.dll'
+        ]
+        def outputZip = new ZipFile(outputFile)
+        try {
+            def missingResources = requiredResources.findAll { outputZip.getEntry(it) == null }
+            if (!missingResources.isEmpty()) {
+                throw new GradleException("ProGuard JAR is missing required resources: ${missingResources.join(', ')}")
+            }
+
+            def applicationZip = new ZipFile(tasks.named('jar').get().archiveFile.get().asFile)
+            try {
+                def missingApplicationResources = applicationZip.entries().findAll { entry ->
+                    !entry.directory &&
+                            !entry.name.endsWith('.class') &&
+                            !entry.name.startsWith('META-INF/versions/') &&
+                            !(entry.name ==~ /META-INF\/.+\.(SF|RSA|DSA)/) &&
+                            outputZip.getEntry(entry.name) == null
+                }.collect { it.name }
+                if (!missingApplicationResources.isEmpty()) {
+                    throw new GradleException("ProGuard JAR is missing application resources: ${missingApplicationResources.join(', ')}")
+                }
+            } finally {
+                applicationZip.close()
+            }
+        } finally {
+            outputZip.close()
+        }
+
+        def usageReport = proguardReportsDir.get().file('usage.txt').asFile
+        if (!usageReport.isFile() || usageReport.length() == 0L) {
+            throw new GradleException('ProGuard usage report is empty; shrinking was not demonstrated.')
+        }
+    }
+}
+
+tasks.register('prepareProguardJpackageInput') {
+    group = 'distribution'
+    description = 'Prepare an isolated jpackage input directory containing only the shrink-only JAR.'
+    dependsOn tasks.named('proguardJar')
+    inputs.file(proguardOutputJar)
+    outputs.dir(proguardPackageInputDir)
+
+    doLast {
+        def targetDir = proguardPackageInputDir.get().asFile
+        if (targetDir.exists()) {
+            delete(targetDir)
+        }
+        mkdir(targetDir)
+
+        Files.copy(
+                proguardOutputJar.get().asFile.toPath(),
+                new File(targetDir, proguardMainJarName).toPath(),
+                StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
+
+tasks.register('createProguardAppImage', Exec) {
+    group = 'distribution'
+    description = 'Create an isolated jpackage app-image from the shrink-only JAR.'
+    dependsOn tasks.named('prepareProguardJpackageInput')
+
+    doFirst {
+        def outDir = proguardPackageOutputDir.get().asFile
+        if (outDir.exists()) {
+            delete(outDir)
+        }
+        mkdir(outDir)
+
+        def mainJarFile = new File(proguardPackageInputDir.get().asFile, proguardMainJarName)
+        if (!mainJarFile.exists()) {
+            throw new GradleException("ProGuard JAR was not found: ${mainJarFile.absolutePath}")
+        }
+    }
+
+    commandLine(
+            'jpackage',
+            '--type', 'app-image',
+            '--name', appName,
+            '--app-version', appVersion,
+            '--input', proguardPackageInputDir.get().asFile.absolutePath,
+            '--main-jar', proguardMainJarName,
+            '--main-class', application.mainClass.get(),
+            '--add-modules', appRuntimeModules.join(','),
+            '--dest', proguardPackageOutputDir.get().asFile.absolutePath,
+            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath
+    )
+}
+
+tasks.register('proguardPortableDistZip', Zip) {
+    group = 'distribution'
+    description = 'Archive the experimental shrink-only app-image as a portable ZIP.'
+    dependsOn tasks.named('createProguardAppImage')
+
+    from(proguardAppImageDir)
+    destinationDirectory.set(layout.buildDirectory.dir('distributions'))
+    archiveFileName.set("${appName}-${appVersion}-proguard-portable.zip")
+}
+
+tasks.register('buildProguardPortable') {
+    group = 'distribution'
+    description = 'Build the experimental shrink-only portable ZIP without optimization or obfuscation.'
+    dependsOn tasks.named('proguardPortableDistZip')
 }
 
 def isWindows = System.getProperty('os.name').toLowerCase().contains('win')
