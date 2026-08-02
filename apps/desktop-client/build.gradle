@@ -202,7 +202,7 @@ tasks.register('buildComposePortable') {
 
 tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
     group = 'distribution'
-    description = 'Create an experimental shrink-only JAR containing the desktop app and its runtime dependencies.'
+    description = 'Create an experimental shrunk and optimized JAR without obfuscation.'
 
     dependsOn tasks.named('jar')
     inputs.files(tasks.named('jar'), configurations.runtimeClasspath)
@@ -295,7 +295,7 @@ tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
 
 tasks.register('prepareProguardJpackageInput') {
     group = 'distribution'
-    description = 'Prepare an isolated jpackage input directory containing only the shrink-only JAR.'
+    description = 'Prepare an isolated jpackage input directory containing only the ProGuard JAR.'
     dependsOn tasks.named('proguardJar')
     inputs.file(proguardOutputJar)
     outputs.dir(proguardPackageInputDir)
@@ -317,7 +317,7 @@ tasks.register('prepareProguardJpackageInput') {
 
 tasks.register('createProguardAppImage', Exec) {
     group = 'distribution'
-    description = 'Create an isolated jpackage app-image from the shrink-only JAR.'
+    description = 'Create an isolated jpackage app-image from the shrunk and optimized JAR.'
     dependsOn tasks.named('prepareProguardJpackageInput')
 
     doFirst {
@@ -349,7 +349,7 @@ tasks.register('createProguardAppImage', Exec) {
 
 tasks.register('proguardPortableDistZip', Zip) {
     group = 'distribution'
-    description = 'Archive the experimental shrink-only app-image as a portable ZIP.'
+    description = 'Archive the experimental shrunk and optimized app-image as a portable ZIP.'
     dependsOn tasks.named('createProguardAppImage')
 
     from(proguardAppImageDir)
@@ -359,7 +359,7 @@ tasks.register('proguardPortableDistZip', Zip) {
 
 tasks.register('buildProguardPortable') {
     group = 'distribution'
-    description = 'Build the experimental shrink-only portable ZIP without optimization or obfuscation.'
+    description = 'Build the experimental shrunk and optimized portable ZIP without obfuscation.'
     dependsOn tasks.named('proguardPortableDistZip')
 }
 

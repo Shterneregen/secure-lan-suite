@@ -1,6 +1,7 @@
-# Experimental desktop shrink-only configuration.
-# Bytecode optimization and obfuscation are intentionally disabled for this stage.
--dontoptimize
+# Experimental desktop shrinking and bytecode optimization configuration.
+# Keep the first optimization experiment conservative and reproducible.
+-optimizationpasses 1
+# Obfuscation remains intentionally disabled for this stage.
 -dontobfuscate
 
 # jpackage launcher entry point.
