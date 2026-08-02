@@ -668,7 +668,7 @@ private fun RedesignedDevicesScreen(
                 Modifier.weight(0.9f).fillMaxHeight().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                PageHeading(stringResource(R.string.devices_title), stringResource(R.string.devices_subtitle))
+                DevicesSubtitle()
                 if (state.connected) CurrentDeviceCard(state, onOpenChat, onDisconnect)
                 DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp)
                 ManualConnectionButton(onConnectManual)
@@ -690,7 +690,7 @@ private fun RedesignedDevicesScreen(
             contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { PageHeading(stringResource(R.string.devices_title), stringResource(R.string.devices_subtitle)) }
+            item { DevicesSubtitle() }
             if (state.connected) item { CurrentDeviceCard(state, onOpenChat, onDisconnect) }
             item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp) }
             item { ManualConnectionButton(onConnectManual) }
@@ -703,6 +703,15 @@ private fun RedesignedDevicesScreen(
             }
         }
     }
+}
+
+@Composable
+private fun DevicesSubtitle() {
+    Text(
+        text = stringResource(R.string.devices_subtitle),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
