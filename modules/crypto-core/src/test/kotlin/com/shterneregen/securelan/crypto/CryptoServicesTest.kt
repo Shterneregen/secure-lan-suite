@@ -5,6 +5,10 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.security.spec.MGF1ParameterSpec
+import javax.crypto.Cipher
+import javax.crypto.spec.OAEPParameterSpec
+import javax.crypto.spec.PSource
 
 class CryptoServicesTest {
     private val cryptoServices = CryptoServices.createDefault()
@@ -31,6 +35,28 @@ class CryptoServicesTest {
 
         assertArrayEquals(payload, decrypted)
         assertTrue(cryptoServices.signatureService().verify(payload, signature, keyPair.public))
+    }
+
+    @Test
+    fun shouldInteroperateWithExplicitAndroidCompatibleOaepParameters() {
+        val payload = "cross-provider rsa".toByteArray(StandardCharsets.UTF_8)
+        val keyPair = cryptoServices.keyGenerationService().generateRsaKeyPair()
+        val parameters = OAEPParameterSpec(
+            "SHA-256",
+            "MGF1",
+            MGF1ParameterSpec.SHA1,
+            PSource.PSpecified.DEFAULT,
+        )
+
+        val externalEncryptor = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+        externalEncryptor.init(Cipher.ENCRYPT_MODE, keyPair.public, parameters)
+        val externallyEncrypted = externalEncryptor.doFinal(payload)
+        assertArrayEquals(payload, cryptoServices.rsaCryptoService().decrypt(externallyEncrypted, keyPair.private))
+
+        val serviceEncrypted = cryptoServices.rsaCryptoService().encrypt(payload, keyPair.public)
+        val externalDecryptor = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+        externalDecryptor.init(Cipher.DECRYPT_MODE, keyPair.private, parameters)
+        assertArrayEquals(payload, externalDecryptor.doFinal(serviceEncrypted))
     }
 
     @Test

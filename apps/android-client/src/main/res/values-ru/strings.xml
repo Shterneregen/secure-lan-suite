@@ -11,11 +11,28 @@
     <string name="status_searching">Поиск устройств</string>
     <string name="status_attention">Требуется действие</string>
     <string name="status_offline">Нет подключения</string>
+    <string name="status_hosting_starting">Запуск комнаты…</string>
+    <plurals name="status_hosting">
+        <item quantity="one">Комната запущена · %1$d участник</item>
+        <item quantity="few">Комната запущена · %1$d участника</item>
+        <item quantity="many">Комната запущена · %1$d участников</item>
+        <item quantity="other">Комната запущена · %1$d участника</item>
+    </plurals>
     <string name="devices_title">Устройства</string>
     <string name="devices_subtitle">Компьютеры с SecureLan в этой сети</string>
     <string name="current_device">Текущее устройство</string>
     <string name="open_chat">Открыть чат</string>
     <string name="disconnect">Отключиться</string>
+    <string name="host_room">Создать комнату</string>
+    <string name="host_room_title">Создать защищённую комнату</string>
+    <string name="host_room_message">Это Android-устройство будет принимать защищённые подключения SecureLan от устройств в локальной сети.</string>
+    <string name="start_hosting">Запустить комнату</string>
+    <string name="hosting_starting">Запуск…</string>
+    <string name="stop_hosting">Остановить комнату</string>
+    <string name="hosted_room">Комната на этом устройстве</string>
+    <string name="room_participants">Участники комнаты</string>
+    <string name="no_room_participants">Другие участники пока не подключились.</string>
+    <string name="host_ports_must_differ">Порты чата и файлов должны отличаться.</string>
     <string name="searching_title">Ищем компьютеры…</string>
     <string name="searching_message">Оставьте SecureLan открытым на компьютере и подключите оба устройства к одной Wi‑Fi сети.</string>
     <string name="permission_title">Разрешите поиск устройств</string>
@@ -63,6 +80,7 @@
     <string name="files_title">Файлы</string>
     <string name="recipient">Получатель: %1$s</string>
     <string name="files_connect_first">Подключитесь к компьютеру перед отправкой или получением файлов.</string>
+    <string name="files_choose_participant">Перед отправкой файла выберите участника комнаты на экране «Устройства».</string>
     <string name="choose_file_title">Защищённая передача файла</string>
     <string name="choose_file_message">Выберите документ на этом устройстве. Перед отправкой он будет зашифрован.</string>
     <string name="choose_file">Выбрать файл</string>
@@ -109,6 +127,14 @@
     <string name="about">О приложении</string>
     <string name="about_value">Защищённое общение внутри локальной сети.</string>
     <string name="notification_channel_files">Передача файлов</string>
+    <string name="notification_channel_hosting">Созданные комнаты</string>
+    <string name="host_notification_title">Комната %1$s запущена</string>
+    <plurals name="host_notification_text">
+        <item quantity="one">Порт чата %1$d · %2$d участник</item>
+        <item quantity="few">Порт чата %1$d · %2$d участника</item>
+        <item quantity="many">Порт чата %1$d · %2$d участников</item>
+        <item quantity="other">Порт чата %1$d · %2$d участника</item>
+    </plurals>
     <string name="notification_file_received">Файл получен</string>
     <string name="notification_file_saved">%1$s сохранён в %2$s</string>
     <string name="error_details">Подробнее</string>

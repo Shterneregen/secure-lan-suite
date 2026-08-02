@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DefaultChatClientService @JvmOverloads constructor(
     eventPublisher: ChatEventPublisher,
     clientSocketFactory: ClientSocketFactory = ClientSocketFactory.systemDefault(),
+    private val handshakeTimeoutMillis: Int = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS,
 ) : ChatClientService {
     private val eventPublisher: ChatEventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher")
     private val handshakeService: SecureHandshakeService = SimpleHandshakeService()
@@ -35,6 +36,10 @@ class DefaultChatClientService @JvmOverloads constructor(
     private var receiverThread: Thread? = null
     private var nickname: String? = null
 
+    init {
+        require(handshakeTimeoutMillis > 0) { "Handshake timeout must be positive" }
+    }
+
     override fun connect(request: ChatClientConnectRequest): Boolean {
         if (connected.get()) {
             return true
@@ -42,12 +47,14 @@ class DefaultChatClientService @JvmOverloads constructor(
         try {
             val activeSession = ChatSocketSession(clientSocketFactory.connect(TransportEndpoint.of(request.host, request.port)))
             session = activeSession
+            activeSession.setReadTimeout(handshakeTimeoutMillis)
             val response = handshakeService.performClientHandshake(activeSession, HandshakeRequest(request.nickname, request.sessionPassword, request.capabilities))
             if (!response.accepted()) {
                 eventPublisher.publish(ChatErrorEvent(response.reason(), null))
                 disconnect()
                 return false
             }
+            activeSession.setReadTimeout(0)
             nickname = response.nickname()
             connected.set(true)
             eventPublisher.publish(ChatConnectedEvent(nickname, activeSession.remoteAddress(), request.capabilities))
@@ -106,4 +113,8 @@ class DefaultChatClientService @JvmOverloads constructor(
     }
 
     override fun isConnected(): Boolean = connected.get()
+
+    companion object {
+        private const val DEFAULT_HANDSHAKE_TIMEOUT_MILLIS = 5_000
+    }
 }

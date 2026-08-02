@@ -21,6 +21,11 @@ class LineTextChannel @Throws(IOException::class) constructor(private val socket
     @Throws(IOException::class)
     fun readLine(): String? = reader.readLine()
 
+    fun setReadTimeout(timeoutMillis: Int) {
+        require(timeoutMillis >= 0) { "Read timeout must not be negative" }
+        socket.soTimeout = timeoutMillis
+    }
+
     @Throws(IOException::class)
     fun writeLine(line: String) {
         Objects.requireNonNull(line, "line")

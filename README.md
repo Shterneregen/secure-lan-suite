@@ -132,7 +132,7 @@ Development, build, run, smoke-test, and packaging details are intentionally kep
 - video calls and preview are experimental and may fail on some Windows/JDK/camera combinations
 - microphone, speaker output, and camera device selection/testing are exposed, but cross-device media validation remains open
 - desktop steganography currently targets text workflows over uncompressed 24-bit/32-bit BMP images; arbitrary binary payload UI is not exposed yet
-- Android remains an experimental interoperability client and does not yet implement room hosting, voice, WebRTC data channels, camera/video, steganography tools, screen sharing, or no-auth browser quick share
+- Android remains an experimental interoperability client; it now supports desktop-compatible room hosting, but does not yet implement voice, WebRTC data channels, camera/video, steganography tools, screen sharing, or no-auth browser quick share
 - chunked large file transfer over `RTCDataChannel` is not implemented yet
 - screen sharing is not implemented yet
 - EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers

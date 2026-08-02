@@ -33,6 +33,8 @@ import com.shterneregen.securelan.androidclient.model.TransferDirection
 import com.shterneregen.securelan.androidclient.model.TransferRecord
 import com.shterneregen.securelan.androidclient.model.TransferResult
 import com.shterneregen.securelan.androidclient.network.PeerDiscoveryRepository
+import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
+import com.shterneregen.securelan.androidclient.network.AndroidHostServiceState
 import com.shterneregen.securelan.androidclient.network.SecureChatClient
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.androidclient.network.SecureFileSender
@@ -46,6 +48,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.UUID
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -79,9 +82,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var receiveJob: Job? = null
     private var fileReceiverJob: Job? = null
     private var disconnectRequested: Boolean = false
+    private var hostConnectionAttemptedForPeerId: String? = null
+    private val hostPeerId: String = preferences.getString(KEY_HOST_PEER_ID, null)
+        ?.takeIf { it.isNotBlank() }
+        ?: UUID.randomUUID().toString().also { generated ->
+            preferences.edit { putString(KEY_HOST_PEER_ID, generated) }
+        }
 
     init {
         createNotificationChannel()
+        observeHostService()
     }
 
     fun updateNickname(value: String) {
@@ -161,6 +171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         discoveryJob = viewModelScope.launch {
             discoveryRepository.discoverPeers().collect { peer ->
+                if (peer.peerId == hostPeerId) return@collect
                 _uiState.update { state ->
                     val serverPeer = peer.copy(role = PeerRole.SERVER)
                     val peers = upsertPeer(state.peers, serverPeer)
@@ -352,6 +363,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: state.peers.firstOrNull { it.role == PeerRole.SERVER }
             ?: return setError("Select a server peer first")
         if (state.nickname.isBlank()) return setError("Nickname must not be blank")
+        connectToPeer(peer, state.sessionPassword, localFileReceiverPortFor(peer))
+    }
+
+    fun startHosting(chatPortValue: String, filePortValue: String) {
+        val state = _uiState.value
+        val chatPort = chatPortValue.toIntOrNull()?.takeIf { it in 1..65535 }
+        val filePort = filePortValue.toIntOrNull()?.takeIf { it in 1..65535 }
+        if (state.nickname.isBlank()) return setError("Nickname must not be blank")
+        if (state.sessionPassword.isBlank()) return setError("Room password must not be blank")
+        if (chatPort == null || filePort == null) return setError("Ports must be between 1 and 65535")
+        if (chatPort == filePort) return setError("Chat and file ports must be different")
+        if (state.connected || state.connecting) return setError("Disconnect from the current room before hosting")
+        if (state.hosting || state.hostingStarting) return
+
+        hostConnectionAttemptedForPeerId = null
+        _uiState.update {
+            it.copy(
+                hostingStarting = true,
+                hostChatPort = chatPort.toString(),
+                hostFilePort = filePort.toString(),
+                error = null,
+                status = "Starting hosted room",
+            )
+        }
+        addLog("Starting Android-hosted room on chat port $chatPort and file port $filePort")
+        runCatching {
+            AndroidChatHostService.start(
+                context = getApplication(),
+                peerId = hostPeerId,
+                nickname = state.nickname.trim(),
+                password = state.sessionPassword,
+                chatPort = chatPort,
+                filePort = filePort,
+            )
+        }.onFailure { error ->
+            _uiState.update { it.copy(hostingStarting = false) }
+            setError(error.message ?: "Unable to start hosted room")
+        }
+    }
+
+    fun stopHosting() {
+        if (!_uiState.value.hosting && !_uiState.value.hostingStarting) return
+        hostConnectionAttemptedForPeerId = null
+        disconnectRequested = true
+        receiveJob?.cancel()
+        receiveJob = null
+        fileReceiverJob?.cancel()
+        fileReceiverJob = null
+        _uiState.update { it.copy(hostingStarting = false, status = "Stopping hosted room") }
+        viewModelScope.launch {
+            chatClient.disconnect()
+            AndroidChatHostService.stop(getApplication())
+            _uiState.update {
+                it.copy(
+                    connected = false,
+                    connecting = false,
+                    fileReceiverRunning = false,
+                    hostedParticipantCount = 0,
+                    status = "Hosted room stopped",
+                )
+            }
+            addLog("Android-hosted room stopped")
+        }
+    }
+
+    private fun connectToPeer(peer: DiscoveredPeer, password: String, localFilePort: Int) {
+        val state = _uiState.value
         _uiState.update { it.copy(connecting = true, error = null, status = "Connecting to ${peer.nickname}") }
         disconnectRequested = false
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
@@ -361,8 +439,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     peer.host,
                     peer.chatPort,
                     state.nickname.trim(),
-                    state.sessionPassword,
-                    androidCapabilities(localFileReceiverPortFor(peer)),
+                    password,
+                    androidCapabilities(localFilePort),
                 )
             }.onSuccess { acceptedNickname ->
                 _uiState.update {
@@ -388,6 +466,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disconnect() {
+        if (_uiState.value.hosting || _uiState.value.hostingStarting) {
+            stopHosting()
+            return
+        }
         disconnectRequested = true
         receiveJob?.cancel()
         receiveJob = null
@@ -428,7 +510,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendSelectedFile() {
         val state = _uiState.value
         if (!state.connected) return setError("Connect to a desktop first")
-        val peer = state.connectionPeer ?: return setError("Select a desktop first")
+        val peer = state.fileRecipient ?: return setError("Select a recipient first")
         val file = state.selectedFile ?: return setError("Select a file first")
         _uiState.update { it.copy(fileProgress = FileSendProgress(file.name, 0, file.size, active = true), error = null) }
         addLog("Sending file ${file.name} (${file.size} bytes) to ${peer.nickname} via ${peer.fileTargetHost}:${peer.fileTargetPort}")
@@ -502,7 +584,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         when (message.type) {
                             WireMessageType.CHAT -> handleIncomingChatMessage(message.sender, message.payload)
-                            WireMessageType.USER_JOINED -> handleUserJoined(message.sender)
+                            WireMessageType.USER_JOINED -> handleUserJoined(message.sender, message.payload)
                             WireMessageType.USER_LEFT -> handleUserLeft(message.sender)
                             WireMessageType.SYSTEM,
                             -> _uiState.update { state ->
@@ -536,7 +618,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun handleUserJoined(nickname: String) {
+    private fun handleUserJoined(nickname: String, encodedCapabilities: String) {
         val peerNickname = nickname.trim()
         if (peerNickname.isBlank() || peerNickname.equals(_uiState.value.nickname, ignoreCase = true)) {
             return
@@ -544,15 +626,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             val serverPeer = state.selectedPeer
             val existingServerPeer = state.peers.firstOrNull { it.role == PeerRole.SERVER && it.nickname.equals(peerNickname, ignoreCase = true) }
+            val hostedParticipant = AndroidChatHostService.state.value.participants
+                .firstOrNull { it.nickname.equals(peerNickname, ignoreCase = true) }
+            val capabilities = PeerCapabilities.decode(encodedCapabilities)
             val peer = DiscoveredPeer(
                 peerId = existingServerPeer?.peerId ?: "chat:$peerNickname",
                 nickname = peerNickname,
-                host = existingServerPeer?.host ?: serverPeer?.host ?: "chat-room",
+                host = hostedParticipant?.host ?: existingServerPeer?.host ?: serverPeer?.host ?: "chat-room",
                 chatPort = existingServerPeer?.chatPort ?: serverPeer?.chatPort ?: SecureLanPorts.DEFAULT_CHAT_PORT,
                 filePort = existingServerPeer?.filePort ?: serverPeer?.filePort ?: SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT,
                 role = existingServerPeer?.role ?: PeerRole.CHAT_CLIENT,
-                fileTargetHost = existingServerPeer?.fileTargetHost ?: serverPeer?.host ?: "chat-room",
-                fileTargetPort = existingServerPeer?.fileTargetPort ?: clientFilePortForServer(serverPeer),
+                fileTargetHost = hostedParticipant?.host ?: existingServerPeer?.fileTargetHost ?: serverPeer?.host ?: "chat-room",
+                fileTargetPort = hostedParticipant?.filePort
+                    ?: capabilities.fileReceivePort().takeIf { it in 1..65535 }
+                    ?: existingServerPeer?.fileTargetPort
+                    ?: clientFilePortForServer(serverPeer),
             )
             val peers = upsertPeer(state.peers, peer)
                 .sortedBy { it.nickname.lowercase() }
@@ -642,6 +730,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun localFileReceiverPortFor(peer: DiscoveredPeer?): Int {
+        if (_uiState.value.hosting) {
+            return _uiState.value.hostFilePort.toIntOrNull()?.takeIf { it in 1..65535 }
+                ?: SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT
+        }
         val remoteFilePort = peer?.filePort ?: SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT
         val candidate = remoteFilePort + CLIENT_FILE_PORT_OFFSET
         return if (candidate > 65535) {
@@ -662,6 +754,101 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 NotificationManager.IMPORTANCE_DEFAULT,
             ),
         )
+    }
+
+    private fun observeHostService() {
+        viewModelScope.launch {
+            AndroidChatHostService.state.collect { hostState -> handleHostServiceState(hostState) }
+        }
+    }
+
+    private fun handleHostServiceState(hostState: AndroidHostServiceState) {
+        val previous = _uiState.value
+        if (hostState.running) {
+            val localPeer = DiscoveredPeer(
+                peerId = hostState.peerId,
+                nickname = hostState.nickname,
+                host = LOOPBACK_HOST,
+                chatPort = hostState.chatPort,
+                filePort = hostState.filePort,
+                role = PeerRole.SERVER,
+                fileTargetHost = LOOPBACK_HOST,
+                fileTargetPort = hostState.filePort,
+            )
+            val hostedPeers = hostState.participants.map { participant ->
+                DiscoveredPeer(
+                    peerId = "host-client:${participant.nickname.lowercase()}",
+                    nickname = participant.nickname,
+                    host = participant.host,
+                    chatPort = hostState.chatPort,
+                    filePort = participant.filePort,
+                    role = PeerRole.CHAT_CLIENT,
+                    fileTargetHost = participant.host,
+                    fileTargetPort = participant.filePort,
+                )
+            }
+            _uiState.update { state ->
+                val selectedHostedPeer = state.selectedPeer?.takeIf { it.role == PeerRole.CHAT_CLIENT }?.let { selected ->
+                    hostedPeers.firstOrNull { it.nickname.equals(selected.nickname, ignoreCase = true) }
+                }
+                state.copy(
+                    sessionPassword = AndroidChatHostService.currentSessionPassword(),
+                    hosting = true,
+                    hostingStarting = false,
+                    hostChatPort = hostState.chatPort.toString(),
+                    hostFilePort = hostState.filePort.toString(),
+                    hostedParticipantCount = hostedPeers.size,
+                    connectionPeer = localPeer,
+                    selectedPeer = selectedHostedPeer ?: localPeer,
+                    peers = state.peers.filter { it.role == PeerRole.SERVER && it.peerId != hostState.peerId } + hostedPeers,
+                    error = null,
+                    status = if (state.connected) "Hosting room" else "Hosted room is ready",
+                )
+            }
+            if (!previous.connected && !previous.connecting && hostConnectionAttemptedForPeerId != hostState.peerId) {
+                hostConnectionAttemptedForPeerId = hostState.peerId
+                connectToPeer(localPeer, AndroidChatHostService.currentSessionPassword(), hostState.filePort)
+            }
+            return
+        }
+
+        if (hostState.starting) {
+            _uiState.update { it.copy(hostingStarting = true, error = null, status = "Starting hosted room") }
+            return
+        }
+
+        if (hostState.error != null) {
+            hostConnectionAttemptedForPeerId = null
+            _uiState.update {
+                it.copy(hosting = false, hostingStarting = false, connected = false, connecting = false, error = hostState.error, status = "Unable to host room")
+            }
+            addLog(hostState.error, level = "ERROR")
+            return
+        }
+
+        if (previous.hosting || previous.hostingStarting) {
+            hostConnectionAttemptedForPeerId = null
+            receiveJob?.cancel()
+            receiveJob = null
+            fileReceiverJob?.cancel()
+            fileReceiverJob = null
+            disconnectRequested = true
+            viewModelScope.launch { chatClient.disconnect() }
+            _uiState.update {
+                it.copy(
+                    hosting = false,
+                    hostingStarting = false,
+                    connected = false,
+                    connecting = false,
+                    fileReceiverRunning = false,
+                    hostedParticipantCount = 0,
+                    peers = it.peers.filterNot { peer -> peer.role == PeerRole.CHAT_CLIENT },
+                    selectedPeer = null,
+                    connectionPeer = null,
+                    status = "Hosted room stopped",
+                )
+            }
+        }
     }
 
     private fun postFileReceivedNotification(fileName: String, savedPath: String) {
@@ -728,6 +915,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_MANUAL_HOST = "manual_host"
         private const val KEY_MANUAL_CHAT_PORT = "manual_chat_port"
         private const val KEY_MANUAL_FILE_PORT = "manual_file_port"
+        private const val KEY_HOST_PEER_ID = "host_peer_id"
+        private const val LOOPBACK_HOST = "127.0.0.1"
         private const val FILE_NOTIFICATION_CHANNEL = "secure_lan_files"
         private const val FILE_NOTIFICATION_ID = 5051
     }

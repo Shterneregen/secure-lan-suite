@@ -225,7 +225,7 @@ Source repository:
 | [x] | File send | Add Android-to-desktop encrypted file sending | `apps/android-client` | Uses Android document picker, desktop-compatible handshake, and send progress |
 | [x] | File receive | Add desktop-to-Android encrypted file receiving | `apps/android-client` | Listens on the normal file port or connected peer file port + `1000`; saves into `Downloads/SecureLan` on Android 10+ |
 | [x] | Diagnostics | Add Android in-app status and log surface | `apps/android-client` | Recent logs are available from the settings panel |
-| [ ] | Hosting | Add Android-hosted desktop-compatible chat room | `apps/android-client` | Not implemented; Android currently acts as a client/interoperability peer |
+| [x] | Hosting | Add Android-hosted desktop-compatible chat room | `apps/android-client` | Foreground service hosts the shared encrypted chat server, advertises it over LAN discovery, and connects Android as the local participant |
 | [ ] | Realtime | Add Android WebRTC/voice/data support | `apps/android-client` + future Android media integration | Not implemented; desktop remains the only realtime media client |
 | [ ] | Advanced tools | Add Android steganography or quick-share workflows if needed | `apps/android-client` | Not implemented; desktop-only today |
 

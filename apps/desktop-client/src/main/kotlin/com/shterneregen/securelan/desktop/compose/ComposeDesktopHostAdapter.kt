@@ -188,8 +188,9 @@ class ComposeDesktopHostAdapter(
 
     private val pendingIncomingTransferDecisions = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
 
-    /** Dedicated coroutine scope for blocking desktop file-transfer client work. */
-    private val fileTransferIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Dedicated scope for blocking desktop network-client work. */
+    private val networkIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val connectionInProgress = AtomicBoolean(false)
 
     /** Quick-share rows for browser-link workspace wiring. */
     var quickShareEntries: List<QuickShareEntry> by mutableStateOf(emptyList())
@@ -264,19 +265,21 @@ class ComposeDesktopHostAdapter(
     private var cameraPreviewSession: RtcMediaDeviceService.CameraPreviewSession? = null
 
     val chatEventPublisher: ChatEventPublisher = ChatEventPublisher { event ->
+        dispatchUiStateUpdate { handleChatEvent(event) }
+    }
+
+    private fun handleChatEvent(event: ChatCoreEvent) {
         when (event) {
             is ChatConnectedEvent -> {
                 // Do not render a local-client connection line in the chat transcript.
                 clearChatPeers()
             }
             is ChatDisconnectedEvent -> {
-                dispatchUiStateUpdate {
-                    appendChatTranscript(disconnectedTranscriptLine(event))
-                    clearChatPeers()
-                    statusState = statusState.withClientDisconnected()
-                    refreshRealtimeState()
-                    publish(ComposeConnectionEventKind.INFO, event.reason ?: "Chat disconnected")
-                }
+                appendChatTranscript(disconnectedTranscriptLine(event))
+                clearChatPeers()
+                statusState = statusState.withClientDisconnected()
+                refreshRealtimeState()
+                publish(ComposeConnectionEventKind.INFO, event.reason ?: "Chat disconnected")
             }
             is ChatMessageReceivedEvent -> {
                 val sender = event.senderNickname ?: "unknown"
@@ -482,48 +485,57 @@ class ComposeDesktopHostAdapter(
             publish(ComposeConnectionEventKind.WARNING, "Already connected; disconnect first.")
             return
         }
+        if (!connectionInProgress.compareAndSet(false, true)) {
+            publish(ComposeConnectionEventKind.WARNING, "A connection attempt is already in progress.")
+            return
+        }
         publishEventKind(ComposeAdapterEventKind.CONNECT_STARTED, "Connecting to $trimmedHost")
 
-        try {
-            currentRoomPassword = password
-            statusState = statusState.copy(
-                nickname = trimmedNick,
-                manualHost = trimmedHost,
-                clientChatPortText = chatPort.toString(),
-                clientFilePortText = filePort.toString(),
+        currentRoomPassword = password
+        statusState = statusState.copy(
+            nickname = trimmedNick,
+            manualHost = trimmedHost,
+            clientChatPortText = chatPort.toString(),
+            clientFilePortText = filePort.toString(),
+            connectionStatus = "Connecting",
+        )
+        settingsController.update { settings ->
+            settings.copy(
+                displayName = trimmedNick,
+                network = settings.network.copy(
+                    clientChatPort = chatPort,
+                    clientFilePort = filePort,
+                    lastConnectionMode = DesktopConnectionMode.JOIN,
+                ),
             )
-            settingsController.update { settings ->
-                settings.copy(
-                    displayName = trimmedNick,
-                    network = settings.network.copy(
-                        clientChatPort = chatPort,
-                        clientFilePort = filePort,
-                        lastConnectionMode = DesktopConnectionMode.JOIN,
-                    ),
-                )
-            }
-            val request = ChatClientConnectRequest(trimmedHost, chatPort, trimmedNick, password, desktopCapabilities(filePort))
-            val connected = chatClientService.connect(request)
-            if (connected) {
-                settingsController.update { settings ->
-                    settings.copy(
-                        network = settings.network.withRecentRoom(DesktopRecentRoom(trimmedHost, chatPort, filePort)),
-                    )
-                }
-                startFileTransferListener(filePort, password)
-                startPeerDiscoveryListenOnly(trimmedNick)
-                publish(ComposeConnectionEventKind.SUCCESS, "Connected to $trimmedHost as $trimmedNick.")
-                publishEventKind(ComposeAdapterEventKind.CONNECTED, "Connected: $trimmedNick")
-            } else {
-                publish(ComposeConnectionEventKind.ERROR, "Connection to $trimmedHost failed.")
-                publishEventKind(ComposeAdapterEventKind.CONNECT_FAILED, "Connection failed: $trimmedHost")
-            }
-        } catch (e: Exception) {
-            publish(ComposeConnectionEventKind.ERROR, "Connection error: ${e.message}")
-            publishEventKind(ComposeAdapterEventKind.CONNECT_FAILED, e.message ?: "Unknown connection failure")
         }
-
-        refreshState()
+        val request = ChatClientConnectRequest(trimmedHost, chatPort, trimmedNick, password, desktopCapabilities(filePort))
+        networkIoScope.launch {
+            val result = runCatching { chatClientService.connect(request) }
+            dispatchUiStateUpdate {
+                connectionInProgress.set(false)
+                result.onSuccess { connected ->
+                    if (connected) {
+                        settingsController.update { settings ->
+                            settings.copy(
+                                network = settings.network.withRecentRoom(DesktopRecentRoom(trimmedHost, chatPort, filePort)),
+                            )
+                        }
+                        startFileTransferListener(filePort, password)
+                        startPeerDiscoveryListenOnly(trimmedNick)
+                        publish(ComposeConnectionEventKind.SUCCESS, "Connected to $trimmedHost as $trimmedNick.")
+                        publishEventKind(ComposeAdapterEventKind.CONNECTED, "Connected: $trimmedNick")
+                    } else {
+                        publish(ComposeConnectionEventKind.ERROR, "Connection to $trimmedHost failed.")
+                        publishEventKind(ComposeAdapterEventKind.CONNECT_FAILED, "Connection failed: $trimmedHost")
+                    }
+                }.onFailure { error ->
+                    publish(ComposeConnectionEventKind.ERROR, "Connection error: ${error.message}")
+                    publishEventKind(ComposeAdapterEventKind.CONNECT_FAILED, error.message ?: "Unknown connection failure")
+                }
+                refreshState()
+            }
+        }
     }
 
     /** Disconnect the chat client. */
@@ -806,7 +818,7 @@ class ComposeDesktopHostAdapter(
         }
 
         SecureLanLogger.logTransfer("Outgoing file send queued for ${recipient.nickname}; file checks and transfer will run on the IO dispatcher.")
-        fileTransferIoScope.launch {
+        networkIoScope.launch {
             val normalizedFile = filePath.toAbsolutePath().normalize()
             if (!Files.isRegularFile(normalizedFile)) {
                 dispatchUiStateUpdate { SecureLanLogger.logTransfer("Outgoing file send blocked: file does not exist: $normalizedFile.") }
@@ -1239,7 +1251,7 @@ class ComposeDesktopHostAdapter(
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Adapter shutdown initiated.")
         pendingIncomingTransferDecisions.values.forEach { it.complete(false) }
         pendingIncomingTransferDecisions.clear()
-        fileTransferIoScope.cancel()
+        networkIoScope.cancel()
 
         try {
             if (chatClientService.isConnected()) {

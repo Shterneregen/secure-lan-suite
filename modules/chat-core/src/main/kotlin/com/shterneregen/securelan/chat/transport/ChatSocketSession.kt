@@ -50,6 +50,10 @@ class ChatSocketSession @Throws(IOException::class) constructor(socket: Socket) 
 
     fun remoteAddress(): String = channel.remoteAddress()
 
+    fun setReadTimeout(timeoutMillis: Int) {
+        channel.setReadTimeout(timeoutMillis)
+    }
+
     @Throws(IOException::class)
     override fun close() {
         channel.close()

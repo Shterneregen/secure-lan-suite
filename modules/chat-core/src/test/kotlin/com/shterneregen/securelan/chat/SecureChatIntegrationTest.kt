@@ -13,11 +13,13 @@ import com.shterneregen.securelan.chat.service.ChatServerConfig
 import com.shterneregen.securelan.chat.service.ChatServerService
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService
+import com.shterneregen.securelan.common.net.transport.ClientSocketFactory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import java.util.concurrent.CopyOnWriteArrayList
 
 class SecureChatIntegrationTest {
@@ -55,6 +57,35 @@ class SecureChatIntegrationTest {
         val client = track(DefaultChatClientService(eventPublisher = { events.add(it) }))
         assertFalse(client.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "wrong")))
         assertTrue(await(events, { it is ChatErrorEvent && it.message?.contains("Wrong session password") == true }, 2_000))
+    }
+
+    @Test
+    fun silentServerShouldTimeOutDuringHandshake() {
+        val events = CopyOnWriteArrayList<ChatCoreEvent>()
+        ServerSocket(0).use { silentServer ->
+            val acceptThread = Thread {
+                silentServer.accept().use { socket ->
+                    while (socket.getInputStream().read() != -1) Unit
+                }
+            }.apply {
+                isDaemon = true
+                start()
+            }
+            val client = track(
+                DefaultChatClientService(
+                    eventPublisher = { events.add(it) },
+                    clientSocketFactory = ClientSocketFactory.systemDefault(),
+                    handshakeTimeoutMillis = 150,
+                ),
+            )
+
+            assertFalse(client.connect(ChatClientConnectRequest("127.0.0.1", silentServer.localPort, "alice", "chatpass")))
+            assertTrue(
+                events.any { event -> event is ChatErrorEvent && event.cause is SocketTimeoutException },
+                "A silent peer should fail with a socket read timeout",
+            )
+            acceptThread.join(1_000L)
+        }
     }
 
     @Test

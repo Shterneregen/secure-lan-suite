@@ -275,6 +275,8 @@ private fun SecureLanAndroidApp(
                     onPeerSelected = viewModel::selectPeer,
                     onConnect = viewModel::connectSelectedPeer,
                     onConnectManual = viewModel::connectManualPeer,
+                    onStartHosting = viewModel::startHosting,
+                    onStopHosting = viewModel::stopHosting,
                     onDisconnect = viewModel::disconnect,
                     onInputChange = viewModel::updateInputMessage,
                     onSendMessage = viewModel::sendTextMessage,
@@ -372,6 +374,8 @@ private fun RedesignedMainScreen(
     onPeerSelected: (DiscoveredPeer) -> Unit,
     onConnect: () -> Unit,
     onConnectManual: (String, String, String) -> Unit,
+    onStartHosting: (String, String) -> Unit,
+    onStopHosting: () -> Unit,
     onDisconnect: () -> Unit,
     onInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
@@ -384,6 +388,7 @@ private fun RedesignedMainScreen(
     var settingsVisible by remember { mutableStateOf(false) }
     var connectionSheetVisible by remember { mutableStateOf(false) }
     var manualConnectionSheetVisible by remember { mutableStateOf(false) }
+    var hostRoomSheetVisible by remember { mutableStateOf(false) }
     var discoveryHelpVisible by remember { mutableStateOf(false) }
     var logsVisible by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -406,6 +411,9 @@ private fun RedesignedMainScreen(
             settingsVisible = false
             destination = PrimaryDestination.CHAT
         }
+    }
+    LaunchedEffect(state.hosting) {
+        if (state.hosting) hostRoomSheetVisible = false
     }
     LaunchedEffect(friendlyErrorTitle) {
         if (friendlyErrorTitle != null) {
@@ -435,6 +443,15 @@ private fun RedesignedMainScreen(
             onPasswordChange = onPasswordChange,
             onConnect = onConnectManual,
             onDismiss = { if (!state.connecting) manualConnectionSheetVisible = false },
+        )
+    }
+    if (hostRoomSheetVisible) {
+        HostRoomBottomSheet(
+            state = state,
+            onNicknameChange = onNicknameChange,
+            onPasswordChange = onPasswordChange,
+            onStartHosting = onStartHosting,
+            onDismiss = { if (!state.hostingStarting) hostRoomSheetVisible = false },
         )
     }
     if (discoveryHelpVisible) {
@@ -507,10 +524,11 @@ private fun RedesignedMainScreen(
                         state = state,
                         onPeerClick = {
                             onPeerSelected(it)
-                            connectionSheetVisible = true
+                            if (it.role == PeerRole.SERVER) connectionSheetVisible = true
                         },
                         onOpenDevices = { destination = PrimaryDestination.DEVICES },
                         onConnectManual = { manualConnectionSheetVisible = true },
+                        onHostRoom = { hostRoomSheetVisible = true },
                         modifier = Modifier.width(304.dp),
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
@@ -532,14 +550,16 @@ private fun RedesignedMainScreen(
                             state = state,
                             onPeerClick = {
                                 onPeerSelected(it)
-                                connectionSheetVisible = true
+                                if (it.role == PeerRole.SERVER) connectionSheetVisible = true
                             },
                             onOpenChat = { destination = PrimaryDestination.CHAT },
                             onDisconnect = onDisconnect,
+                            onStopHosting = onStopHosting,
                             onRequestNearbyPermission = onRequestNearbyPermission,
                             onRetryDiscovery = onRetryDiscovery,
                             onShowHelp = { discoveryHelpVisible = true },
                             onConnectManual = { manualConnectionSheetVisible = true },
+                            onHostRoom = { hostRoomSheetVisible = true },
                             layoutSpec = layoutSpec,
                         )
                         PrimaryDestination.CHAT -> RedesignedChatScreen(
@@ -605,6 +625,12 @@ private fun RedesignedAppHeader(
 private fun RedesignedConnectionStatus(state: MainUiState) {
     val (text, color) = when {
         state.error != null -> stringResource(R.string.status_attention) to MaterialTheme.colorScheme.error
+        state.hostingStarting -> stringResource(R.string.status_hosting_starting) to MaterialTheme.colorScheme.tertiary
+        state.hosting -> pluralStringResource(
+            R.plurals.status_hosting,
+            state.hostedParticipantCount,
+            state.hostedParticipantCount,
+        ) to SuccessGreen
         state.connected -> stringResource(R.string.status_connected, state.connectionPeer?.nickname.orEmpty()) to SuccessGreen
         state.connecting -> stringResource(R.string.status_connecting, state.connectionPeer?.nickname.orEmpty()) to MaterialTheme.colorScheme.tertiary
         state.discoveryRunning -> stringResource(R.string.status_searching) to MaterialTheme.colorScheme.primary
@@ -652,10 +678,12 @@ private fun RedesignedDevicesScreen(
     onPeerClick: (DiscoveredPeer) -> Unit,
     onOpenChat: () -> Unit,
     onDisconnect: () -> Unit,
+    onStopHosting: () -> Unit,
     onRequestNearbyPermission: () -> Unit,
     onRetryDiscovery: () -> Unit,
     onShowHelp: () -> Unit,
     onConnectManual: () -> Unit,
+    onHostRoom: () -> Unit,
     layoutSpec: AdaptiveLayoutSpec,
 ) {
     val serverPeers = state.peers.filter { it.role == PeerRole.SERVER }
@@ -669,8 +697,9 @@ private fun RedesignedDevicesScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DevicesSubtitle()
-                if (state.connected) CurrentDeviceCard(state, onOpenChat, onDisconnect)
+                if (state.connected || state.hosting) CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect)
                 DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp)
+                HostRoomButton(state, onHostRoom)
                 ManualConnectionButton(onConnectManual)
             }
             Column(
@@ -682,6 +711,7 @@ private fun RedesignedDevicesScreen(
                     val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
                     DeviceCard(peer, connected) { selected -> if (connected) onOpenChat() else onPeerClick(selected) }
                 }
+                HostedParticipants(state, onPeerClick)
             }
         }
     } else {
@@ -691,14 +721,21 @@ private fun RedesignedDevicesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { DevicesSubtitle() }
-            if (state.connected) item { CurrentDeviceCard(state, onOpenChat, onDisconnect) }
+            if (state.connected || state.hosting) item { CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect) }
             item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp) }
+            item { HostRoomButton(state, onHostRoom) }
             item { ManualConnectionButton(onConnectManual) }
             if (serverPeers.isNotEmpty()) {
                 item { DevicesSectionHeader(serverPeers.size) }
                 items(serverPeers) { peer ->
                     val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
                     DeviceCard(peer, connected) { selected -> if (connected) onOpenChat() else onPeerClick(selected) }
+                }
+            }
+            if (state.hosting && state.peers.any { it.role == PeerRole.CHAT_CLIENT }) {
+                item { Text(stringResource(R.string.room_participants), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+                items(state.peers.filter { it.role == PeerRole.CHAT_CLIENT }) { peer ->
+                    DeviceCard(peer, state.selectedPeer?.peerId == peer.peerId, onPeerClick)
                 }
             }
         }
@@ -729,15 +766,17 @@ private fun CurrentDeviceCard(state: MainUiState, onOpenChat: () -> Unit, onDisc
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(Icons.Outlined.Computer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.current_device), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(if (state.hosting) R.string.hosted_room else R.string.current_device), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(peer.host, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = SuccessGreen)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onOpenChat, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.open_chat)) }
-            OutlinedButton(onClick = onDisconnect, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.disconnect)) }
+            Button(onClick = onOpenChat, enabled = state.connected, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.open_chat)) }
+            OutlinedButton(onClick = onDisconnect, modifier = Modifier.weight(1f)) {
+                Text(stringResource(if (state.hosting) R.string.stop_hosting else R.string.disconnect))
+            }
         }
     }
 }
@@ -818,6 +857,20 @@ private fun DevicesSectionHeader(count: Int) {
 }
 
 @Composable
+private fun HostedParticipants(state: MainUiState, onPeerClick: (DiscoveredPeer) -> Unit) {
+    if (!state.hosting) return
+    val participants = state.peers.filter { it.role == PeerRole.CHAT_CLIENT }
+    Text(stringResource(R.string.room_participants), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    if (participants.isEmpty()) {
+        Text(stringResource(R.string.no_room_participants), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        participants.forEach { peer ->
+            DeviceCard(peer, state.selectedPeer?.peerId == peer.peerId, onPeerClick)
+        }
+    }
+}
+
+@Composable
 private fun DeviceCard(peer: DiscoveredPeer, connected: Boolean, onClick: (DiscoveredPeer) -> Unit) {
     Card(
         onClick = { onClick(peer) },
@@ -832,7 +885,7 @@ private fun DeviceCard(peer: DiscoveredPeer, connected: Boolean, onClick: (Disco
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("SecureLan Desktop · ${peer.host}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text("SecureLan · ${peer.host}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             Text(if (connected) "✓" else stringResource(R.string.connect), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
@@ -845,6 +898,97 @@ private fun ManualConnectionButton(onClick: () -> Unit) {
         Icon(Icons.Outlined.Computer, contentDescription = null)
         Spacer(Modifier.width(8.dp))
         Text(stringResource(R.string.connect_by_ip))
+    }
+}
+
+@Composable
+private fun HostRoomButton(state: MainUiState, onClick: () -> Unit) {
+    if (state.hosting || state.hostingStarting) return
+    Button(
+        onClick = onClick,
+        enabled = !state.connected && !state.connecting,
+        modifier = Modifier.fillMaxWidth().height(50.dp),
+    ) {
+        Icon(Icons.Outlined.Wifi, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(stringResource(R.string.host_room))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HostRoomBottomSheet(
+    state: MainUiState,
+    onNicknameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onStartHosting: (String, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var chatPort by remember { mutableStateOf(state.hostChatPort) }
+    var filePort by remember { mutableStateOf(state.hostFilePort) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    val chatPortValid = chatPort.toIntOrNull()?.let { it in 1..65535 } == true
+    val filePortValid = filePort.toIntOrNull()?.let { it in 1..65535 } == true
+    val portsDifferent = chatPort != filePort
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(stringResource(R.string.host_room_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.host_room_message), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = state.nickname,
+                onValueChange = onNicknameChange,
+                label = { Text(stringResource(R.string.nickname)) },
+                enabled = !state.hostingStarting,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = state.sessionPassword,
+                onValueChange = onPasswordChange,
+                label = { Text(stringResource(R.string.session_password)) },
+                enabled = !state.hostingStarting,
+                singleLine = true,
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password),
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = chatPort,
+                    onValueChange = { chatPort = it.filter(Char::isDigit).take(5) },
+                    label = { Text(stringResource(R.string.chat_port)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    isError = chatPort.isNotEmpty() && !chatPortValid,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = filePort,
+                    onValueChange = { filePort = it.filter(Char::isDigit).take(5) },
+                    label = { Text(stringResource(R.string.file_port)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    isError = filePort.isNotEmpty() && (!filePortValid || !portsDifferent),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (!portsDifferent) Text(stringResource(R.string.host_ports_must_differ), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Button(
+                onClick = { onStartHosting(chatPort, filePort) },
+                enabled = state.nickname.isNotBlank() && state.sessionPassword.isNotBlank() && chatPortValid && filePortValid && portsDifferent && !state.hostingStarting,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text(stringResource(if (state.hostingStarting) R.string.hosting_starting else R.string.start_hosting)) }
+        }
     }
 }
 
@@ -1103,8 +1247,8 @@ private fun RedesignedFilesScreen(
         item {
             PageHeading(
                 stringResource(R.string.files_title),
-                state.connectionPeer?.let { stringResource(R.string.recipient, it.nickname) }
-                    ?: stringResource(R.string.files_connect_first),
+                state.fileRecipient?.let { stringResource(R.string.recipient, it.nickname) }
+                    ?: stringResource(if (state.hosting) R.string.files_choose_participant else R.string.files_connect_first),
             )
         }
         if (!state.connected) {
@@ -1156,14 +1300,14 @@ private fun FilePickerCard(state: MainUiState, onChooseFile: () -> Unit, onSendF
                 }
             }
         }
-        state.connectionPeer?.let {
+        state.fileRecipient?.let {
             Text(stringResource(R.string.file_will_be_sent, it.nickname), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = onChooseFile, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.choose_file)) }
             Button(
                 onClick = onSendFile,
-                enabled = state.selectedFile != null && !state.fileProgress.active,
+                enabled = state.selectedFile != null && state.fileRecipient != null && !state.fileProgress.active,
                 modifier = Modifier.weight(1f),
             ) { Text(stringResource(R.string.send_file)) }
         }
@@ -1416,6 +1560,7 @@ private fun DeviceSidebar(
     onPeerClick: (DiscoveredPeer) -> Unit,
     onOpenDevices: () -> Unit,
     onConnectManual: () -> Unit,
+    onHostRoom: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1426,6 +1571,7 @@ private fun DeviceSidebar(
         OutlinedButton(onClick = onConnectManual, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.connect_by_ip))
         }
+        HostRoomButton(state, onHostRoom)
         state.peers.filter { it.role == PeerRole.SERVER }.forEach { peer ->
             val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
             DeviceCard(peer, connected) { selected -> if (connected) onOpenDevices() else onPeerClick(selected) }

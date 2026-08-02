@@ -66,11 +66,13 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
                 session.close()
                 return
             }
+            session.setReadTimeout(HANDSHAKE_TIMEOUT_MILLIS)
             val response = handshakeService.performServerHandshake(session, config.sessionPassword, nicknameRegistry)
             if (!response.accepted()) {
                 session.close()
                 return
             }
+            session.setReadTimeout(0)
             val nickname = response.nickname()
             broadcastService.syncPeers(session, nickname)
             broadcastService.addClient(nickname, session, response.capabilities())
@@ -84,7 +86,7 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
                 eventPublisher = eventPublisher,
                 reportSessionErrors = running::get,
             ).run()
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             eventPublisher.publish(ChatErrorEvent("Error while handling client", e))
             SocketClose.closeQuietly(session)
         } finally {
@@ -109,4 +111,8 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
     override fun isRunning(): Boolean = running.get()
 
     override fun connectedUsers(): Int = nicknameRegistry.getActiveNicknames().size
+
+    companion object {
+        private const val HANDSHAKE_TIMEOUT_MILLIS = 10_000
+    }
 }

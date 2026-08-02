@@ -117,7 +117,7 @@ When the Android client receives files while connected to a desktop room, it may
 
 Android client notes:
 
-- it is a client/interoperability MVP and does not host a desktop-compatible chat room yet;
+- it can host a desktop-compatible encrypted chat room from the Devices screen; hosting runs as a foreground service and is advertised over LAN discovery;
 - it uses a small Android-local protocol compatibility layer rather than depending on JavaFX or UI-specific desktop code;
 - it supports UDP discovery, secure chat, encrypted file send, encrypted file receive, progress indicators, a dark-theme toggle, and in-app diagnostics logs;
 - it does not support voice, WebRTC data channels, camera/video, screen sharing, steganography tools, or no-auth browser quick share yet.

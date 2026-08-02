@@ -11,11 +11,26 @@
     <string name="status_searching">Searching for devices</string>
     <string name="status_attention">Action required</string>
     <string name="status_offline">Not connected</string>
+    <string name="status_hosting_starting">Starting room&#8230;</string>
+    <plurals name="status_hosting">
+        <item quantity="one">Hosting · %1$d participant</item>
+        <item quantity="other">Hosting · %1$d participants</item>
+    </plurals>
     <string name="devices_title">Devices</string>
     <string name="devices_subtitle">Computers running SecureLan on this network</string>
     <string name="current_device">Current device</string>
     <string name="open_chat">Open chat</string>
     <string name="disconnect">Disconnect</string>
+    <string name="host_room">Host a room</string>
+    <string name="host_room_title">Host a secure room</string>
+    <string name="host_room_message">This Android device will accept encrypted SecureLan connections from nearby devices.</string>
+    <string name="start_hosting">Start hosting</string>
+    <string name="hosting_starting">Starting&#8230;</string>
+    <string name="stop_hosting">Stop hosting</string>
+    <string name="hosted_room">Hosted on this device</string>
+    <string name="room_participants">Room participants</string>
+    <string name="no_room_participants">No other participants are connected yet.</string>
+    <string name="host_ports_must_differ">Chat and file ports must be different.</string>
     <string name="searching_title">Looking for computers…</string>
     <string name="searching_message">Keep SecureLan open on the computer and connect both devices to the same Wi‑Fi.</string>
     <string name="permission_title">Allow nearby device search</string>
@@ -61,6 +76,7 @@
     <string name="files_title">Files</string>
     <string name="recipient">Recipient: %1$s</string>
     <string name="files_connect_first">Connect to a computer before sending or receiving files.</string>
+    <string name="files_choose_participant">Select a room participant on Devices before sending a file.</string>
     <string name="choose_file_title">Send a protected file</string>
     <string name="choose_file_message">Choose a document from this device. It will be encrypted before transfer.</string>
     <string name="choose_file">Choose file</string>
@@ -105,6 +121,12 @@
     <string name="about">About</string>
     <string name="about_value">Secure encrypted communication on your local network.</string>
     <string name="notification_channel_files">File transfers</string>
+    <string name="notification_channel_hosting">Hosted rooms</string>
+    <string name="host_notification_title">Hosting %1$s’s room</string>
+    <plurals name="host_notification_text">
+        <item quantity="one">Chat port %1$d · %2$d participant</item>
+        <item quantity="other">Chat port %1$d · %2$d participants</item>
+    </plurals>
     <string name="notification_file_received">File received</string>
     <string name="notification_file_saved">%1$s saved to %2$s</string>
     <string name="error_details">Details</string>

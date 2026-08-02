@@ -125,6 +125,11 @@ data class MainUiState(
     val connectionPeer: DiscoveredPeer? = null,
     val connected: Boolean = false,
     val connecting: Boolean = false,
+    val hosting: Boolean = false,
+    val hostingStarting: Boolean = false,
+    val hostChatPort: String = SecureLanPorts.DEFAULT_CHAT_PORT.toString(),
+    val hostFilePort: String = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT.toString(),
+    val hostedParticipantCount: Int = 0,
     val inputMessage: String = "",
     val messages: List<ChatLine> = emptyList(),
     val selectedFile: SelectedFile? = null,
@@ -138,6 +143,10 @@ data class MainUiState(
     val error: String? = null,
     val logs: List<AppLogEntry> = listOf(AppLogEntry(message = "Android client started")),
 ) {
+    val fileRecipient: DiscoveredPeer?
+        get() = selectedPeer?.takeIf { it.role == PeerRole.CHAT_CLIENT }
+            ?: connectionPeer.takeUnless { hosting }
+
     /** Compatibility for legacy composables kept while the redesigned screens settle. */
     val darkThemeEnabled: Boolean
         get() = themeMode == ThemeMode.DARK

@@ -252,7 +252,9 @@ If Android Studio cannot find the SDK, check `local.properties` in the repositor
 
 If **Visible to nearby trusted devices** is disabled on desktop, click **Connect by IP** on Android instead. Enter the desktop IP address or host name, chat/file ports, nickname, and room password. The default ports are chat `5050` and files `5051`; the last manually entered address and ports are remembered locally.
 
-The Android app acts as a chat client. It does not host a desktop-compatible chat room by itself yet.
+The Android app can also host a desktop-compatible encrypted room. On **Devices**, choose **Host a room**, enter a nickname, non-empty room password, and distinct chat/file ports, then choose **Start hosting**. The app joins its own room automatically and advertises it to desktop clients on the LAN.
+
+Hosting runs in a foreground service so the room remains available while the activity is in the background. Use **Stop hosting** in the app or in the persistent hosting notification to close the room and disconnect all participants.
 
 ## File transfer
 
@@ -277,6 +279,8 @@ Downloads/SecureLan/<file-name>
 ```
 
 On Android 9 and older, the app uses public external storage under the Downloads directory and declares `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`. The actual saved path is also shown in the Android UI after the receive operation completes.
+
+When Android hosts the room, its receiver listens on the file port configured in the hosting sheet (normally `5051`). Select a connected room participant on **Devices** before sending a file from the Android host.
 
 ## Ports
 
