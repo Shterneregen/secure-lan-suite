@@ -1,14 +1,15 @@
 # Secure LAN Suite
 
-Secure LAN Suite is a local-network secure communication suite with a Compose desktop client, a separately packaged deprecated JavaFX client, and an experimental Android client. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, Android, and future feature modules separated.
+Secure LAN Suite is a local-network secure communication suite with a Compose desktop client, an experimental interoperable Android client, and a separately packaged deprecated JavaFX fallback. Desktop and Android devices can discover each other, host or join password-protected rooms, chat, and transfer encrypted files without relying on a cloud service. The repository is a Gradle multi-module monorepo that keeps UI, networking, cryptography, file transfer, realtime media, and steganography concerns separated.
 
 ## Tech stack
+- Current project version: 0.5.0
 - Java 25
 - Kotlin 2.2.21 for the Android client and migrated JVM core modules
-- Gradle 9.1+ recommended
+- Gradle Wrapper 9.4.1
 - Compose Multiplatform 1.9.0 for the desktop Compose shell
 - JavaFX 25.0.2 for the separately packaged deprecated desktop fallback
-- Android Gradle Plugin 8.13.2, Kotlin 2.2.21, and Jetpack Compose Material 3 for the experimental Android client
+- Android Gradle Plugin 9.1.1, Kotlin 2.2.21, and Jetpack Compose Material 3 for the experimental Android client
 - `webrtc-java` 0.14.0 for realtime data, voice, and experimental video transport
 - `jpackage` for native application images and installers
 - WiX 5.0.2 for Windows EXE installers
@@ -18,7 +19,7 @@ Secure LAN Suite is a local-network secure communication suite with a Compose de
 ### Applications
 - `apps/desktop-client` — primary Compose desktop client and its packaging tasks
 - `apps/javafx-client` — deprecated JavaFX desktop fallback and its packaging tasks
-- `apps/android-client` — experimental native Android client for LAN discovery, secure chat, and encrypted file transfer interoperability with the desktop client
+- `apps/android-client` — experimental native Android client for hosting or joining LAN rooms, secure chat, and encrypted file transfer interoperability with the desktop client
 
 ### Modules
 - `modules/common-model` — shared DTO records, enums, app events, transfer models, RTC signaling models
@@ -29,7 +30,7 @@ Secure LAN Suite is a local-network secure communication suite with a Compose de
 - `modules/webrtc-core` — RTC session orchestration, WebRTC runtime/provider integration, data channels, voice, experimental video, diagnostics
 - `modules/audio-core` — default audio profile hints used by desktop/realtime flows
 - `modules/webcam-core` — default video profile hints used by desktop/realtime flows
-- `modules/stego-core` — UI-free BMP steganography services for binary/text payload hide/extract workflows and password-based encrypt-then-hide flows
+- `modules/stego-core` — UI-free BMP steganography services for binary/text payload hide/extract workflows, password-based encrypt-then-hide flows, and image inspection
 
 ## Current product state
 
@@ -47,28 +48,28 @@ Secure LAN Suite is a local-network secure communication suite with a Compose de
 - receive files into a configurable downloads directory
 - show transfer progress and transfer status in the main workspace
 - publish temporary no-auth LAN browser links for files or text snippets with expiration and access limits
+- copy, open, or display Quick Share links as QR codes from the desktop client
 - route RTC signaling through `chat-core` into `webrtc-core`
 - start voice sessions backed by native `webrtc-java`
 - choose detected microphone and camera capture devices for RTC sessions
 - test microphone capture and open a camera preview window from the desktop UI
 - start experimental 1-to-1 video calls with an inline video stage
-- use the desktop steganography tools panel to hide/extract text payloads in uncompressed BMP images, including password-encrypted payloads through `stego-core`
+- use the desktop steganography tools to hide/extract text payloads in uncompressed BMP images, encrypt payloads with a password, and inspect image bit planes and channel statistics
+- persist desktop profile, appearance, network, media, download, window, and diagnostics settings next to the portable application
 - build and install the experimental Android client as debug or release APK
-- discover desktop peers from Android, connect to a desktop room, exchange encrypted chat messages, send Android-selected files to desktop, and receive encrypted files from desktop into `Downloads/SecureLan`
+- discover peers from Android, host a desktop-compatible room or connect to one, exchange encrypted chat messages, send selected files, and receive encrypted files into `Downloads/SecureLan`
+- use the adaptive Android phone/tablet layout, system/light/dark themes, and system/English/Russian UI language
 - monitor server, connection, selected peer, voice, transfer, runtime, and diagnostics state from the compact UI
-- use the messenger-style desktop layout:
-  - peer list on the left
-  - chat/activity feed and inline video stage in the center
-  - actions, media status, transfers, and advanced tools on the right
+- use the messenger-style desktop layout with peers on the left, the shared room in the center, and contextual status/actions on the right
 
 ### Current UI layout
 The primary desktop client uses a **messenger-style Compose workspace**. The JavaFX UI is isolated in `apps/javafx-client` and remains only for critical fixes and rollback.
 
-- **Top status bar** — compact colored indicators for server, connection, selected peer, voice state, and file transfers
-- **Header** — local profile/hosting controls and manual connection fallback
-- **Left column** — discovered/chat peers and contact status
-- **Center column** — optional inline video stage, chat messages, system events, file events, and realtime messages
-- **Right column** — quick actions, voice/media status, transfers, RTC data tools, diagnostics, and advanced/experimental controls
+- **Top bar** — local profile, room/connection summary, theme control, and entry points for Tools and Settings
+- **Left column** — online, discovered, and selected peers
+- **Center column** — shared-room header, call controls, optional inline video stage, chat/file/system events, attachments, and message composer
+- **Right column** — context assistant with active transfers, Quick Share state, and other relevant actions
+- **Tools** — Quick Share, steganography, RTC data, diagnostics, and experimental utilities kept outside the main conversation flow
 
 ### Realtime status
 - `RTCDataChannel` is integrated and available from the desktop client
@@ -81,7 +82,17 @@ The primary desktop client uses a **messenger-style Compose workspace**. The Jav
 
 ## Screenshots
 
-<img src="docs/images/app-main-0.3.17.png" alt="Secure LAN Suite main window" width="900">
+### Desktop
+
+<img src="docs/images/app-main-0.5.0.png" alt="Secure LAN Suite 0.5.0 desktop client" width="900">
+
+### Android
+
+<p align="center">
+  <img src="docs/images/android-devices-0.5.0.jpg" alt="Secure LAN Suite Android devices screen" width="30%">
+  <img src="docs/images/android-chat-0.5.0.jpg" alt="Secure LAN Suite Android chat screen" width="30%">
+  <img src="docs/images/android-files-0.5.0.jpg" alt="Secure LAN Suite Android files screen" width="30%">
+</p>
 
 ## Development and packaging
 
@@ -108,7 +119,8 @@ Development, build, run, smoke-test, and packaging details are intentionally kep
 - transfer progress is exposed through shared progress models and desktop UI transfer entries
 - no-auth LAN browser quick share uses a separate temporary HTTP server, commonly `5053`, in `file-transfer-core`
 - browser quick-share payloads are not encrypted by the app because the receiver is a plain browser over local HTTP; use it only on trusted LANs
-- the experimental Android MVP reimplements only the minimum desktop-compatible discovery, secure chat, AES-GCM/RSA handshake, file-send, and file-receive protocol code inside `apps/android-client` to avoid introducing Android UI dependencies into reusable core modules
+- the experimental Android client uses the shared networking/chat/file-transfer modules where possible and keeps its Android-specific protocol and service integration inside `apps/android-client`
+- Android room hosting runs as a foreground service, advertises the room through LAN discovery, and accepts desktop-compatible secure chat connections
 
 ### Realtime architecture
 - `chat-core` transports realtime signaling envelopes between peers over the secure chat path
@@ -122,7 +134,7 @@ Development, build, run, smoke-test, and packaging details are intentionally kep
 - `stego-core` provides UI-agnostic BMP steganography services for uncompressed 24-bit and 32-bit BMP images
 - payloads are embedded into color-channel least-significant bits with a compact SecureLanSuite header containing magic, version, flags, content type, and payload length
 - service APIs support binary payloads, UTF-8 text convenience methods, and password-based encrypt-then-hide workflows through `crypto-core`
-- the desktop client exposes a Steganography panel in the Actions column for selecting PNG/BMP/JPG/JPEG images, inspecting capacity, hiding text, extracting text, and using optional password encryption; non-BMP cover images are converted to BMP output before embedding
+- the desktop client exposes a standalone Steganography tool for selecting PNG/BMP/JPG/JPEG images, inspecting capacity, hiding or extracting text, using optional password encryption, and inspecting image bit planes/channel statistics; non-BMP cover images are converted to BMP output before embedding
 - no JavaFX code is present in `stego-core`; Compose integration stays in `apps/desktop-client`, while the deprecated JavaFX integration stays in `apps/javafx-client`
 
 ## Current limitations
@@ -131,8 +143,8 @@ Development, build, run, smoke-test, and packaging details are intentionally kep
 - key management and advanced transfer controls are not fully exposed in the desktop UI yet
 - video calls and preview are experimental and may fail on some Windows/JDK/camera combinations
 - microphone, speaker output, and camera device selection/testing are exposed, but cross-device media validation remains open
-- desktop steganography currently targets text workflows over uncompressed 24-bit/32-bit BMP images; arbitrary binary payload UI is not exposed yet
-- Android remains an experimental interoperability client; it now supports desktop-compatible room hosting, but does not yet implement voice, WebRTC data channels, camera/video, steganography tools, screen sharing, or no-auth browser quick share
+- desktop steganography currently targets text workflows over uncompressed 24-bit/32-bit BMP images; arbitrary binary payload embedding is available in the core API but not exposed in the UI
+- Android remains an experimental interoperability client; it supports desktop-compatible room hosting and joining, but does not yet implement voice, WebRTC data channels, camera/video, steganography tools, screen sharing, or no-auth browser quick share
 - chunked large file transfer over `RTCDataChannel` is not implemented yet
 - screen sharing is not implemented yet
 - EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers
