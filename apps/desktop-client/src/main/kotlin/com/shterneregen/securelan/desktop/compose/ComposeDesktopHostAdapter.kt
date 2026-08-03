@@ -356,6 +356,9 @@ class ComposeDesktopHostAdapter(
         publishLocalNetworkInfo()
         startPeerDiscoveryListener()
         refreshState()
+        // Device selectors must be useful as soon as the application opens; the manual refresh
+        // remains available for hardware connected or disconnected later.
+        refreshMediaDevices()
     }
 
     // ---- public actions ----
