@@ -63,7 +63,7 @@ internal fun ConnectionHubContent(
         ) {
             CompactTextField(
                 nickname,
-                onNicknameChange,
+                { onNicknameChange(it.filterNot(Char::isWhitespace)) },
                 label = "Your name",
                 modifier = Modifier.weight(1f),
                 enabled = credentialFieldsEnabled,
@@ -78,7 +78,7 @@ internal fun ConnectionHubContent(
             )
             CompactTextField(
                 password,
-                onPasswordChange,
+                { onPasswordChange(it.filterNot(Char::isWhitespace)) },
                 label = "Room password",
                 modifier = Modifier.weight(1f),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),

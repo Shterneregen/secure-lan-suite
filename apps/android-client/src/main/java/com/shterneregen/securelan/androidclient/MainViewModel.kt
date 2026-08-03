@@ -95,11 +95,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateNickname(value: String) {
-        _uiState.update { it.copy(nickname = value) }
-        preferences.edit { putString(KEY_NICKNAME, value.trim()) }
+        val sanitized = value.filterNot(Char::isWhitespace)
+        _uiState.update { it.copy(nickname = sanitized) }
+        preferences.edit { putString(KEY_NICKNAME, sanitized) }
     }
 
-    fun updateSessionPassword(value: String) = _uiState.update { it.copy(sessionPassword = value) }
+    fun updateSessionPassword(value: String) = _uiState.update {
+        it.copy(sessionPassword = value.filterNot(Char::isWhitespace))
+    }
 
     fun updateThemeMode(value: ThemeMode) {
         _uiState.update { it.copy(themeMode = value) }

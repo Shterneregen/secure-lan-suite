@@ -87,10 +87,10 @@ internal fun CenterPanelCreateRoom(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                CompactTextField(nickname, { nickname = it }, label = "Display name", modifier = Modifier.fillMaxWidth())
+                CompactTextField(nickname, { nickname = it.filterNot(Char::isWhitespace) }, label = "Display name", modifier = Modifier.fillMaxWidth())
                 CompactTextField(
                     password,
-                    { password = it },
+                    { password = it.filterNot(Char::isWhitespace) },
                     label = "Room password",
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(),
