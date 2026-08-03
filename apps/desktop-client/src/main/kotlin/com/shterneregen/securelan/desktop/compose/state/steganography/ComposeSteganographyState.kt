@@ -8,7 +8,7 @@ public data class ComposeSteganographyState(
     val coverPathText: String = "",
     val inputPathText: String = "",
     val outputPathText: String = "",
-    val messageDraft: String = "Hidden Compose message",
+    val messageDraft: String = "",
     val passwordDraft: String = "",
     val encryptPayload: Boolean = false,
     val encryptedExtract: Boolean = false,

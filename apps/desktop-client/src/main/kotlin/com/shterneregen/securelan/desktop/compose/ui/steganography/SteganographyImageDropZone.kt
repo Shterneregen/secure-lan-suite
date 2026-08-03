@@ -100,7 +100,7 @@ internal fun SteganographyImageDropZone(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 132.dp)
+                .heightIn(min = if (preview == null) 116.dp else 88.dp)
                 .dragAndDropTarget(
                     shouldStartDragAndDrop = { event ->
                         enabled && runCatching { event.dragData() is DragData.FilesList }.getOrDefault(false)
@@ -128,7 +128,7 @@ internal fun SteganographyImageDropZone(
                     Image(
                         bitmap = preview,
                         contentDescription = "Selected image preview",
-                        modifier = Modifier.size(104.dp),
+                        modifier = Modifier.size(72.dp),
                         contentScale = ContentScale.Crop,
                     )
                 }

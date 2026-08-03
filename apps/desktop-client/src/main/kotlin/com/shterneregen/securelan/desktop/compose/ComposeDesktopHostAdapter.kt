@@ -958,12 +958,10 @@ class ComposeDesktopHostAdapter(
                 capacity = capacity,
                 statusText = "Cover BMP ready: ${normalized.fileName}",
             )
-            appendChatTranscript("[stego] inspected cover BMP: ${normalized.fileName}")
             capacity
         } catch (e: Exception) {
             val message = "Steganography inspect failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
             stegoState = stegoState.copy(statusText = message)
-            publish(ComposeConnectionEventKind.ERROR, message)
             null
         }
     }
@@ -998,12 +996,10 @@ class ComposeDesktopHostAdapter(
                 capacity = capacity,
                 statusText = "Hidden message saved to ${output.fileName}",
             )
-            appendChatTranscript("[stego] hidden message saved: $output")
             output
         } catch (e: Exception) {
             val status = "Steganography hide failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
             stegoState = stegoState.copy(statusText = status)
-            publish(ComposeConnectionEventKind.ERROR, status)
             null
         } finally {
             passwordChars?.fill('\u0000')
@@ -1028,12 +1024,10 @@ class ComposeDesktopHostAdapter(
                 extractedMessage = extracted,
                 statusText = "Extracted message from ${input.fileName}",
             )
-            appendChatTranscript("[stego] extracted message from ${input.fileName}")
             extracted
         } catch (e: Exception) {
             val status = "Steganography extract failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
             stegoState = stegoState.copy(statusText = status)
-            publish(ComposeConnectionEventKind.ERROR, status)
             null
         } finally {
             passwordChars?.fill('\u0000')

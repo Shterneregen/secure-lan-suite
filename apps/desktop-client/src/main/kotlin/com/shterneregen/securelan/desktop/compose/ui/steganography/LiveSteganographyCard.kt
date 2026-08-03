@@ -24,7 +24,6 @@ internal fun LiveSteganographyCard(
     hostAdapter: ComposeDesktopHostAdapter,
     initialMode: ComposeSteganographyMode,
     recipient: DiscoveredPeer?,
-    onClose: () -> Unit,
 ) {
     var mode by remember(initialMode) { mutableStateOf(initialMode) }
     var coverPath by remember { mutableStateOf(hostAdapter.stegoState.coverPathText) }
@@ -204,6 +203,5 @@ internal fun LiveSteganographyCard(
             localStatus = null
             hostAdapter.clearSteganographyState()
         },
-        onClose = onClose,
     )
 }

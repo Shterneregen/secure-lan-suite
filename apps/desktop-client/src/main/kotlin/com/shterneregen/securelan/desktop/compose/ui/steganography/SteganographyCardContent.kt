@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Divider
 import androidx.compose.material.MaterialTheme
@@ -66,7 +68,6 @@ internal fun SteganographyCardContent(
     onCopyResult: () -> Unit,
     onSaveResult: () -> Unit,
     onClear: () -> Unit,
-    onClose: () -> Unit,
     previewOnly: Boolean = false,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -76,32 +77,18 @@ internal fun SteganographyCardContent(
     ) {
         Column(
             modifier = Modifier.padding(tokens.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-                verticalAlignment = Alignment.Top,
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
-                ) {
-                    Text("Steganography", style = MaterialTheme.typography.h6)
-                    Text(
-                        text = "Hide text in an image or extract a message from a stego BMP.",
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-                    )
-                }
-                if (!previewOnly) {
-                    CompactButton(
-                        onClick = onClose,
-                        tone = CompactButtonTone.TERTIARY,
-                    ) {
-                        Text("Close")
-                    }
-                }
+                Text("Steganography", style = MaterialTheme.typography.h6)
+                Text(
+                    text = "Hide text in an image or extract a message from a stego BMP.",
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                )
             }
 
             TabRow(
@@ -121,9 +108,9 @@ internal fun SteganographyCardContent(
                 )
             }
 
-            Divider(color = tokens.colors.borderSubtle)
-
             val reduced = LocalReducedMotion.current
+            val hideScrollState = rememberScrollState()
+            val extractScrollState = rememberScrollState()
             AnimatedContent(
                 targetState = mode,
                 modifier = Modifier.weight(1f),
@@ -132,58 +119,71 @@ internal fun SteganographyCardContent(
                 },
                 label = "SteganographyMode",
             ) { currentMode ->
+                val scrollState = when (currentMode) {
+                    ComposeSteganographyMode.HIDE -> hideScrollState
+                    ComposeSteganographyMode.EXTRACT -> extractScrollState
+                }
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.TopStart,
                 ) {
-                    when (currentMode) {
-                        ComposeSteganographyMode.HIDE -> SteganographyHidePanel(
-                            state = state.copy(
-                                passwordDraft = hidePassword,
-                                encryptPayload = encrypt,
-                            ),
-                            coverPath = coverPath,
-                            onChooseCover = onChooseCover,
-                            onPasteCover = onPasteCover,
-                            onCoverSelected = onCoverSelected,
-                            outputPath = outputPath,
-                            onOutputPathChange = onOutputPathChange,
-                            onChooseOutput = onChooseOutput,
-                            message = message,
-                            onMessageChange = onMessageChange,
-                            password = hidePassword,
-                            onPasswordChange = onHidePasswordChange,
-                            encrypt = encrypt,
-                            onEncryptChange = onEncryptChange,
-                            onHide = onHide,
-                            savedOutput = savedOutput,
-                            onOpenOutputFolder = onOpenOutputFolder,
-                            onSendOutput = onSendOutput,
-                            sendOutputLabel = sendOutputLabel,
-                            previewOnly = previewOnly,
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(end = tokens.spacing.xs)
+                            .verticalScroll(scrollState),
+                    ) {
+                        when (currentMode) {
+                            ComposeSteganographyMode.HIDE -> SteganographyHidePanel(
+                                state = state.copy(
+                                    passwordDraft = hidePassword,
+                                    encryptPayload = encrypt,
+                                ),
+                                coverPath = coverPath,
+                                onChooseCover = onChooseCover,
+                                onPasteCover = onPasteCover,
+                                onCoverSelected = onCoverSelected,
+                                outputPath = outputPath,
+                                onOutputPathChange = onOutputPathChange,
+                                onChooseOutput = onChooseOutput,
+                                message = message,
+                                onMessageChange = onMessageChange,
+                                password = hidePassword,
+                                onPasswordChange = onHidePasswordChange,
+                                encrypt = encrypt,
+                                onEncryptChange = onEncryptChange,
+                                onHide = onHide,
+                                savedOutput = savedOutput,
+                                onOpenOutputFolder = onOpenOutputFolder,
+                                onSendOutput = onSendOutput,
+                                sendOutputLabel = sendOutputLabel,
+                                previewOnly = previewOnly,
+                            )
 
-                        ComposeSteganographyMode.EXTRACT -> SteganographyExtractPanel(
-                            state = state.copy(
-                                passwordDraft = extractPassword,
+                            ComposeSteganographyMode.EXTRACT -> SteganographyExtractPanel(
+                                state = state.copy(
+                                    passwordDraft = extractPassword,
+                                    encryptedExtract = encryptedExtract,
+                                ),
+                                inputPath = inputPath,
+                                onChooseInput = onChooseInput,
+                                onPasteInput = onPasteInput,
+                                onInputSelected = onInputSelected,
+                                password = extractPassword,
+                                onPasswordChange = onExtractPasswordChange,
                                 encryptedExtract = encryptedExtract,
-                            ),
-                            inputPath = inputPath,
-                            onChooseInput = onChooseInput,
-                            onPasteInput = onPasteInput,
-                            onInputSelected = onInputSelected,
-                            password = extractPassword,
-                            onPasswordChange = onExtractPasswordChange,
-                            encryptedExtract = encryptedExtract,
-                            onEncryptedExtractChange = onEncryptedExtractChange,
-                            onExtract = onExtract,
-                            onCopyResult = onCopyResult,
-                            onSaveResult = onSaveResult,
-                            previewOnly = previewOnly,
-                        )
+                                onEncryptedExtractChange = onEncryptedExtractChange,
+                                onExtract = onExtract,
+                                onCopyResult = onCopyResult,
+                                onSaveResult = onSaveResult,
+                                previewOnly = previewOnly,
+                            )
+                        }
                     }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(scrollState),
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
                 }
             }
 

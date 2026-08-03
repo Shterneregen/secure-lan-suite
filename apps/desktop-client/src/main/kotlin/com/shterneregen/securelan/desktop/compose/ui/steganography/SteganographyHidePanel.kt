@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,7 +38,7 @@ internal fun SteganographyHidePanel(
     sendOutputLabel: String?,
     previewOnly: Boolean,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         SteganographyImageDropZone(
             label = "Cover image",
             value = coverPath,
@@ -58,13 +57,11 @@ internal fun SteganographyHidePanel(
             )
         }
 
-        OutlinedTextField(
+        SteganographyMultilineTextField(
             value = message,
             onValueChange = onMessageChange,
-            label = { Text("Message to hide") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 4,
-            maxLines = 8,
+            label = "Message to hide",
+            placeholder = "Type or paste the text you want to hide",
             isError = !state.messageFitsCapacity,
         )
         Text(
@@ -98,25 +95,32 @@ internal fun SteganographyHidePanel(
 
         val error = steganographyStatusIsError(state.statusText)
         val hint = hideReadinessHint(state)
-        SteganographyWorkflowStatus(
-            label = when {
-                savedOutput != null -> "Completed"
-                error -> "Error"
-                state.canHideMessage -> "Ready"
-                else -> "Needs input"
-            },
-            detail = savedOutput?.let { "Hidden message saved to ${it.fileName}." } ?: hint,
-            error = error,
-            completed = savedOutput != null,
-            ready = state.canHideMessage,
-        )
+        if (error) {
+            SteganographyWorkflowStatus(
+                label = "Error",
+                detail = hint,
+                error = true,
+                completed = false,
+                ready = false,
+            )
+        }
 
-        Button(
-            onClick = onHide,
-            enabled = !previewOnly && state.canHideMessage,
-            modifier = Modifier.align(Alignment.End),
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Hide message")
+            Text(
+                text = if (state.canHideMessage) "Ready to create the stego BMP" else hint,
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.60f),
+            )
+            Button(
+                onClick = onHide,
+                enabled = !previewOnly && state.canHideMessage,
+            ) {
+                Text("Hide message")
+            }
         }
 
         if (savedOutput != null) {
