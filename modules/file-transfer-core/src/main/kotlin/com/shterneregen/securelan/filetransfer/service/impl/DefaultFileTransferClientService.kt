@@ -1,13 +1,10 @@
 package com.shterneregen.securelan.filetransfer.service.impl
 
-import com.shterneregen.securelan.common.model.FileTransferProgress
-import com.shterneregen.securelan.common.model.TransferStatus
 import com.shterneregen.securelan.common.net.transport.ClientSocketFactory
 import com.shterneregen.securelan.common.net.transport.TransportEndpoint
 import com.shterneregen.securelan.crypto.CryptoServices
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferSession
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
@@ -49,6 +46,12 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
                         )
                         val buffer = ByteArray(CHUNK_SIZE)
                         var transferred = 0L
+                        val progressPublisher = ThrottledFileTransferProgressPublisher(
+                            eventPublisher,
+                            metadata.transferId,
+                            metadata.fileSize,
+                            true,
+                        )
                         while (true) {
                             val read = inputStream.read(buffer)
                             if (read == -1) {
@@ -57,13 +60,7 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
                             val chunk = if (read == buffer.size) buffer.clone() else Arrays.copyOf(buffer, read)
                             session.writeEncryptedBytes(chunk)
                             transferred += read.toLong()
-                            eventPublisher.publish(
-                                FileTransferProgressEvent(
-                                    metadata.transferId,
-                                    FileTransferProgress(metadata.transferId, transferred, metadata.fileSize, TransferStatus.IN_PROGRESS),
-                                    true,
-                                ),
-                            )
+                            progressPublisher.report(transferred)
                         }
                         session.writeEncryptedBytes(ByteArray(0))
                         val result = session.readEncryptedText()

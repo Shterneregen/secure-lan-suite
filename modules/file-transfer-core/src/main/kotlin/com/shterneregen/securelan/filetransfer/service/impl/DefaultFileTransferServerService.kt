@@ -1,12 +1,9 @@
 package com.shterneregen.securelan.filetransfer.service.impl
 
-import com.shterneregen.securelan.common.model.FileTransferProgress
-import com.shterneregen.securelan.common.model.TransferStatus
 import com.shterneregen.securelan.common.net.transport.TcpServer
 import com.shterneregen.securelan.crypto.CryptoServices
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferSession
 import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
@@ -85,6 +82,12 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
 
                     val target = createUniqueTargetPath(metadata.fileName, activeConfig)
                     var transferred = 0L
+                    val progressPublisher = ThrottledFileTransferProgressPublisher(
+                        eventPublisher,
+                        metadata.transferId,
+                        metadata.fileSize,
+                        false,
+                    )
                     Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { outputStream ->
                         while (true) {
                             val chunk = session.readEncryptedBytes()
@@ -93,13 +96,7 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                             }
                             outputStream.write(chunk)
                             transferred += chunk.size.toLong()
-                            eventPublisher.publish(
-                                FileTransferProgressEvent(
-                                    metadata.transferId,
-                                    FileTransferProgress(metadata.transferId, transferred, metadata.fileSize, TransferStatus.IN_PROGRESS),
-                                    false,
-                                ),
-                            )
+                            progressPublisher.report(transferred)
                         }
                     }
                     session.writeEncryptedText("DONE")
