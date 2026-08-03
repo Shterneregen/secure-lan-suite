@@ -3,6 +3,7 @@ package com.shterneregen.securelan.androidclient
 import android.annotation.SuppressLint
 import android.Manifest
 import android.content.res.Configuration
+import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -93,9 +94,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -104,8 +107,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -154,6 +155,21 @@ import com.shterneregen.securelan.androidclient.model.TransferResult
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
 import java.util.Locale
+
+private val LocalAppResources = staticCompositionLocalOf<Resources> {
+    error("Localized application resources are not available")
+}
+
+@Composable
+private fun stringResource(id: Int): String = LocalAppResources.current.getString(id)
+
+@Composable
+private fun stringResource(id: Int, vararg formatArgs: Any): String =
+    LocalAppResources.current.getString(id, *formatArgs)
+
+@Composable
+private fun pluralStringResource(id: Int, count: Int, vararg formatArgs: Any): String =
+    LocalAppResources.current.getQuantityString(id, count, *formatArgs)
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -252,39 +268,42 @@ private fun SecureLanAndroidApp(
         ThemeMode.DARK -> true
     }
     val colorScheme = if (darkTheme) SecureLanDarkColors else SecureLanLightColors
-    CompositionLocalProvider(
-        LocalContext provides localizedContext,
-        LocalConfiguration provides localizedContext.resources.configuration,
-        LocalActivityResultRegistryOwner provides activityResultRegistryOwner,
-    ) {
-        MaterialTheme(colorScheme = colorScheme) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                RedesignedMainScreen(
-                    state = state,
-                    onNicknameChange = viewModel::updateNickname,
-                    onPasswordChange = viewModel::updateSessionPassword,
-                    onThemeModeChange = viewModel::updateThemeMode,
-                    onLanguageChange = viewModel::updateAppLanguage,
-                    onNotificationsChange = onNotificationsChange,
-                    onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
-                    onPeerSelected = viewModel::selectPeer,
-                    onConnect = viewModel::connectSelectedPeer,
-                    onConnectManual = viewModel::connectManualPeer,
-                    onStartHosting = viewModel::startHosting,
-                    onStopHosting = viewModel::stopHosting,
-                    onDisconnect = viewModel::disconnect,
-                    onInputChange = viewModel::updateInputMessage,
-                    onSendMessage = viewModel::sendTextMessage,
-                    onFileSelected = viewModel::selectFile,
-                    onSendFile = viewModel::sendSelectedFile,
-                    onRequestNearbyPermission = onRequestNearbyPermission,
-                    onRetryDiscovery = viewModel::restartDiscovery,
-                )
+    key(state.appLanguage, systemLocaleTags) {
+        CompositionLocalProvider(
+            LocalContext provides localizedContext,
+            LocalConfiguration provides localizedContext.resources.configuration,
+            LocalActivityResultRegistryOwner provides activityResultRegistryOwner,
+            LocalAppResources provides localizedContext.resources,
+        ) {
+            MaterialTheme(colorScheme = colorScheme) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    RedesignedMainScreen(
+                        state = state,
+                        onNicknameChange = viewModel::updateNickname,
+                        onPasswordChange = viewModel::updateSessionPassword,
+                        onThemeModeChange = viewModel::updateThemeMode,
+                        onLanguageChange = viewModel::updateAppLanguage,
+                        onNotificationsChange = onNotificationsChange,
+                        onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
+                        onPeerSelected = viewModel::selectPeer,
+                        onConnect = viewModel::connectSelectedPeer,
+                        onConnectManual = viewModel::connectManualPeer,
+                        onStartHosting = viewModel::startHosting,
+                        onStopHosting = viewModel::stopHosting,
+                        onDisconnect = viewModel::disconnect,
+                        onInputChange = viewModel::updateInputMessage,
+                        onSendMessage = viewModel::sendTextMessage,
+                        onFileSelected = viewModel::selectFile,
+                        onSendFile = viewModel::sendSelectedFile,
+                        onRequestNearbyPermission = onRequestNearbyPermission,
+                        onRetryDiscovery = viewModel::restartDiscovery,
+                    )
+                }
             }
         }
     }
