@@ -14,7 +14,7 @@ public data class ComposeAttachmentToolsState(
             statusText = when {
                 fileTargetReady -> "Choose a file for the selected person."
                 !peerSelected -> "Select an online person before sending a secure file."
-                else -> "Direct sending is unavailable for this person. Use Tools → Share on LAN instead."
+                else -> "Direct sending is unavailable for this person. Use Tools → Quick Share instead."
             },
             shortcutHint = "Attach → Send secure file",
         ),

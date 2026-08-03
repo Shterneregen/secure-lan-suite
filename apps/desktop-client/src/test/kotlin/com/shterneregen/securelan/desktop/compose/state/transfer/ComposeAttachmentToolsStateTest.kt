@@ -40,7 +40,7 @@ class ComposeAttachmentToolsStateTest {
 
         assertFalse(directSend.enabled)
         assertEquals(
-            "Direct sending is unavailable for this person. Use Tools → Share on LAN instead.",
+            "Direct sending is unavailable for this person. Use Tools → Quick Share instead.",
             directSend.statusText,
         )
     }

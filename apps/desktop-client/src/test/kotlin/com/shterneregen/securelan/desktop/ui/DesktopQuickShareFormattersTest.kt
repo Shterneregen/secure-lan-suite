@@ -94,15 +94,7 @@ class DesktopQuickShareFormattersTest {
     }
 
     @Test
-    fun shouldFormatQuickShareLifecycleMessages() {
-        assertEquals(
-            "[system] Quick Share is active. Temporary LAN links are available on this device.",
-            DesktopQuickShareFormatters.formatServerStartedMessage(),
-        )
-        assertEquals(
-            "[system] Quick Share is stopped. Temporary links are no longer available.",
-            DesktopQuickShareFormatters.formatServerStoppedMessage(),
-        )
+    fun shouldFormatQuickShareDiagnostics() {
         assertEquals(
             "[quick-share] landing URLs: http://192.168.1.10:8090, http://127.0.0.1:8090",
             DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(listOf("http://192.168.1.10:8090", "http://127.0.0.1:8090")),

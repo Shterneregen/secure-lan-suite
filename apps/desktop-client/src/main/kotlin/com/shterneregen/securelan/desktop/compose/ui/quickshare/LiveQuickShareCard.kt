@@ -79,8 +79,14 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
             onChooseFile = {
                 openComposeFileChooser("Choose file to share by LAN browser link")?.let { filePath = it.toString() }
             },
+            onFileDropped = { filePath = it.toString() },
             onCreateFile = {
                 if (!quickShareState.expirationPolicyValid || !quickShareState.accessPolicyValid) return@QuickShareCreateLinksPanel
+                if (!quickShareState.running) {
+                    val port = quickShareState.port ?: return@QuickShareCreateLinksPanel
+                    hostAdapter.startQuickShare(port)
+                    if (!hostAdapter.quickShareRunning) return@QuickShareCreateLinksPanel
+                }
                 val minutes = quickShareState.effectiveExpirationMinutes
                 val limit = quickShareState.effectiveAccessLimit
                 hostAdapter.createFileQuickShare(Path.of(filePath), minutes, limit)
@@ -89,6 +95,11 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
             onTextDraftChange = { textDraft = it },
             onCreateText = {
                 if (!quickShareState.expirationPolicyValid || !quickShareState.accessPolicyValid) return@QuickShareCreateLinksPanel
+                if (!quickShareState.running) {
+                    val port = quickShareState.port ?: return@QuickShareCreateLinksPanel
+                    hostAdapter.startQuickShare(port)
+                    if (!hostAdapter.quickShareRunning) return@QuickShareCreateLinksPanel
+                }
                 val minutes = quickShareState.effectiveExpirationMinutes
                 val limit = quickShareState.effectiveAccessLimit
                 hostAdapter.createTextQuickShare(textDraft, minutes, limit)

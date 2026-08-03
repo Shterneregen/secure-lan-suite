@@ -10,10 +10,6 @@ import androidx.compose.material.Checkbox
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -39,23 +35,8 @@ internal fun QuickShareAdvancedPanel(
     unlimitedAccess: Boolean,
     onUnlimitedAccessChange: (Boolean) -> Unit,
 ) {
-    var editing by remember(state.running) { mutableStateOf(!state.running) }
-
     ComposeAdvancedPane(title = "Advanced") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.running && !editing) {
-                Text(
-                    text = state.policySentence,
-                    style = MaterialTheme.typography.body2,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.78f),
-                )
-                Text(
-                    text = "Current links keep their original settings.",
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
-                )
-                CompactButton(onClick = { editing = true }) { Text("Change settings") }
-            } else {
                 PolicyField(
                     label = "Link expires after",
                     value = expirationMinutes,
@@ -165,7 +146,6 @@ internal fun QuickShareAdvancedPanel(
                     },
                     modifier = Modifier.padding(horizontal = 2.dp),
                 )
-            }
         }
     }
 }

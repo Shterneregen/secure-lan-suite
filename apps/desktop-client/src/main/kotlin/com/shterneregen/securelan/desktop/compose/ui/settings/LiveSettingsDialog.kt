@@ -115,7 +115,6 @@ private fun SettingsDialog(
             SettingsWindowContent(
                 pages = pages,
                 initialPage = initialPage,
-                onClose = onClose,
                 content = content,
             )
         }
@@ -126,7 +125,6 @@ private fun SettingsDialog(
 private fun SettingsWindowContent(
     pages: List<SettingsPage>,
     initialPage: SettingsPage,
-    onClose: () -> Unit,
     content: @Composable (SettingsPage) -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -153,15 +151,6 @@ private fun SettingsWindowContent(
                     style = MaterialTheme.typography.body2,
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
                 )
-            }
-            CompactButton(onClick = onClose, tone = CompactButtonTone.TERTIARY) {
-                Icon(
-                    imageVector = SecureLanIcons.Close,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text("Close")
             }
         }
         Divider(color = tokens.colors.borderSubtle)

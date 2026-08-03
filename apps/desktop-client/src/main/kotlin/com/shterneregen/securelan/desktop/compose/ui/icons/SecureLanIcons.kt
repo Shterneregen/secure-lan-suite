@@ -27,6 +27,7 @@ object SecureLanIcons {
     val QrCode: ImageVector = secureLanQrCodeIcon
     val Copy: ImageVector = secureLanCopyIcon
     val Open: ImageVector = secureLanOpenIcon
+    val Stop: ImageVector = secureLanStopIcon
     val FolderOpen: ImageVector = secureLanFolderOpenIcon
     val Tools: ImageVector = Icons.Outlined.Build
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
@@ -65,6 +66,24 @@ object SecureLanIcons {
         "File" -> File
         else -> null
     }
+}
+
+private val secureLanStopIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Stop",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(fill = SolidColor(Color.Black)) {
+            moveTo(6f, 6f)
+            lineTo(18f, 6f)
+            lineTo(18f, 18f)
+            lineTo(6f, 18f)
+            close()
+        }
+    }.build()
 }
 
 private val secureLanFolderOpenIcon: ImageVector by lazy {

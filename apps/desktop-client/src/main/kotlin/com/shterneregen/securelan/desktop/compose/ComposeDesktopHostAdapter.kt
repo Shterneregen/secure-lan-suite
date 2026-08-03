@@ -857,7 +857,6 @@ class ComposeDesktopHostAdapter(
             quickShareService.start(QuickShareServerConfig(port))
             quickShareError = null
             refreshQuickShareState()
-            appendChatTranscript(DesktopQuickShareFormatters.formatServerStartedMessage())
             SecureLanLogger.logQuickShare(DesktopQuickShareFormatters.formatLandingUrlsDiagnostics(quickShareService.landingUrls()))
         } catch (e: Exception) {
             val message = "Quick-share start failed: ${e.message ?: "unknown error"}"
@@ -871,7 +870,6 @@ class ComposeDesktopHostAdapter(
         if (shuttingDown.get()) return
         quickShareService.stop()
         refreshQuickShareState()
-        appendChatTranscript(DesktopQuickShareFormatters.formatServerStoppedMessage())
         SecureLanLogger.logQuickShare("Quick-share server stopped from Compose.")
     }
 

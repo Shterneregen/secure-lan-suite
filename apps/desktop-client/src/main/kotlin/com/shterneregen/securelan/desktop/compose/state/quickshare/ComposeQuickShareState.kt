@@ -39,7 +39,7 @@ public data class ComposeQuickShareState(
     val statusDetail: String = if (running) {
         "Links are available until their time or access limit is reached."
     } else {
-        "Start quick share first, then create a file or text link."
+        "Choose a file or enter text, then create a link. Quick Share starts automatically."
     }
     val landingText: String = DesktopQuickShareFormatters.formatLandingValue(landingUrls)
     val trustedLanWarning: String =
@@ -48,8 +48,8 @@ public data class ComposeQuickShareState(
     val canStopServer: Boolean = running
     val canCreateFileShare: Boolean = hasSelectedFile && expirationPolicyValid && accessPolicyValid
     val canCreateTextShare: Boolean = hasText && expirationPolicyValid && accessPolicyValid
-    val canCreateFileLinkNow: Boolean = canCreateFileShare && running
-    val canCreateTextLinkNow: Boolean = canCreateTextShare && running
+    val canCreateFileLinkNow: Boolean = canCreateFileShare && port != null
+    val canCreateTextLinkNow: Boolean = canCreateTextShare && port != null
     val canCopyIndex: Boolean = running && landingUrls.isNotEmpty()
     val shareRows: List<String> = entries.map { DesktopQuickShareFormatters.formatSnapshotMeta(it.snapshot()) }
     val activeShareCountLabel: String = when (activeEntries.size) {
@@ -84,13 +84,9 @@ public data class ComposeQuickShareState(
     val serverStatusSummary: String = if (running) {
         "Sharing active on this trusted LAN"
     } else {
-        "Start sharing to create temporary browser links"
+        "Ready to create temporary browser links"
     }
-    val createLinkHint: String = if (running) {
-        "Choose a file or enter text, then create a link."
-    } else {
-        "Start sharing above before you can create links."
-    }
+    val createLinkHint: String = "Creating a link starts Quick Share automatically."
     val readinessSummary: String = buildList {
         if (port == null) add("Enter a valid port from 1 to 65535.")
         if (!expirationPolicyValid) add("Set expiration to at least 1 minute.")
@@ -119,9 +115,9 @@ public data class ComposeQuickShareState(
     val emptySharesStructuredCopy: List<String> = listOf(emptySharesSituation, emptySharesExplanation, emptySharesNextAction)
     val emptySharesVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.INLINE
     val quickStartSteps: List<String> = listOf(
-        "1. Start quick share.",
-        "2. Choose a file or type text.",
-        "3. Create a link and send it to trusted LAN peers.",
+        "1. Choose a file or type text.",
+        "2. Create a link; Quick Share starts automatically.",
+        "3. Send the link to trusted LAN peers.",
     )
     val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map(ComposeQuickShareRow::from)
 }

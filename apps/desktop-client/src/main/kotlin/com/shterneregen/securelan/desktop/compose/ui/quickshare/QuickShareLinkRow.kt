@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
@@ -18,8 +17,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareRow
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 
 @Composable
 internal fun QuickShareLinkRow(
@@ -73,23 +70,13 @@ internal fun QuickShareLinkRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                CompactButton(
-                    onClick = { onCopy(row.url) },
-                    enabled = row.url.isNotBlank(),
-                    modifier = Modifier.heightIn(min = 28.dp),
-                ) { Text("Copy") }
-                if (row.active) {
-                    CompactButton(
-                        onClick = { onOpen(row.url) },
-                        enabled = row.url.isNotBlank(),
-                        modifier = Modifier.heightIn(min = 28.dp),
-                    ) { Text("Open") }
-                    CompactButton(
-                        onClick = { onStop(row.id) },
-                        tone = CompactButtonTone.SECONDARY,
-                        modifier = Modifier.heightIn(min = 28.dp),
-                    ) { Text("Stop") }
-                }
+                QuickShareLinkActions(
+                    url = row.url,
+                    showQrCode = row.active && row.fileLink,
+                    onCopy = { onCopy(row.url) },
+                    onOpen = if (row.active) ({ onOpen(row.url) }) else null,
+                    onStop = if (row.active) ({ onStop(row.id) }) else null,
+                )
             }
         }
     }

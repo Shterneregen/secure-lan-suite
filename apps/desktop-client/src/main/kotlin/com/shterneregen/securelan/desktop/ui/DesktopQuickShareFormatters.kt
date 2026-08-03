@@ -31,14 +31,6 @@ object DesktopQuickShareFormatters {
         if (landingUrls.isEmpty()) "No local address detected. Check your network or firewall." else "Index: ${landingUrls.joinToString(" • ")}"
 
     @JvmStatic
-    fun formatServerStartedMessage(): String =
-        "[system] Quick Share is active. Temporary LAN links are available on this device."
-
-    @JvmStatic
-    fun formatServerStoppedMessage(): String =
-        "[system] Quick Share is stopped. Temporary links are no longer available."
-
-    @JvmStatic
     fun formatLandingUrlsDiagnostics(landingUrls: List<String>): String = "[quick-share] landing URLs: ${landingUrls.joinToString(", ")}"
 
     @JvmStatic

@@ -55,7 +55,7 @@ internal fun AppToolsMenu(
                 .semantics { contentDescription = "Application tools" },
         ) {
             AppToolsMenuItem(
-                label = "Share on LAN",
+                label = "Quick Share",
                 description = "Create a temporary trusted-LAN browser link.",
                 icon = SecureLanIcons.QuickShare,
                 onClick = {

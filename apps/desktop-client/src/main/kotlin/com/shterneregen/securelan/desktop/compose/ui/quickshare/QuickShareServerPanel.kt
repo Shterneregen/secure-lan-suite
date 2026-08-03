@@ -125,11 +125,21 @@ private fun ServerRunningActions(
             tone = CompactButtonTone.SECONDARY,
             modifier = Modifier.widthIn(min = 108.dp).heightIn(min = 34.dp),
         ) {
-            Text(
-                text = "Stop sharing",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    SecureLanIcons.Stop,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = "Stop sharing",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         CompactButton(
             onClick = onCopyIndex,
@@ -147,7 +157,7 @@ private fun ServerRunningActions(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Icon(
-                    SecureLanIcons.QuickShare,
+                    SecureLanIcons.Copy,
                     contentDescription = null,
                     modifier = Modifier.size(12.dp),
                     tint = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),

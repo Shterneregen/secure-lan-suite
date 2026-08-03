@@ -3,12 +3,10 @@ package com.shterneregen.securelan.desktop.compose.ui.quickshare
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Divider
@@ -30,8 +28,6 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import java.awt.Dimension
 
@@ -61,7 +57,7 @@ internal fun LiveQuickShareDialog(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colors.background,
         ) {
-            QuickShareWindowContent(hostAdapter = hostAdapter, onClose = onClose)
+            QuickShareWindowContent(hostAdapter = hostAdapter)
         }
     }
 }
@@ -69,7 +65,6 @@ internal fun LiveQuickShareDialog(
 @Composable
 private fun QuickShareWindowContent(
     hostAdapter: ComposeDesktopHostAdapter,
-    onClose: () -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     Column(
@@ -94,15 +89,6 @@ private fun QuickShareWindowContent(
                     style = MaterialTheme.typography.body2,
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
                 )
-            }
-            CompactButton(onClick = onClose, tone = CompactButtonTone.TERTIARY) {
-                Icon(
-                    imageVector = SecureLanIcons.Close,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text("Close")
             }
         }
         Divider(color = tokens.colors.borderSubtle)

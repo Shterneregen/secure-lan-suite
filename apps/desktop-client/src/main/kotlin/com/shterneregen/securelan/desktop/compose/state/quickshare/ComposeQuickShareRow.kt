@@ -13,6 +13,7 @@ public data class ComposeQuickShareRow(
     val statusLabel: String,
     val detail: String,
     val url: String,
+    val fileLink: Boolean,
     val active: Boolean,
 ) {
     companion object {
@@ -42,6 +43,7 @@ public data class ComposeQuickShareRow(
                 statusLabel = statusLabel,
                 detail = detail,
                 url = DesktopQuickShareFormatters.preferQuickShareUrl(entry.snapshot()),
+                fileLink = snapshot.type() == QuickShareType.FILE,
                 active = entry.active(),
             )
         }

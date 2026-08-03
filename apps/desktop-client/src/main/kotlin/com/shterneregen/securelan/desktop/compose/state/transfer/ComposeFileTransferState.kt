@@ -84,7 +84,7 @@ public data class ComposeFileTransferState(
         !statusState.clientConnected -> "Connect to chat before sending a file to $selectedPeerName."
         !selectedPeer.online -> "$selectedPeerName is offline."
         !selectedPeer.fileCapable ->
-            "$selectedPeerName cannot receive files directly. Use Tools → Share on LAN."
+            "$selectedPeerName cannot receive files directly. Use Tools → Quick Share."
 
         else -> "Send a file to $selectedPeerName or review recent activity."
     }
