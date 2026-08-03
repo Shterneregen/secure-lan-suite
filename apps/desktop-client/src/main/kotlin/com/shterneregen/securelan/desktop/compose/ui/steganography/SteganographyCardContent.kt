@@ -106,11 +106,17 @@ internal fun SteganographyCardContent(
                     onClick = { onModeChange(ComposeSteganographyMode.EXTRACT) },
                     text = { Text("Extract message") },
                 )
+                Tab(
+                    selected = mode == ComposeSteganographyMode.INSPECT,
+                    onClick = { onModeChange(ComposeSteganographyMode.INSPECT) },
+                    text = { Text("Inspect image") },
+                )
             }
 
             val reduced = LocalReducedMotion.current
             val hideScrollState = rememberScrollState()
             val extractScrollState = rememberScrollState()
+            val inspectScrollState = rememberScrollState()
             AnimatedContent(
                 targetState = mode,
                 modifier = Modifier.weight(1f),
@@ -122,6 +128,7 @@ internal fun SteganographyCardContent(
                 val scrollState = when (currentMode) {
                     ComposeSteganographyMode.HIDE -> hideScrollState
                     ComposeSteganographyMode.EXTRACT -> extractScrollState
+                    ComposeSteganographyMode.INSPECT -> inspectScrollState
                 }
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -176,6 +183,14 @@ internal fun SteganographyCardContent(
                                 onExtract = onExtract,
                                 onCopyResult = onCopyResult,
                                 onSaveResult = onSaveResult,
+                                previewOnly = previewOnly,
+                            )
+
+                            ComposeSteganographyMode.INSPECT -> SteganographyInspectPanel(
+                                inputPath = inputPath,
+                                onChooseInput = onChooseInput,
+                                onPasteInput = onPasteInput,
+                                onInputSelected = onInputSelected,
                                 previewOnly = previewOnly,
                             )
                         }

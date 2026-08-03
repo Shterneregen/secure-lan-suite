@@ -3,6 +3,8 @@ package com.shterneregen.securelan.stego
 import com.shterneregen.securelan.crypto.CryptoServices
 import com.shterneregen.securelan.stego.service.SteganographyService
 import com.shterneregen.securelan.stego.service.impl.BmpSteganographyService
+import com.shterneregen.securelan.stego.service.StegoInspectionService
+import com.shterneregen.securelan.stego.service.impl.BmpStegoInspectionService
 import java.util.Objects
 
 class StegoServices private constructor(cryptoServices: CryptoServices) {
@@ -14,6 +16,8 @@ class StegoServices private constructor(cryptoServices: CryptoServices) {
     }
 
     fun steganographyService(): SteganographyService = steganographyService
+
+    fun inspectionService(): StegoInspectionService = BmpStegoInspectionService()
 
     companion object {
         @JvmStatic
