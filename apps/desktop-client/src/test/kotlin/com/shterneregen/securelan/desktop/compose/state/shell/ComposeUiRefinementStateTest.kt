@@ -3,6 +3,7 @@ package com.shterneregen.securelan.desktop.compose.state.shell
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeCallWorkspaceFocusMode
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLinePresentation
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeVideoPreviewCorner
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.media.settleVideoPreviewCorner
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.nio.file.Path
 
 class ComposeUiRefinementStateTest {
     @Test
@@ -199,6 +201,21 @@ class ComposeUiRefinementStateTest {
         assertTrue(presentation.body.startsWith("File link created"))
         assertTrue(presentation.showsQrCode)
         assertEquals(url, presentation.actionUrl)
+    }
+
+    @Test
+    fun shouldExposeDownloadedFileAsTranscriptFolderAction() {
+        val downloadedFile = Path.of("downloads", "report.pdf").toAbsolutePath().normalize()
+        val presentation = ComposeChatTranscriptLinePresentation.from(
+            ComposeChatMessage.fromTranscriptLine(
+                line = "[transfer] Received report.pdf",
+                actionPath = downloadedFile,
+            ),
+        )
+
+        assertEquals(ComposeChatTranscriptLineKind.TRANSFER, presentation.kind)
+        assertEquals("Received report.pdf", presentation.body)
+        assertEquals(downloadedFile, presentation.actionPath)
     }
 
     @Test

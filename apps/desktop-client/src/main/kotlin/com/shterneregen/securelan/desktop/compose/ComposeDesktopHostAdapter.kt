@@ -667,7 +667,6 @@ class ComposeDesktopHostAdapter(
             if (autoAccept || autoAcceptIncomingFiles) {
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.AUTO_ACCEPTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
-                appendChatTranscript(DesktopTransferFormatters.fileAutoAcceptedMessage(metadata.fileName, metadata.senderId))
                 SecureLanLogger.logTransfer("Incoming file auto-accepted: ${metadata.fileName} from ${metadata.senderId}.")
                 immediateDecision = true
                 return@runUiStateUpdateAndWait
@@ -716,7 +715,9 @@ class ComposeDesktopHostAdapter(
                 it
             }
         }
-        appendChatTranscript(DesktopTransferFormatters.fileConfirmationResultMessage(accepted, prompt.fileName, prompt.senderId))
+        if (!accepted) {
+            appendChatTranscript(DesktopTransferFormatters.fileConfirmationResultMessage(false, prompt.fileName, prompt.senderId))
+        }
         SecureLanLogger.logTransfer("Incoming file ${if (accepted) "accepted" else "rejected"}: ${prompt.fileName} from ${prompt.senderId}.")
     }
 
@@ -1374,16 +1375,29 @@ class ComposeDesktopHostAdapter(
     }
 
     private fun appendChatTranscript(line: String) {
+        upsertChatTranscript(line)
+    }
+
+    private fun upsertChatTranscript(line: String, eventKey: String? = null, actionPath: Path? = null) {
         val normalized = normalizeTranscriptLine(line)
         if (normalized.isBlank()) {
             return
         }
         val timestamp = Instant.now()
-        chatTranscript = (chatTranscript + normalized).takeLast(200)
-        chatMessages = (chatMessages + ComposeChatMessage.fromTranscriptLine(normalized, timestamp)).takeLast(200)
+        val message = ComposeChatMessage.fromTranscriptLine(normalized, timestamp, eventKey, actionPath)
+        val existingIndex = eventKey?.let { key -> chatMessages.indexOfFirst { it.eventKey == key } } ?: -1
+        chatMessages = if (existingIndex >= 0) {
+            chatMessages.toMutableList().apply { set(existingIndex, message) }
+        } else {
+            chatMessages + message
+        }.takeLast(200)
+        chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
         when {
             normalized.startsWith("[disconnected]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Connection ended")
             normalized.contains("completed", ignoreCase = true) && (normalized.startsWith("[file-send]", ignoreCase = true) || normalized.startsWith("[file-recv]", ignoreCase = true)) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed")
+            normalized.startsWith("[transfer]", ignoreCase = true) &&
+                (normalized.contains("received", ignoreCase = true) || normalized.contains("sent", ignoreCase = true)) ->
+                publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed")
             normalized.startsWith("[error]", ignoreCase = true) || normalized.contains("failed", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, normalized.removePrefix("[error]").trim())
         }
     }
@@ -1461,7 +1475,10 @@ class ComposeDesktopHostAdapter(
                     event.totalBytes,
                 )
                 transferEntryMap[entry.transferId] = entry
-                appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "started: ${entry.fileName}")
+                upsertChatTranscript(
+                    line = "[transfer] ${if (event.outgoing) "Sending" else "Receiving"} ${entry.fileName}…",
+                    eventKey = "transfer:${entry.transferId}",
+                )
                 SecureLanLogger.logTransfer("Transfer started: ${entry.fileName}.")
             }
 
@@ -1477,7 +1494,7 @@ class ComposeDesktopHostAdapter(
             }
 
             is FileTransferCompletedEvent -> {
-                val transferId = event.transferId ?: "transfer-${transferEntryMap.size + 1}"
+                val transferId = resolveTransferId(event.transferId, event.fileName, event.outgoing)
                 val entry = transferEntryMap.getOrPut(transferId) {
                     TransferEntry(transferId, event.fileName ?: "unknown file", event.outgoing, "Completed", 100, event.totalBytes)
                 }
@@ -1485,7 +1502,11 @@ class ComposeDesktopHostAdapter(
                 entry.percent = 100
                 entry.totalBytes = event.totalBytes
                 entry.stopSpeedTracking()
-                appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "completed: ${event.path}")
+                upsertChatTranscript(
+                    line = "[transfer] ${if (event.outgoing) "Sent" else "Received"} ${entry.fileName}",
+                    eventKey = "transfer:${entry.transferId}",
+                    actionPath = event.path?.takeUnless { event.outgoing },
+                )
                 SecureLanLogger.logTransfer("Transfer completed: ${entry.fileName}.")
                 if (settingsController.settings.transfers.notifyOnCompletion) {
                     publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed: ${entry.fileName}")
@@ -1494,19 +1515,28 @@ class ComposeDesktopHostAdapter(
             }
 
             is FileTransferFailedEvent -> {
-                val transferId = event.transferId ?: "transfer-${transferEntryMap.size + 1}"
+                val transferId = resolveTransferId(event.transferId, event.fileName, event.outgoing)
                 val entry = transferEntryMap.getOrPut(transferId) {
                     TransferEntry(transferId, event.fileName ?: "unknown file", event.outgoing, "Failed", 0, 0)
                 }
                 entry.status = "Failed"
                 entry.stopSpeedTracking()
                 val message = event.message?.takeIf { it.isNotBlank() } ?: "unknown error"
-                appendChatTranscript((if (event.outgoing) "[file-send] " else "[file-recv] ") + "failed: $message")
+                upsertChatTranscript(
+                    line = "[transfer] Failed to ${if (event.outgoing) "send" else "receive"} ${entry.fileName}: $message",
+                    eventKey = "transfer:${entry.transferId}",
+                )
                 SecureLanLogger.logTransfer("Transfer failed: ${entry.fileName}: $message.")
             }
         }
         transferEntries = ArrayList(transferEntryMap.values)
     }
+
+    private fun resolveTransferId(transferId: String?, fileName: String?, outgoing: Boolean): String =
+        transferId ?: transferEntryMap.values.lastOrNull { entry ->
+            entry.active() && entry.outgoing == outgoing &&
+                (fileName.isNullOrBlank() || entry.fileName == fileName)
+        }?.transferId ?: "transfer-${transferEntryMap.size + 1}"
 
     private fun playTransferNotificationSound(completion: Boolean) {
         val settings = settingsController.settings

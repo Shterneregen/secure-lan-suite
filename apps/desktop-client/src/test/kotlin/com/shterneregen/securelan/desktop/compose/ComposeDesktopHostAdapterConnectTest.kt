@@ -14,17 +14,53 @@ import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateReques
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
+import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
+import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.Optional
+import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
 
 class ComposeDesktopHostAdapterConnectTest {
+    @Test
+    fun transferLifecycleShouldUpdateOneTranscriptMessagePerFile() {
+        val adapter = ComposeDesktopHostAdapter(
+            chatServerService = IdleChatServer(),
+            chatClientService = BlockingChatClient(CountDownLatch(0), CountDownLatch(0)),
+            fileTransferServerService = IdleFileTransferServer(),
+            quickShareService = IdleQuickShareService(),
+            discoveryService = IdlePeerDiscovery(),
+            randomNicknameService = object : RandomNicknameService {
+                override fun generate(): String = "desktop-test"
+            },
+            uiStateDispatcher = { action -> action() },
+        )
+        val downloadedFile = Path.of("downloads", "report.pdf").toAbsolutePath().normalize()
+
+        try {
+            adapter.fileTransferEventPublisher.publish(FileTransferStartedEvent("receive-1", "report.pdf", 100, false))
+            adapter.fileTransferEventPublisher.publish(FileTransferCompletedEvent("receive-1", "report.pdf", downloadedFile, 100, false))
+            adapter.fileTransferEventPublisher.publish(FileTransferStartedEvent("send-1", "archive.zip", 200, true))
+            adapter.fileTransferEventPublisher.publish(FileTransferCompletedEvent("send-1", "archive.zip", downloadedFile, 200, true))
+
+            assertEquals(2, adapter.chatMessages.size)
+            assertEquals("[transfer] Received report.pdf", adapter.chatMessages[0].displayText)
+            assertEquals(downloadedFile, adapter.chatMessages[0].actionPath)
+            assertEquals("[transfer] Sent archive.zip", adapter.chatMessages[1].displayText)
+            assertEquals(null, adapter.chatMessages[1].actionPath)
+            assertEquals(adapter.chatMessages.map { it.displayText }, adapter.chatTranscript)
+        } finally {
+            adapter.shutdown()
+        }
+    }
+
     @Test
     fun connectShouldNotBlockTheCallingThread() {
         val connectEntered = CountDownLatch(1)

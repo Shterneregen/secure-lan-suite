@@ -17,6 +17,16 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
         return try {
             val properties = Properties().also { loaded -> Files.newInputStream(settingsPath).use(loaded::load) }
             val defaults = DesktopAppSettings()
+            val schemaVersion = properties.int(SCHEMA_VERSION_KEY, 0)
+            val downloadsDirectory = properties.string(DOWNLOADS_DIRECTORY_KEY)?.let { storedPath ->
+                if (schemaVersion < PORTABLE_DOWNLOADS_SCHEMA_VERSION &&
+                    DesktopAppPaths.isLegacyDefaultDownloadsDirectory(storedPath)
+                ) {
+                    defaults.downloadsDirectory
+                } else {
+                    storedPath
+                }
+            } ?: defaults.downloadsDirectory
             DesktopAppSettings(
                 displayName = properties.string(DISPLAY_NAME_KEY),
                 themeMode = properties.enum(THEME_MODE_KEY, defaults.themeMode),
@@ -28,7 +38,7 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
                     y = properties.nullableInt(WINDOW_Y_KEY),
                     maximized = properties.boolean(WINDOW_MAXIMIZED_KEY, defaults.window.maximized),
                 ),
-                downloadsDirectory = properties.string(DOWNLOADS_DIRECTORY_KEY) ?: defaults.downloadsDirectory,
+                downloadsDirectory = downloadsDirectory,
                 media = DesktopMediaSettings(
                     microphoneDeviceId = properties.string(MICROPHONE_DEVICE_KEY).orEmpty(),
                     cameraDeviceId = properties.string(CAMERA_DEVICE_KEY).orEmpty(),
@@ -144,7 +154,8 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
             return PropertiesDesktopAppSettingsStore(path)
         }
 
-        private const val CURRENT_SCHEMA_VERSION = 2
+        private const val CURRENT_SCHEMA_VERSION = 3
+        private const val PORTABLE_DOWNLOADS_SCHEMA_VERSION = 3
         private const val SCHEMA_VERSION_KEY = "schema.version"
         private const val DISPLAY_NAME_KEY = "profile.displayName"
         private const val THEME_MODE_KEY = "appearance.themeMode"

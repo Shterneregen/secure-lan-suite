@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.state.chat
 
 import java.time.Instant
+import java.nio.file.Path
 
 data class ComposeChatTranscriptLinePresentation(
     val kind: ComposeChatTranscriptLineKind,
@@ -9,10 +10,14 @@ data class ComposeChatTranscriptLinePresentation(
     val timestamp: Instant = Instant.now(),
     val actionUrl: String? = null,
     val showsQrCode: Boolean = false,
+    val actionPath: Path? = null,
 ) {
     val displayTime: String = formatComposeChatTimestamp(timestamp)
 
     companion object {
+        fun from(message: ComposeChatMessage, localNickname: String = ""): ComposeChatTranscriptLinePresentation =
+            from(message.displayText, localNickname, message.timestamp).copy(actionPath = message.actionPath)
+
         fun from(line: String, localNickname: String = "", timestamp: Instant = Instant.now()): ComposeChatTranscriptLinePresentation {
             val trimmed = line.trim()
             val lower = trimmed.lowercase()

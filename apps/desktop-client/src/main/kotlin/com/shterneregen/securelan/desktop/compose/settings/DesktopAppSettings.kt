@@ -152,7 +152,4 @@ class DesktopAppSettingsController(
 private fun Int.validPortOr(fallback: Int): Int = takeIf { it in 1..65_535 } ?: fallback
 
 private fun defaultDownloadsDirectory(): String =
-    Path.of(System.getProperty("user.home", "."), "Downloads", "SecureLanSuite")
-        .toAbsolutePath()
-        .normalize()
-        .toString()
+    DesktopAppPaths.downloadsDirectory().toString()

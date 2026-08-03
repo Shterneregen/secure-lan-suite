@@ -27,6 +27,7 @@ object SecureLanIcons {
     val QrCode: ImageVector = secureLanQrCodeIcon
     val Copy: ImageVector = secureLanCopyIcon
     val Open: ImageVector = secureLanOpenIcon
+    val FolderOpen: ImageVector = secureLanFolderOpenIcon
     val Tools: ImageVector = Icons.Outlined.Build
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
@@ -64,6 +65,38 @@ object SecureLanIcons {
         "File" -> File
         else -> null
     }
+}
+
+private val secureLanFolderOpenIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "FolderOpen",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+        ) {
+            moveTo(3f, 6f)
+            curveTo(3f, 4.9f, 3.9f, 4f, 5f, 4f)
+            lineTo(10f, 4f)
+            lineTo(12f, 6f)
+            lineTo(19f, 6f)
+            curveTo(20.1f, 6f, 21f, 6.9f, 21f, 8f)
+            lineTo(21f, 10f)
+            lineTo(7f, 10f)
+            lineTo(3f, 19f)
+            close()
+            moveTo(7f, 10f)
+            lineTo(22f, 10f)
+            lineTo(18f, 20f)
+            lineTo(3f, 20f)
+            close()
+        }
+    }.build()
 }
 
 private val secureLanCopyIcon: ImageVector by lazy {

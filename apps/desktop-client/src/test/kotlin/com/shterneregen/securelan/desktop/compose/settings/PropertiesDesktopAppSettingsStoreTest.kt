@@ -56,6 +56,22 @@ class PropertiesDesktopAppSettingsStoreTest {
     }
 
     @Test
+    fun shouldMigrateLegacyDefaultDownloadsToPortableDirectory() {
+        val path = temporaryDirectory.resolve("settings.properties")
+        val legacyDownloads = Path.of(System.getProperty("user.home", "."), "Downloads", "SecureLanSuite")
+            .toAbsolutePath()
+            .normalize()
+        Files.writeString(
+            path,
+            "schema.version=2\nfiles.downloadsDirectory=${legacyDownloads.toString().replace("\\", "\\\\")}\n",
+        )
+
+        val settings = PropertiesDesktopAppSettingsStore(path).load()
+
+        assertEquals(DesktopAppPaths.downloadsDirectory(), settings.downloadsPath())
+    }
+
+    @Test
     fun shouldRoundTripAllPersistedSettings() {
         val path = temporaryDirectory.resolve("all/settings.properties")
         val store = PropertiesDesktopAppSettingsStore(path)

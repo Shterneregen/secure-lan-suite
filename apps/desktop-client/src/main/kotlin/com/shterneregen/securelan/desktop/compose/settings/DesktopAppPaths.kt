@@ -13,6 +13,19 @@ object DesktopAppPaths {
 
     fun settingsPath(): Path = applicationDirectory().resolve("config").resolve("settings.properties")
 
+    fun downloadsDirectory(): Path = downloadsDirectory(applicationDirectory())
+
+    internal fun downloadsDirectory(applicationDirectory: Path): Path =
+        applicationDirectory.toAbsolutePath().normalize().resolve("downloads")
+
+    internal fun isLegacyDefaultDownloadsDirectory(
+        value: String,
+        userHome: String = System.getProperty("user.home", "."),
+    ): Boolean = runCatching {
+        Path.of(value).toAbsolutePath().normalize() ==
+            Path.of(userHome, "Downloads", "SecureLanSuite").toAbsolutePath().normalize()
+    }.getOrDefault(false)
+
     fun logsDirectory(): Path {
         val configured = validPath(System.getProperty(LOGS_DIRECTORY_PROPERTY))
         return configured ?: applicationDirectory().resolve("logs")

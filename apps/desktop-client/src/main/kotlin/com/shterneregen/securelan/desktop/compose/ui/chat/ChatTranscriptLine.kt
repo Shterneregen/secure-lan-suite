@@ -50,6 +50,7 @@ import com.shterneregen.securelan.desktop.compose.ui.components.CompactIconButto
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.compose.util.copyToSystemClipboard
 import com.shterneregen.securelan.desktop.compose.util.openInBrowser
+import com.shterneregen.securelan.desktop.compose.util.openInFileManager
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -62,7 +63,7 @@ import org.jetbrains.skia.Image as SkiaImage
 @Composable
 internal fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: String = "") {
     val tokens = LocalSecureLanDesignTokens.current
-    val presentation = ComposeChatTranscriptLinePresentation.from(message.displayText, localNickname, message.timestamp)
+    val presentation = ComposeChatTranscriptLinePresentation.from(message, localNickname)
     val style = rememberChatTranscriptLineStyle(presentation.kind, tokens)
     val bubbleShape = when (presentation.kind) {
         ComposeChatTranscriptLineKind.USER_LOCAL -> RoundedCornerShape(
@@ -328,7 +329,24 @@ internal fun ChatTranscriptLineContent(
         if (style.showMeta) {
             ChatTranscriptLineMetaRow(presentation, style, tokens)
         }
-        ChatTranscriptLineBody(presentation, style)
+        if (presentation.actionPath == null) {
+            ChatTranscriptLineBody(presentation, style)
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    ChatTranscriptLineBody(presentation, style)
+                }
+                CompactIconButton(
+                    onClick = { openInFileManager(presentation.actionPath) },
+                    icon = SecureLanIcons.FolderOpen,
+                    contentDescription = "Open downloaded file folder",
+                )
+            }
+        }
     }
 }
 

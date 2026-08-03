@@ -42,4 +42,14 @@ class DesktopAppPathsTest {
 
         assertEquals(workingDirectory, directory)
     }
+
+    @Test
+    fun shouldPlaceDownloadsNextToApplicationDataDirectories() {
+        val applicationDirectory = Path.of("portable", "SecureLanSuite").toAbsolutePath().normalize()
+
+        assertEquals(
+            applicationDirectory.resolve("downloads"),
+            DesktopAppPaths.downloadsDirectory(applicationDirectory),
+        )
+    }
 }
