@@ -25,7 +25,7 @@ internal fun ConnectionModeSegment(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected)
+    val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected, enabled = enabled)
     val tokens = LocalSecureLanDesignTokens.current
     val background = if (selected) {
         MaterialTheme.colors.primary.copy(alpha = 0.92f)

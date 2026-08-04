@@ -31,7 +31,6 @@ data class ComposePeerListState(
     val emptyStateTitle: String = "No peers visible yet"
     val emptyStateSituation: String = emptyStateTitle
     val emptyStateExplanation: String = "People appear here once you join a room."
-    val emptyStateNextAction: String = "Open or join a room"
     val resolvedSelectedPeerIndex: Int = resolveSelectedPeerIndex()
     val selectedPeer: ComposePeerListItem? = visiblePeers.getOrNull(resolvedSelectedPeerIndex)
     val selectedPeerTitle: String = selectedPeer?.nickname ?: "No peer selected"

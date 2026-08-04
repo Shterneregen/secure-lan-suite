@@ -17,6 +17,10 @@ fun SecureLanComposeApp(
     val controller = settingsController ?: localSettingsController
     val settings = controller.settings
 
+    LaunchedEffect(settings.themeMode) {
+        DesktopLookAndFeel.update(settings.themeMode)
+    }
+
     CompositionLocalProvider(LocalReducedMotion provides settings.reducedMotion) {
         SecureLanTheme(themeMode = settings.themeMode) {
             Surface(

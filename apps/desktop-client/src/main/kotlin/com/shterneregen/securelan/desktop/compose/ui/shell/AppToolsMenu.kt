@@ -24,7 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactIconButton
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 
 @Composable
@@ -35,18 +35,12 @@ internal fun AppToolsMenu(
     var expanded by remember { mutableStateOf(false) }
 
     Box {
-        CompactButton(
+        CompactIconButton(
             onClick = { expanded = !expanded },
-            modifier = Modifier.semantics { contentDescription = "Open application tools" },
-        ) {
-            Icon(
-                imageVector = SecureLanIcons.Tools,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text("Tools")
-        }
+            icon = SecureLanIcons.Commands,
+            contentDescription = "Open command menu",
+            modifier = Modifier.size(32.dp),
+        )
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },

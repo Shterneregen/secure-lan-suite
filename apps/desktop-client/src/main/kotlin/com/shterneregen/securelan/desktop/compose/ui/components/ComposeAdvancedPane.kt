@@ -40,7 +40,6 @@ internal fun ComposeAdvancedPane(
         onExpandedChange?.invoke(value)
         if (expanded == null) internalExpanded = value
     }
-
     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         Surface(
             modifier = Modifier

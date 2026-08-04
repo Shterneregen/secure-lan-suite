@@ -1,12 +1,9 @@
 package com.shterneregen.securelan.desktop.compose.util
 
-import java.awt.Dialog
-import java.awt.FileDialog
-import java.awt.Frame
 import java.awt.KeyboardFocusManager
-import java.io.FilenameFilter
 import java.nio.file.Path
 import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
 
 internal data class ComposeFileChooserFilter(
     val description: String,
@@ -23,33 +20,24 @@ internal fun openComposeFileChooser(
     save: Boolean = false,
     initialFile: Path? = null,
 ): Path? {
-    val dialog = createNativeFileDialog(title, save).apply {
+    val chooser = JFileChooser(initialFile?.toFile()?.parentFile).apply {
+        dialogTitle = title
+        dialogType = if (save) JFileChooser.SAVE_DIALOG else JFileChooser.OPEN_DIALOG
+        fileSelectionMode = JFileChooser.FILES_ONLY
+        isAcceptAllFileFilterUsed = filter == null
         filter?.let { chooserFilter ->
-            filenameFilter = FilenameFilter { _, name -> chooserFilter.accepts(name) }
+            fileFilter = FileNameExtensionFilter(chooserFilter.description, *chooserFilter.extensions)
         }
         initialFile?.toAbsolutePath()?.normalize()?.let { path ->
-            directory = path.parent?.toString()
-            file = path.fileName?.toString()
+            currentDirectory = path.parent?.toFile()
+            selectedFile = path.toFile()
         }
-        isMultipleMode = false
+        isMultiSelectionEnabled = false
     }
-
-    return try {
-        dialog.isVisible = true
-        dialog.files.firstOrNull()?.toPath()?.toAbsolutePath()?.normalize()
-    } finally {
-        dialog.dispose()
-    }
-}
-
-internal fun createNativeFileDialog(title: String, save: Boolean): FileDialog {
-    val parentWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow
-    val mode = if (save) FileDialog.SAVE else FileDialog.LOAD
-    return when (parentWindow) {
-        is Frame -> FileDialog(parentWindow, title, mode)
-        is Dialog -> FileDialog(parentWindow, title, mode)
-        else -> FileDialog(null as Frame?, title, mode)
-    }
+    val parent = KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow
+    val result = if (save) chooser.showSaveDialog(parent) else chooser.showOpenDialog(parent)
+    return chooser.selectedFile?.toPath()?.toAbsolutePath()?.normalize()
+        ?.takeIf { result == JFileChooser.APPROVE_OPTION }
 }
 
 internal fun openComposeDirectoryChooser(title: String, initialDirectory: Path? = null): Path? {

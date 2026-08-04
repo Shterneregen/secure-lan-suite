@@ -25,11 +25,16 @@ import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcSessionService
 import kotlin.math.roundToInt
 
 @Suppress("DEPRECATION")
-fun main() = application {
+fun main() {
+    val startupSettingsStore = PropertiesDesktopAppSettingsStore.default()
+    val startupSettings = startupSettingsStore.load()
+    DesktopLookAndFeel.install(startupSettings.themeMode)
+
+    application {
     val appIcon = painterResource(ComposeDesktopResources.APP_ICON_PNG)
-    val settingsStore = remember { PropertiesDesktopAppSettingsStore.default() }
+    val settingsStore = remember { startupSettingsStore }
     val settingsController = remember(settingsStore) {
-        DesktopAppSettingsController(settingsStore.load(), settingsStore)
+        DesktopAppSettingsController(startupSettings, settingsStore)
     }
     val initialSettings = remember(settingsController) { settingsController.settings }
 
@@ -96,6 +101,7 @@ fun main() = application {
             hostAdapter = hostAdapter,
             settingsController = settingsController,
         )
+    }
     }
 }
 

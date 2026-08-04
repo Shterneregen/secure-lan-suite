@@ -63,7 +63,6 @@ internal fun SubtleContentSurface(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium),
-        border = BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle.copy(alpha = 0.55f)),
         color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2.copy(alpha = 0.62f),
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(LocalSecureLanDesignTokens.current.spacing.sm), content = content)

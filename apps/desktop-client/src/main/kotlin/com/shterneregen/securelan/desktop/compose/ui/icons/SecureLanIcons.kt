@@ -30,6 +30,7 @@ object SecureLanIcons {
     val Stop: ImageVector = secureLanStopIcon
     val FolderOpen: ImageVector = secureLanFolderOpenIcon
     val Tools: ImageVector = Icons.Outlined.Build
+    val Commands: ImageVector = Icons.Outlined.MoreVert
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
     val Close: ImageVector = Icons.Outlined.Close

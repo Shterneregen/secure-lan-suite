@@ -5,7 +5,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,10 +41,9 @@ internal fun CollapsibleConnectionHub(
     val tokens = LocalSecureLanDesignTokens.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(tokens.radius.large),
-        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+        shape = RoundedCornerShape(tokens.radius.medium),
         elevation = 0.dp,
-        backgroundColor = MaterialTheme.colors.surface,
+        backgroundColor = tokens.colors.surfaceLevel2.copy(alpha = 0.62f),
     ) {
         Column(
             modifier = Modifier.padding(tokens.spacing.sm),

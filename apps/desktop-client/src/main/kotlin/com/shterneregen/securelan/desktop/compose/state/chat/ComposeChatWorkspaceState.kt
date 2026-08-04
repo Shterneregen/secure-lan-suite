@@ -32,15 +32,9 @@ public data class ComposeChatWorkspaceState(
     }
     val transcriptEmptyDetailDisconnected: String =
         "You are in the shared room chat, but it is not active. Host or join a trusted LAN room to start messaging."
-    val transcriptEmptyActionLabel: String = when {
-        !statusState.clientConnected -> "Open or join a room"
-        peerListState.selectedPeer == null -> "Select a person"
-        else -> "Type your first message"
-    }
     val transcriptEmptySituation: String = transcriptEmptyTitle
     val transcriptEmptyExplanation: String = if (statusState.clientConnected) transcriptEmptyDetailConnected else transcriptEmptyDetailDisconnected
-    val transcriptEmptyNextAction: String = transcriptEmptyActionLabel
-    val transcriptEmptyStructuredCopy: List<String> = listOf(transcriptEmptySituation, transcriptEmptyExplanation, transcriptEmptyNextAction)
+    val transcriptEmptyStructuredCopy: List<String> = listOf(transcriptEmptySituation, transcriptEmptyExplanation)
     val transcriptEmptyVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.PRIMARY_GUIDANCE
     val draftValid: Boolean = draftMessage.trim().isNotEmpty()
     val canSendMessage: Boolean = statusState.clientConnected && draftValid
