@@ -59,6 +59,7 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 ## Documentation
 
 - Development, build, run, and smoke-test guide: [`docs/development.md`](docs/development.md)
+- Deprecated JavaFX fallback client: [`docs/javafx-client.md`](docs/javafx-client.md)
 - Android build, signing, and installation: [`apps/android-client/android-readme.md`](apps/android-client/android-readme.md)
 - Windows WiX installation: [`docs/wix-installation.md`](docs/wix-installation.md)
 - WebRTC architecture and video-preview properties: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)

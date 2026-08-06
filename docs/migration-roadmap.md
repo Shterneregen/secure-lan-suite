@@ -9,6 +9,15 @@ Use it to:
 - keep implementation aligned with the target modular architecture
 - track product development milestones
 
+Status snapshot: 2026-08-07 (commit `ed74734`). The repository test suite is green. The
+Compose desktop client now also has persisted settings, tray lifecycle controls,
+desktop chat/transfer notifications, Quick Share link actions, and the Android-hosted
+chat-room flow; the remaining work is primarily runtime validation and release
+hardening.
+
+Checklist legend: `[x]` complete, `[ ]` open, `[~]` intentionally deferred or
+superseded by the current WebRTC-first product direction.
+
 ---
 
 ## Current baseline
@@ -102,7 +111,7 @@ Source repository:
 | [x] | java-file-transceiver | Extract file receiver service | `modules/file-transfer-core` | Reusable receiving API |
 | [x] | java-file-transceiver | Add transfer progress reporting | `modules/file-transfer-core` | Shared progress models and events |
 | [x] | java-file-transceiver | Add secure transfer integration with `crypto-core` | `modules/file-transfer-core` | Ephemeral RSA handshake plus AES-GCM chunk encryption |
-| [ ] | java-file-transceiver | Extract SSL/TLS-related transport logic if useful | `modules/file-transfer-core` | Keep transport modular if this path remains relevant |
+| [~] | java-file-transceiver | Extract SSL/TLS-related transport logic if useful | `modules/file-transfer-core` | Deferred: current file transfer uses the existing encrypted handshake and AES-GCM chunk protocol; revisit only if TLS becomes a product requirement |
 | [x] | java-file-transceiver | Remove command-line orchestration from migrated code | `modules/file-transfer-core` | Core only |
 | [x] | java-file-transceiver | Add integration tests for file send/receive | `modules/file-transfer-core` | Includes transfer behavior coverage |
 | [x] | product integration | Add Android-compatible encrypted file send/receive MVP | `apps/android-client` | Android reimplements the minimum desktop-compatible RSA/AES-GCM handshake and chunk protocol locally to avoid Android dependencies in core modules |
@@ -132,13 +141,13 @@ Source repository:
 
 | Done | Source Repo | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | java-audio-transceiver | Extract standalone audio capture service | `modules/audio-core` | Current voice path is provided through `webrtc-core` |
-| [ ] | java-audio-transceiver | Extract standalone audio playback service | `modules/audio-core` | Current voice path is provided through `webrtc-core` |
-| [ ] | java-audio-transceiver | Extract TCP audio sender/receiver logic | `modules/audio-core` | Lower priority after WebRTC voice |
-| [ ] | java-audio-transceiver | Extract UDP audio sender/receiver logic | `modules/audio-core` | Lower priority after WebRTC voice |
-| [ ] | java-audio-transceiver | Add standalone session management API | `modules/audio-core` | Reassess if still needed |
-| [ ] | java-audio-transceiver | Remove startup/CLI assumptions from migrated code | `modules/audio-core` | Core only |
-| [ ] | java-audio-transceiver | Add tests for transport/session behavior where possible | `modules/audio-core` | Platform-specific pieces should stay isolated |
+| [~] | java-audio-transceiver | Extract standalone audio capture service | `modules/audio-core` | Superseded for now: voice is provided by `webrtc-core`; `audio-core` remains a profile-hints module |
+| [~] | java-audio-transceiver | Extract standalone audio playback service | `modules/audio-core` | Superseded for now by the WebRTC media runtime |
+| [~] | java-audio-transceiver | Extract TCP audio sender/receiver logic | `modules/audio-core` | Deferred while WebRTC voice is the primary transport |
+| [~] | java-audio-transceiver | Extract UDP audio sender/receiver logic | `modules/audio-core` | Deferred while WebRTC voice is the primary transport |
+| [~] | java-audio-transceiver | Add standalone session management API | `modules/audio-core` | Reassess only if a non-WebRTC audio mode returns to scope |
+| [~] | java-audio-transceiver | Remove startup/CLI assumptions from migrated code | `modules/audio-core` | No standalone migration is planned in the current direction |
+| [~] | java-audio-transceiver | Add tests for transport/session behavior where possible | `modules/audio-core` | Deferred with the standalone transport migration |
 | [x] | product integration | Provide default audio profile hints | `modules/audio-core` | Used by desktop/realtime status UI |
 
 ---
@@ -150,12 +159,12 @@ Source repository:
 
 | Done | Source Repo | Step | Target Module | Notes |
 |---|---|---|---|---|
-| [ ] | webcam-catcher | Extract standalone webcam capture service | `modules/webcam-core` | Current camera transport path is provided through `webrtc-core` |
-| [ ] | webcam-catcher | Extract snapshot/photo functionality | `modules/webcam-core` | Future desktop tooling |
-| [ ] | webcam-catcher | Extract video recording support | `modules/webcam-core` | Future desktop tooling |
-| [ ] | webcam-catcher | Extract frame stream access | `modules/webcam-core` | Useful for non-WebRTC preview/processing |
-| [ ] | webcam-catcher | Isolate OpenCV/native integration | `modules/webcam-core` | Keep native coupling local if this path is revived |
-| [ ] | webcam-catcher | Add tests around non-native logic | `modules/webcam-core` | Native-specific code should stay thin |
+| [~] | webcam-catcher | Extract standalone webcam capture service | `modules/webcam-core` | Superseded for now: camera transport and preview are provided by `webrtc-core` |
+| [~] | webcam-catcher | Extract snapshot/photo functionality | `modules/webcam-core` | Deferred future tooling |
+| [~] | webcam-catcher | Extract video recording support | `modules/webcam-core` | Deferred future tooling |
+| [~] | webcam-catcher | Extract frame stream access | `modules/webcam-core` | Deferred while the product uses the WebRTC frame path |
+| [~] | webcam-catcher | Isolate OpenCV/native integration | `modules/webcam-core` | Deferred unless the standalone camera path is revived |
+| [~] | webcam-catcher | Add tests around non-native logic | `modules/webcam-core` | Deferred with the standalone camera migration |
 | [x] | product integration | Provide default video profile hints | `modules/webcam-core` | Used by desktop/realtime status UI |
 
 ---
@@ -202,10 +211,11 @@ Source repository:
 | [x] | Media UI | Add capture device selectors and test controls | `apps/desktop-client` | Microphone selector, camera selector, mic test, camera preview |
 | [x] | Camera UI | Add experimental webcam/video call panel | `apps/desktop-client` | Inline video stage exists but remains experimental |
 | [ ] | Camera UI | Stabilize webcam/video call panel for normal use | `apps/desktop-client` | Needs broader runtime/device validation |
-| [ ] | Camera UI | Add recording controls | `apps/desktop-client` | Optional future feature |
+| [~] | Camera UI | Add recording controls | `apps/desktop-client` | Optional future feature; not required for the current voice-first product |
 | [x] | Stego UI | Add steganography tools panel | `apps/desktop-client` | Hide/extract text workflows with optional password encryption |
 | [x] | Security UX | Add clearer session/status indicators | `apps/desktop-client` | Compact top status bar and voice status area |
 | [x] | UX | Improve error display and diagnostics feedback | `apps/desktop-client` | Advanced/experimental panel plus richer logs |
+| [x] | UX | Add persisted settings, tray lifecycle, and desktop notifications | `apps/desktop-client` | Delivered in the current Compose client; documented in `docs/desktop-tray.md` |
 
 ---
 
@@ -227,7 +237,7 @@ Source repository:
 | [x] | Diagnostics | Add Android in-app status and log surface | `apps/android-client` | Recent logs are available from the settings panel |
 | [x] | Hosting | Add Android-hosted desktop-compatible chat room | `apps/android-client` | Foreground service hosts the shared encrypted chat server, advertises it over LAN discovery, and connects Android as the local participant |
 | [ ] | Realtime | Add Android WebRTC/voice/data support | `apps/android-client` + future Android media integration | Not implemented; desktop remains the only realtime media client |
-| [ ] | Advanced tools | Add Android steganography or quick-share workflows if needed | `apps/android-client` | Not implemented; desktop-only today |
+| [~] | Advanced tools | Add Android steganography or quick-share workflows if needed | `apps/android-client` | Deferred; these remain desktop-only and are not required for Android interoperability MVP |
 
 ---
 
@@ -276,18 +286,18 @@ Source repository:
 
 ## 4.3 Definition of Done for Each Module
 
-| Done | Module | Definition of Done |
-|---|---|---|
-| [x] | common-model | Shared records/enums exist, compile cleanly, reused by other modules |
-| [x] | common-net | Transport abstractions compile cleanly and are reused by feature modules |
-| [x] | crypto-core | AES/RSA/hash/signature/key/file-crypto APIs extracted, tested, UI-free |
-| [x] | chat-core | Message flow, handshake, signaling integration, discovery, peer/session logic extracted, tested, UI-free |
-| [x] | file-transfer-core | Send/receive/progress/encryption logic extracted, tested, UI-free |
-| [ ] | audio-core | Audio-specific services either extracted or intentionally superseded by the WebRTC runtime path |
-| [ ] | webcam-core | Camera/media services either extracted or intentionally superseded by the WebRTC runtime path |
-| [x] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free |
-| [x] | webrtc-core | Session state, signaling, `RTCDataChannel`, voice, experimental video, device enumeration, diagnostics, and native runtime integration are wired in |
-| [ ] | desktop-client | Primary Compose client delivers a stable day-to-day workflow for chat, discovery, files, and voice across target machines |
+| Done | Module | Definition of Done                                                                                                                                                                         |
+|---|---|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [x] | common-model | Shared records/enums exist, compile cleanly, reused by other modules                                                                                                                       |
+| [x] | common-net | Transport abstractions compile cleanly and are reused by feature modules                                                                                                                   |
+| [x] | crypto-core | AES/RSA/hash/signature/key/file-crypto APIs extracted, tested, UI-free                                                                                                                     |
+| [x] | chat-core | Message flow, handshake, signaling integration, discovery, peer/session logic extracted, tested, UI-free                                                                                   |
+| [x] | file-transfer-core | Send/receive/progress/encryption logic extracted, tested, UI-free                                                                                                                          |
+| [x] | audio-core | + Audio-specific services either extracted or intentionally superseded by the WebRTC runtime path                                                                                          |
+| [x] | webcam-core | Camera/media services either extracted or intentionally superseded by the WebRTC runtime path                                                                                              |
+| [x] | stego-core | Hide/extract services extracted, crypto integration possible, UI-free                                                                                                                      |
+| [x] | webrtc-core | Session state, signaling, `RTCDataChannel`, voice, experimental video, device enumeration, diagnostics, and native runtime integration are wired in                                        |
+| [ ] | desktop-client | Primary Compose client delivers a stable day-to-day workflow for chat, discovery, files, and voice across target machines                                                                  |
 | [ ] | android-client | Android client can be considered stable only after cross-device validation of discovery, chat, file send/receive, permissions, signed APK install/update behavior, and failure diagnostics |
 
 ---

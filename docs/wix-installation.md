@@ -3,7 +3,7 @@
 This project uses `jpackage` to build a Windows EXE installer. For the current Secure LAN Suite build, the verified working setup is:
 
 - JDK 25
-- Gradle 9.1+
+- Gradle Wrapper 9.4.1
 - WiX 5.0.2
 - WiX extensions:
   - `WixToolset.UI.wixext`
@@ -118,7 +118,7 @@ wix extension list --global
 
 The `jpackage` executable should come from JDK 25, and `wix --version` should report WiX 5.0.2.
 
-## 7. Build the Windows EXE installer
+## 7. Build the Compose Windows EXE installer
 
 ```powershell
 .\gradlew.bat :apps:desktop-client:createExe
@@ -142,7 +142,7 @@ Expected output file:
 apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe
 ```
 
-For a snapshot project version such as `0.3.11-SNAPSHOT`, the packaging version strips the `-SNAPSHOT` suffix and produces a version like `0.3.11`.
+If the project version contains a `-SNAPSHOT` suffix, the packaging version strips that suffix before passing it to `jpackage`.
 
 ## 8. Build the portable ZIP package
 

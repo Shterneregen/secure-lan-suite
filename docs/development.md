@@ -5,14 +5,11 @@ This guide contains local development, build, run, packaging, and smoke-test not
 ## Requirements
 
 - JDK 25 installed and active.
-- Gradle 9.1 or newer is recommended for Java 25. The repository uses the Gradle Wrapper, so normal builds should use `gradlew` or `gradlew.bat` from the repository root.
+- The repository uses Gradle Wrapper 9.4.1 and Java 25 toolchains. Do not install a separate Gradle or Kotlin compiler for normal development.
 - Kotlin 2.2.21 is used by the Android client and migrated JVM core modules, including Kotlin test sources; use the Gradle Wrapper rather than installing a separate local Kotlin compiler.
 - Internet access on the first Gradle build so dependencies can be downloaded.
-- Android SDK Platform 35 and Android SDK Platform Tools are required when building or installing `apps/android-client`.
-- Windows only: WiX 5.0.2 installed and available in `PATH` for EXE packaging.
-- For WiX 5, the required extensions must also be installed:
-  - `WixToolset.UI.wixext`
-  - `WixToolset.Util.wixext`
+- Android SDK Platform 35, Android SDK Build Tools, and Android SDK Platform Tools are required when building or installing `apps/android-client`.
+- The Android module currently uses Android Gradle Plugin 9.1.1 and Kotlin 2.2.21.
 
 ## Verify the environment
 
@@ -20,11 +17,11 @@ Desktop/core development:
 
 ```powershell
 java --version
+.\gradlew.bat --version
 jpackage --version
-wix --version
 ```
 
-`wix --version` is only required when building the Windows EXE installer.
+`jpackage --version` is only required for desktop packaging.
 
 Android development:
 
@@ -56,19 +53,25 @@ On Windows, use `gradlew.bat`:
 .\gradlew.bat :apps:desktop-client:run
 ```
 
-The previous Compose-specific task remains as a compatibility alias:
+Run the repository test suite:
+
+```bash
+./gradlew test
+```
+
+On Windows:
+
+```powershell
+.\gradlew.bat test
+```
+
+Use `test` for a fast verification pass and `build` when packaging or validating all assembled outputs.
+
+The previous Compose-specific task remains as a compatibility alias for scripts that still use it:
 
 ```powershell
 .\gradlew.bat :apps:desktop-client:runComposeShell
 ```
-
-Run the deprecated JavaFX fallback from its own module:
-
-```powershell
-.\gradlew.bat :apps:javafx-client:run
-```
-
-New desktop UI/UX improvements should target Compose. JavaFX is deprecated and should receive only critical fixes needed to protect users before final removal.
 
 ## Android client build
 
@@ -79,16 +82,16 @@ Build Android debug and release APKs:
 .\gradlew.bat :apps:android-client:assembleRelease
 ```
 
-Android outputs:
+Android outputs use the version from `gradle.properties` (`secureLanVersion`, currently `0.5.1`):
 
-- `apps/android-client/build/outputs/apk/debug/secure-lan-0.4.0.apk`
-- `apps/android-client/build/outputs/apk/release/secure-lan-0.4.0.apk`
+- `apps/android-client/build/outputs/apk/debug/secure-lan-<version>.apk`
+- `apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk`
 
 Detailed Android SDK setup, release signing, APK verification, install, troubleshooting, and desktop interoperability notes are in [`apps/android-client/android-readme.md`](../apps/android-client/android-readme.md).
 
 ## Desktop workflow smoke test
 
-Use `apps/desktop-client` for Compose UI/UX validation. The JavaFX launcher is available separately through `apps/javafx-client`.
+Use `apps/desktop-client` for Compose UI/UX validation.
 
 1. Enter a nickname and shared room password.
 2. Click **Open room** to host locally, or wait for discovered peers in the left column.
@@ -96,6 +99,7 @@ Use `apps/desktop-client` for Compose UI/UX validation. The JavaFX launcher is a
 4. Select a discovered peer and click **Connect**, or use the manual host/port fields as a fallback.
 5. Exchange chat messages in the center feed.
 6. Use right-side quick actions to send files, start a voice call, start an experimental video call, or end an active call.
+7. Verify settings persistence, tray hide/show/exit behavior, and desktop notifications when running on a supported desktop environment.
 
 Default ports:
 
@@ -118,7 +122,7 @@ When the Android client receives files while connected to a desktop room, it may
 Android client notes:
 
 - it can host a desktop-compatible encrypted chat room from the Devices screen; hosting runs as a foreground service and is advertised over LAN discovery;
-- it uses a small Android-local protocol compatibility layer rather than depending on JavaFX or UI-specific desktop code;
+- it uses a small Android-local protocol compatibility layer rather than depending on desktop UI code;
 - it supports UDP discovery, secure chat, encrypted file send, encrypted file receive, progress indicators, a dark-theme toggle, and in-app diagnostics logs;
 - it does not support voice, WebRTC data channels, camera/video, screen sharing, steganography tools, or no-auth browser quick share yet.
 
@@ -136,7 +140,7 @@ Safety constraints:
 
 ## Desktop packaging
 
-Each desktop application owns its packaging tasks: Compose tasks live in `apps/desktop-client`, and deprecated JavaFX tasks live in `apps/javafx-client`.
+The primary Compose desktop client owns the current packaging tasks. The deprecated fallback client has separate documentation in [`javafx-client.md`](javafx-client.md).
 
 ### Portable build
 
@@ -160,25 +164,9 @@ The intermediate application image is created under:
 
 - `apps/desktop-client/build/packaging/SecureLanSuite/`
 
-This task uses `jpackage --type app-image`, so it does not require WiX.
+This task uses `jpackage --type app-image` and does not require the Windows EXE installer toolchain.
 
-### JavaFX fallback portable build
-
-Build the deprecated JavaFX fallback as a separate portable application image and ZIP archive:
-
-```powershell
-.\gradlew.bat :apps:javafx-client:buildPortable
-```
-
-Example output:
-
-- `apps/javafx-client/build/distributions/SecureLanSuite-<version>-portable.zip`
-
-The intermediate JavaFX application image is created under:
-
-- `apps/javafx-client/build/packaging/SecureLanSuite/`
-
-This task also uses `jpackage --type app-image`, so it does not require WiX. `:apps:desktop-client:buildComposePortable` remains an alias for the primary Compose `buildPortable` task.
+`:apps:desktop-client:buildComposePortable` remains an alias for the primary `buildPortable` task.
 
 ### Windows EXE installer
 
@@ -202,31 +190,4 @@ Example output file:
 
 - `apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe`
 
-To build the deprecated JavaFX installer instead, use:
-
-```powershell
-.\gradlew.bat :apps:javafx-client:buildExe
-```
-
-Notes:
-
-- this task must be run on Windows;
-- `jpackage` must come from JDK 25;
-- WiX 5.0.2 must be installed and available in `PATH`;
-- WiX extensions `WixToolset.UI.wixext` and `WixToolset.Util.wixext` must be installed globally;
-- WiX 7 is not recommended for this project because the working `jpackage` setup was verified with WiX 5.0.2.
-
-## Installing WiX on Windows
-
-Use the detailed instructions in [`docs/wix-installation.md`](wix-installation.md).
-
-Short version:
-
-```powershell
-dotnet nuget add source https://api.nuget.org/v3/index.json -n nuget.org
-dotnet tool install --global wix --version 5.0.2
-wix extension add --global WixToolset.UI.wixext/5.0.2
-wix extension add --global WixToolset.Util.wixext/5.0.2
-wix extension list --global
-wix --version
-```
+For Windows EXE prerequisites, setup, and troubleshooting, use the dedicated [Windows installer guide](wix-installation.md).
