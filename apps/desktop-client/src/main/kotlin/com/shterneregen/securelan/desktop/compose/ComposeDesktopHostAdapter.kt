@@ -31,6 +31,8 @@ import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetada
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPrompt
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPromptStatus
+import com.shterneregen.securelan.desktop.compose.tray.DesktopChatTrayNotification
+import com.shterneregen.securelan.desktop.compose.tray.shouldPublishChatTrayNotification
 import com.shterneregen.securelan.desktop.ui.*
 import com.shterneregen.securelan.filetransfer.event.*
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
@@ -61,6 +63,7 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
 
 internal val transferEntriesMutationPolicy: SnapshotMutationPolicy<List<TransferEntry>> =
@@ -87,6 +90,7 @@ class ComposeDesktopHostAdapter(
     private val settingsController: DesktopAppSettingsController = DesktopAppSettingsController(),
     downloadsPath: Path = settingsController.settings.downloadsPath(),
     private val uiStateDispatcher: (((() -> Unit)) -> Unit)? = null,
+    private val chatNotificationPublisher: (DesktopChatTrayNotification) -> Unit = {},
 ) : AutoCloseable {
     private var downloadsPath: Path = downloadsPath.toAbsolutePath().normalize()
 
@@ -259,6 +263,7 @@ class ComposeDesktopHostAdapter(
     }
 
     private val shuttingDown = AtomicBoolean(false)
+    private val chatNotificationSequence = AtomicLong(0L)
     private val localPeerId = UUID.randomUUID().toString()
     private var currentConfig: PeerDiscoveryConfig? = null
     private val transferEntryMap = LinkedHashMap<String, TransferEntry>()
@@ -291,6 +296,22 @@ class ComposeDesktopHostAdapter(
                     upsertChatPeer(sender, online = true)
                 }
                 appendChatTranscript(formatChatMessage(if (systemLikeMessage) "system" else sender, text))
+                val notifications = settingsController.settings.notifications
+                if (shouldPublishChatTrayNotification(
+                        systemLikeMessage = systemLikeMessage,
+                        localSender = isLocalNickname(sender),
+                        notificationsEnabled = notifications.enabled,
+                        messageNotificationsEnabled = notifications.messageNotificationsEnabled,
+                    )
+                ) {
+                    chatNotificationPublisher(
+                        DesktopChatTrayNotification.create(
+                            id = chatNotificationSequence.incrementAndGet(),
+                            senderNickname = sender,
+                            text = text,
+                        ),
+                    )
+                }
             }
             is ChatMessageSentEvent -> {
                 // The message is already shown through the normal chat receive flow; avoid duplicates.

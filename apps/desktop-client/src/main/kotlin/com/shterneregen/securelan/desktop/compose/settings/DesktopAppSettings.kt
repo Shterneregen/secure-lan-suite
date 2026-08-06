@@ -86,6 +86,11 @@ data class DesktopNotificationSettings(
     val enabled: Boolean = true,
     val soundsEnabled: Boolean = true,
     val transferNotificationsEnabled: Boolean = true,
+    val messageNotificationsEnabled: Boolean = true,
+)
+
+data class DesktopLifecycleSettings(
+    val keepRunningAfterWindowClose: Boolean = true,
 )
 
 enum class IncomingFileConfirmationMode {
@@ -103,6 +108,7 @@ data class DesktopAppSettings(
     val displayName: String? = null,
     val themeMode: SecureLanThemeMode = SecureLanThemeMode.DARK,
     val reducedMotion: Boolean = false,
+    val lifecycle: DesktopLifecycleSettings = DesktopLifecycleSettings(),
     val window: DesktopWindowSettings = DesktopWindowSettings(),
     val downloadsDirectory: String = defaultDownloadsDirectory(),
     val media: DesktopMediaSettings = DesktopMediaSettings(),

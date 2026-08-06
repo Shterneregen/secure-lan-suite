@@ -185,9 +185,10 @@ private fun GeneralSettingsContent(
     controller: DesktopAppSettingsController,
 ) {
     val settings = controller.settings
+    val tokens = LocalSecureLanDesignTokens.current
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName.orEmpty()) }
 
-    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
         SettingsSection("Profile & appearance", "Identity and visual behavior restored at startup.") {
             CompactTextField(
                 value = displayName,
@@ -212,6 +213,20 @@ private fun GeneralSettingsContent(
                 description = "Disable non-essential UI animation.",
                 checked = settings.reducedMotion,
                 onCheckedChange = { enabled -> controller.update { it.copy(reducedMotion = enabled) } },
+            )
+        }
+        SettingsSection("Window behavior", "Choose what the main-window close button does.") {
+            PreferenceSwitch(
+                title = "Keep running after window closes",
+                description = "Hide SecureLanSuite in the system tray instead of exiting.",
+                checked = settings.lifecycle.keepRunningAfterWindowClose,
+                onCheckedChange = { enabled ->
+                    controller.update { current ->
+                        current.copy(
+                            lifecycle = current.lifecycle.copy(keepRunningAfterWindowClose = enabled),
+                        )
+                    }
+                },
             )
         }
     }
@@ -244,6 +259,14 @@ private fun NotificationSettingsContent(controller: DesktopAppSettingsController
                 settings.notifications.soundsEnabled,
                 enabled = settings.notifications.enabled,
             ) { enabled -> controller.update { it.copy(notifications = it.notifications.copy(soundsEnabled = enabled)) } }
+            PreferenceSwitch(
+                "Chat message notifications",
+                "Show the sender and a short message preview while the window is hidden or unfocused.",
+                settings.notifications.messageNotificationsEnabled,
+                enabled = settings.notifications.enabled,
+            ) { enabled ->
+                controller.update { it.copy(notifications = it.notifications.copy(messageNotificationsEnabled = enabled)) }
+            }
             PreferenceSwitch(
                 "Transfer notifications",
                 "Show incoming and completed transfer notifications.",

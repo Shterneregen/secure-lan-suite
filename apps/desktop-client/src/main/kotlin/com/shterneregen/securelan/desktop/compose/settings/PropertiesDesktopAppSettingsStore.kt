@@ -31,6 +31,12 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
                 displayName = properties.string(DISPLAY_NAME_KEY),
                 themeMode = properties.enum(THEME_MODE_KEY, defaults.themeMode),
                 reducedMotion = properties.boolean(REDUCED_MOTION_KEY, defaults.reducedMotion),
+                lifecycle = DesktopLifecycleSettings(
+                    keepRunningAfterWindowClose = properties.boolean(
+                        KEEP_RUNNING_AFTER_WINDOW_CLOSE_KEY,
+                        defaults.lifecycle.keepRunningAfterWindowClose,
+                    ),
+                ),
                 window = DesktopWindowSettings(
                     width = properties.int(WINDOW_WIDTH_KEY, defaults.window.width),
                     height = properties.int(WINDOW_HEIGHT_KEY, defaults.window.height),
@@ -60,6 +66,10 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
                     transferNotificationsEnabled = properties.boolean(
                         TRANSFER_NOTIFICATIONS_KEY,
                         defaults.notifications.transferNotificationsEnabled,
+                    ),
+                    messageNotificationsEnabled = properties.boolean(
+                        MESSAGE_NOTIFICATIONS_KEY,
+                        defaults.notifications.messageNotificationsEnabled,
                     ),
                 ),
                 transfers = DesktopTransferSettings(
@@ -94,6 +104,7 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
                 normalized.displayName?.let { set(DISPLAY_NAME_KEY, it) }
                 set(THEME_MODE_KEY, normalized.themeMode)
                 set(REDUCED_MOTION_KEY, normalized.reducedMotion)
+                set(KEEP_RUNNING_AFTER_WINDOW_CLOSE_KEY, normalized.lifecycle.keepRunningAfterWindowClose)
                 set(WINDOW_WIDTH_KEY, normalized.window.width)
                 set(WINDOW_HEIGHT_KEY, normalized.window.height)
                 normalized.window.x?.let { set(WINDOW_X_KEY, it) }
@@ -119,6 +130,7 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
                 set(NOTIFICATIONS_ENABLED_KEY, normalized.notifications.enabled)
                 set(NOTIFICATION_SOUNDS_KEY, normalized.notifications.soundsEnabled)
                 set(TRANSFER_NOTIFICATIONS_KEY, normalized.notifications.transferNotificationsEnabled)
+                set(MESSAGE_NOTIFICATIONS_KEY, normalized.notifications.messageNotificationsEnabled)
                 set(INCOMING_CONFIRMATION_KEY, normalized.transfers.incomingFileConfirmation)
                 set(NOTIFY_TRANSFER_COMPLETION_KEY, normalized.transfers.notifyOnCompletion)
             }
@@ -154,12 +166,13 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
             return PropertiesDesktopAppSettingsStore(path)
         }
 
-        private const val CURRENT_SCHEMA_VERSION = 3
+        private const val CURRENT_SCHEMA_VERSION = 4
         private const val PORTABLE_DOWNLOADS_SCHEMA_VERSION = 3
         private const val SCHEMA_VERSION_KEY = "schema.version"
         private const val DISPLAY_NAME_KEY = "profile.displayName"
         private const val THEME_MODE_KEY = "appearance.themeMode"
         private const val REDUCED_MOTION_KEY = "appearance.reducedMotion"
+        private const val KEEP_RUNNING_AFTER_WINDOW_CLOSE_KEY = "window.keepRunningAfterClose"
         private const val WINDOW_WIDTH_KEY = "window.width"
         private const val WINDOW_HEIGHT_KEY = "window.height"
         private const val WINDOW_X_KEY = "window.x"
@@ -180,6 +193,7 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
         private const val NOTIFICATIONS_ENABLED_KEY = "notifications.enabled"
         private const val NOTIFICATION_SOUNDS_KEY = "notifications.soundsEnabled"
         private const val TRANSFER_NOTIFICATIONS_KEY = "notifications.transfersEnabled"
+        private const val MESSAGE_NOTIFICATIONS_KEY = "notifications.messagesEnabled"
         private const val INCOMING_CONFIRMATION_KEY = "transfers.incomingConfirmation"
         private const val NOTIFY_TRANSFER_COMPLETION_KEY = "transfers.notifyOnCompletion"
 

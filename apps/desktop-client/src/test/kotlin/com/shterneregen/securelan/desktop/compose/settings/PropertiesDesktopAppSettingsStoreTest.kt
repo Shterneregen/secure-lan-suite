@@ -21,6 +21,7 @@ class PropertiesDesktopAppSettingsStoreTest {
 
         assertNull(settings.displayName)
         assertEquals(SecureLanThemeMode.DARK, settings.themeMode)
+        assertEquals(true, settings.lifecycle.keepRunningAfterWindowClose)
     }
 
     @Test
@@ -79,6 +80,7 @@ class PropertiesDesktopAppSettingsStoreTest {
             displayName = "Alice",
             themeMode = SecureLanThemeMode.INTERMEDIATE,
             reducedMotion = true,
+            lifecycle = DesktopLifecycleSettings(keepRunningAfterWindowClose = false),
             window = DesktopWindowSettings(1440, 900, 120, 80, true),
             downloadsDirectory = temporaryDirectory.resolve("downloads").toString(),
             media = DesktopMediaSettings("mic-1", "camera-1", "speaker-1", 63),
@@ -94,7 +96,12 @@ class PropertiesDesktopAppSettingsStoreTest {
                     DesktopRecentRoom("room.local", 8123, 8124),
                 ),
             ),
-            notifications = DesktopNotificationSettings(false, false, false),
+            notifications = DesktopNotificationSettings(
+                enabled = false,
+                soundsEnabled = false,
+                transferNotificationsEnabled = false,
+                messageNotificationsEnabled = false,
+            ),
             transfers = DesktopTransferSettings(
                 IncomingFileConfirmationMode.AUTO_ACCEPT_KNOWN_PEERS,
                 notifyOnCompletion = false,
@@ -102,6 +109,7 @@ class PropertiesDesktopAppSettingsStoreTest {
         )
 
         assertTrue(store.save(settings))
+        assertTrue(Files.readString(path).contains("window.keepRunningAfterClose=false"))
 
         assertEquals(settings.normalized(), store.load())
     }
