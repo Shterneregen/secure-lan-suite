@@ -30,6 +30,8 @@
     <string name="hosting_starting">Запуск…</string>
     <string name="stop_hosting">Остановить комнату</string>
     <string name="hosted_room">Комната на этом устройстве</string>
+    <string name="room_address">Адрес комнаты</string>
+    <string name="local_room_address_unavailable">Адрес локальной сети недоступен</string>
     <string name="room_participants">Участники комнаты</string>
     <string name="no_room_participants">Другие участники пока не подключились.</string>
     <string name="host_ports_must_differ">Порты чата и файлов должны отличаться.</string>

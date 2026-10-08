@@ -32,6 +32,7 @@ import com.shterneregen.securelan.androidclient.model.ThemeMode
 import com.shterneregen.securelan.androidclient.model.TransferDirection
 import com.shterneregen.securelan.androidclient.model.TransferRecord
 import com.shterneregen.securelan.androidclient.model.TransferResult
+import com.shterneregen.securelan.androidclient.network.AndroidLocalNetworkAddressResolver
 import com.shterneregen.securelan.androidclient.network.PeerDiscoveryRepository
 import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
 import com.shterneregen.securelan.androidclient.network.AndroidHostServiceState
@@ -40,13 +41,16 @@ import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.androidclient.network.SecureFileSender
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.UUID
 
@@ -57,6 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val chatClient = SecureChatClient()
     private val fileSender = SecureFileSender(application.contentResolver)
     private val fileReceiver = SecureFileReceiver(application)
+    private val localNetworkAddressResolver = AndroidLocalNetworkAddressResolver(application)
 
     private val _uiState = MutableStateFlow(
         MainUiState(
@@ -81,6 +86,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var discoveryTimeoutJob: Job? = null
     private var receiveJob: Job? = null
     private var fileReceiverJob: Job? = null
+    private var localAddressRefreshJob: Job? = null
+    private var localAddressWatchJob: Job? = null
     private var disconnectRequested: Boolean = false
     private var hostConnectionAttemptedForPeerId: String? = null
     private val hostPeerId: String = preferences.getString(KEY_HOST_PEER_ID, null)
@@ -92,6 +99,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         createNotificationChannel()
         observeHostService()
+        refreshLocalRoomAddresses()
     }
 
     fun updateNickname(value: String) {
@@ -141,6 +149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateNetworkAvailable(available: Boolean) {
         _uiState.update { it.copy(networkAvailable = available) }
+        refreshLocalRoomAddresses()
         if (!available && discoveryJob != null) {
             stopDiscovery()
         } else if (available && discoveryJob == null) {
@@ -241,8 +250,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restartDiscovery() {
+        refreshLocalRoomAddresses()
         stopDiscovery()
         startDiscovery()
+    }
+
+    fun refreshLocalRoomAddresses() {
+        localAddressRefreshJob?.cancel()
+        localAddressRefreshJob = viewModelScope.launch {
+            val addresses = withContext(Dispatchers.IO) { localNetworkAddressResolver.resolve() }
+            _uiState.update { state ->
+                if (state.localRoomAddresses == addresses) state else state.copy(localRoomAddresses = addresses)
+            }
+        }
     }
 
     fun startFileReceiver() {
@@ -808,6 +828,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     status = if (state.connected) "Hosting room" else "Hosted room is ready",
                 )
             }
+            startLocalAddressWatch()
             if (!previous.connected && !previous.connecting && hostConnectionAttemptedForPeerId != hostState.peerId) {
                 hostConnectionAttemptedForPeerId = hostState.peerId
                 connectToPeer(localPeer, AndroidChatHostService.currentSessionPassword(), hostState.filePort)
@@ -822,8 +843,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         if (hostState.error != null) {
             hostConnectionAttemptedForPeerId = null
+            stopLocalAddressWatch()
             _uiState.update {
-                it.copy(hosting = false, hostingStarting = false, connected = false, connecting = false, error = hostState.error, status = "Unable to host room")
+                it.copy(
+                    hosting = false,
+                    hostingStarting = false,
+                    connected = false,
+                    connecting = false,
+                    localRoomAddresses = emptyList(),
+                    error = hostState.error,
+                    status = "Unable to host room",
+                )
             }
             addLog(hostState.error, level = "ERROR")
             return
@@ -831,6 +861,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         if (previous.hosting || previous.hostingStarting) {
             hostConnectionAttemptedForPeerId = null
+            stopLocalAddressWatch()
             receiveJob?.cancel()
             receiveJob = null
             fileReceiverJob?.cancel()
@@ -844,6 +875,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     connected = false,
                     connecting = false,
                     fileReceiverRunning = false,
+                    localRoomAddresses = emptyList(),
                     hostedParticipantCount = 0,
                     peers = it.peers.filterNot { peer -> peer.role == PeerRole.CHAT_CLIENT },
                     selectedPeer = null,
@@ -852,6 +884,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    private fun startLocalAddressWatch() {
+        if (localAddressWatchJob?.isActive == true) return
+        refreshLocalRoomAddresses()
+        localAddressWatchJob = viewModelScope.launch {
+            while (isActive && _uiState.value.hosting) {
+                delay(LOCAL_ADDRESS_REFRESH_INTERVAL_MS)
+                if (_uiState.value.hosting) refreshLocalRoomAddresses()
+            }
+        }
+    }
+
+    private fun stopLocalAddressWatch() {
+        localAddressWatchJob?.cancel()
+        localAddressWatchJob = null
     }
 
     private fun postFileReceivedNotification(fileName: String, savedPath: String) {
@@ -899,6 +947,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         discoveryTimeoutJob?.cancel()
         receiveJob?.cancel()
         fileReceiverJob?.cancel()
+        localAddressRefreshJob?.cancel()
+        localAddressWatchJob?.cancel()
         viewModelScope.launch { chatClient.disconnect() }
         super.onCleared()
     }
@@ -909,6 +959,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val MAX_LOG_ENTRIES = 300
         private const val MAX_RECENT_TRANSFERS = 20
         private const val DISCOVERY_EMPTY_STATE_DELAY_MS = 8_000L
+        private const val LOCAL_ADDRESS_REFRESH_INTERVAL_MS = 10_000L
         private const val PREFERENCES_NAME = "secure_lan_preferences"
         private const val KEY_NICKNAME = "nickname"
         private const val KEY_THEME_MODE = "theme_mode"

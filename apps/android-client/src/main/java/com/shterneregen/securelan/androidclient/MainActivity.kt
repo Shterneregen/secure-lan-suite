@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
@@ -212,6 +213,7 @@ class MainActivity : ComponentActivity() {
                     override fun onAvailable(network: Network) = updateNetworkState()
                     override fun onLost(network: Network) = updateNetworkState()
                     override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) = updateNetworkState()
+                    override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) = updateNetworkState()
                 }
                 updateNetworkState()
                 connectivityManager.registerDefaultNetworkCallback(callback)
@@ -787,7 +789,30 @@ private fun CurrentDeviceCard(state: MainUiState, onOpenChat: () -> Unit, onDisc
             Column(Modifier.weight(1f)) {
                 Text(stringResource(if (state.hosting) R.string.hosted_room else R.string.current_device), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(peer.host, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (state.hosting) {
+                    Text(
+                        stringResource(R.string.room_address),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (state.localRoomAddresses.isEmpty()) {
+                        Text(
+                            stringResource(R.string.local_room_address_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        state.localRoomAddresses.forEach { address ->
+                            Text(
+                                AndroidUiFormatters.roomEndpoint(address, state.hostChatPort),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    Text(peer.host, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = SuccessGreen)
         }

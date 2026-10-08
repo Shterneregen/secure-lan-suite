@@ -129,6 +129,7 @@ data class MainUiState(
     val hostingStarting: Boolean = false,
     val hostChatPort: String = SecureLanPorts.DEFAULT_CHAT_PORT.toString(),
     val hostFilePort: String = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT.toString(),
+    val localRoomAddresses: List<String> = emptyList(),
     val hostedParticipantCount: Int = 0,
     val inputMessage: String = "",
     val messages: List<ChatLine> = emptyList(),

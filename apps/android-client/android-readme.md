@@ -261,6 +261,12 @@ If **Visible to nearby trusted devices** is disabled on desktop, click **Connect
 
 The Android app can also host a desktop-compatible encrypted room. On **Devices**, choose **Host a room**, enter a nickname, non-empty room password, and distinct chat/file ports, then choose **Start hosting**. The app joins its own room automatically and advertises it to desktop clients on the LAN.
 
+While hosting, the local room card shows each detected LAN endpoint as
+`<phone-ip>:<chat-port>`. Use one of these endpoints for a manual connection
+from another device. Wi-Fi, Ethernet, USB, and hotspot addresses are preferred
+over VPN addresses; mobile-data and loopback addresses are not presented as LAN
+room endpoints. The displayed endpoints update when the phone's network changes.
+
 Hosting runs in a foreground service so the room remains available while the activity is in the background. Use **Stop hosting** in the app or in the persistent hosting notification to close the room and disconnect all participants.
 
 ## File transfer
@@ -364,6 +370,13 @@ sdk.dir=C\:\\Users\\admin\\AppData\\Local\\Android\\Sdk
 - Check that the desktop room is still running.
 - Make sure the firewall allows inbound TCP `5050`.
 - Try restarting discovery and the desktop room.
+
+### Hosted room has no local network address
+
+- Connect the phone to Wi-Fi/Ethernet or enable its hotspot.
+- If a VPN is active, try the physical LAN endpoint shown before the VPN endpoint.
+- Wait a few seconds after changing networks; the hosting card refreshes its endpoints automatically.
+- Mobile-data addresses are intentionally omitted because other LAN devices normally cannot connect to them directly.
 
 ### File send failed
 

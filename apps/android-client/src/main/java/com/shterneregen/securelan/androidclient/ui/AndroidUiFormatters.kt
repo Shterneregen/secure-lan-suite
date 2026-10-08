@@ -27,6 +27,8 @@ object AndroidUiFormatters {
 
     fun formatTimestamp(timestamp: Instant): String = timeFormatter.format(timestamp)
 
+    fun roomEndpoint(address: String, chatPort: String): String = "$address:$chatPort"
+
     fun formatLogEntry(entry: AppLogEntry): String =
         "${logTimestampFormatter.format(entry.timestamp)} [${entry.level.padEnd(5)}] ${entry.message}"
 

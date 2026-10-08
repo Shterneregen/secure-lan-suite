@@ -28,6 +28,8 @@
     <string name="hosting_starting">Starting&#8230;</string>
     <string name="stop_hosting">Stop hosting</string>
     <string name="hosted_room">Hosted on this device</string>
+    <string name="room_address">Room address</string>
+    <string name="local_room_address_unavailable">Local network address unavailable</string>
     <string name="room_participants">Room participants</string>
     <string name="no_room_participants">No other participants are connected yet.</string>
     <string name="host_ports_must_differ">Chat and file ports must be different.</string>
