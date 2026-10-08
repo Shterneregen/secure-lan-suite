@@ -6,4 +6,4 @@ Preserve behavior.
 Remove dashboard patterns.
 Hide engineering details.
 Make communication dominant.
-Validate against Forbidden Patterns and Product Scorecard.
+Validate against `.kilo/knowledge/PRODUCT-UI.md` and report concrete evidence and tradeoffs.

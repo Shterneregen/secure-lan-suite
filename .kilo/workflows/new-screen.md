@@ -2,11 +2,9 @@
 
 1. Define user goal.
 2. Resolve product state.
-3. Read relevant chapters from `knowledge/INDEX.md`.
-4. Select canonical blueprint.
-5. Select approved design pattern.
-6. Define visible / hidden information.
-7. Define primary CTA.
-8. Define empty and error states.
-9. Implement with approved components.
-10. Run Product Scorecard.
+3. Read `.kilo/knowledge/PRODUCT-UI.md`.
+4. Inspect adjacent screens, state types, and reusable components.
+5. Define visible and hidden information.
+6. Define action hierarchy, empty states, and error recovery.
+7. Implement with existing tokens and components where appropriate.
+8. Complete `.kilo/checklists/ui.md`, `.kilo/checklists/accessibility.md`, and `.kilo/checklists/responsive.md`.

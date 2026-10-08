@@ -6,8 +6,8 @@ This file contains only non-negotiable technical and architectural rules for Sec
 
 It must stay short.
 
-For UI/UX decisions, use the Product Specification and `../knowledge/INDEX.md`.
-Do not duplicate the full Product Specification here.
+For UI/UX decisions, use `.kilo/knowledge/PRODUCT-UI.md`.
+Do not duplicate the full Product UI Guide here.
 
 ---
 
@@ -23,16 +23,16 @@ Do not duplicate the full Product Specification here.
 
 ---
 
-## Product Specification Rule
+## Product UI Guide Rule
 
 For any UI/UX, Compose screen, layout, Phase 11, redesign, modernization, or usability task:
 
-1. Read `../knowledge/INDEX.md`.
-2. Use the Product Specification as the source of truth.
+1. Read `.kilo/knowledge/PRODUCT-UI.md`.
+2. Inspect the current implementation and relevant public docs.
 3. Use JavaFX only as a behavioral and fallback reference.
 4. Do not preserve the old dashboard visual layout.
 5. Do not expose engineering concepts in normal UI.
-6. Validate the result with the Product Scorecard.
+6. Verify concrete behavior, accessibility, and relevant responsive states.
 
 The old `Room connection + Peers + Chat + Actions` dashboard is not a valid visual target for new UI work.
 

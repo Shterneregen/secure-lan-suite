@@ -2,11 +2,9 @@
 
 A UI change is complete only if:
 
-- Product Score >= 95
-- Zero automatic reject conditions
-- Product State Machine preserved
-- Canonical Blueprint followed
-- Approved Design Pattern used
-- Forbidden Patterns checked
+- Required behavior works
+- Existing context and service boundaries are preserved
+- Product UI Guide constraints are satisfied
 - Accessibility verified
-- Responsive behavior verified
+- Relevant responsive behavior verified
+- Material limitations and tradeoffs reported

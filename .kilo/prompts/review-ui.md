@@ -1,10 +1,10 @@
 # Prompt: Review UI
 
-Review the current UI against SecureLanSuite Product Specification.
+Review the current UI against `.kilo/knowledge/PRODUCT-UI.md` and the implemented behavior.
 
 Return:
-- Product Score / 100
-- Automatic reject conditions
-- Violated chapters
-- Required fixes
-- Final verdict
+- user impact and regressions
+- violated product constraints
+- accessibility and responsive findings
+- required fixes with evidence
+- final verdict

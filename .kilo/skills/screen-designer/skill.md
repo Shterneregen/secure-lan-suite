@@ -10,9 +10,7 @@ Use for:
 - Settings
 - Diagnostics
 
-Mandatory chapters:
-- Screen Specifications
-- Canonical Screen Blueprints
-- Decision Matrices
-- Approved Design Patterns
-- Forbidden Patterns Catalog
+Mandatory reference:
+- `.kilo/knowledge/PRODUCT-UI.md`
+
+Inspect the current screen, state types, responsive behavior, and reusable components before proposing changes.

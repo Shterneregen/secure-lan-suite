@@ -11,9 +11,7 @@ Use for:
 - Diagnostics
 - Settings
 
-Mandatory chapters:
-- Feature Contracts
-- User Flows
-- Context-Aware Workspace
-- Product State Machine
-- Product Scorecard
+Mandatory reference:
+- `.kilo/knowledge/PRODUCT-UI.md`
+
+Inspect the current feature implementation and preserve its service boundaries.

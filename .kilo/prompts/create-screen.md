@@ -3,14 +3,13 @@
 You are working on SecureLanSuite UI.
 
 Before coding:
-- Read knowledge/INDEX.md.
-- Resolve product state.
-- Choose canonical blueprint.
-- Choose approved pattern.
-- State which chapters you used.
+- Read `.kilo/knowledge/PRODUCT-UI.md`.
+- Inspect the current implementation and state model.
+- Resolve user intent and the context that must be preserved.
+- Identify existing components and tokens to reuse.
 
 Then implement the screen.
 
 After implementation:
-- Run Product Scorecard.
-- List any tradeoffs.
+- Verify behavior, accessibility, and relevant responsive states.
+- List evidence, limitations, and tradeoffs.

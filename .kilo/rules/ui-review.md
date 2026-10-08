@@ -1,17 +1,19 @@
 # UI Review Rule
 
+Use `.kilo/checklists/review.md` for every completed UI review.
+
 Every UI review must produce:
 
-1. Product Score from 0 to 100.
-2. Automatic reject conditions, if any.
-3. Violated specification chapters.
+1. Findings ordered by severity.
+2. User impact and concrete evidence.
+3. Violated Product UI Guide constraints.
 4. Concrete fixes.
 5. Final decision: Accept / Needs Refinement / Reject.
 
-Reject immediately if:
+Require revision if the change:
 
-- More than one visual hero.
-- More than one primary CTA.
-- Chat is not dominant.
-- Engineering leakage appears outside Advanced or Diagnostics.
-- UI resembles an admin dashboard.
+- breaks required behavior or loses user context;
+- makes communication hard to find or use;
+- exposes technical details without helping a decision or recovery;
+- introduces inaccessible controls or unusable responsive states;
+- recreates the deprecated JavaFX layout or an administration dashboard.

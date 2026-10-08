@@ -27,7 +27,7 @@ It does not decide product strategy, feature scope, or visual direction.
 
 1. User request
 2. Feature specification
-3. Product specification
+3. `.kilo/knowledge/PRODUCT-UI.md`
 4. Project rules
 5. Existing architecture and conventions
 6. Existing Compose implementation
@@ -250,7 +250,7 @@ Do not claim completion if acceptance criteria are not satisfied.
 Stop and ask for clarification if:
 - no feature specification exists for non-trivial work;
 - scope is unclear;
-- requested UI conflicts with product specification;
+- requested UI conflicts with the Product UI Guide;
 - implementation requires protocol or architecture changes outside scope;
 - target platform support is unknown;
 - dependency support is unverified and critical;

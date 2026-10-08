@@ -2,9 +2,10 @@
 
 1. Read implemented change.
 2. Determine task type.
-3. Read relevant chapters.
-4. Run Forbidden Patterns check.
-5. Run Product Scorecard.
+3. Read `.kilo/knowledge/PRODUCT-UI.md`.
+4. Compare the change with current behavior and product intent.
+5. Check context preservation and technical-detail disclosure.
 6. Check accessibility.
-7. Check responsiveness.
-8. Output final verdict.
+7. Check relevant responsive states.
+8. Complete `.kilo/checklists/review.md`.
+9. Report evidence, required fixes, and final verdict.

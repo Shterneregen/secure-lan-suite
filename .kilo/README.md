@@ -1,17 +1,13 @@
 # SecureLanSuite Minimal Kilo Code AI Kit
 
-This `.kilo` kit is intentionally compact.
-
-It does not duplicate the whole Product Specification inside rules and skills.
-Instead, it works as an AI router:
+This `.kilo` kit routes UI work through one concise product guide:
 
 1. Resolve the task type.
-2. Read `knowledge/INDEX.md`.
-3. Read only the relevant Product Specification chapters.
-4. Follow the matching workflow.
-5. Apply the rules.
-6. Implement or review.
-7. Score the result using the Product Scorecard.
+2. Read `.kilo/knowledge/PRODUCT-UI.md`.
+3. Inspect the current implementation.
+4. Follow the matching workflow and rules.
+5. Implement or review.
+6. Verify concrete behavior and report tradeoffs.
 
 ## How to install
 
@@ -33,4 +29,11 @@ Recommended final structure:
 
 Do not let the AI start from Compose code.
 
-The AI must start from product state, user intent, blueprint, approved pattern, and QA rubric.
+The AI must start from user intent, current product state, and verified behavior.
+
+## Checklist routing
+
+- Use `.kilo/checklists/ui.md` for every user-facing Compose change.
+- Add `.kilo/checklists/accessibility.md` when interaction, focus, semantics, color, or motion changes.
+- Add `.kilo/checklists/responsive.md` when layout, visibility, dialogs, or content sizing changes.
+- Use `.kilo/checklists/review.md` to review the completed change and its evidence.
