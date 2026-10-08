@@ -30,8 +30,6 @@ affected workflow and report any intentionally inapplicable section.
 - [ ] Empty states guide the next action instead of showing disabled tool collections.
 - [ ] JavaFX is used only as a behavioral reference during migration or parity work.
 
-## Required follow-up
-
-- [ ] `.kilo/checklists/accessibility.md` is completed for affected interaction and visual states.
-- [ ] `.kilo/checklists/responsive.md` is completed when layout or content sizing changes.
-- [ ] Focused tests or a runtime walkthrough verify the affected behavior.
+Complete the accessibility checklist when interaction, focus, semantics, color,
+or motion changes. Complete the responsive checklist when layout, visibility,
+dialogs, or content sizing changes. Report focused test or runtime evidence.

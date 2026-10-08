@@ -10,15 +10,16 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 - Discover compatible peers with UDP broadcast or connect manually by host and port.
 - Exchange encrypted chat messages and files with transfer progress and configurable downloads.
 - Create temporary Quick Share browser links for files or text, with expiration and access limits. Quick Share is intended only for trusted LANs because browser transfers use plain local HTTP.
-- Use voice sessions and experimental 1-to-1 video calls through WebRTC, including microphone and camera selection and diagnostics.
+- Use voice sessions and experimental 1-to-1 video calls through WebRTC,
+  including microphone, speaker, and camera selection and diagnostics.
 - Hide or extract text in BMP images with optional password-based encryption through the desktop Steganography tool.
 - Persist desktop profile, appearance, network, media, download, window, and diagnostics settings.
 - Build and use the experimental Android client for room hosting/joining, encrypted chat, and file transfer. Android supports adaptive layouts, light/dark themes, and English/Russian/system UI languages.
 
 ## Tech stack
 
-- Java 25 and Kotlin 2.2.21
-- Gradle Wrapper 9.4.1
+- Java 25 and Kotlin
+- Gradle Wrapper
 - Compose Multiplatform for the primary desktop client
 - Jetpack Compose and Android Gradle Plugin for the Android client
 - JavaFX 25 for the deprecated desktop fallback
@@ -63,7 +64,8 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 - Android build, signing, and installation: [`apps/android-client/android-readme.md`](apps/android-client/android-readme.md)
 - Windows WiX installation: [`docs/wix-installation.md`](docs/wix-installation.md)
 - WebRTC architecture and video-preview properties: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
-- Migration and roadmap checklist: [`docs/migration-roadmap.md`](docs/migration-roadmap.md)
+- Active outcomes and release work: [`docs/roadmap.md`](docs/roadmap.md)
+- Completed legacy consolidation: [`docs/migration-history.md`](docs/migration-history.md)
 
 ## Current limitations
 

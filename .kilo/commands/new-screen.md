@@ -1,17 +1,19 @@
 ---
-description: Define and implement a new SecureLanSuite screen
+description: Define and implement a new SecureLanSuite desktop surface
 agent: code
 ---
 
-# New Screen
+# New Screen or Surface
 
 Task context: $ARGUMENTS
 
-1. Define user goal.
-2. Resolve product state.
-3. Read `.kilo/knowledge/PRODUCT-UI.md`.
-4. Inspect adjacent screens, state types, and reusable components.
-5. Define visible and hidden information.
-6. Define action hierarchy, empty states, and error recovery.
-7. Implement with existing tokens and components where appropriate.
-8. Complete `.kilo/checklists/ui.md`, `.kilo/checklists/accessibility.md`, and `.kilo/checklists/responsive.md`.
+1. Define the user goal and confirm that a new screen, dialog, or tool is the
+   appropriate surface.
+2. Read `.kilo/knowledge/PRODUCT-UI.md` and inspect adjacent UI and state types.
+3. Define information hierarchy, preserved context, actions, and all relevant
+   loading, empty, error, and recovery states.
+4. Implement with current components and semantic tokens.
+5. Complete the UI checklist and applicable accessibility and responsive
+   checks.
+6. Run focused tests or a runtime walkthrough and report evidence, limitations,
+   and tradeoffs.

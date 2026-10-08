@@ -7,10 +7,10 @@ agent: code
 
 Task context: $ARGUMENTS
 
-1. Treat JavaFX as behavior reference only.
-2. Extract user intent.
-3. Do not copy layout.
-4. Use `.kilo/knowledge/PRODUCT-UI.md` for product direction.
-5. Preserve protocols and fallback.
-6. Reuse the current Compose shell, components, and tokens.
-7. Verify behavior, accessibility, and relevant responsive states.
+1. Inspect the JavaFX flow as a behavioral reference and identify the user goal.
+2. Read `.kilo/knowledge/PRODUCT-UI.md` and inspect the current Compose state.
+3. Preserve protocols and the isolated fallback application.
+4. Implement the behavior with the current Compose shell, components, and
+   semantic tokens; do not copy the deprecated visual layout.
+5. Verify behavior, accessibility, and relevant responsive states.
+6. Run focused tests or a runtime check and report evidence and remaining gaps.

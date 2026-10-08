@@ -1,93 +1,88 @@
-# WebRTC architecture in SecureLanSuite
+# WebRTC Architecture in SecureLanSuite
 
-This document describes the realtime layer built on top of the existing secure chat, discovery, and file-transfer stack.
+This document describes the realtime layer built on the secure chat, discovery,
+and file-transfer stack.
 
-## Current architecture
+## Ownership
 
-- `chat-core` transports realtime signaling envelopes over the already established secure chat connection.
-- `webrtc-core` owns realtime session orchestration, session state, signaling handlers, diagnostics, media device enumeration, camera preview, and native `webrtc-java` runtime integration.
-- `audio-core` and `webcam-core` currently provide runtime-facing media defaults and profile hints rather than a separate standalone transport stack.
-- `desktop-client` surfaces realtime controls inside the messenger-style UI:
-  - peer selection on the left
-  - optional inline video stage plus chat/activity feed in the center
-  - quick actions, voice/media status, transfers, RTC data tools, and diagnostics on the right
+- `chat-core` transports realtime signaling envelopes over an established
+  secure chat connection.
+- `webrtc-core` owns session orchestration and state, signaling handlers,
+  diagnostics, media-device discovery, camera preview, and native
+  `webrtc-java` integration.
+- `audio-core` and `webcam-core` provide media defaults and profile hints; they
+  are not separate realtime transports.
+- `desktop-client` owns call controls, media settings, video presentation, and
+  conversion of runtime events into UI state.
 
-## What is supported now
+## Supported flows
 
-### Stable / primary flows
-- `RTCDataChannel` sessions
-- voice sessions backed by native `webrtc-java`
-- signaling exchange through the existing secure chat path
-- realtime state and diagnostics in the desktop client
-- microphone and camera capture device enumeration in the desktop UI
-- microphone test flow
+Primary flows:
 
-### Implemented but experimental flows
-- camera preview window
-- 1-to-1 video calls
-- inline 1-to-1 video stage in the desktop client
-- local and remote video frame propagation through runtime events
-- preview conversion guards and diagnostics for video capture/frame conversion failures
+- RTC data-channel sessions;
+- voice sessions backed by native `webrtc-java`;
+- SDP and ICE signaling over secure chat;
+- microphone, speaker, and camera enumeration and selection;
+- microphone and speaker tests;
+- realtime state and diagnostic events.
 
-Video-related controls exist in the current desktop UI, but video remains experimental until capture, preview, remote rendering, and device/runtime compatibility are stable enough for normal use.
+Implemented experimental flows:
+
+- camera preview;
+- one-to-one video calls and inline video stage;
+- local and remote frame propagation;
+- preview conversion guards and failure diagnostics.
+
+Video remains experimental until capture, preview, remote rendering, and
+device/runtime compatibility have broader validation.
 
 ## Runtime behavior
 
-The default `RtcSessionService` creates a concrete `RtcEngine` through `RtcEngineProvider`.
+`RtcSessionService` creates an `RtcEngine` through `RtcEngineProvider`. Startup
+tries the native engine and falls back to `NoOpRtcEngine` when initialization
+fails.
 
-Startup behavior:
-- try to initialize a native `webrtc-java` engine
-- fall back to `NoOpRtcEngine` only if native initialization fails
+`WebRtcJavaEngine` provides:
 
-`WebRtcJavaEngine` currently provides:
-- offer/answer negotiation through the existing secure chat signaling path
-- trickle ICE candidate exchange over `chat-core`
-- automatic `RTCDataChannel` creation for local outbound sessions
-- microphone capture and playout through `AudioDeviceModule`
-- audio level events for local and remote streams
-- camera capture through `MediaDevices` + `VideoDeviceSource` + `VideoTrack`
-- selected microphone/camera capture device IDs for RTC sessions
-- remote track observation for audio/video state reporting
-- diagnostic logging and preview conversion guards for video troubleshooting
+- offer/answer negotiation and trickle ICE over `chat-core`;
+- automatic data-channel creation for local outbound sessions;
+- microphone capture and playout through `AudioDeviceModule`;
+- local and remote audio-level events;
+- camera capture through `MediaDevices`, `VideoDeviceSource`, and `VideoTrack`;
+- selected capture-device IDs for sessions;
+- remote audio/video track observation;
+- diagnostic events and video preview conversion guards.
 
-## Desktop UX model
+## Desktop experience
 
-The current desktop UX is chat-first and voice-first, with experimental video available from the same peer workflow.
+The desktop experience is chat-first and voice-first. A user selects a peer,
+keeps the conversation available, and starts voice or experimental video from
+the conversation header or contextual actions.
 
-### Main workflow
-1. start or connect to a secure chat session
-2. discover LAN peers automatically or use manual host/port connection
-3. select a peer from the left peer list
-4. exchange messages in the center feed
-5. trigger quick actions from the right panel:
-   - send file
-   - start voice
-   - start experimental video
-   - hang up
+`LiveActionsColumn` builds the right context area from the current selection and
+activity. It shows relevant call or transfer summaries and Quick Share activity;
+it is not a permanent inventory of media controls, RTC tools, or diagnostics.
+At narrow widths the same context moves into a drawer.
 
-### Media controls
-The right panel includes:
-- microphone selector
-- camera selector
-- microphone test action
-- camera test/preview action
-- local and remote audio level indicators
-- current audio/video profile hints
+Microphone, speaker, camera, and preview controls live in **Settings → Audio &
+Video**. The settings UI enumerates input and output devices, persists the
+selected speaker through `media.outputDeviceId`, and supports microphone,
+speaker, and camera tests. If no device is selected, the runtime uses an
+available default.
 
-If no explicit capture device is selected, the runtime uses the default/first available device.
+Diagnostics primarily go to logs. Runtime failures may be summarized in the
+affected call or settings flow, but no standalone Diagnostics screen is
+required.
 
 ### Video preview flags
-The desktop UI reads these JVM system properties:
+
+The desktop client reads these JVM system properties:
+
 - `securelan.rtc.videoPreview.local.enabled`
 - `securelan.rtc.videoPreview.remote.enabled`
 
-Both are currently enabled by default in the desktop client. They can be disabled when troubleshooting camera or frame conversion instability.
-
-### Advanced / diagnostics section
-The right panel also contains a place for:
-- provider/runtime details
-- diagnostics and debug status
-- notes about preview stability and runtime toggles
+Both are enabled by default. They can be disabled while investigating capture
+or frame-conversion problems.
 
 ## Signaling flow
 
@@ -98,41 +93,28 @@ sequenceDiagram
     participant Chat as chat-core
     participant Peer as Remote peer
 
-    UI->>RTC: Start data voice or video session
+    UI->>RTC: Start data, voice, or video session
     RTC->>Chat: Publish SDP offer or ICE candidate
     Chat->>Peer: Send signal over secure chat session
     Peer->>Chat: Return SDP answer or ICE candidate
     Chat->>RTC: Deliver inbound RTC signal
-    RTC->>UI: Publish state media and diagnostics events
+    RTC->>UI: Publish state, media, and diagnostic events
 ```
 
-## Diagnostics
+## Diagnostic coverage
 
-The runtime exposes diagnostics for:
-- native provider initialization status
-- signaling and ICE progression
-- selected/default audio capture devices
-- detected cameras and selected video capability
-- local/remote audio level events
-- local/remote video frame events
-- preview conversion failures
-- camera preview session status
-- runtime warnings and errors
+The runtime reports native provider initialization, signaling and ICE progress,
+selected and default devices, audio levels, video frames, preview conversion,
+camera preview state, warnings, and failures. Logs must not contain room secrets,
+private keys, passwords, or raw sensitive payloads.
 
-## Current constraints
+## Current constraints and next work
 
-- audio output device selection is not exposed in the desktop UI yet
-- video may still fail on some Windows/JDK/camera combinations
-- the current desktop UX is an inline 1-to-1 video stage rather than a multi-peer conference grid
-- the project currently prioritizes reliable text + discovery + file transfer + voice over a video-first experience
-- chunked large file transfer over `RTCDataChannel` has not been implemented yet
-- screen sharing is not implemented yet
-
-## Recommended next steps
-
-- stabilize video capture and remote rendering across more devices and JDK/runtime combinations
-- expose manual audio output device selection if supported reliably by the runtime stack
-- add safe experimental toggles for video preview and capture modes in the UI instead of only JVM properties
-- add chunked transfer with backpressure awareness for `RTCDataChannel`
-- add screen-sharing mode backed by desktop capture
-- add cross-machine smoke checks for voice and video sessions
+- Video can fail on some Windows, JDK, camera, or driver combinations.
+- The video experience is one-to-one rather than a conference grid.
+- Chunked large-file transfer over `RTCDataChannel` is not implemented.
+- Screen sharing is not implemented.
+- Video needs broader cross-machine and cross-device validation before it can be
+  presented as stable.
+- Preview and capture flags may move from JVM properties to explicit
+  experimental settings when that flow is designed.

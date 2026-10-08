@@ -1,174 +1,127 @@
 # SecureLanSuite Development Guide
 
-This guide contains local development, build, run, packaging, and smoke-test notes for SecureLanSuite. The root [`README.md`](../README.md) intentionally stays focused on general project information.
+This guide is the command index and smoke-test reference for local development.
+The owning Gradle files define exact dependency and plugin versions.
 
 ## Requirements
 
-- JDK 25 installed and active.
-- The repository uses Gradle Wrapper 9.4.1 and Java 25 toolchains. Do not install a separate Gradle or Kotlin compiler for normal development.
-- Kotlin 2.2.21 is used by the Android client and migrated JVM core modules, including Kotlin test sources; use the Gradle Wrapper rather than installing a separate local Kotlin compiler.
-- Internet access on the first Gradle build so dependencies can be downloaded.
-- Android SDK Platform 35, Android SDK Build Tools, and Android SDK Platform Tools are required when building or installing `apps/android-client`.
-- The Android module currently uses Android Gradle Plugin 9.1.1 and Kotlin 2.2.21.
+- JDK 25 for full repository and desktop builds.
+- The checked-in Gradle Wrapper; no separate Gradle or Kotlin installation is
+  needed.
+- Internet access for the first dependency download.
+- Android SDK Platform 35, compatible Build Tools, and Platform Tools for the
+  Android client.
+
+For exact Gradle, Kotlin, Compose, Android plugin, and application versions,
+inspect `gradle/wrapper/gradle-wrapper.properties`, `settings.gradle`, and
+`gradle.properties`.
 
 ## Verify the environment
-
-Desktop/core development:
 
 ```powershell
 java --version
 .\gradlew.bat --version
 jpackage --version
-```
-
-`jpackage --version` is only required for desktop packaging.
-
-Android development:
-
-```powershell
 adb version
 adb devices
 ```
 
-`adb devices` should show a connected physical phone or a running emulator when Android install/test tasks are needed.
+`jpackage` is needed only for desktop packaging. `adb` and a connected device or
+emulator are needed only for Android install and device tests.
 
-## Build and run
+## Build, test, and run
 
-Build the whole project:
-
-```bash
-./gradlew clean build
-```
-
-Run the primary Compose desktop client:
-
-```bash
-./gradlew :apps:desktop-client:run
-```
-
-On Windows, use `gradlew.bat`:
+On macOS or Linux, replace `.\gradlew.bat` with `./gradlew`.
 
 ```powershell
+.\gradlew.bat test
 .\gradlew.bat clean build
 .\gradlew.bat :apps:desktop-client:run
 ```
 
-Run the repository test suite:
+Use `test` for a fast repository verification and `build` when assembled outputs
+also matter. `:apps:desktop-client:runComposeShell` remains a compatibility
+alias for the primary desktop run task.
 
-```bash
-./gradlew test
-```
-
-On Windows:
-
-```powershell
-.\gradlew.bat test
-```
-
-Use `test` for a fast verification pass and `build` when packaging or validating all assembled outputs.
-
-The previous Compose-specific task remains as a compatibility alias for scripts that still use it:
-
-```powershell
-.\gradlew.bat :apps:desktop-client:runComposeShell
-```
-
-## Android client build
-
-Build Android debug and release APKs:
+## Android client
 
 ```powershell
 .\gradlew.bat :apps:android-client:assembleDebug
 .\gradlew.bat :apps:android-client:assembleRelease
+.\gradlew.bat :apps:android-client:testDebugUnitTest
+.\gradlew.bat :apps:android-client:connectedDebugAndroidTest
 ```
 
-Android outputs use the version from `gradle.properties` (`secureLanVersion`, currently `0.5.1`):
+APK names use `secureLanVersion` from `gradle.properties`:
 
 - `apps/android-client/build/outputs/apk/debug/secure-lan-<version>.apk`
 - `apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk`
 
-Detailed Android SDK setup, release signing, APK verification, install, troubleshooting, and desktop interoperability notes are in [`apps/android-client/android-readme.md`](../apps/android-client/android-readme.md).
+See the [Android client guide](../apps/android-client/android-readme.md) for SDK
+setup, signing, install, lifecycle, permissions, and troubleshooting.
 
 ## Desktop workflow smoke test
 
-Use `apps/desktop-client` for Compose UI/UX validation.
-
 1. Enter a nickname and shared room password.
-2. Click **Open room** to host locally, or wait for discovered peers in the left column.
-3. Keep **Discoverable** enabled if this room should be advertised through UDP discovery.
-4. Select a discovered peer and click **Connect**, or use the manual host/port fields as a fallback.
-5. Exchange chat messages in the center feed.
-6. Use right-side quick actions to send files, start a voice call, start an experimental video call, or end an active call.
-7. Verify settings persistence, tray hide/show/exit behavior, and desktop notifications when running on a supported desktop environment.
+2. Select **Open room** to host, or select a discovered room and connect.
+3. Keep **Discoverable** enabled when the room should be advertised over LAN.
+4. Use manual host and port fields only when discovery is unavailable.
+5. Exchange messages, send a file, and exercise voice or experimental video as
+   required by the change.
+6. Verify affected settings, tray lifecycle, and notifications on a supported
+   desktop environment.
 
-Default ports:
-
-- chat: `5050`
-- encrypted file transfer: `5051`
-- UDP discovery: `5052`
-- no-auth LAN browser quick share: `5053`
-
-When the Android client receives files while connected to a desktop room, it may listen on the remote file-transfer port plus `1000`, usually `6051`, to avoid clashing with the desktop receiver on `5051`.
+The connected workspace keeps peers on the left, conversation in the center,
+and contextual actions or activity on the right or in a drawer. Media device
+selection and tests are in **Settings → Audio & Video**.
 
 ## Android interoperability smoke test
 
-1. Build and install the Android APK, or run `apps/android-client` from Android Studio.
-2. Start the desktop client on a computer in the same LAN and click **Open room**.
-3. Keep desktop **Discoverable** enabled.
-4. On Android, grant `NEARBY_WIFI_DEVICES` on Android 13+ if prompted.
-5. Enter the same room password, select the discovered desktop peer, and tap **Connect**.
-6. Exchange chat messages, use **Pick file** / **Send file** for Android-to-desktop transfer, or tap **Receive files** before sending a desktop-to-Android file.
+1. Install or run the Android client and start a desktop room on the same LAN.
+2. Keep desktop discovery enabled and grant `NEARBY_WIFI_DEVICES` on Android 13+
+   when requested.
+3. Enter the same password, select the discovered room, and connect.
+4. Exchange chat messages and send a file from Android to desktop.
+5. Keep **Receive files automatically** enabled on Android, which is the default.
+   After the secure chat connection is established, send a file from desktop;
+   Android starts its receiver automatically.
+6. When relevant, host a room from Android and connect from desktop. Android
+   hosting runs in a foreground service and is advertised through LAN discovery.
 
-Android client notes:
+Android does not currently provide voice, RTC data channels, camera/video,
+screen sharing, steganography, or browser Quick Share.
 
-- it can host a desktop-compatible encrypted chat room from the Devices screen; hosting runs as a foreground service and is advertised over LAN discovery;
-- it uses a small Android-local protocol compatibility layer rather than depending on desktop UI code;
-- it supports UDP discovery, secure chat, encrypted file send, encrypted file receive, progress indicators, a dark-theme toggle, and in-app diagnostics logs;
-- it does not support voice, WebRTC data channels, camera/video, screen sharing, steganography tools, or no-auth browser quick share yet.
+## Ports
 
-## No-auth LAN browser quick share smoke test
+- secure chat: `5050` TCP
+- encrypted file transfer: `5051` TCP
+- LAN discovery: `5052` UDP
+- desktop browser Quick Share: `5053` TCP
 
-The desktop client can publish temporary browser-accessible LAN shares for a file or a text snippet. The receiver does not need Secure LAN Suite installed: they open the generated `http://<lan-ip>:5053/s/<share-name>` link in a browser, then download the file or copy the text.
+An Android client connected to a desktop room may receive on the peer file port
+plus `1000`, normally `6051`, to avoid a local conflict with `5051`.
 
-Safety constraints:
+## Browser Quick Share smoke test
 
-- there is intentionally no login and no random URL token;
-- anyone on the same LAN who knows or discovers the link can access an active share;
-- each share should have an expiration and access limit;
-- stop the share server or stop individual shares when finished;
-- Windows/macOS/Linux firewalls may need to allow inbound TCP on the quick-share port.
+Publish a file or text snippet and open its generated
+`http://<lan-ip>:5053/s/<share-name>` link from another LAN device. Verify the
+expiration and access limit, then stop the share.
+
+Quick Share intentionally uses unauthenticated local HTTP. Anyone on the LAN who
+knows or discovers an active link can access it, so use it only on a trusted LAN.
 
 ## Desktop packaging
 
-The primary Compose desktop client owns the current packaging tasks. The deprecated fallback client has separate documentation in [`javafx-client.md`](javafx-client.md).
-
-### Portable build
-
-Build the primary Compose portable application image and ZIP archive:
-
-```bash
-./gradlew :apps:desktop-client:buildPortable
-```
-
-On Windows:
+Build the primary Compose portable image and ZIP:
 
 ```powershell
 .\gradlew.bat :apps:desktop-client:buildPortable
 ```
 
-Example output:
-
-- `apps/desktop-client/build/distributions/SecureLanSuite-<version>-portable.zip`
-
-The intermediate application image is created under:
-
-- `apps/desktop-client/build/packaging/SecureLanSuite/`
-
-This task uses `jpackage --type app-image` and does not require the Windows EXE installer toolchain.
-
-`:apps:desktop-client:buildComposePortable` remains an alias for the primary `buildPortable` task.
-
-### Windows EXE installer
+The archive is written under `apps/desktop-client/build/distributions/`; the
+intermediate application image is under
+`apps/desktop-client/build/packaging/SecureLanSuite/`. This `app-image` flow does
+not require WiX.
 
 Build the Windows EXE installer:
 
@@ -176,18 +129,9 @@ Build the Windows EXE installer:
 .\gradlew.bat :apps:desktop-client:buildExe
 ```
 
-or directly:
-
-```powershell
-.\gradlew.bat :apps:desktop-client:createExe
-```
-
-Output directory:
-
-- `apps/desktop-client/build/packaging/`
-
-Example output file:
-
-- `apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe`
-
-For Windows EXE prerequisites, setup, and troubleshooting, use the dedicated [Windows installer guide](wix-installation.md).
+Installer output is written under `apps/desktop-client/build/packaging/`. The
+`:apps:desktop-client:createExe` task remains available as the direct packaging
+task. Follow the
+[Windows installer guide](wix-installation.md) for the verified WiX setup and
+troubleshooting. The deprecated fallback client has separate instructions in
+[the JavaFX guide](javafx-client.md).

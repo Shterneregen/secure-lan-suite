@@ -227,32 +227,5 @@ Multiple actions are valid when the workflow needs them. Establish hierarchy
 through wording, placement, and button treatment instead of enforcing an
 arbitrary count of one action per screen.
 
-## Implementation workflow
-
-Before changing desktop UI:
-
-1. Read the request and inspect the current behavior and relevant state types.
-2. Identify the user's goal and the context that must be preserved.
-3. Read the relevant sections of this guide.
-4. Reuse the existing shell, components, tokens, and service boundaries.
-5. Keep networking, cryptography, protocols, and business orchestration out of
-   composables.
-
-After changing desktop UI:
-
-1. Verify the affected behavior with focused tests or a runtime check.
-2. Check keyboard focus, empty/error states, and the relevant responsive widths.
-3. Confirm that technical details appear only where they help the user decide or
-   recover.
-4. Capture screenshots when visual review is material to the change.
-5. Report verified behavior, remaining limitations, and deliberate tradeoffs.
-
-Do not assign a numeric product score. Review against concrete behavior and the
-constraints above.
-
-## Maintenance
-
-Update this document when a product decision changes. Update public docs when
-features, architecture, packaging, compatibility, or operating instructions
-change. Avoid copying implementation constants here unless they define a stable
-UX contract; link to the owning code when exact values are likely to evolve.
+Review UI against concrete behavior and the constraints above; do not assign a
+numeric product score.

@@ -1,52 +1,38 @@
-# SecureLanSuite Minimal Kilo Code AI Kit
+# SecureLanSuite Kilo Kit
 
-This `.kilo` kit routes UI work through one concise product guide:
+This directory contains project commands, skills, checklists, and product
+guidance for work in SecureLanSuite.
 
-1. Resolve the task type.
-2. Read `.kilo/knowledge/PRODUCT-UI.md`.
-3. Inspect the current implementation.
-4. Run the matching command and follow the project rules.
-5. Implement or review.
-6. Verify concrete behavior and report tradeoffs.
+## Setup
 
-## How to install
+Keep the complete `.kilo/` directory at the repository root.
+`.kilo/kilo.jsonc` loads `.kilo/rules/rules.md`; merge its `instructions` entry
+when combining this kit with an existing Kilo configuration.
 
-Copy the contents of this folder into your repository `/` directory.
+Kilo discovers Markdown workflows in `.kilo/commands/` and skills under
+`.kilo/skills/`. After changing rules, commands, or skills, run `/reload` or
+start a new session before relying on the updated instructions.
 
-Recommended final structure:
+## Routing
 
-```text
-.kilo/
-├── knowledge/
-├── rules/
-├── skills/
-├── commands/
-└── checklists/
-```
+| Work | Command or skill | Supporting source |
+| --- | --- | --- |
+| Product flow or layout | `securelan-ui-design` | `knowledge/PRODUCT-UI.md` |
+| Compose implementation | `compose-engineering` | `checklists/ui.md` |
+| UI review | `/review-ui`, `securelan-ui-review` | `checklists/review.md` |
+| Android interoperability | `securelan-android` | Android README and Gradle files |
+| Modules and dependencies | `securelan-architecture` | `settings.gradle` and affected build files |
+| Build and distribution | `securelan-packaging` | `docs/development.md`, `docs/wix-installation.md` |
+| Voice, video, and RTC | `securelan-realtime` | `docs/webrtc-architecture.md` |
 
-Files in `.kilo/commands/` are available as slash commands by filename. For
-example, run `/review-pr <PR or branch>` for `commands/review-pr.md`. Command
-arguments are passed to the template through `$ARGUMENTS`.
+Commands define workflows and accept task context through `$ARGUMENTS`.
+Skills define domain-specific boundaries. The product guide owns desktop UX
+intent, while current code and public documentation own implemented behavior.
 
-## Skill routing
+## Maintenance
 
-- `securelan-ui-design` — product UI, screens, layouts, and feature flows.
-- `securelan-ui-review` — read-only UI and product QA review.
-- `compose-engineering` — Compose implementation and state architecture.
-- `securelan-android` — Android client and desktop interoperability.
-- `securelan-architecture` — module boundaries and cross-module changes.
-- `securelan-packaging` — builds, installers, and release artifacts.
-- `securelan-realtime` — WebRTC, voice, video, and RTC diagnostics.
-
-## Main rule
-
-Do not let the AI start from Compose code.
-
-The AI must start from user intent, current product state, and verified behavior.
-
-## Checklist routing
-
-- Use `.kilo/checklists/ui.md` for every user-facing Compose change.
-- Add `.kilo/checklists/accessibility.md` when interaction, focus, semantics, color, or motion changes.
-- Add `.kilo/checklists/responsive.md` when layout, visibility, dialogs, or content sizing changes.
-- Use `.kilo/checklists/review.md` to review the completed change and its evidence.
+- Keep stable repository constraints in `rules/rules.md`.
+- Keep current feature and tool status in public documentation or owning code.
+- Avoid copying version numbers and implementation constants into skills.
+- Use accessibility and responsive checklists only when their applicability
+  conditions are met.

@@ -1,16 +1,17 @@
 ---
-description: Fix a focused UI defect and verify the affected behavior
+description: Fix a focused defect and verify the affected behavior
 agent: code
 ---
 
-# UI Bugfix
+# Bugfix
 
 Task context: $ARGUMENTS
 
-1. Identify the broken behavior.
-2. Fix only the bug.
-3. Do not redesign unless requested.
-4. Preserve layout hierarchy.
-5. Run `.kilo/checklists/ui.md` for a user-facing fix.
-6. Run the accessibility or responsive checklist when its applicability conditions are met.
-7. Report focused verification and any untested behavior.
+1. Reproduce or establish evidence for the defect.
+2. Inspect the owning implementation, tests, and relevant documentation.
+3. Correct the smallest coherent cause without expanding the requested scope.
+4. Preserve protocols, compatibility, and unrelated behavior.
+5. Run focused tests or a runtime check that would fail before the fix.
+6. For user-facing Compose changes, apply the relevant UI, accessibility, and
+   responsive checklists.
+7. Report the cause, change, verification, and any remaining limitation.

@@ -1,75 +1,38 @@
 ---
 name: securelan-ui-design
-description: Design or revise SecureLanSuite product UI, individual screens, and feature flows. Use for new screens, redesigns, layout and context-panel decisions, responsive behavior, component reuse, and UX changes to chat, file transfer, realtime communication, Quick Share, steganography, diagnostics, or settings.
 license: MIT
+description: >
+  Define SecureLanSuite product direction, information hierarchy, user flows,
+  layout, and UX behavior. Use when a desktop surface or interaction needs a
+  product decision. Do not use for low-level Compose mechanics or review-only
+  tasks.
 ---
 
 # SecureLanSuite UI Design
 
-## Role
+## Sources
 
-Own product-level UI direction, screen composition, and feature-level UX without
-inventing behavior or crossing service boundaries.
-
-This skill decides **what the UI should communicate and how the interaction
-should be structured**. Use `compose-engineering` for detailed implementation
-architecture.
-
-## Sources of truth
-
-1. User request and accepted scope.
+1. The user request and accepted scope.
 2. `.kilo/knowledge/PRODUCT-UI.md`.
-3. Current implementation and state model.
-4. Existing components and design tokens.
-5. Legacy JavaFX UI as a behavior reference only.
+3. Current implementation, state model, and adjacent UI.
+4. Existing components and semantic tokens.
 
-If product guidance and implemented behavior differ, identify the difference
-before choosing a direction. Preserve working protocols and service boundaries.
+Use JavaFX only to understand legacy behavior. Current Compose behavior and the
+Product UI Guide define the direction.
 
-## Common process
+## Workflow
 
 1. Identify the user goal and current product state.
-2. Inspect the relevant implementation, state types, and adjacent UI.
-3. Identify context that must remain visible through the task.
-4. Decide what information is primary, secondary, contextual, or hidden.
-5. Reuse existing shell, components, and semantic tokens where appropriate.
-6. Define loading, empty, error, disabled, success, and recovery behavior.
-7. Define keyboard, focus, accessibility, and relevant responsive behavior.
-8. Produce design direction or implementation within the requested scope.
-9. Validate concrete behavior and report evidence, limitations, and tradeoffs.
+2. Decide whether the work belongs in the disconnected entry experience,
+   connected workspace, a modal tool, or settings.
+3. Identify the room, peer, conversation, draft, transfer, and call context that
+   must remain available.
+4. Define primary, secondary, contextual, and hidden information.
+5. Define actions and applicable loading, empty, disabled, success, error, and
+   recovery states.
+6. Define keyboard, focus, accessibility, resizing, and narrow-window behavior.
+7. Produce a concrete design direction and acceptance criteria.
 
-## Route by task
-
-### Product and layout work
-
-Use for navigation, workspace structure, redesigns, and context-panel behavior.
-
-- Preserve communication-first hierarchy.
-- Avoid dashboard layouts and permanent tool collections.
-- Keep engineering concepts in Diagnostics or Advanced surfaces.
-- Keep the context panel tied to the current task and selection.
-
-### Screen work
-
-Use for Welcome, Host Setup, Join Setup, Messenger, Settings, Diagnostics, and
-new screens.
-
-- Inspect the screen state and all reachable states before changing layout.
-- Define action hierarchy, scrolling, resizing, and narrow-window behavior.
-- Prefer existing components; introduce a component only for a reusable need.
-
-### Feature-flow work
-
-Use for chat, file transfer, voice/video, Quick Share, steganography,
-diagnostics, and settings.
-
-- Inspect the complete user flow, including failure and recovery.
-- Preserve feature ownership and service boundaries.
-- Do not duplicate another feature's responsibility.
-- Keep protocol and transport details out of normal user-facing copy.
-
-## Completion
-
-For implementation work, complete the applicable UI, accessibility, and
-responsive checklists under `.kilo/checklists/`. Report what was verified and
-what still requires runtime or visual evidence.
+Use `compose-engineering` when implementing the approved direction. Keep normal
+communication flows free of raw network and runtime details, and do not invent
+screens or capabilities that the product does not implement.

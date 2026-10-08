@@ -1,5 +1,5 @@
 ---
-description: Review implemented UI for product, accessibility, and responsive regressions
+description: Review UI for product, accessibility, and responsive regressions
 agent: code
 ---
 
@@ -7,11 +7,10 @@ agent: code
 
 Task context: $ARGUMENTS
 
-Review the current UI against `.kilo/knowledge/PRODUCT-UI.md` and the implemented behavior.
+Read `.kilo/knowledge/PRODUCT-UI.md`, inspect the implementation and evidence,
+and apply `.kilo/checklists/review.md`.
 
-Return:
-- user impact and regressions
-- violated product constraints
-- accessibility and responsive findings
-- required fixes with evidence
-- final verdict
+Report actionable findings ordered by severity. For each finding, include the
+trigger, user impact, evidence, and required correction. Separate verified
+behavior from assumptions, state missing visual or runtime evidence, and finish
+with an `Accept`, `Needs Refinement`, or `Reject` recommendation.

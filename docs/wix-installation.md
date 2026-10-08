@@ -56,6 +56,14 @@ If WiX was already installed in another version, update or reinstall it explicit
 dotnet tool update --global wix --version 5.0.2
 ```
 
+If `dotnet tool update` refuses to move from another major version, remove the
+global tool and install the verified version explicitly:
+
+```powershell
+dotnet tool uninstall --global wix
+dotnet tool install --global wix --version 5.0.2
+```
+
 Verify the installed version:
 
 ```powershell
