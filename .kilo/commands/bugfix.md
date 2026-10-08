@@ -1,4 +1,11 @@
-# Workflow: UI Bugfix
+---
+description: Fix a focused UI defect and verify the affected behavior
+agent: code
+---
+
+# UI Bugfix
+
+Task context: $ARGUMENTS
 
 1. Identify the broken behavior.
 2. Fix only the bug.

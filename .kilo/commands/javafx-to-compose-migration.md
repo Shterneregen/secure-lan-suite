@@ -1,4 +1,11 @@
-# Workflow: JavaFX to Compose Migration
+---
+description: Migrate JavaFX behavior into the current Compose product direction
+agent: code
+---
+
+# JavaFX to Compose Migration
+
+Task context: $ARGUMENTS
 
 1. Treat JavaFX as behavior reference only.
 2. Extract user intent.

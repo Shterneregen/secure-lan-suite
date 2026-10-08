@@ -1,258 +1,118 @@
 ---
 name: compose-engineering
 license: MIT
-description: >
-  Production-grade Jetpack Compose and Compose Multiplatform engineering skill.
-  Use for Compose UI implementation, refactoring, state modeling, architecture,
-  performance, accessibility, testing, KMP/CMP target sharing, and spec-driven
-  UI implementation.
+description: Implement and review Jetpack Compose and Compose Multiplatform UI. Use for Compose UI code, state modeling, architecture, accessibility, performance, testing, desktop behavior, and Kotlin Multiplatform target sharing after product direction is known.
 ---
 
-# Compose Engineering Skill
+# Compose Engineering
 
-## Role
+## Role and boundary
 
-You are a Senior Compose / Compose Multiplatform engineer.
+Implement approved product behavior with explicit state, accessible UI,
+predictable interactions, and minimal complexity. This skill answers **how to
+implement in Compose**. It does not choose product strategy or feature scope.
 
-Your job is to implement approved product decisions with clean Compose architecture,
-explicit state, accessible UI, predictable behavior, and minimal unnecessary complexity.
+## Sources of truth
 
-This skill answers **how to implement in Compose**.
+1. User request and accepted scope.
+2. Feature specification or task acceptance criteria.
+3. `.kilo/knowledge/PRODUCT-UI.md` for SecureLanSuite UI work.
+4. Project rules and architecture.
+5. Existing implementation and conventions.
+6. Legacy UI only as a behavior reference unless strict parity is requested.
 
-It does not decide product strategy, feature scope, or visual direction.
+Surface material conflicts before implementing a direction that changes scope,
+protocols, architecture, or product behavior.
 
----
+## Bundled resources
 
-## Source of Truth Priority
+Load only what the task requires:
 
-1. User request
-2. Feature specification
-3. `.kilo/knowledge/PRODUCT-UI.md`
-4. Project rules
-5. Existing architecture and conventions
-6. Existing Compose implementation
-7. Legacy UI only as behavior reference unless strict parity is explicitly requested
+- [`DECISION-TREES.md`](DECISION-TREES.md) for state ownership, architecture,
+  containers, dialogs, source sets, and dependency decisions.
+- [`CHECKLISTS.md`](CHECKLISTS.md) for implementation and review validation.
+- [`REFERENCES.md`](REFERENCES.md) before version-sensitive APIs, dependency
+  changes, or Kotlin Multiplatform support claims.
 
-If sources conflict, stop and ask for clarification.
+## Implementation workflow
 
----
+1. Confirm the requested behavior and acceptance criteria.
+2. Inspect the affected screen, state, services, and existing conventions.
+3. Identify all reachable states and relevant platform behavior.
+4. Choose the smallest approach that fits the existing architecture.
+5. Implement within scope and preserve service and protocol boundaries.
+6. Run focused tests or validation.
+7. Complete the relevant bundled checklist.
+8. Report changes, evidence, risks, and remaining limitations.
 
-## Spec-Driven Development Pipeline
+## Architecture
 
-Before implementation:
+Prefer unidirectional data flow, immutable UI state, state hoisting, narrow state
+reads, small stateless composables, and stable lazy-list keys. Respect the
+project's existing MVI or MVVM convention.
 
-1. Locate or create the relevant feature specification.
-2. Read acceptance criteria.
-3. Confirm scope and out-of-scope items.
-4. Identify the current screen, state, and user intent.
-5. Identify existing architecture conventions.
-6. Choose the minimal implementation approach.
-7. Implement only the approved scope.
-8. Validate acceptance criteria.
-9. Report changes, validation, risks, and remaining items.
+Use these boundaries where they fit the project:
 
-Do not start by writing code.
+- Route: obtains the ViewModel, collects state/effects, and handles navigation or platform APIs.
+- Screen: renders immutable state and emits callbacks.
+- Leaf: renders narrow sub-state and owns only visual-local state.
 
----
+Keep business logic, networking, persistence, crypto, and platform objects out of
+composables and screen state. Do not introduce a competing architecture without
+an explicit requirement.
 
-## Compose Architecture Principles
+## State and effects
 
-Prefer:
-- unidirectional data flow;
-- immutable UI state;
-- `StateFlow` for durable screen state;
-- `Channel` or `SharedFlow` for one-shot effects;
-- small stateless composables;
-- state hoisting;
-- narrow state passed to leaf composables;
-- stable keys for lazy lists;
-- UI-adjacent mappers for presentation formatting;
-- tests for reducers, mappers, validators, and ViewModels.
+- Use `StateFlow` for durable screen state when consistent with the project.
+- Use `Channel` or `SharedFlow` for true one-shot effects.
+- Separate editable input, derived values, persisted domain data, and visual-local state.
+- Do not store safely derivable values twice.
+- Keep focus, scroll, hover, expansion, and animation progress local when they
+  have no business or persistence meaning.
+- Preserve raw editable input separately from parsed or validated values.
 
-Avoid:
-- business logic in composables;
-- platform objects in screen state;
-- hidden mutable state;
-- giant composables;
-- passing entire screen state everywhere;
-- random visual constants;
-- network or persistence calls from composables;
-- forcing a new architecture over a coherent existing one.
+## Compose Desktop
 
----
+- Use desktop density, resizing, hover, focus, selection, menus, split panes,
+  toolbars, and keyboard flows where appropriate.
+- Keep focus visible and tab order logical.
+- Define narrow-window, overflow, scrolling, and dialog behavior.
+- Avoid phone-shaped navigation and oversized controls unless explicitly required.
 
-## MVI / MVVM Rule
+## KMP and dependencies
 
-Respect the existing project pattern.
+Before adding a dependency to `commonMain`, verify coordinates, target support,
+API shape, project compatibility, and maintenance cost using current primary
+documentation. Do not assume every AndroidX artifact supports every target.
 
-Both MVI and MVVM are valid if they preserve unidirectional flow.
+Keep business logic and presentation state shared where practical. Isolate file
+pickers, notifications, media devices, storage, and OS integration behind
+interfaces or `expect`/`actual` only when the project needs platform separation.
 
-MVI:
-- sealed events;
-- single `onEvent()`;
-- immutable State;
-- one-shot Effect.
+## UI quality and accessibility
 
-MVVM:
-- named public functions;
-- immutable State;
-- one-shot Effect.
+Provide applicable loading, empty, error, disabled, success, validation, and
+recovery states. Preserve useful content during refresh where possible.
 
-Do not introduce a competing architecture unless explicitly requested.
+Use semantic components and verify labels, roles, state descriptions, keyboard
+operation, visible focus, contrast, and reduced motion. Do not duplicate semantics
+already supplied by Material or Foundation components.
 
----
+## Performance
 
-## Route / Screen / Leaf Boundary
+Keep parsing, blocking I/O, and heavy work outside composition. Use `remember`
+and `derivedStateOf` only when they solve a measured or evident state problem.
+Use stable keys for changing lazy collections and keep state reads as narrow as
+practical.
 
-Route composable:
-- obtains ViewModel;
-- collects state;
-- collects effects;
-- handles navigation, snackbar, and platform APIs.
+## Testing
 
-Screen composable:
-- stateless renderer;
-- receives state and callbacks;
-- owns layout composition.
+Prioritize tests for ViewModels, reducers, validators, formatters, presentation
+mappers, business logic, and platform bindings. Add UI tests for meaningful
+interaction or regression risk; do not mirror every visual composable in a test.
 
-Leaf composables:
-- render small sub-state;
-- emit narrow callbacks;
-- keep only visual-local state such as focus, scroll, expansion, and animation.
+## Completion report
 
----
-
-## State Modeling Rules
-
-Separate:
-1. Editable input
-2. Derived display/business values
-3. Persisted domain snapshot
-4. Transient UI-only state
-
-Do not store a value twice if it can be derived safely.
-
-Use UI-local state only for visual concerns.
-
----
-
-## Compose Desktop Rules
-
-For desktop Compose:
-- Avoid mobile-first layouts.
-- Use compact density where appropriate.
-- Support resize behavior.
-- Support hover, focus, selected, disabled, loading, and error states.
-- Prefer sidebars, split panes, toolbars, panels, menus, and keyboard flows where appropriate.
-- Do not make all buttons huge.
-- Do not create Android-looking desktop UI unless explicitly requested.
-
----
-
-## KMP / CMP Rules
-
-Before adding a dependency to `commonMain`:
-1. Verify artifact coordinates.
-2. Verify target support.
-3. Verify API shape.
-4. Prefer official docs or Maven Central.
-
-Do not assume AndroidX artifacts work in `commonMain`.
-
-Use `expect/actual` or interfaces for platform-specific behavior.
-
-Keep business logic and presentation state shared before platform UI.
-
----
-
-## UI Quality Rules
-
-User-facing Compose UI must provide:
-- clear primary action;
-- readable labels;
-- empty/loading/error/success/disabled states;
-- validation feedback;
-- keyboard navigation;
-- visible focus;
-- hover feedback where applicable;
-- accessible semantics;
-- stable resizing;
-- predictable scrolling;
-- compact but readable density.
-
----
-
-## Performance Rules
-
-Prefer:
-- stable state shapes;
-- narrow state reads;
-- stable LazyColumn keys;
-- `derivedStateOf` only when it reduces meaningful recomposition;
-- `remember` only for expensive stable objects or visual-local state;
-- immutable collections or stable wrappers where appropriate.
-
-Avoid:
-- unnecessary recomposition through huge state objects;
-- parsing or heavy work in composables;
-- loading images or data directly in composables;
-- full-screen spinners during refresh when old content can remain visible.
-
----
-
-## Accessibility Rules
-
-Every screen must support:
-- logical tab order;
-- visible focus;
-- screen-reader labels;
-- semantic roles;
-- adequate contrast;
-- keyboard operation;
-- reduced motion where relevant.
-
-No feature is complete if it is mouse-only.
-
----
-
-## Testing Rules
-
-Test:
-- ViewModel event/state/effect behavior;
-- reducers;
-- validators;
-- formatters;
-- presentation mappers;
-- pure business logic;
-- platform bindings where needed.
-
-Do not try to unit-test every visual composable.
-
----
-
-## Completion Report
-
-After implementation, report:
-1. Files changed
-2. Specification or acceptance criteria implemented
-3. Architecture pattern used
-4. Tests or validation run
-5. Known risks
-6. Remaining work
-7. Any scope deviations
-
-Do not claim completion if acceptance criteria are not satisfied.
-
----
-
-## Hard Stop Conditions
-
-Stop and ask for clarification if:
-- no feature specification exists for non-trivial work;
-- scope is unclear;
-- requested UI conflicts with the Product UI Guide;
-- implementation requires protocol or architecture changes outside scope;
-- target platform support is unknown;
-- dependency support is unverified and critical;
-- existing architecture convention conflicts with the proposed approach;
-- acceptance criteria cannot be validated.
+Report files changed, behavior or criteria implemented, architecture used,
+validation run, known risks, remaining work, and any scope deviations. Do not
+claim completion or runtime behavior without supporting evidence.

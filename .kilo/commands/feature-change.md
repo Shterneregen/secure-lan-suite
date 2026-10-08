@@ -1,4 +1,11 @@
-# Workflow: Feature Change
+---
+description: Change an existing feature while preserving its product boundaries
+agent: code
+---
+
+# Feature Change
+
+Task context: $ARGUMENTS
 
 1. Identify the requested user outcome and current feature behavior.
 2. Check affected states and contexts.

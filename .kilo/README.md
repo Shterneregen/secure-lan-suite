@@ -5,7 +5,7 @@ This `.kilo` kit routes UI work through one concise product guide:
 1. Resolve the task type.
 2. Read `.kilo/knowledge/PRODUCT-UI.md`.
 3. Inspect the current implementation.
-4. Follow the matching workflow and rules.
+4. Run the matching command and follow the project rules.
 5. Implement or review.
 6. Verify concrete behavior and report tradeoffs.
 
@@ -20,10 +20,23 @@ Recommended final structure:
 ├── knowledge/
 ├── rules/
 ├── skills/
-├── workflows/
-├── prompts/
+├── commands/
 └── checklists/
 ```
+
+Files in `.kilo/commands/` are available as slash commands by filename. For
+example, run `/review-pr <PR or branch>` for `commands/review-pr.md`. Command
+arguments are passed to the template through `$ARGUMENTS`.
+
+## Skill routing
+
+- `securelan-ui-design` — product UI, screens, layouts, and feature flows.
+- `securelan-ui-review` — read-only UI and product QA review.
+- `compose-engineering` — Compose implementation and state architecture.
+- `securelan-android` — Android client and desktop interoperability.
+- `securelan-architecture` — module boundaries and cross-module changes.
+- `securelan-packaging` — builds, installers, and release artifacts.
+- `securelan-realtime` — WebRTC, voice, video, and RTC diagnostics.
 
 ## Main rule
 

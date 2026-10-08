@@ -23,7 +23,7 @@ This skill is intentionally short.
 
 The authoritative architecture constraints live in:
 
-- `../../rules.md`
+- `../../rules/rules.md`
 - `../../rules/*.md`
 - repository `README.md`
 - repository `docs/`
@@ -55,7 +55,7 @@ requires architecture or module-boundary changes.
 
 Before proposing or implementing architecture changes:
 
-1. Read `../../rules.md`.
+1. Read `../../rules/rules.md`.
 2. Read only the relevant repository docs:
    - `README.md`
    - `docs/development.md`
@@ -97,7 +97,7 @@ Always preserve these project-level constraints:
 - protocol and wire-format compatibility must not drift without explicit approval;
 - large rewrites require explicit user approval.
 
-For the full rule set, use `../../rules.md`.
+For the full rule set, use `../../rules/rules.md`.
 
 ---
 
@@ -145,7 +145,7 @@ If the change alters any of the following, update docs in the same task:
 - Android interoperability;
 - product status.
 
-Keep this skill short. Put durable rules in `../../rules.md` and detailed
+Keep this skill short. Put durable rules in `../../rules/rules.md` and detailed
 explanations in repository documentation.
 
 ---

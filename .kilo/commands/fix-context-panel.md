@@ -1,4 +1,11 @@
-# Prompt: Fix Context Panel
+---
+description: Make the right-side context panel follow product constraints
+agent: code
+---
+
+# Fix Context Panel
+
+Task context: $ARGUMENTS
 
 Make the right panel contextual.
 

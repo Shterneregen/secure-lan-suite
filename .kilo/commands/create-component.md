@@ -1,4 +1,11 @@
-# Prompt: Create Component
+---
+description: Design and create a reusable UI component
+agent: code
+---
+
+# Create Component
+
+Task context: $ARGUMENTS
 
 Create a reusable component only if existing components cannot solve the problem.
 

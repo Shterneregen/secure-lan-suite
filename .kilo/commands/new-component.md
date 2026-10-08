@@ -1,4 +1,11 @@
-# Workflow: New Component
+---
+description: Define and implement a reusable UI component
+agent: code
+---
+
+# New Component
+
+Task context: $ARGUMENTS
 
 1. Check if existing component can be reused.
 2. Define one responsibility.

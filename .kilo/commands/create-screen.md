@@ -1,4 +1,11 @@
-# Prompt: Create Screen
+---
+description: Design and implement a SecureLanSuite screen
+agent: code
+---
+
+# Create Screen
+
+Task context: $ARGUMENTS
 
 You are working on SecureLanSuite UI.
 

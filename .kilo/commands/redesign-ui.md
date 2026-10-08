@@ -1,4 +1,11 @@
-# Prompt: Redesign UI
+---
+description: Redesign selected UI while preserving its behavior
+agent: code
+---
+
+# Redesign UI
+
+Task context: $ARGUMENTS
 
 Redesign the selected UI without preserving legacy visual layout.
 

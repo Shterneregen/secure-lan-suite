@@ -1,4 +1,11 @@
-# Prompt: Compose Implementation
+---
+description: Implement an approved UI design in Compose Desktop
+agent: code
+---
+
+# Compose Implementation
+
+Task context: $ARGUMENTS
 
 Implement the approved UI in Compose Desktop.
 

@@ -1,4 +1,11 @@
-# Workflow: Redesign Existing UI
+---
+description: Redesign existing UI around current product intent and behavior
+agent: code
+---
+
+# Redesign Existing UI
+
+Task context: $ARGUMENTS
 
 1. Identify existing user intent.
 2. Preserve working behavior.

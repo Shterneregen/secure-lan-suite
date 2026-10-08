@@ -1,4 +1,11 @@
-# Workflow: UI Review
+---
+description: Review a completed UI change and its supporting evidence
+agent: code
+---
+
+# UI Review
+
+Task context: $ARGUMENTS
 
 1. Read implemented change.
 2. Determine task type.

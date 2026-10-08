@@ -1,4 +1,11 @@
-# Workflow: New Screen
+---
+description: Define and implement a new SecureLanSuite screen
+agent: code
+---
+
+# New Screen
+
+Task context: $ARGUMENTS
 
 1. Define user goal.
 2. Resolve product state.
