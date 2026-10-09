@@ -105,7 +105,10 @@ data class ComposeChatTranscriptLinePresentation(
             } else {
                 null
             }
-            val showsQrCode = actionUrl != null && body.startsWith("File link created", ignoreCase = true)
+            val showsQrCode = actionUrl != null && (
+                body.startsWith("File link created", ignoreCase = true) ||
+                    body.startsWith("Text link created", ignoreCase = true)
+                )
             return ComposeChatTranscriptLinePresentation(kind, label, body, timestamp, actionUrl, showsQrCode)
         }
     }

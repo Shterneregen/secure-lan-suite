@@ -20,6 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
@@ -44,7 +47,8 @@ internal fun ComposeAdvancedPane(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { setExpanded(!effectiveExpanded) },
+                .semantics { stateDescription = if (effectiveExpanded) "Expanded" else "Collapsed" }
+                .clickable(role = Role.Button) { setExpanded(!effectiveExpanded) },
             shape = RoundedCornerShape(tokens.radius.medium),
             color = tokens.colors.surfaceLevel2,
         ) {

@@ -27,12 +27,13 @@ internal fun ContextPanelCard(
     card: ComposeContextPanelCard,
     expandedContent: @Composable (() -> Unit)? = null,
     initialExpanded: Boolean? = null,
+    keepExpanded: Boolean = false,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     var expanded by remember(card.kind, card.title, card.collapsed, initialExpanded) {
         mutableStateOf(initialExpanded ?: !card.collapsed)
     }
-    val canCollapse = card.collapsed || expandedContent != null
+    val canCollapse = !keepExpanded && (card.collapsed || expandedContent != null)
     val borderAlpha = if (card.primary) 0.40f else 0.16f
     Surface(
         modifier = Modifier.fillMaxWidth().wrapContentHeight(),

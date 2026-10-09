@@ -16,8 +16,10 @@ public data class ComposeQuickShareRow(
     val fileLink: Boolean,
     val active: Boolean,
 ) {
+    val canShowQrCode: Boolean = active && url.isNotBlank()
+
     companion object {
-        fun from(entry: QuickShareEntry): ComposeQuickShareRow {
+        fun from(entry: QuickShareEntry, preferredHost: String? = null): ComposeQuickShareRow {
             val snapshot = entry.snapshot()
             val typeLabel = when (snapshot.type()) {
                 QuickShareType.FILE -> "File link"
@@ -42,7 +44,7 @@ public data class ComposeQuickShareRow(
                 typeLabel = typeLabel,
                 statusLabel = statusLabel,
                 detail = detail,
-                url = DesktopQuickShareFormatters.preferQuickShareUrl(entry.snapshot()),
+                url = DesktopQuickShareFormatters.preferQuickShareUrl(entry.snapshot(), preferredHost),
                 fileLink = snapshot.type() == QuickShareType.FILE,
                 active = entry.active(),
             )

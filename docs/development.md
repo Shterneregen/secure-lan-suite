@@ -75,6 +75,11 @@ The connected workspace keeps peers on the left, conversation in the center,
 and contextual actions or activity on the right or in a drawer. Media device
 selection and tests are in **Settings → Audio & Video**.
 
+The **Actions** panel keeps active file transfers and incoming approval requests
+expanded. Completed or failed transfers are under **Recent files**, collapsed by
+default; **Auto-save: on/off** expands to explain and change the receive setting.
+Start a new file transfer with **Attach** in chat after selecting its recipient.
+
 ## Android interoperability smoke test
 
 1. Install or run the Android client and start a desktop room on the same LAN.
@@ -106,6 +111,13 @@ plus `1000`, normally `6051`, to avoid a local conflict with `5051`.
 Publish a file or text snippet and open its generated
 `http://<lan-ip>:5053/s/<share-name>` link from another LAN device. Verify the
 expiration and access limit, then stop the share.
+
+For both file and text links, verify the QR action while the link is active,
+including the corresponding **File link created** and **Text link created**
+events in chat.
+On a desktop with multiple network adapters, the displayed, copied, opened, and
+QR-encoded link should prefer the primary local address shown in the desktop
+network status, when that address is available among the link URLs.
 
 Quick Share intentionally uses unauthenticated local HTTP. Anyone on the LAN who
 knows or discovers an active link can access it, so use it only on a trusted LAN.

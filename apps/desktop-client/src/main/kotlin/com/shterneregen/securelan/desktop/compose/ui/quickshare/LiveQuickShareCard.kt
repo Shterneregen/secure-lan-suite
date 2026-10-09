@@ -21,7 +21,6 @@ import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.util.copyToSystemClipboard
 import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
 import com.shterneregen.securelan.desktop.compose.util.openInBrowser
-import com.shterneregen.securelan.desktop.ui.DesktopQuickShareFormatters
 import java.nio.file.Path
 
 @Composable
@@ -54,6 +53,7 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
         serverError = hostAdapter.quickShareError,
         entries = hostAdapter.quickShareEntries,
         landingUrls = hostAdapter.quickShareLandingUrls,
+        preferredHost = hostAdapter.localNetworkAddresses.firstOrNull()?.address,
     )
 
     val tokens = LocalSecureLanDesignTokens.current
@@ -70,7 +70,7 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
             state = quickShareState,
             onStart = { quickShareState.port?.let(hostAdapter::startQuickShare) },
             onStop = { hostAdapter.stopQuickShare() },
-            onCopyIndex = { copyToSystemClipboard(DesktopQuickShareFormatters.pickPrimaryLandingUrl(hostAdapter.quickShareLandingUrls)) },
+            onCopyIndex = { copyToSystemClipboard(quickShareState.primaryLandingUrl) },
         )
 
         QuickShareCreateLinksPanel(

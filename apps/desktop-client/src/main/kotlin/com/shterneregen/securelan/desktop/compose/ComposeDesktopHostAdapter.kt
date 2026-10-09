@@ -178,8 +178,7 @@ class ComposeDesktopHostAdapter(
         private set
 
     /** File transfer rows for encrypted-transfer workspace wiring. */
-    // TransferEntry keeps mutable speed/progress counters. Compare list snapshots by identity so
-    // every published event invalidates Compose even when the list contains the same entry objects.
+    // Published entries are detached snapshots; later events must not mutate previous UI state.
     var transferEntries: List<TransferEntry> by mutableStateOf(
         emptyList(),
         transferEntriesMutationPolicy,
@@ -921,7 +920,7 @@ class ComposeDesktopHostAdapter(
                 ),
             )
             refreshQuickShareState()
-            val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot)
+            val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot, localNetworkAddresses.firstOrNull()?.address)
             appendChatTranscript(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(shareUrl))
             SecureLanLogger.logQuickShare("Text quick-share created: ${snapshot.displayName()}.")
         } catch (e: Exception) {
@@ -959,7 +958,7 @@ class ComposeDesktopHostAdapter(
                 ),
             )
             refreshQuickShareState()
-            val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot)
+            val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot, localNetworkAddresses.firstOrNull()?.address)
             appendChatTranscript(DesktopQuickShareFormatters.formatFileLinkCopiedMessage(shareUrl))
             SecureLanLogger.logQuickShare("File quick-share created: ${snapshot.displayName()}.")
         } catch (e: Exception) {
@@ -1545,7 +1544,7 @@ class ComposeDesktopHostAdapter(
                 SecureLanLogger.logTransfer("Transfer failed: ${entry.fileName}: $message.")
             }
         }
-        transferEntries = ArrayList(transferEntryMap.values)
+        transferEntries = transferEntryMap.values.map(TransferEntry::snapshot)
     }
 
     private fun resolveTransferId(transferId: String?, fileName: String?, outgoing: Boolean): String =

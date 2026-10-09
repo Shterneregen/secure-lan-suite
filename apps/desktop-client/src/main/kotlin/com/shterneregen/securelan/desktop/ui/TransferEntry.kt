@@ -44,6 +44,15 @@ class TransferEntry @JvmOverloads constructor(
         speedBytesPerSecond = 0.0
     }
 
+    // Detach published UI values from the mutable event accumulator.
+    fun snapshot(): TransferEntry = TransferEntry(
+        transferId, fileName, outgoing, status, percent, totalBytes,
+    ).also { copy ->
+        copy.lastTransferredBytes = lastTransferredBytes
+        copy.lastSpeedDisplayNanos = lastSpeedDisplayNanos
+        copy.speedBytesPerSecond = speedBytesPerSecond
+    }
+
     private companion object {
         const val SPEED_DISPLAY_INTERVAL_NANOS = 750_000_000L
         const val NANOS_PER_SECOND = 1_000_000_000.0

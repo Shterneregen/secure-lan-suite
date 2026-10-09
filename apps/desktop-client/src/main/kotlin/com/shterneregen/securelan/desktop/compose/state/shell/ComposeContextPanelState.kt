@@ -9,7 +9,7 @@ data class ComposeContextPanelState(
     val mode: RightPanelMode,
     val cards: List<ComposeContextPanelCard>,
 ) {
-    val title: String = "Context Assistant"
+    val title: String = "Actions"
     private val visibleCardLimit: Int = MAX_VISIBLE_CARDS
     val visibleCards: List<ComposeContextPanelCard> = cards.take(visibleCardLimit)
     val primaryCards: List<ComposeContextPanelCard> = visibleCards.filter { it.primary }
@@ -37,6 +37,7 @@ data class ComposeContextPanelState(
         responsiveState: ComposeContextPanelResponsiveState,
     ): List<ComposeContextPanelCard> = visibleCards.map { card ->
         when {
+            card.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS -> card
             responsiveState.collapseSecondaryCards && !card.primary -> card.copy(collapsed = true)
             responsiveState.collapseHistory && card.kind == ComposeContextPanelCardKind.RECENT_FILES ->
                 card.copy(collapsed = true)
@@ -109,9 +110,8 @@ data class ComposeContextPanelState(
             title = "Transfers",
             body = transferState.transferCardSummary,
             badge = transferState.transferCardBadge,
-            primaryAction = if (transferState.waitingPromptCount > 0) "Review files" else null,
             primary = primary,
-            collapsed = !primary,
+            collapsed = false,
             tooltip = transferState.transferCardTooltip,
         )
     }

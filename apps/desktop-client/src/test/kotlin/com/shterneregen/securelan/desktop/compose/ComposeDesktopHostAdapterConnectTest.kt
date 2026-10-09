@@ -10,16 +10,24 @@ import com.shterneregen.securelan.chat.service.ChatServerConfig
 import com.shterneregen.securelan.chat.service.ChatServerService
 import com.shterneregen.securelan.chat.service.RandomNicknameService
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
+import com.shterneregen.securelan.common.model.FileTransferProgress
+import com.shterneregen.securelan.common.model.TransferStatus
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateRequest
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
+import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
+import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import java.util.Optional
 import java.nio.file.Path
@@ -29,6 +37,67 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
 
 class ComposeDesktopHostAdapterConnectTest {
+    @Test
+    fun transferUpdatesShouldPublishIndependentStatesForProgressCompletionAndFailure() {
+        val adapter = ComposeDesktopHostAdapter(
+            chatServerService = IdleChatServer(),
+            chatClientService = BlockingChatClient(CountDownLatch(0), CountDownLatch(0)),
+            fileTransferServerService = IdleFileTransferServer(),
+            quickShareService = IdleQuickShareService(),
+            discoveryService = IdlePeerDiscovery(),
+            randomNicknameService = object : RandomNicknameService {
+                override fun generate(): String = "desktop-test"
+            },
+            uiStateDispatcher = { action -> action() },
+        )
+        fun panelState() = ComposeFileTransferState(
+            statusState = adapter.statusState,
+            peerListState = ComposePeerListState(peers = emptyList()),
+            entries = adapter.transferEntries,
+        )
+
+        try {
+            for (outgoing in listOf(true, false)) {
+                val id = "snapshot-$outgoing"
+                adapter.fileTransferEventPublisher.publish(FileTransferStartedEvent(id, "file.txt", 100, outgoing))
+                val started = panelState()
+                adapter.fileTransferEventPublisher.publish(FileTransferProgressEvent(
+                    id, FileTransferProgress(id, 50, 100, TransferStatus.IN_PROGRESS), outgoing,
+                ))
+                val progressing = panelState()
+
+                assertNotEquals(started, progressing, "Nested panel state must change, not just the list container")
+                assertEquals(0, started.entries.last().percent)
+                assertEquals(50, progressing.activeEntryRows.single().percent)
+
+                adapter.fileTransferEventPublisher.publish(FileTransferCompletedEvent(id, "file.txt", null, 100, outgoing))
+                val completed = panelState()
+                assertNotEquals(progressing, completed)
+                assertTrue(progressing.entries.last().active())
+                assertTrue(completed.activeEntryRows.isEmpty())
+                assertTrue(completed.recentEntryRows.last().completed)
+                assertEquals(100, completed.recentEntryRows.last().percent)
+                assertFalse(completed.requiresAttention)
+
+                adapter.fileTransferEventPublisher.publish(FileTransferProgressEvent(
+                    id, FileTransferProgress(id, 75, 100, TransferStatus.IN_PROGRESS), outgoing,
+                ))
+                assertTrue(panelState().activeEntryRows.isEmpty(), "Late progress must not restart completed transfers")
+            }
+
+            adapter.fileTransferEventPublisher.publish(FileTransferStartedEvent("failed", "broken.txt", 100, true))
+            val beforeFailure = panelState()
+            adapter.fileTransferEventPublisher.publish(FileTransferFailedEvent("failed", "broken.txt", "test", null, true))
+            val failed = panelState()
+            assertNotEquals(beforeFailure, failed)
+            assertTrue(beforeFailure.entries.last().active())
+            assertTrue(failed.activeEntryRows.isEmpty())
+            assertTrue(failed.recentEntryRows.last().failed)
+        } finally {
+            adapter.shutdown()
+        }
+    }
+
     @Test
     fun transferLifecycleShouldUpdateOneTranscriptMessagePerFile() {
         val adapter = ComposeDesktopHostAdapter(

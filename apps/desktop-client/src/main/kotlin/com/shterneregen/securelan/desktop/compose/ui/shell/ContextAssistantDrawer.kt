@@ -81,7 +81,7 @@ internal fun ContextAssistantDrawer(
                         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Context Assistant", style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
+                        Text("Actions", style = MaterialTheme.typography.h6, modifier = Modifier.weight(1f))
                         CompactButton(
                             onClick = onClose,
                             modifier = Modifier.semantics {

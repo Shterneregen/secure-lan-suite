@@ -50,7 +50,7 @@ data class ComposeWorkspaceState(
                 ComposeWorkspaceMode.PEER_SELECTED -> "Ready to message, send files, or start a call."
                 ComposeWorkspaceMode.VOICE_CALL -> voiceState.voiceStatusText
                 ComposeWorkspaceMode.VIDEO_CALL -> videoState.stageBadge
-                ComposeWorkspaceMode.FILE_TRANSFER -> "Transfer in progress. Details are in the Context Assistant."
+                ComposeWorkspaceMode.FILE_TRANSFER -> "Transfer in progress. Details are in Actions."
             }
             return ComposeWorkspaceState(mode, title, subtitle)
         }

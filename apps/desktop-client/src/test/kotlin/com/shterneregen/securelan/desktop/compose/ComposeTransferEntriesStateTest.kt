@@ -8,6 +8,27 @@ import org.junit.jupiter.api.Test
 
 class ComposeTransferEntriesStateTest {
     @Test
+    fun shouldKeepPublishedProgressAndSpeedDetachedFromLaterEvents() {
+        var now = 0L
+        val entry = TransferEntry("send-1", "video.mp4", true, "Sending", 0, 1024) { now }
+        now = 1_000_000_000L
+        entry.updateProgress(512, 50, 1024)
+        val snapshot = entry.snapshot()
+
+        entry.status = "Completed"
+        entry.percent = 100
+        entry.stopSpeedTracking()
+
+        assertEquals("Sending", snapshot.status)
+        assertEquals(50, snapshot.percent)
+        assertEquals(512L, snapshot.lastTransferredBytes)
+        assertEquals(512.0, snapshot.speedBytesPerSecond)
+        assertEquals(1_000_000_000L, snapshot.lastSpeedDisplayNanos)
+        assertEquals("Completed", entry.snapshot().status)
+        assertEquals(0.0, entry.snapshot().speedBytesPerSecond)
+    }
+
+    @Test
     fun shouldPublishNewListSnapshotWhenMutableTransferEntryChanges() {
         val entry = TransferEntry("receive-1", "video.mp4", false, "Receiving", 0, 1024)
         val initial = listOf(entry)

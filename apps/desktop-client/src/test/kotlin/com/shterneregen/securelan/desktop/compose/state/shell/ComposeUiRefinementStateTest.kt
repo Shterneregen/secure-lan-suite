@@ -67,7 +67,7 @@ class ComposeUiRefinementStateTest {
     }
 
     @Test
-    fun shouldCollapseInactiveTransferPanelWithoutRemovingIt() {
+    fun shouldKeepCompactTransferControlsVisibleAtEveryWidth() {
         val state = ComposeContextPanelState.forPeer(
             ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
@@ -79,7 +79,7 @@ class ComposeUiRefinementStateTest {
             ComposeContextPanelResponsiveState.forWidth(1199),
         )
 
-        assertTrue(responsiveStates.all { responsive ->
+        assertTrue(responsiveStates.none { responsive ->
             state.visibleCardsFor(responsive)
                 .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
                 .collapsed
@@ -100,7 +100,7 @@ class ComposeUiRefinementStateTest {
 
         assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in beforeDecision.visibleCardKinds)
         assertTrue(ComposeContextPanelCardKind.TRANSFER_DETAILS in afterDecision.visibleCardKinds)
-        assertTrue(
+        assertFalse(
             afterDecision.visibleCards
                 .first { it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS }
                 .collapsed
@@ -115,7 +115,7 @@ class ComposeUiRefinementStateTest {
     }
 
     @Test
-    fun shouldExpandTransferDetailsOnlyWhenTransferNeedsAttention() {
+    fun shouldExpandTransferDetailsWhenTransferNeedsAttention() {
         val activeTransferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE.copy(
             entries = listOf(
                 TransferEntry("send-1", "archive.zip", true, "Sending", 40, 1024),
@@ -146,7 +146,7 @@ class ComposeUiRefinementStateTest {
 
         assertFalse(state.visibleCardTitles.any { it == "Room status" })
         assertEquals(null, transferCard.badge)
-        assertTrue(transferCard.collapsed)
+        assertFalse(transferCard.collapsed)
     }
 
     @Test
@@ -165,7 +165,7 @@ class ComposeUiRefinementStateTest {
             it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS
         }
 
-        assertTrue(transferCard.collapsed)
+        assertFalse(transferCard.collapsed)
         assertEquals("2 recent", transferCard.badge)
     }
 
@@ -216,6 +216,26 @@ class ComposeUiRefinementStateTest {
         assertEquals(ComposeChatTranscriptLineKind.TRANSFER, presentation.kind)
         assertEquals("Received report.pdf", presentation.body)
         assertEquals(downloadedFile, presentation.actionPath)
+    }
+
+    @Test
+    fun shouldExposeQrForTextLinksInTranscript() {
+        val url = "http://192.168.31.199:5053/shared-text"
+        for (prefix in listOf("[system]", "system: [system]")) {
+            val presentation = ComposeChatTranscriptLinePresentation.from(
+                "$prefix Quick Share text link is ready: $url"
+            )
+            assertEquals(ComposeChatTranscriptLineKind.QUICK_SHARE, presentation.kind)
+            assertTrue(presentation.body.startsWith("Text link created"))
+            assertEquals(url, presentation.actionUrl)
+            assertTrue(presentation.showsQrCode)
+        }
+        assertFalse(ComposeChatTranscriptLinePresentation.from(
+            "[system] Quick Share text link is ready: "
+        ).showsQrCode)
+        assertFalse(ComposeChatTranscriptLinePresentation.from(
+            "[system] Quick Share index link copied: $url"
+        ).showsQrCode)
     }
 
     @Test

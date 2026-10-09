@@ -17,12 +17,12 @@ data class ComposeWorkspaceConsistencyReviewState(
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.NAVIGATION,
             label = "Navigation",
-            evidence = "One persistent workspace preserves room, people, conversation, and Context Assistant hierarchy.",
+            evidence = "One persistent workspace preserves room, people, conversation, and Actions hierarchy.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.SPACING,
             label = "Spacing",
-            evidence = "Primary workspace, Context Assistant, cards, and empty states use the shared spacing token rhythm.",
+            evidence = "Primary workspace, Actions, cards, and empty states use the shared spacing token rhythm.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.TYPOGRAPHY,
@@ -67,11 +67,11 @@ data class ComposeWorkspaceConsistencyReviewState(
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.RESPONSIVE_LAYOUTS,
             label = "Responsive layouts",
-            evidence = "The Context Assistant keeps persistent workflows expanded, collapses optional history, then moves to a drawer before conversation width is sacrificed.",
+            evidence = "Actions keeps persistent workflows expanded, collapses optional history, then moves to a drawer before conversation width is sacrificed.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
             area = ComposeWorkspaceConsistencyReviewArea.CONTEXT_ASSISTANT,
-            label = "Context Assistant behavior",
+            label = "Actions behavior",
             evidence = "The right panel answers the current context with one primary card while persistent workflows such as Transfers remain available.",
         ),
         ComposeWorkspaceConsistencyReviewItem(
@@ -86,9 +86,9 @@ data class ComposeWorkspaceConsistencyReviewState(
     val allReviewed: Boolean = reviewedAreas.toSet() == ComposeWorkspaceConsistencyReviewArea.values().toSet()
     val allPassed: Boolean = allReviewed && failedAreas.isEmpty()
     val automaticRejectConditions: List<String> = buildList {
-        if (!contextPanelState.behavesAsContextAssistant) add("Context Assistant behaves like a toolbox.")
+        if (!contextPanelState.behavesAsContextAssistant) add("Actions behaves like a toolbox.")
         if (!chatState.title.contains("chat", ignoreCase = true)) add("Chat is not the dominant center region.")
-        if (contextPanelState.primaryButtons.size > 1) add("More than one primary Context Assistant action is visible.")
+        if (contextPanelState.primaryButtons.size > 1) add("More than one primary action is visible in Actions.")
         if (!responsiveSamples.all { it.preservesConversationFirst }) add("Responsive layout does not preserve conversation first.")
     }
     val productScore: Int = if (allPassed && automaticRejectConditions.isEmpty()) 98 else 88

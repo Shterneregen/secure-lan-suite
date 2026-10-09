@@ -46,27 +46,33 @@ object DesktopQuickShareFormatters {
     fun formatLinkCopiedMessage(url: String): String = "[system] Quick Share link copied: $url"
 
     @JvmStatic
-    fun pickPrimaryLandingUrl(landingUrls: List<String>): String {
+    fun pickPrimaryLandingUrl(landingUrls: List<String>, preferredHost: String? = null): String {
         if (landingUrls.isEmpty()) return ""
+        if (!preferredHost.isNullOrBlank()) {
+            landingUrls.firstOrNull { urlHost(it) == preferredHost }?.let { return it }
+        }
         return landingUrls.minByOrNull { url ->
+            val host = urlHost(url).orEmpty()
             when {
-                url.contains("192.168.") -> 0
-                url.contains("10.") -> 1
-                url.contains("172.") -> 2
-                url.contains("127.0.0.1") -> 4
+                host.startsWith("192.168.") -> 0
+                host.startsWith("10.") -> 1
+                host.startsWith("172.") -> 2
+                host == "127.0.0.1" -> 4
                 else -> 3
             }
         } ?: landingUrls.first()
     }
 
     @JvmStatic
-    fun preferQuickShareUrl(snapshot: QuickShareSnapshot): String {
+    fun preferQuickShareUrl(snapshot: QuickShareSnapshot, preferredHost: String? = null): String {
         val primary = snapshot.primaryUrl()
         if (primary.isBlank()) return primary
-        val preferredBase = pickPrimaryLandingUrl(snapshot.urls().mapNotNull(::extractUrlBase))
+        val preferredBase = pickPrimaryLandingUrl(snapshot.urls().mapNotNull(::extractUrlBase), preferredHost)
         if (preferredBase.isBlank()) return primary
         return replaceUrlBase(primary, preferredBase)
     }
+
+    private fun urlHost(url: String): String? = runCatching { URI(url).host }.getOrNull()
 
     private fun extractUrlBase(url: String): String? =
         try {
@@ -81,9 +87,10 @@ object DesktopQuickShareFormatters {
     private fun replaceUrlBase(originalUrl: String, newBase: String): String =
         try {
             val uri = URI(originalUrl)
-            val path = uri.path ?: ""
-            val query = uri.query?.let { "?$it" } ?: ""
-            newBase.removeSuffix("/") + path + query
+            val path = uri.rawPath ?: ""
+            val query = uri.rawQuery?.let { "?$it" } ?: ""
+            val fragment = uri.rawFragment?.let { "#$it" } ?: ""
+            newBase.removeSuffix("/") + path + query + fragment
         } catch (_: Exception) {
             originalUrl
         }

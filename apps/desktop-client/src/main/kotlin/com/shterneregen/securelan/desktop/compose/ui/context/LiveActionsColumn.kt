@@ -77,7 +77,11 @@ internal fun LiveActionsColumn(
 
                             else -> null
                         }
-                        ContextPanelCard(card, expandedContent)
+                        ContextPanelCard(
+                            card,
+                            expandedContent,
+                            keepExpanded = card.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS,
+                        )
                     }
                 }
                 QuickShareActivitySummary(

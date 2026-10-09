@@ -47,7 +47,8 @@ public data class ComposeFileTransferState(
     }
     val activeSummary: String = DesktopTransferFormatters.formatActiveTransferSummary(activeCount)
     val entryRows: List<String> = entries.map(DesktopTransferFormatters::formatTransferListMeta)
-    val recentEntries: List<TransferEntry> = entries.takeLast(4)
+    val activeEntryRows: List<ComposeTransferRow> = entries.filter { it.active() }.map(ComposeTransferRow::from)
+    val recentEntries: List<TransferEntry> = entries.filterNot { it.active() }.takeLast(4)
     val recentEntryRows: List<ComposeTransferRow> = recentEntries.map(ComposeTransferRow::from)
     val promptSummary: String = if (incomingPrompts.isEmpty()) {
         "No incoming receive prompts."
@@ -64,7 +65,7 @@ public data class ComposeFileTransferState(
     } else {
         "You will review every incoming file before it is saved."
     }
-    val receiveModeShortLabel: String = if (autoAcceptFiles) "Auto-save on" else "Ask before saving"
+    val receiveModeShortLabel: String = if (autoAcceptFiles) "Auto-save: on" else "Auto-save: off"
     val transferCountSummary: String = buildList {
         if (activeCount > 0) add("$activeCount active")
         if (completedCount > 0) add("$completedCount completed")
@@ -86,7 +87,7 @@ public data class ComposeFileTransferState(
         !selectedPeer.fileCapable ->
             "$selectedPeerName cannot receive files directly. Use Tools → Quick Share."
 
-        else -> "Send a file to $selectedPeerName or review recent activity."
+        else -> "Use Attach in chat to send a file to $selectedPeerName."
     }
     val transferCardTooltip: String = if (selectedPeer != null && !selectedPeer.fileCapable) {
         "This peer did not make direct file receiving available. Quick Share creates a temporary LAN link you can send in chat."

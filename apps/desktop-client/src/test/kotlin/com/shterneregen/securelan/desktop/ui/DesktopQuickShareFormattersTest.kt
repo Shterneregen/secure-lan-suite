@@ -204,6 +204,47 @@ class DesktopQuickShareFormattersTest {
         )
     }
 
+    @Test
+    fun shouldPreferShellHostOverPrivateSubnetHeuristic() {
+        val urls = listOf("http://192.168.56.1:8090/", "http://10.0.0.42:8090/")
+        assertEquals(urls[1], DesktopQuickShareFormatters.pickPrimaryLandingUrl(urls, "10.0.0.42"))
+        assertEquals(urls[0], DesktopQuickShareFormatters.pickPrimaryLandingUrl(urls, "10.0.0.99"))
+        assertEquals(urls[0], DesktopQuickShareFormatters.pickPrimaryLandingUrl(urls, ""))
+        assertEquals("", DesktopQuickShareFormatters.pickPrimaryLandingUrl(emptyList(), "10.0.0.42"))
+    }
+
+    @Test
+    fun shouldMatchUrlHostRatherThanPathQueryOrHostSubstring() {
+        val urls = listOf(
+            "http://10.0.0.420:8090/10.0.0.42",
+            "http://172.17.0.1:8090/?host=10.0.0.42",
+            "http://10.0.0.42:8090/",
+        )
+        assertEquals(urls[2], DesktopQuickShareFormatters.pickPrimaryLandingUrl(urls, "10.0.0.42"))
+        assertEquals(
+            "http://10.0.0.42:8090/",
+            DesktopQuickShareFormatters.pickPrimaryLandingUrl(listOf("http://172.17.0.1:8090/192.168.1.1", urls[2])),
+        )
+    }
+
+    @Test
+    fun shouldPreserveEncodedSharePathQueryAndFragmentForBothTypes() {
+        val suffix = "/s/shared%20item?value=a%2Fb#section%20one"
+        QuickShareType.entries.forEach { type ->
+            val share = snapshot(type, QuickShareStatus.ACTIVE, 0, null, urls = listOf(
+                "http://192.168.56.1:8090$suffix",
+                "http://10.0.0.42:8090$suffix",
+            ))
+            assertEquals("http://10.0.0.42:8090$suffix", DesktopQuickShareFormatters.preferQuickShareUrl(share, "10.0.0.42"))
+        }
+    }
+
+    @Test
+    fun shouldKeepMalformedPrimaryWhenNoUsableAlternativeExists() {
+        val share = snapshot(QuickShareType.TEXT, QuickShareStatus.ACTIVE, 0, null, urls = listOf("not a URL"))
+        assertEquals("not a URL", DesktopQuickShareFormatters.preferQuickShareUrl(share, "10.0.0.42"))
+    }
+
     private fun snapshot(
         type: QuickShareType,
         status: QuickShareStatus,

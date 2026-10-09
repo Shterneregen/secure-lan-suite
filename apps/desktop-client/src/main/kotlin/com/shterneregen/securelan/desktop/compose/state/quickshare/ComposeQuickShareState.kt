@@ -18,6 +18,7 @@ public data class ComposeQuickShareState(
     val serverError: String? = null,
     val entries: List<QuickShareEntry> = emptyList(),
     val landingUrls: List<String> = emptyList(),
+    val preferredHost: String? = null,
 ) {
     val title: String = "Share by browser link"
     val subtitle: String = "Create temporary file or text links that people on this trusted LAN can open in a browser."
@@ -119,5 +120,6 @@ public data class ComposeQuickShareState(
         "2. Create a link; Quick Share starts automatically.",
         "3. Send the link to trusted LAN peers.",
     )
-    val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map(ComposeQuickShareRow::from)
+    val primaryLandingUrl: String = DesktopQuickShareFormatters.pickPrimaryLandingUrl(landingUrls, preferredHost)
+    val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map { ComposeQuickShareRow.from(it, preferredHost) }
 }

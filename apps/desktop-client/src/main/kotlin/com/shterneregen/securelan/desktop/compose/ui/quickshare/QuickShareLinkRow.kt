@@ -72,7 +72,7 @@ internal fun QuickShareLinkRow(
                 )
                 QuickShareLinkActions(
                     url = row.url,
-                    showQrCode = row.active && row.fileLink,
+                    showQrCode = row.canShowQrCode,
                     onCopy = { onCopy(row.url) },
                     onOpen = if (row.active) ({ onOpen(row.url) }) else null,
                     onStop = if (row.active) ({ onStop(row.id) }) else null,
