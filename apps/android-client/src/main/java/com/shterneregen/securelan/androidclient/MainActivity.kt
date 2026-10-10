@@ -95,6 +95,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -735,7 +736,9 @@ private fun RedesignedDevicesScreen(
     onHostRoom: () -> Unit,
     layoutSpec: AdaptiveLayoutSpec,
 ) {
-    val serverPeers = state.peers.filter { it.role == PeerRole.SERVER }
+    val serverPeers = state.peers
+        .filter { it.role == PeerRole.SERVER }
+        .filterNot { state.connected && it.peerId == state.connectionPeer?.peerId }
     if (layoutSpec.supportsTwoPane) {
         Row(
             modifier = Modifier.fillMaxSize().padding(layoutSpec.horizontalPadding),
@@ -748,8 +751,10 @@ private fun RedesignedDevicesScreen(
                 DevicesSubtitle()
                 if (state.connected || state.hosting) CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect)
                 DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery)
-                HostRoomButton(state, onHostRoom)
-                ManualConnectionButton(onConnectManual)
+                if (!state.connected && !state.hosting) {
+                    HostRoomButton(state, onHostRoom)
+                    ManualConnectionButton(onConnectManual)
+                }
             }
             Column(
                 Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState()),
@@ -772,14 +777,16 @@ private fun RedesignedDevicesScreen(
             item { DevicesSubtitle() }
             if (state.connected || state.hosting) item { CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect) }
             item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery) }
-            item { HostRoomButton(state, onHostRoom) }
-            item { ManualConnectionButton(onConnectManual) }
             if (serverPeers.isNotEmpty()) {
                 item { DevicesSectionHeader(serverPeers.size) }
                 items(serverPeers) { peer ->
                     val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
                     DeviceCard(peer, connected) { selected -> if (connected) onOpenChat() else onPeerClick(selected) }
                 }
+            }
+            if (!state.connected && !state.hosting) {
+                item { HostRoomButton(state, onHostRoom) }
+                item { ManualConnectionButton(onConnectManual) }
             }
             if (state.hosting && state.peers.any { it.role == PeerRole.CHAT_CLIENT }) {
                 item { Text(stringResource(R.string.room_participants), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
@@ -798,14 +805,6 @@ private fun DevicesSubtitle() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-}
-
-@Composable
-private fun PageHeading(title: String, subtitle: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 }
 
 @Composable
@@ -999,12 +998,19 @@ private fun HostRoomBottomSheet(
     var chatPort by remember { mutableStateOf(state.hostChatPort) }
     var filePort by remember { mutableStateOf(state.hostFilePort) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var portsExpanded by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val chatPortValid = chatPort.toIntOrNull()?.let { it in 1..65535 } == true
     val filePortValid = filePort.toIntOrNull()?.let { it in 1..65535 } == true
     val portsDifferent = chatPort != filePort
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.host_room_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -1034,27 +1040,32 @@ private fun HostRoomBottomSheet(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = chatPort,
-                    onValueChange = { chatPort = it.filter(Char::isDigit).take(5) },
-                    label = { Text(stringResource(R.string.chat_port)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    isError = chatPort.isNotEmpty() && !chatPortValid,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = filePort,
-                    onValueChange = { filePort = it.filter(Char::isDigit).take(5) },
-                    label = { Text(stringResource(R.string.file_port)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    isError = filePort.isNotEmpty() && (!filePortValid || !portsDifferent),
-                    modifier = Modifier.weight(1f),
-                )
+            TextButton(onClick = { portsExpanded = !portsExpanded }) {
+                Text(stringResource(if (portsExpanded) R.string.hide_network_settings else R.string.show_network_settings))
             }
-            if (!portsDifferent) Text(stringResource(R.string.host_ports_must_differ), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (portsExpanded) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = chatPort,
+                        onValueChange = { chatPort = it.filter(Char::isDigit).take(5) },
+                        label = { Text(stringResource(R.string.chat_port)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = chatPort.isNotEmpty() && !chatPortValid,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = filePort,
+                        onValueChange = { filePort = it.filter(Char::isDigit).take(5) },
+                        label = { Text(stringResource(R.string.file_port)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        isError = filePort.isNotEmpty() && (!filePortValid || !portsDifferent),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (!portsDifferent) Text(stringResource(R.string.host_ports_must_differ), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             Button(
                 onClick = { onStartHosting(chatPort, filePort) },
                 enabled = state.nickname.isNotBlank() && state.sessionPassword.isNotBlank() && chatPortValid && filePortValid && portsDifferent && !state.hostingStarting,
@@ -1074,10 +1085,16 @@ private fun ConnectionBottomSheet(
     onDismiss: () -> Unit,
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val peer = state.connectionPeer
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.connect_to, peer?.nickname.orEmpty()), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -1129,6 +1146,8 @@ private fun ManualConnectionBottomSheet(
     var chatPort by remember { mutableStateOf(state.manualChatPort) }
     var filePort by remember { mutableStateOf(state.manualFilePort) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var portsExpanded by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val normalizedHost = host.trim().removeSurrounding("[", "]")
     val hostValid = normalizedHost.isNotBlank() &&
         normalizedHost.none { it.isWhitespace() } &&
@@ -1137,9 +1156,14 @@ private fun ManualConnectionBottomSheet(
     val chatPortValid = chatPort.toIntOrNull()?.let { it in 1..65535 } == true
     val filePortValid = filePort.toIntOrNull()?.let { it in 1..65535 } == true
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.manual_connection_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -1154,34 +1178,6 @@ private fun ManualConnectionBottomSheet(
                 isError = host.isNotEmpty() && !hostValid,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = chatPort,
-                    onValueChange = { chatPort = it.filter(Char::isDigit).take(5) },
-                    label = { Text(stringResource(R.string.chat_port)) },
-                    enabled = !state.connecting,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    isError = chatPort.isNotEmpty() && !chatPortValid,
-                    supportingText = if (chatPort.isNotEmpty() && !chatPortValid) {
-                        { Text(stringResource(R.string.port_range_hint)) }
-                    } else null,
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = filePort,
-                    onValueChange = { filePort = it.filter(Char::isDigit).take(5) },
-                    label = { Text(stringResource(R.string.file_port)) },
-                    enabled = !state.connecting,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    isError = filePort.isNotEmpty() && !filePortValid,
-                    supportingText = if (filePort.isNotEmpty() && !filePortValid) {
-                        { Text(stringResource(R.string.port_range_hint)) }
-                    } else null,
-                    modifier = Modifier.weight(1f),
-                )
-            }
             OutlinedTextField(
                 value = state.nickname,
                 onValueChange = onNicknameChange,
@@ -1207,6 +1203,39 @@ private fun ManualConnectionBottomSheet(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+            TextButton(onClick = { portsExpanded = !portsExpanded }) {
+                Text(stringResource(if (portsExpanded) R.string.hide_network_settings else R.string.show_network_settings))
+            }
+            if (portsExpanded) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = chatPort,
+                        onValueChange = { chatPort = it.filter(Char::isDigit).take(5) },
+                        label = { Text(stringResource(R.string.chat_port)) },
+                        enabled = !state.connecting,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = chatPort.isNotEmpty() && !chatPortValid,
+                        supportingText = if (chatPort.isNotEmpty() && !chatPortValid) {
+                            { Text(stringResource(R.string.port_range_hint)) }
+                        } else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = filePort,
+                        onValueChange = { filePort = it.filter(Char::isDigit).take(5) },
+                        label = { Text(stringResource(R.string.file_port)) },
+                        enabled = !state.connecting,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = filePort.isNotEmpty() && !filePortValid,
+                        supportingText = if (filePort.isNotEmpty() && !filePortValid) {
+                            { Text(stringResource(R.string.port_range_hint)) }
+                        } else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
             Button(
                 onClick = { onConnect(normalizedHost, chatPort, filePort) },
                 enabled = hostValid && chatPortValid && filePortValid && state.nickname.isNotBlank() && !state.connecting && !state.connected,
@@ -1322,13 +1351,6 @@ private fun RedesignedFilesScreen(
         contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            PageHeading(
-                stringResource(R.string.files_title),
-                state.fileRecipient?.let { stringResource(R.string.recipient, it.nickname) }
-                    ?: stringResource(if (state.hosting) R.string.files_choose_participant else R.string.files_connect_first),
-            )
-        }
         if (!state.connected && !state.hosting) {
             item {
                 RedesignedEmptyState(
@@ -1340,6 +1362,14 @@ private fun RedesignedFilesScreen(
                 )
             }
         } else {
+            item {
+                Text(
+                    state.fileRecipient?.let { stringResource(R.string.recipient, it.nickname) }
+                        ?: stringResource(R.string.files_choose_participant),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             item {
                 FilesBatchCard(
                     queue = queue,
@@ -1487,22 +1517,26 @@ private fun FilesBatchCard(
                 }
             }
             else -> {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = onAddFiles, enabled = recipientName != null, modifier = Modifier.weight(1f)) {
+                if (items.isEmpty()) {
+                    Button(onClick = onAddFiles, enabled = recipientName != null, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.add_files))
                     }
-                    if (items.isNotEmpty()) {
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(onClick = onAddFiles, enabled = recipientName != null, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.add_files))
+                        }
                         OutlinedButton(onClick = onClearFiles, modifier = Modifier.weight(1f)) {
                             Text(stringResource(R.string.clear_files))
                         }
                     }
-                }
-                Button(
-                    onClick = onSendBatch,
-                    enabled = items.isNotEmpty() && recipientName != null,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(pluralStringResource(R.plurals.send_files_count, items.size, items.size))
+                    Button(
+                        onClick = onSendBatch,
+                        enabled = recipientName != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(pluralStringResource(R.plurals.send_files_count, items.size, items.size))
+                    }
                 }
             }
         }
@@ -1620,8 +1654,16 @@ private fun TransferHistoryRow(record: TransferRecord) {
     val activityContext = LocalActivityContext.current
     val openFileTitle = stringResource(R.string.open_file)
     val unavailableMessage = stringResource(R.string.open_file_unavailable)
-    RedesignedCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Icon(
                 if (failed) Icons.Outlined.ErrorOutline else Icons.Outlined.CheckCircle,
                 contentDescription = null,
@@ -1635,7 +1677,6 @@ private fun TransferHistoryRow(record: TransferRecord) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                record.savedPath?.let { Text(stringResource(R.string.transfer_saved_to, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(AndroidUiFormatters.formatBytes(record.bytes), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

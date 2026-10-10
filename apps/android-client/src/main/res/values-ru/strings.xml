@@ -20,7 +20,7 @@
     </plurals>
     <string name="devices_title">Устройства</string>
     <string name="devices_subtitle">Устройства с комнатами SecureLan в этой сети</string>
-    <string name="current_device">Текущее устройство</string>
+    <string name="current_device">Подключённое устройство</string>
     <string name="open_chat">Открыть чат</string>
     <string name="disconnect">Отключиться</string>
     <string name="host_room">Создать комнату</string>
@@ -80,7 +80,6 @@
     <string name="send_message">Отправить сообщение</string>
     <string name="attach_file">Прикрепить файл</string>
     <string name="reconnect">Переподключиться</string>
-    <string name="files_title">Файлы</string>
     <string name="recipient">Получатель: %1$s</string>
     <string name="files_connect_first">Подключитесь к устройству перед отправкой или получением файлов.</string>
     <string name="files_choose_participant">Перед отправкой файла выберите участника комнаты на экране «Устройства».</string>
@@ -99,7 +98,6 @@
     <string name="transfer_sent">Отправлено</string>
     <string name="transfer_received">Получено</string>
     <string name="transfer_failed">Ошибка</string>
-    <string name="transfer_saved_to">Сохранено в %1$s</string>
     <string name="open_file">Открыть</string>
     <string name="open_file_unavailable">Нет приложения для открытия этого файла.</string>
     <string name="settings_profile">Профиль</string>
@@ -183,4 +181,6 @@
     <string name="phase_failed">Ошибка</string>
     <string name="phase_outcome_unknown">Подтверждение не получено</string>
     <string name="phase_skipped">Пропущено</string>
+    <string name="show_network_settings">Изменить сетевые порты</string>
+    <string name="hide_network_settings">Скрыть сетевые порты</string>
 </resources>

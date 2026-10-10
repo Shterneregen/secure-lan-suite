@@ -18,7 +18,7 @@
     </plurals>
     <string name="devices_title">Devices</string>
     <string name="devices_subtitle">Devices hosting SecureLan rooms on this network</string>
-    <string name="current_device">Current device</string>
+    <string name="current_device">Connected device</string>
     <string name="open_chat">Open chat</string>
     <string name="disconnect">Disconnect</string>
     <string name="host_room">Host a room</string>
@@ -59,6 +59,8 @@
     <string name="chat_port">Chat port</string>
     <string name="file_port">File port</string>
     <string name="port_range_hint">Use a value from 1 to 65535</string>
+    <string name="show_network_settings">Change network ports</string>
+    <string name="hide_network_settings">Hide network ports</string>
     <string name="connect_to">Connect to %1$s</string>
     <string name="connect_hint">Enter your name and the password used by the room.</string>
     <string name="nickname">Your name</string>
@@ -76,7 +78,6 @@
     <string name="send_message">Send message</string>
     <string name="attach_file">Attach file</string>
     <string name="reconnect">Reconnect</string>
-    <string name="files_title">Files</string>
     <string name="recipient">Recipient: %1$s</string>
     <string name="files_connect_first">Connect to a device before sending or receiving files.</string>
     <string name="files_choose_participant">Select a room participant on Devices before sending a file.</string>
@@ -95,7 +96,6 @@
     <string name="transfer_sent">Sent</string>
     <string name="transfer_received">Received</string>
     <string name="transfer_failed">Failed</string>
-    <string name="transfer_saved_to">Saved to %1$s</string>
     <string name="open_file">Open</string>
     <string name="open_file_unavailable">No app can open this file.</string>
     <string name="settings_profile">Profile</string>
