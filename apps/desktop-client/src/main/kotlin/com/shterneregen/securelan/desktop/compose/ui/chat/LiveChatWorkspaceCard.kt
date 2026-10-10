@@ -33,7 +33,6 @@ import com.shterneregen.securelan.desktop.compose.state.chat.ComposeCallWorkspac
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatWorkspaceState
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolKind
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopBatchPhase
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferBatch
@@ -178,16 +177,6 @@ internal fun LiveChatWorkspaceCard(
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
         }
-        var attachMenuExpanded by remember { mutableStateOf(false) }
-        val attachButtonFocusRequester = remember { FocusRequester() }
-        fun dismissAttachMenu(restoreComposerFocus: Boolean) {
-            attachMenuExpanded = false
-            if (restoreComposerFocus) {
-                chatInputFocusRequester.requestFocus()
-            } else {
-                attachButtonFocusRequester.requestFocus()
-            }
-        }
         if (!videoStageVisible || focusMode.showsChat) {
             hostAdapter.transferBatch?.let { batch ->
                 DesktopTransferBatchSummary(hostAdapter, batch)
@@ -197,20 +186,9 @@ internal fun LiveChatWorkspaceCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AttachmentComposerMenu(
+                AttachmentComposerButton(
                     tools = attachmentTools,
-                    expanded = attachMenuExpanded,
-                    onExpandedChange = { attachMenuExpanded = it },
-                    onDismiss = { dismissAttachMenu(restoreComposerFocus = true) },
-                    onItemSelected = { item ->
-                        when (item.kind) {
-                            ComposeAttachmentToolKind.SECURE_FILE -> {
-                                dismissAttachMenu(restoreComposerFocus = true)
-                                attachSelectedFile()
-                            }
-                        }
-                    },
-                    attachButtonFocusRequester = attachButtonFocusRequester,
+                    onClick = ::attachSelectedFile,
                 )
                 CompactTextField(
                     draftMessage,

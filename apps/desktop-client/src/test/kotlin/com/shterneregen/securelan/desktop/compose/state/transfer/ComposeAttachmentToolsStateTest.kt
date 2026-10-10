@@ -1,20 +1,19 @@
 package com.shterneregen.securelan.desktop.compose.state.transfer
 
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ComposeAttachmentToolsStateTest {
     @Test
-    fun shouldExposeOnlySecureFileAction() {
+    fun shouldEnableAttachForAReadyFileTarget() {
         val state = ComposeAttachmentToolsState(
-            peerSelected = false,
-            fileTargetReady = false,
+            peerSelected = true,
+            fileTargetReady = true,
         )
 
-        assertEquals(1, state.menuItems.size)
-        assertEquals(ComposeAttachmentToolKind.SECURE_FILE, state.menuItems.single().kind)
-        assertEquals("Send secure file", state.menuItems.single().label)
+        assertTrue(state.enabled)
+        assertTrue(state.statusText.contains("one or more files"))
     }
 
     @Test
@@ -24,8 +23,8 @@ class ComposeAttachmentToolsStateTest {
             fileTargetReady = false,
         )
 
-        assertFalse(state.menuItems.single().enabled)
-        assertEquals("Select an online person before sending a secure file.", state.menuItems.single().statusText)
+        assertFalse(state.enabled)
+        assertTrue(state.statusText.contains("Select an online person"))
     }
 
     @Test
@@ -34,14 +33,7 @@ class ComposeAttachmentToolsStateTest {
             peerSelected = true,
             fileTargetReady = false,
         )
-        val directSend = state.menuItems.single {
-            it.kind == ComposeAttachmentToolKind.SECURE_FILE
-        }
-
-        assertFalse(directSend.enabled)
-        assertEquals(
-            "Direct sending is unavailable for this person. Use Tools → Quick Share instead.",
-            directSend.statusText,
-        )
+        assertFalse(state.enabled)
+        assertTrue(state.statusText.contains("Quick Share"))
     }
 }
