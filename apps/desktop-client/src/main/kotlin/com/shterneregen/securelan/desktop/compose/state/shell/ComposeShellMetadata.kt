@@ -7,18 +7,12 @@ import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnec
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimentalVideoState
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceState
-import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.state.peer.ComposeSelectedPeerQuickActionsState
-import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
-import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
 
 object ComposeShellMetadata {
     const val WINDOW_TITLE: String = "SecureLanSuite Chat"
     const val APP_NAME: String = "SecureLanSuite"
-    val DEFAULT_WINDOW_WIDTH: Dp = 1360.dp
-    val DEFAULT_WINDOW_HEIGHT: Dp = 860.dp
 
     // Composer pinning / overflow-safe startup layout constants
     val COMPOSER_MIN_HEIGHT: Dp = 52.dp
@@ -34,16 +28,11 @@ object ComposeShellMetadata {
     val DEFAULT_CONNECTION_HUB_STATE: ComposeConnectionHubState = ComposeConnectionHubState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
     )
-    val DEFAULT_ROOM_STARTUP_STATE: ComposeRoomStartupState = ComposeRoomStartupState(
-        connectionHubState = DEFAULT_CONNECTION_HUB_STATE,
-        nearbyRooms = ComposePeerListItem.defaultPreviewItems(clientConnected = false),
-    )
     val DEFAULT_PEER_LIST_STATE: ComposePeerListState = ComposePeerListState()
     val DEFAULT_CHAT_WORKSPACE_STATE: ComposeChatWorkspaceState = ComposeChatWorkspaceState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         peerListState = DEFAULT_PEER_LIST_STATE,
     )
-    val DEFAULT_STEGO_STATE: ComposeSteganographyState = ComposeSteganographyState()
     val DEFAULT_MEDIA_VOICE_STATE: ComposeMediaVoiceState = ComposeMediaVoiceState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         peerListState = DEFAULT_PEER_LIST_STATE,
@@ -52,16 +41,10 @@ object ComposeShellMetadata {
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         peerListState = DEFAULT_PEER_LIST_STATE,
     )
-    val DEFAULT_SELECTED_PEER_QUICK_ACTIONS_STATE: ComposeSelectedPeerQuickActionsState =
-        ComposeSelectedPeerQuickActionsState(
-            peerListState = DEFAULT_PEER_LIST_STATE,
-            clientConnected = DEFAULT_STATUS_ADAPTER_STATE.clientConnected,
-        )
     val DEFAULT_FILE_TRANSFER_STATE: ComposeFileTransferState = ComposeFileTransferState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         peerListState = DEFAULT_PEER_LIST_STATE,
     )
-    val DEFAULT_QUICK_SHARE_STATE: ComposeQuickShareState = ComposeQuickShareState()
     val DEFAULT_WORKSPACE_LAYOUT: ComposeWorkspaceLayout = ComposeWorkspaceLayout()
     val DEFAULT_CONTEXT_PANEL_STATE: ComposeContextPanelState = ComposeContextPanelState.forRoom(
         peerListState = DEFAULT_PEER_LIST_STATE,
@@ -75,5 +58,4 @@ object ComposeShellMetadata {
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         workspaceState = DEFAULT_WORKSPACE_STATE,
     )
-    val DEFAULT_WORKSPACE_CONSISTENCY_REVIEW_STATE: ComposeWorkspaceConsistencyReviewState = ComposeWorkspaceConsistencyReviewState()
 }

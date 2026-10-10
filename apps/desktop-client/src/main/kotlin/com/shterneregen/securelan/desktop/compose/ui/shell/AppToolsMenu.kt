@@ -4,12 +4,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.DropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
+import androidx.compose.material.Divider
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +34,7 @@ internal fun AppToolsMenu(
     onOpenQuickShare: () -> Unit,
     onOpenSteganography: () -> Unit,
 ) {
+    val tokens = LocalSecureLanDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
 
     Box {
@@ -45,12 +48,21 @@ internal fun AppToolsMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier
-                .widthIn(min = 300.dp, max = 360.dp)
+                .widthIn(min = 336.dp, max = 380.dp)
                 .semantics { contentDescription = "Application tools" },
         ) {
+            Column(modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
+                Text("Tools", style = MaterialTheme.typography.subtitle2)
+                Text(
+                    text = "Share files or work with hidden messages",
+                    style = MaterialTheme.typography.caption,
+                    color = tokens.colors.textSecondary,
+                )
+            }
+            Divider(color = tokens.colors.borderSubtle)
             AppToolsMenuItem(
                 label = "Quick Share",
-                description = "Create a temporary trusted-LAN browser link.",
+                description = "Share files with a temporary browser link on your trusted LAN.",
                 icon = SecureLanIcons.QuickShare,
                 onClick = {
                     expanded = false
@@ -59,7 +71,7 @@ internal fun AppToolsMenu(
             )
             AppToolsMenuItem(
                 label = "Steganography",
-                description = "Hide a message in an image or extract one from a stego BMP.",
+                description = "Hide text in an image, extract it, or inspect a BMP.",
                 icon = SecureLanIcons.Steganography,
                 onClick = {
                     expanded = false
@@ -106,5 +118,12 @@ private fun AppToolsMenuItem(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Spacer(Modifier.width(tokens.spacing.xs))
+        Icon(
+            imageVector = SecureLanIcons.NavigateNext,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = tokens.colors.textSecondary,
+        )
     }
 }

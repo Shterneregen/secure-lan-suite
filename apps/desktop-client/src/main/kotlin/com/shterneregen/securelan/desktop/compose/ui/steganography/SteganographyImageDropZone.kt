@@ -100,7 +100,7 @@ internal fun SteganographyImageDropZone(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = if (preview == null) 116.dp else 88.dp)
+                .heightIn(min = if (preview == null) 96.dp else 80.dp)
                 .dragAndDropTarget(
                     shouldStartDragAndDrop = { event ->
                         enabled && runCatching { event.dragData() is DragData.FilesList }.getOrDefault(false)
@@ -128,7 +128,7 @@ internal fun SteganographyImageDropZone(
                     Image(
                         bitmap = preview,
                         contentDescription = "Selected image preview",
-                        modifier = Modifier.size(72.dp),
+                        modifier = Modifier.size(64.dp),
                         contentScale = ContentScale.Crop,
                     )
                 }
@@ -148,7 +148,7 @@ internal fun SteganographyImageDropZone(
                     if (value.isNotBlank()) {
                         Text(
                             text = value,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.caption,
                             color = MaterialTheme.colors.onSurface.copy(alpha = 0.54f),
@@ -160,18 +160,18 @@ internal fun SteganographyImageDropZone(
                             color = MaterialTheme.colors.onSurface.copy(alpha = 0.54f),
                         )
                     }
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CompactButton(onClick = onChoose, enabled = enabled) { Text("Choose image") }
+                    CompactButton(
+                        onClick = onPaste,
+                        enabled = enabled,
+                        tone = CompactButtonTone.TERTIARY,
                     ) {
-                        CompactButton(onClick = onChoose, enabled = enabled) { Text("Choose image") }
-                        CompactButton(
-                            onClick = onPaste,
-                            enabled = enabled,
-                            tone = CompactButtonTone.TERTIARY,
-                        ) {
-                            Text("Paste image")
-                        }
+                        Text("Paste")
                     }
                 }
             }

@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.ui.icons
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,15 +23,14 @@ object SecureLanIcons {
     val Voice: ImageVector = Icons.Outlined.Mic
     val Video: ImageVector = Icons.Outlined.Videocam
     val File: ImageVector = Icons.Outlined.Description
-    val Diagnostics: ImageVector = Icons.Outlined.MonitorHeart
     val QuickShare: ImageVector = Icons.Outlined.Share
     val QrCode: ImageVector = secureLanQrCodeIcon
     val Copy: ImageVector = secureLanCopyIcon
     val Open: ImageVector = secureLanOpenIcon
     val Stop: ImageVector = secureLanStopIcon
     val FolderOpen: ImageVector = secureLanFolderOpenIcon
-    val Tools: ImageVector = Icons.Outlined.Build
     val Commands: ImageVector = Icons.Outlined.MoreVert
+    val NavigateNext: ImageVector = Icons.AutoMirrored.Outlined.ArrowForward
     val CallEnd: ImageVector = Icons.Outlined.CallEnd
     val Settings: ImageVector = Icons.Outlined.Settings
     val Close: ImageVector = Icons.Outlined.Close

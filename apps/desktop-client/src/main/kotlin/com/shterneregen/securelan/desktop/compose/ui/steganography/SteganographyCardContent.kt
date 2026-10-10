@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.rememberScrollbarAdapter
@@ -21,9 +24,11 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Tab
 import androidx.compose.material.TabRow
 import androidx.compose.material.Text
+import androidx.compose.material.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.LocalReducedMotion
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
@@ -31,6 +36,7 @@ import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyMode
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import java.nio.file.Path
 
 @Composable
@@ -79,16 +85,30 @@ internal fun SteganographyCardContent(
             modifier = Modifier.padding(tokens.spacing.md),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Steganography", style = MaterialTheme.typography.h6)
-                Text(
-                    text = "Hide text in an image or extract a message from a stego BMP.",
-                    style = MaterialTheme.typography.body2,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-                )
+                Surface(
+                    shape = RoundedCornerShape(tokens.radius.medium),
+                    color = MaterialTheme.colors.primary.copy(alpha = 0.12f),
+                ) {
+                    Icon(
+                        imageVector = SecureLanIcons.Steganography,
+                        contentDescription = null,
+                        modifier = Modifier.padding(tokens.spacing.xs).size(24.dp),
+                        tint = MaterialTheme.colors.primary,
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+                    Text("Steganography", style = MaterialTheme.typography.h6)
+                    Text(
+                        text = "Hide and recover text without changing the original image.",
+                        style = MaterialTheme.typography.body2,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                    )
+                }
             }
 
             TabRow(
@@ -99,17 +119,20 @@ internal fun SteganographyCardContent(
                 Tab(
                     selected = mode == ComposeSteganographyMode.HIDE,
                     onClick = { onModeChange(ComposeSteganographyMode.HIDE) },
-                    text = { Text("Hide message") },
+                    modifier = Modifier.heightIn(min = 54.dp),
+                    text = { SteganographyTabLabel("Hide", "Create a BMP") },
                 )
                 Tab(
                     selected = mode == ComposeSteganographyMode.EXTRACT,
                     onClick = { onModeChange(ComposeSteganographyMode.EXTRACT) },
-                    text = { Text("Extract message") },
+                    modifier = Modifier.heightIn(min = 54.dp),
+                    text = { SteganographyTabLabel("Extract", "Read a message") },
                 )
                 Tab(
                     selected = mode == ComposeSteganographyMode.INSPECT,
                     onClick = { onModeChange(ComposeSteganographyMode.INSPECT) },
-                    text = { Text("Inspect image") },
+                    modifier = Modifier.heightIn(min = 54.dp),
+                    text = { SteganographyTabLabel("Inspect", "Check an image") },
                 )
             }
 
@@ -157,7 +180,6 @@ internal fun SteganographyCardContent(
                                 onMessageChange = onMessageChange,
                                 password = hidePassword,
                                 onPasswordChange = onHidePasswordChange,
-                                encrypt = encrypt,
                                 onEncryptChange = onEncryptChange,
                                 onHide = onHide,
                                 savedOutput = savedOutput,
@@ -178,7 +200,6 @@ internal fun SteganographyCardContent(
                                 onInputSelected = onInputSelected,
                                 password = extractPassword,
                                 onPasswordChange = onExtractPasswordChange,
-                                encryptedExtract = encryptedExtract,
                                 onEncryptedExtractChange = onEncryptedExtractChange,
                                 onExtract = onExtract,
                                 onCopyResult = onCopyResult,
@@ -203,10 +224,17 @@ internal fun SteganographyCardContent(
             }
 
             if (!previewOnly) {
+                Divider(color = tokens.colors.borderSubtle)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Text(
+                        text = "The source image is never overwritten.",
+                        style = MaterialTheme.typography.caption,
+                        color = tokens.colors.textSecondary,
+                    )
                     CompactButton(
                         onClick = onClear,
                         tone = CompactButtonTone.TERTIARY,
@@ -216,5 +244,17 @@ internal fun SteganographyCardContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SteganographyTabLabel(title: String, detail: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, style = MaterialTheme.typography.button)
+        Text(
+            text = detail,
+            style = MaterialTheme.typography.caption,
+            color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
+        )
     }
 }

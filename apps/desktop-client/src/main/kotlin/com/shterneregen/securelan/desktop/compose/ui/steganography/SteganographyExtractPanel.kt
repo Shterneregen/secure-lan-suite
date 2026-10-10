@@ -25,7 +25,6 @@ internal fun SteganographyExtractPanel(
     onInputSelected: (Path) -> Unit,
     password: String,
     onPasswordChange: (String) -> Unit,
-    encryptedExtract: Boolean,
     onEncryptedExtractChange: (Boolean) -> Unit,
     onExtract: () -> Unit,
     onCopyResult: () -> Unit,
@@ -43,12 +42,15 @@ internal fun SteganographyExtractPanel(
             enabled = !previewOnly,
         )
 
-        SteganographyPasswordRow(
-            checked = encryptedExtract,
-            onCheckedChange = onEncryptedExtractChange,
-            label = "Message is password-protected",
+        SteganographyPasswordField(
             password = password,
-            onPasswordChange = onPasswordChange,
+            placeholder = "Enter only if the message is protected",
+            emptyHint = "Try without a password first",
+            protectedHint = "Password will be used for extraction",
+            onPasswordChange = { value ->
+                onPasswordChange(value)
+                onEncryptedExtractChange(value.isNotBlank())
+            },
         )
 
         val error = steganographyStatusIsError(state.statusText)

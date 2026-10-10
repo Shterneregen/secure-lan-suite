@@ -28,7 +28,7 @@ internal fun LiveSteganographyDialog(
 ) {
     DialogWindow(
         onCloseRequest = onClose,
-        state = rememberDialogState(size = DpSize(760.dp, 820.dp)),
+        state = rememberDialogState(size = DpSize(900.dp, 760.dp)),
         title = "SecureLanSuite · Steganography",
         resizable = true,
         onPreviewKeyEvent = { event ->
@@ -41,7 +41,7 @@ internal fun LiveSteganographyDialog(
         },
     ) {
         LaunchedEffect(window) {
-            window.minimumSize = Dimension(620, 680)
+            window.minimumSize = Dimension(700, 640)
         }
         Surface(color = MaterialTheme.colors.background, modifier = Modifier.fillMaxSize()) {
             LiveSteganographyCard(

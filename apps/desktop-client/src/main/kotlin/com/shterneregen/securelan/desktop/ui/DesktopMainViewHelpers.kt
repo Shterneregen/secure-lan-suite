@@ -24,7 +24,7 @@ object DesktopMainViewHelpers {
     @JvmStatic
     fun suggestedStegoOutputPath(coverPath: Path): Path {
         val fileName = coverPath.fileName.toString()
-        val extensionIndex = fileName.lowercase(Locale.ROOT).lastIndexOf(".bmp")
+        val extensionIndex = fileName.lastIndexOf('.')
         val outputName = if (extensionIndex > 0) {
             fileName.substring(0, extensionIndex) + "-stego.bmp"
         } else {
@@ -255,8 +255,6 @@ object DesktopMainViewHelpers {
 
     @JvmStatic
     @Throws(SocketException::class)
-    fun resolveLocalLanIps(): List<String> = resolveLocalLanAddresses().map(LocalNetworkAddress::address)
-
     internal fun localNetworkInterfaceLabel(interfaceName: String): String {
         val normalized = interfaceName.lowercase(Locale.ROOT)
         return when {

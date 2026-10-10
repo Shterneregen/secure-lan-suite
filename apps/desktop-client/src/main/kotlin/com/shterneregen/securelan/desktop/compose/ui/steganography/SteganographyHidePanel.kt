@@ -6,11 +6,18 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import java.nio.file.Path
@@ -29,7 +36,6 @@ internal fun SteganographyHidePanel(
     onMessageChange: (String) -> Unit,
     password: String,
     onPasswordChange: (String) -> Unit,
-    encrypt: Boolean,
     onEncryptChange: (Boolean) -> Unit,
     onHide: () -> Unit,
     savedOutput: Path?,
@@ -49,13 +55,7 @@ internal fun SteganographyHidePanel(
             enabled = !previewOnly,
         )
 
-        if (state.capacity != null) {
-            SteganographyInfoSurface(
-                title = "Message capacity",
-                body = state.capacityText,
-                positive = state.messageFitsCapacity,
-            )
-        }
+        state.capacity?.let { capacity -> SteganographyCapacityBar(capacity.payloadCapacityBytes, capacity.width, capacity.height, capacity.bitsPerPixel) }
 
         SteganographyMultilineTextField(
             value = message,
@@ -63,6 +63,7 @@ internal fun SteganographyHidePanel(
             label = "Message to hide",
             placeholder = "Type or paste the text you want to hide",
             isError = !state.messageFitsCapacity,
+            height = 136.dp,
         )
         Text(
             text = state.messageCapacityLabel,
@@ -75,12 +76,15 @@ internal fun SteganographyHidePanel(
             },
         )
 
-        SteganographyPasswordRow(
-            checked = encrypt,
-            onCheckedChange = onEncryptChange,
-            label = "Protect hidden message with a password",
+        SteganographyPasswordField(
             password = password,
-            onPasswordChange = onPasswordChange,
+            placeholder = "Leave empty for no password",
+            emptyHint = "No password protection",
+            protectedHint = "Message will be password-protected",
+            onPasswordChange = { value ->
+                onPasswordChange(value)
+                onEncryptChange(value.isNotBlank())
+            },
         )
 
         SteganographyFileRow(
@@ -124,15 +128,26 @@ internal fun SteganographyHidePanel(
         }
 
         if (savedOutput != null) {
-            SteganographyInfoSurface(
-                title = "Stego BMP created",
-                body = savedOutput.toString(),
-                positive = true,
+            val tokens = LocalSecureLanDesignTokens.current
+            Surface(
+                modifier = Modifier.align(Alignment.End).widthIn(max = 720.dp),
+                shape = RoundedCornerShape(tokens.radius.medium),
+                border = BorderStroke(1.dp, MaterialTheme.colors.primary.copy(alpha = 0.30f)),
+                color = tokens.colors.surfaceLevel2.copy(alpha = 0.70f),
             ) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text("Stego BMP created", style = MaterialTheme.typography.subtitle2)
+                        Text(
+                            savedOutput.fileName?.toString() ?: savedOutput.toString(),
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
+                        )
+                    }
                     CompactButton(onClick = onOpenOutputFolder) { Text("Open folder") }
                     if (onSendOutput != null && !sendOutputLabel.isNullOrBlank()) {
                         CompactButton(onClick = onSendOutput) { Text(sendOutputLabel) }
@@ -141,11 +156,28 @@ internal fun SteganographyHidePanel(
             }
         }
 
-        Text(
-            text = "The source image is not modified. The result is always saved as BMP.",
-            style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
-        )
+    }
+}
+
+@Composable
+private fun SteganographyCapacityBar(capacity: Int, width: Int, height: Int, bitsPerPixel: Int) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Surface(
+        shape = RoundedCornerShape(tokens.radius.small),
+        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+        color = tokens.colors.surfaceLevel2.copy(alpha = 0.55f),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Available capacity", style = MaterialTheme.typography.caption)
+            Text(
+                "$capacity bytes  ·  $width × $height  ·  $bitsPerPixel-bit BMP",
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+            )
+        }
     }
 }
 

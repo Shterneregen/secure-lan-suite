@@ -1,6 +1,6 @@
 package com.shterneregen.securelan.desktop.compose.state.transfer
 
-public data class ComposeAttachmentToolsState(
+data class ComposeAttachmentToolsState(
     val peerSelected: Boolean,
     val fileTargetReady: Boolean,
 ) {

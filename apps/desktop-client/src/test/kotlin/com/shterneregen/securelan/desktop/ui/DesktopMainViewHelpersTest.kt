@@ -1,3 +1,5 @@
+@file:Suppress("MisorderedAssertEqualsArguments")
+
 package com.shterneregen.securelan.desktop.ui
 
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
@@ -35,11 +37,21 @@ class DesktopMainViewHelpersTest {
     }
 
     @Test
-    fun shouldAppendStegoBmpWhenCoverHasAnotherExtension() {
+    fun shouldReplaceAnotherCoverExtensionWithStegoBmp() {
         val cover = Path.of("cover.png")
 
         assertEquals(
-            Path.of("cover.png-stego.bmp").toAbsolutePath().normalize(),
+            Path.of("cover-stego.bmp").toAbsolutePath().normalize(),
+            DesktopMainViewHelpers.suggestedStegoOutputPath(cover),
+        )
+    }
+
+    @Test
+    fun shouldPreserveNameWhenCoverHasNoExtension() {
+        val cover = Path.of("cover")
+
+        assertEquals(
+            Path.of("cover-stego.bmp").toAbsolutePath().normalize(),
             DesktopMainViewHelpers.suggestedStegoOutputPath(cover),
         )
     }
