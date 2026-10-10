@@ -12,10 +12,22 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 - Supported flows include desktop-compatible UDP discovery, secure chat handshake, encrypted chat messages, AES-GCM/RSA file-transfer handshake, Android-to-desktop file sending, and desktop-to-Android file receiving.
 - The app starts UDP discovery automatically on launch, lets the user stop or restart it from the Devices screen, and requests `NEARBY_WIFI_DEVICES` on Android 13+.
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
-- Voice, WebRTC data channels, camera/video, screen sharing, steganography tools, and the desktop no-auth browser quick-share HTTP flow are not implemented in the Android client yet.
+- Android-to-Android and Android-to-desktop voice/video calls use WebRTC in the LAN, with the existing encrypted TCP connection for signaling. WebRTC data channels, screen sharing, steganography tools, and the desktop no-auth browser quick-share HTTP flow are not implemented in the Android client yet.
 - For discovery and file receiving, the phone and desktop must be on the same network. Firewalls, VPNs, guest Wi-Fi networks, client-isolated Wi-Fi, and mobile hotspots can block UDP broadcast or inbound TCP connections.
 
 ## Requirements
+
+### Voice and video calls
+
+Connect the clients to the same room, then open **Chat → Call** on Android and choose a participant and audio/video mode. The menu uses advertised call capabilities, regardless of platform: audio requires supportsVoice, and video additionally requires supportsVideo. Clients without voice support are excluded. The room can be hosted on Android or desktop. Update the host as well: the updated server delivers RTC signaling only to its recipient and supplies the sender identity from the authenticated session.
+
+Microphone permission is required; camera permission is requested for video. Denying camera access falls back to audio. Incoming video calls can also be answered with audio only. The call screen offers microphone mute, camera on/off, front/back camera switching, speaker/headset routing, a movable local preview and a duration timer. Active video calls enter Picture-in-Picture on supported devices when leaving the app with Home. A foreground notification provides microphone and end-call actions.
+
+Media uses direct WebRTC DTLS-SRTP with host ICE candidates and no external STUN/TURN servers. Signaling uses the existing RSA/AES-GCM client-to-server transport: **the room server can read SDP/ICE; signaling is not end-to-end encrypted**. Wi-Fi client isolation can prevent calls. Incoming notifications require notification permission and a surviving TCP connection; this is not a push service that wakes a killed app. Desktop-to-Android video calling has been confirmed by a user; the full cross-platform device matrix still needs acceptance testing.
+
+Automated coordinator, codec and encrypted signaling tests pass, and the debug APK builds. Actual microphone/camera quality, Bluetooth routing, background/PiP behavior and OEM power management still require acceptance testing on physical Android devices.
+
+The [reviewed implementation and device acceptance checklist](../../docs/android-av-calls.md) describe the architecture, protocol and remaining verification.
 
 ### Minimum requirements
 

@@ -16,6 +16,8 @@ import android.provider.OpenableColumns
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.shterneregen.securelan.androidclient.call.*
+import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
 import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
 import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.AppLanguage
@@ -106,6 +108,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
+    val callMedia = WebRtcCallMedia(application, viewModelScope)
+    private val incomingCallNotification = IncomingCallNotification(application)
+    val callAudio = AudioRouteManager(application) { calls.end() }
+    val calls: CallCoordinator = CallCoordinator(
+        scope = viewModelScope,
+        nickname = { _uiState.value.nickname },
+        available = { _uiState.value.connected },
+        send = chatClient::sendSignal,
+        media = callMedia,
+        prepare = { id, video ->
+            CallForegroundService.start(application, id, calls.state.value.peer, video, { calls.end() }, { toggleCallMute() })
+            callAudio.start(video)
+        },
+        release = { try { callAudio.stop() } finally { CallForegroundService.stop(application) } },
+        now = android.os.SystemClock::elapsedRealtime,
+    )
+
+    fun startCall(peer: String, video: Boolean) {
+        val supportedVideo = _uiState.value.callPeers[peer] ?: return
+        calls.start(peer, video && supportedVideo)
+    }
+    fun toggleCallMute() { runCatching { callMedia.toggleMute() }.onFailure { calls.end() } }
+    fun toggleCallCamera() { runCatching { callMedia.toggleCamera() }.onFailure { calls.end() } }
+    fun switchCallCamera() { runCatching { callMedia.switchCamera() }.onFailure { calls.end() } }
+    fun toggleCallSpeaker() { runCatching { callAudio.toggleSpeaker() }.onFailure { calls.end() } }
+
     private var discoveryJob: Job? = null
     private var discoveryTimeoutJob: Job? = null
     private var receiveJob: Job? = null
@@ -121,6 +149,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     init {
+        viewModelScope.launch { calls.state.collect { incomingCallNotification.update(it) } }
         createNotificationChannel()
         observeHostService()
         observeTransferQueue()
@@ -171,6 +200,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateNetworkAvailable(available: Boolean) {
+        if (!available) viewModelScope.launch { calls.connectionLost() }
         _uiState.update { it.copy(networkAvailable = available) }
         refreshLocalRoomAddresses()
         if (!available && discoveryJob != null) {
@@ -473,6 +503,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopHosting() {
+        calls.connectionLost()
+        _uiState.update { it.copy(callPeers = emptyMap()) }
         if (!_uiState.value.hosting && !_uiState.value.hostingStarting) return
         hostConnectionAttemptedForPeerId = null
         disconnectRequested = true
@@ -501,7 +533,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun connectToPeer(peer: DiscoveredPeer, password: String, localFilePort: Int) {
         val state = _uiState.value
-        _uiState.update { it.copy(connecting = true, error = null, status = "Connecting to ${peer.nickname}") }
+        if (state.connecting) return
+        if (state.connected) return setError("Disconnect from the current room before connecting")
+        _uiState.update { it.copy(connecting = true, callPeers = emptyMap(), error = null, status = "Connecting to ${peer.nickname}") }
         disconnectRequested = false
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
         viewModelScope.launch {
@@ -538,6 +572,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disconnect() {
+        calls.connectionLost()
+        _uiState.update { it.copy(callPeers = emptyMap()) }
         if (_uiState.value.hosting || _uiState.value.hostingStarting) {
             stopHosting()
             return
@@ -616,6 +652,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 runCatching { chatClient.readMessage() }
                     .onSuccess { message ->
                         if (message == null) {
+                            calls.connectionLost()
+                            _uiState.update { it.copy(callPeers = emptyMap()) }
                             val status = if (disconnectRequested) "Disconnected" else "Connection closed"
                             fileReceiverJob?.cancel()
                             fileReceiverJob = null
@@ -624,6 +662,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             return@launch
                         }
                         when (message.type) {
+                            WireMessageType.SIGNAL -> {
+                                // Invalid signaling must not tear down the text chat receive loop.
+                                runCatching { RtcSignalCodec.deserialize(message.payload) }
+                                    .onSuccess { calls.receive(message.sender, it) }
+                                    .onFailure { addLog("Invalid call signal", "WARN") }
+                            }
                             WireMessageType.CHAT -> handleIncomingChatMessage(message.sender, message.payload)
                             WireMessageType.USER_JOINED -> handleUserJoined(message.sender, message.payload)
                             WireMessageType.USER_LEFT -> handleUserLeft(message.sender)
@@ -635,6 +679,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     .onFailure { error ->
+                        calls.connectionLost()
+                        _uiState.update { it.copy(callPeers = emptyMap()) }
                         fileReceiverJob?.cancel()
                         fileReceiverJob = null
                         if (disconnectRequested || error.isExpectedDisconnect()) {
@@ -685,12 +731,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val peers = upsertPeer(state.peers, peer)
                 .sortedBy { it.nickname.lowercase() }
-            state.copy(peers = peers, status = "$peerNickname joined the chat")
+            val callPeers = state.callPeers.toMutableMap().apply {
+                remove(peerNickname)
+                if (capabilities.supportsVoice()) {
+                    put(peerNickname, capabilities.supportsVideo())
+                }
+            }
+            state.copy(peers = peers, callPeers = callPeers, status = "$peerNickname joined the chat")
         }
         addLog("Peer joined chat: $peerNickname")
     }
 
     private fun handleUserLeft(nickname: String) {
+        calls.peerLeft(nickname)
+        _uiState.update { it.copy(callPeers = it.callPeers.filterKeys { name -> !name.equals(nickname, true) }) }
         val peerNickname = nickname.trim()
         if (peerNickname.isBlank()) return
         val recipient = _uiState.value.fileRecipient
@@ -728,10 +782,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun androidCapabilities(fileReceivePort: Int): PeerCapabilities = PeerCapabilities.android(
-        APP_VERSION,
-        fileReceivePort,
-        Build.MODEL ?: "Android device",
+    private fun androidCapabilities(fileReceivePort: Int): PeerCapabilities = PeerCapabilities(
+        PeerCapabilities.PLATFORM_ANDROID, APP_VERSION, true, fileReceivePort,
+        supportsVoice = true,
+        supportsVideo = getApplication<Application>().packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY),
+        deviceName = Build.MODEL ?: "Android device",
     )
 
     private fun resolveTransferSource(uri: Uri): TransferSource {
@@ -950,6 +1005,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (previous.hosting || previous.hostingStarting) {
+            calls.connectionLost()
+            _uiState.update { it.copy(callPeers = emptyMap()) }
             hostConnectionAttemptedForPeerId = null
             stopLocalAddressWatch()
             receiveJob?.cancel()
@@ -1035,6 +1092,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        calls.close()
+        incomingCallNotification.clear()
         discoveryJob?.cancel()
         discoveryTimeoutJob?.cancel()
         receiveJob?.cancel()

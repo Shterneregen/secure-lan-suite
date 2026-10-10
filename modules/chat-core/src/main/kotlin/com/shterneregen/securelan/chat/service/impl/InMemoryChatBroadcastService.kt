@@ -6,6 +6,7 @@ import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.ChatBroadcastService
 import com.shterneregen.securelan.chat.service.ChatHistoryService
 import com.shterneregen.securelan.chat.transport.ChatSocketSession
+import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
@@ -55,7 +56,10 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
     }
 
     override fun publishSignal(senderNickname: String, payload: String) {
-        broadcast(WireMessage(WireMessageType.SIGNAL, senderNickname, payload))
+        val signal = runCatching { RtcSignalCodec.deserialize(payload).withSender(senderNickname) }.getOrNull() ?: return
+        if (signal.toPeer().isBlank() || signal.sessionId().isBlank()) return
+        val recipient = clients.entries.firstOrNull { it.key.equals(signal.toPeer(), ignoreCase = true) }?.value ?: return
+        writeQuietly(recipient, WireMessage(WireMessageType.SIGNAL, senderNickname, RtcSignalCodec.serialize(signal)))
     }
 
     private fun broadcast(message: WireMessage) {

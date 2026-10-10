@@ -1,6 +1,9 @@
 package com.shterneregen.securelan.androidclient
 
 import android.annotation.SuppressLint
+import com.shterneregen.securelan.androidclient.call.CallHost
+import com.shterneregen.securelan.androidclient.call.CallButtons
+import com.shterneregen.securelan.androidclient.call.CallPhase
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -192,6 +195,22 @@ private fun pluralStringResource(id: Int, count: Int, vararg formatArgs: Any): S
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    var inCallPip by mutableStateOf(false)
+        private set
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inCallPip = isInPictureInPictureMode
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val call = viewModel.calls.state.value
+        if (call.phase == CallPhase.ACTIVE && call.video &&
+            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            runCatching { enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(4, 3)).build()) }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -304,35 +323,38 @@ private fun SecureLanAndroidApp(
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    RedesignedMainScreen(
-                        state = state,
-                        queue = queue,
-                        onNicknameChange = viewModel::updateNickname,
-                        onPasswordChange = viewModel::updateSessionPassword,
-                        onThemeModeChange = viewModel::updateThemeMode,
-                        onLanguageChange = viewModel::updateAppLanguage,
-                        onNotificationsChange = onNotificationsChange,
-                        onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
-                        onPeerSelected = viewModel::selectPeer,
-                        onConnect = viewModel::connectSelectedPeer,
-                        onConnectManual = viewModel::connectManualPeer,
-                        onStartHosting = viewModel::startHosting,
-                        onStopHosting = viewModel::stopHosting,
-                        onDisconnect = viewModel::disconnect,
-                        onInputChange = viewModel::updateInputMessage,
-                        onSendMessage = viewModel::sendTextMessage,
-                        onBeginFileSelection = viewModel::beginFileSelection,
-                        onFilesPicked = viewModel::addSelectedFiles,
-                        onClearFiles = viewModel::clearFiles,
-                        onRemoveFile = viewModel::removeFile,
-                        onStartFileBatch = viewModel::startFileBatch,
-                        onRetryFailedFiles = viewModel::retryFailedFiles,
-                        onSkipFailedFiles = viewModel::skipFailedFiles,
-                        onStopAfterCurrentFile = viewModel::stopAfterCurrentFile,
-                        onRequestNearbyPermission = onRequestNearbyPermission,
-                        onRetryDiscovery = viewModel::restartDiscovery,
-                        onStopDiscovery = viewModel::stopDiscovery,
-                    )
+                    CallHost(viewModel, baseContext as MainActivity) { requestCall ->
+                        RedesignedMainScreen(
+                            callActions = { CallButtons(state.callPeers, state.connected, requestCall) },
+                            state = state,
+                            queue = queue,
+                            onNicknameChange = viewModel::updateNickname,
+                            onPasswordChange = viewModel::updateSessionPassword,
+                            onThemeModeChange = viewModel::updateThemeMode,
+                            onLanguageChange = viewModel::updateAppLanguage,
+                            onNotificationsChange = onNotificationsChange,
+                            onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
+                            onPeerSelected = viewModel::selectPeer,
+                            onConnect = viewModel::connectSelectedPeer,
+                            onConnectManual = viewModel::connectManualPeer,
+                            onStartHosting = viewModel::startHosting,
+                            onStopHosting = viewModel::stopHosting,
+                            onDisconnect = viewModel::disconnect,
+                            onInputChange = viewModel::updateInputMessage,
+                            onSendMessage = viewModel::sendTextMessage,
+                            onBeginFileSelection = viewModel::beginFileSelection,
+                            onFilesPicked = viewModel::addSelectedFiles,
+                            onClearFiles = viewModel::clearFiles,
+                            onRemoveFile = viewModel::removeFile,
+                            onStartFileBatch = viewModel::startFileBatch,
+                            onRetryFailedFiles = viewModel::retryFailedFiles,
+                            onSkipFailedFiles = viewModel::skipFailedFiles,
+                            onStopAfterCurrentFile = viewModel::stopAfterCurrentFile,
+                            onRequestNearbyPermission = onRequestNearbyPermission,
+                            onRetryDiscovery = viewModel::restartDiscovery,
+                            onStopDiscovery = viewModel::stopDiscovery,
+                        )
+                    }
                 }
             }
         }
@@ -413,6 +435,7 @@ private enum class PrimaryDestination(val labelRes: Int, val icon: ImageVector) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RedesignedMainScreen(
+    callActions: @Composable () -> Unit,
     state: MainUiState,
     queue: TransferQueueState,
     onNicknameChange: (String) -> Unit,
@@ -607,6 +630,7 @@ private fun RedesignedMainScreen(
                             layoutSpec = layoutSpec,
                         )
                         PrimaryDestination.CHAT -> RedesignedChatScreen(
+                            callActions = callActions,
                             state = state,
                             onInputChange = onInputChange,
                             onSendMessage = onSendMessage,
@@ -1247,6 +1271,7 @@ private fun ManualConnectionBottomSheet(
 
 @Composable
 private fun RedesignedChatScreen(
+    callActions: @Composable () -> Unit,
     state: MainUiState,
     onInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
@@ -1262,6 +1287,7 @@ private fun RedesignedChatScreen(
     Column(
         modifier = Modifier.fillMaxSize().widthIn(max = layoutSpec.chatMaxWidth).padding(horizontal = layoutSpec.horizontalPadding),
     ) {
+        if (state.connected) callActions()
         if (!state.connected && state.messages.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 RedesignedEmptyState(

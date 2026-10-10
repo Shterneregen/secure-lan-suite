@@ -7,6 +7,8 @@ import com.shterneregen.securelan.chat.event.ChatDisconnectReasons
 import com.shterneregen.securelan.chat.event.ChatErrorEvent
 import com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
+import com.shterneregen.securelan.chat.event.ChatSignalReceivedEvent
+import com.shterneregen.securelan.common.model.rtc.*
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
 import com.shterneregen.securelan.chat.service.ChatClientService
 import com.shterneregen.securelan.chat.service.ChatServerConfig
@@ -57,6 +59,31 @@ class SecureChatIntegrationTest {
         val client = track(DefaultChatClientService(eventPublisher = { events.add(it) }))
         assertFalse(client.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "wrong")))
         assertTrue(await(events, { it is ChatErrorEvent && it.message?.contains("Wrong session password") == true }, 2_000))
+    }
+
+    @Test
+    fun rtcSignalsTravelOverEncryptedSessionsOnlyToTheRecipient() {
+        val aliceEvents = CopyOnWriteArrayList<ChatCoreEvent>()
+        val bobEvents = CopyOnWriteArrayList<ChatCoreEvent>()
+        val carolEvents = CopyOnWriteArrayList<ChatCoreEvent>()
+        val port = freePort()
+        track(DefaultChatServerService {}).start(ChatServerConfig(port, "chatpass"))
+        val alice = track(DefaultChatClientService(eventPublisher = { aliceEvents.add(it) }))
+        val bob = track(DefaultChatClientService(eventPublisher = { bobEvents.add(it) }))
+        val carol = track(DefaultChatClientService(eventPublisher = { carolEvents.add(it) }))
+        assertTrue(alice.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")))
+        assertTrue(bob.connect(ChatClientConnectRequest("127.0.0.1", port, "bob", "chatpass")))
+        assertTrue(carol.connect(ChatClientConnectRequest("127.0.0.1", port, "carol", "chatpass")))
+        val offer = RtcSignalEnvelope.offer("alice", "bob", RtcSessionMode.AUDIO_VIDEO, "securelan-data", "v=0\r\na=test\r\n")
+        alice.sendSignal(offer)
+        assertTrue(await(bobEvents, { it is ChatSignalReceivedEvent && it.signal == offer }, 2_000))
+        bob.sendSignal(RtcSignalEnvelope.answer(offer.sessionId(), "bob", "alice", offer.mode(), "securelan-data", "answer"))
+        assertTrue(await(aliceEvents, { it is ChatSignalReceivedEvent && it.signal.type() == RtcSignalType.ANSWER }, 2_000))
+        // Markers on both streams establish that previous signal frames have been processed.
+        alice.sendMessage("alice-marker"); bob.sendMessage("bob-marker")
+        assertTrue(await(carolEvents, { it is ChatMessageReceivedEvent && it.text == "alice-marker" }, 2_000))
+        assertTrue(await(carolEvents, { it is ChatMessageReceivedEvent && it.text == "bob-marker" }, 2_000))
+        assertFalse(carolEvents.any { it is ChatSignalReceivedEvent })
     }
 
     @Test

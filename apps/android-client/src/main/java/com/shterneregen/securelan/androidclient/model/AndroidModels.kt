@@ -110,6 +110,7 @@ data class TransferRecord(
 )
 
 data class MainUiState(
+    val callPeers: Map<String, Boolean> = emptyMap(),
     val nickname: String = "",
     val sessionPassword: String = "",
     val manualHost: String = "",

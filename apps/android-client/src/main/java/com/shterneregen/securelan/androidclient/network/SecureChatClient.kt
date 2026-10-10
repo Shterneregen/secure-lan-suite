@@ -5,6 +5,8 @@ import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.WireMessage
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
+import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
+import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.Socket
@@ -54,6 +56,11 @@ class SecureChatClient {
 
     suspend fun readMessage(): WireMessage? = withContext(Dispatchers.IO) {
         session?.readMessage()
+    }
+
+    suspend fun sendSignal(signal: RtcSignalEnvelope) = withContext(Dispatchers.IO) {
+        val active = checkNotNull(session) { "Chat disconnected" }
+        active.writeMessage(WireMessage(WireMessageType.SIGNAL, nickname, RtcSignalCodec.serialize(signal.withSender(nickname))))
     }
 
     suspend fun disconnect() = withContext(Dispatchers.IO) {
