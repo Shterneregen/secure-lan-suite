@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.time.Instant
 
@@ -36,6 +37,8 @@ class PeerDiscoveryRepository(
                     trySend(peer.copy(lastSeen = Instant.now()))
                 } catch (_: SocketTimeoutException) {
                 } catch (_: IllegalArgumentException) {
+                } catch (error: SocketException) {
+                    if (!socket.isClosed) throw error
                 }
             }
         }

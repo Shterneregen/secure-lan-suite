@@ -152,8 +152,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshLocalRoomAddresses()
         if (!available && discoveryJob != null) {
             stopDiscovery()
-        } else if (available && discoveryJob == null) {
-            startDiscovery()
         }
     }
 
@@ -182,25 +180,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         discoveryJob = viewModelScope.launch {
-            discoveryRepository.discoverPeers().collect { peer ->
-                if (peer.peerId == hostPeerId) return@collect
-                _uiState.update { state ->
-                    val serverPeer = peer.copy(role = PeerRole.SERVER)
-                    val peers = upsertPeer(state.peers, serverPeer)
-                        .sortedBy { it.nickname.lowercase() }
-                    val selectedPeer = state.selectedPeer?.let { selected ->
-                        if (samePeer(selected, serverPeer)) serverPeer else selected
+            runCatching {
+                discoveryRepository.discoverPeers().collect { peer ->
+                    if (peer.peerId == hostPeerId) return@collect
+                    _uiState.update { state ->
+                        val serverPeer = peer.copy(role = PeerRole.SERVER)
+                        val peers = upsertPeer(state.peers, serverPeer)
+                            .sortedBy { it.nickname.lowercase() }
+                        val selectedPeer = state.selectedPeer?.let { selected ->
+                            if (samePeer(selected, serverPeer)) serverPeer else selected
+                        }
+                        val connectionPeer = state.connectionPeer?.let { current ->
+                            if (samePeer(current, serverPeer)) serverPeer else current
+                        } ?: serverPeer
+                        state.copy(
+                            peers = peers,
+                            selectedPeer = selectedPeer,
+                            connectionPeer = connectionPeer,
+                            discoveryTimedOut = false,
+                            status = "Found ${peers.size} peer(s)",
+                        )
                     }
-                    val connectionPeer = state.connectionPeer?.let { current ->
-                        if (samePeer(current, serverPeer)) serverPeer else current
-                    } ?: serverPeer
-                    state.copy(
-                        peers = peers,
-                        selectedPeer = selectedPeer,
-                        connectionPeer = connectionPeer,
-                        discoveryTimedOut = false,
-                        status = "Found ${peers.size} peer(s)",
-                    )
+                }
+            }.onFailure { error ->
+                if (error !is kotlinx.coroutines.CancellationException) {
+                    discoveryJob = null
+                    discoveryTimeoutJob?.cancel()
+                    discoveryTimeoutJob = null
+                    _uiState.update {
+                        it.copy(discoveryRunning = false, discoveryTimedOut = true, status = "Device search stopped")
+                    }
+                    addLog(error.message ?: "Device search stopped unexpectedly", level = "ERROR")
                 }
             }
         }
@@ -251,8 +261,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun restartDiscovery() {
         refreshLocalRoomAddresses()
+        val previousJob = discoveryJob
+        if (previousJob == null) {
+            startDiscovery()
+            return
+        }
         stopDiscovery()
-        startDiscovery()
+        viewModelScope.launch {
+            previousJob.join()
+            startDiscovery()
+        }
     }
 
     fun refreshLocalRoomAddresses() {

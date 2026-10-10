@@ -10,7 +10,7 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 - TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
 - Protocol code is minimally reimplemented inside `apps/android-client` to avoid introducing Android/UI dependencies into reusable Java core modules.
 - Supported flows include desktop-compatible UDP discovery, secure chat handshake, encrypted chat messages, AES-GCM/RSA file-transfer handshake, Android-to-desktop file sending, and desktop-to-Android file receiving.
-- The app starts UDP discovery automatically on launch and requests `NEARBY_WIFI_DEVICES` on Android 13+.
+- The app starts UDP discovery automatically on launch, lets the user stop or restart it from the Devices screen, and requests `NEARBY_WIFI_DEVICES` on Android 13+.
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
 - Voice, WebRTC data channels, camera/video, screen sharing, steganography tools, and the desktop no-auth browser quick-share HTTP flow are not implemented in the Android client yet.
 - For discovery and file receiving, the phone and desktop must be on the same network. Firewalls, VPNs, guest Wi-Fi networks, client-isolated Wi-Fi, and mobile hotspots can block UDP broadcast or inbound TCP connections.

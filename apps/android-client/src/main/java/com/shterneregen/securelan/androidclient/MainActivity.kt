@@ -304,6 +304,7 @@ private fun SecureLanAndroidApp(
                         onSendFile = viewModel::sendSelectedFile,
                         onRequestNearbyPermission = onRequestNearbyPermission,
                         onRetryDiscovery = viewModel::restartDiscovery,
+                        onStopDiscovery = viewModel::stopDiscovery,
                     )
                 }
             }
@@ -404,13 +405,13 @@ private fun RedesignedMainScreen(
     onSendFile: () -> Unit,
     onRequestNearbyPermission: () -> Unit,
     onRetryDiscovery: () -> Unit,
+    onStopDiscovery: () -> Unit,
 ) {
     var destination by remember { mutableStateOf(PrimaryDestination.DEVICES) }
     var settingsVisible by remember { mutableStateOf(false) }
     var connectionSheetVisible by remember { mutableStateOf(false) }
     var manualConnectionSheetVisible by remember { mutableStateOf(false) }
     var hostRoomSheetVisible by remember { mutableStateOf(false) }
-    var discoveryHelpVisible by remember { mutableStateOf(false) }
     var logsVisible by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val friendlyErrorTitle = state.error?.let { stringResource(it.toFriendlyErrorTitleRes()) }
@@ -473,23 +474,6 @@ private fun RedesignedMainScreen(
             onPasswordChange = onPasswordChange,
             onStartHosting = onStartHosting,
             onDismiss = { if (!state.hostingStarting) hostRoomSheetVisible = false },
-        )
-    }
-    if (discoveryHelpVisible) {
-        AlertDialog(
-            onDismissRequest = { discoveryHelpVisible = false },
-            icon = { Icon(Icons.Outlined.Wifi, contentDescription = null) },
-            title = { Text(stringResource(R.string.no_devices_title)) },
-            text = { Text(stringResource(R.string.no_devices_message)) },
-            confirmButton = {
-                Button(onClick = {
-                    discoveryHelpVisible = false
-                    onRetryDiscovery()
-                }) { Text(stringResource(R.string.search_again)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { discoveryHelpVisible = false }) { Text(stringResource(R.string.close)) }
-            },
         )
     }
     if (logsVisible) LogsDialog(logs = state.logs, onDismiss = { logsVisible = false })
@@ -578,7 +562,7 @@ private fun RedesignedMainScreen(
                             onStopHosting = onStopHosting,
                             onRequestNearbyPermission = onRequestNearbyPermission,
                             onRetryDiscovery = onRetryDiscovery,
-                            onShowHelp = { discoveryHelpVisible = true },
+                            onStopDiscovery = onStopDiscovery,
                             onConnectManual = { manualConnectionSheetVisible = true },
                             onHostRoom = { hostRoomSheetVisible = true },
                             layoutSpec = layoutSpec,
@@ -702,7 +686,7 @@ private fun RedesignedDevicesScreen(
     onStopHosting: () -> Unit,
     onRequestNearbyPermission: () -> Unit,
     onRetryDiscovery: () -> Unit,
-    onShowHelp: () -> Unit,
+    onStopDiscovery: () -> Unit,
     onConnectManual: () -> Unit,
     onHostRoom: () -> Unit,
     layoutSpec: AdaptiveLayoutSpec,
@@ -719,7 +703,7 @@ private fun RedesignedDevicesScreen(
             ) {
                 DevicesSubtitle()
                 if (state.connected || state.hosting) CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect)
-                DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp)
+                DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery)
                 HostRoomButton(state, onHostRoom)
                 ManualConnectionButton(onConnectManual)
             }
@@ -743,7 +727,7 @@ private fun RedesignedDevicesScreen(
         ) {
             item { DevicesSubtitle() }
             if (state.connected || state.hosting) item { CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect) }
-            item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onShowHelp) }
+            item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery) }
             item { HostRoomButton(state, onHostRoom) }
             item { ManualConnectionButton(onConnectManual) }
             if (serverPeers.isNotEmpty()) {
@@ -830,7 +814,7 @@ private fun DiscoveryStateCard(
     state: MainUiState,
     onRequestPermission: () -> Unit,
     onRetry: () -> Unit,
-    onShowHelp: () -> Unit,
+    onStop: () -> Unit,
 ) {
     if (!state.networkAvailable) {
         StateCard(
@@ -861,8 +845,8 @@ private fun DiscoveryStateCard(
                         icon = Icons.Outlined.Wifi,
                         title = stringResource(R.string.searching_title),
                         message = stringResource(R.string.searching_message),
-                        actionLabel = stringResource(R.string.search_again),
-                        onAction = onRetry,
+                        actionLabel = stringResource(R.string.stop_search),
+                        onAction = onStop,
                     )
                 } else {
                     StateCard(
@@ -870,7 +854,7 @@ private fun DiscoveryStateCard(
                         title = stringResource(R.string.no_devices_title),
                         message = stringResource(R.string.no_devices_message),
                         actionLabel = stringResource(R.string.search_again),
-                        onAction = onShowHelp,
+                        onAction = onRetry,
                     )
                 }
             }
