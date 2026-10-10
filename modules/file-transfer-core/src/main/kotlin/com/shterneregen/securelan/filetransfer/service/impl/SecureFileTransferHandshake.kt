@@ -17,6 +17,7 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
         fileName: String,
         fileSize: Long,
         transferId: String,
+        awaitingAcceptance: () -> Unit = {},
     ): FileTransferMetadata {
         session.writeUtf(PROTOCOL)
         val serverPublicKey = cryptoServices.keyEncodingService().decodePublicKey(Base64.getDecoder().decode(session.readUtf()))
@@ -28,9 +29,11 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
         session.writeBytes(encrypted)
         session.enableTransportEncryption(sessionKey, cryptoServices.aesGcmCryptoService())
         session.writeEncryptedText(metadata.compactSerialize())
+        awaitingAcceptance()
         val response = session.readEncryptedText()
         if (ACCEPTED != response) {
-            throw IOException(response)
+            if (response.startsWith(REJECTED_PREFIX)) throw TransferRejectedException()
+            throw IOException("Unexpected transfer handshake response")
         }
         return metadata
     }
@@ -89,3 +92,5 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
         private const val REJECTED_PREFIX = "REJECTED:"
     }
 }
+
+internal class TransferRejectedException : IOException("File transfer rejected by receiver")

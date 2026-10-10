@@ -6,27 +6,37 @@ import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferSession
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
+import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
 import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import java.io.IOException
 import java.net.Socket
 import java.nio.file.Files
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.FileSystemException
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.Locale
 import java.util.Objects
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class DefaultFileTransferServerService @JvmOverloads constructor(
     eventPublisher: FileTransferEventPublisher,
     cryptoServices: CryptoServices = CryptoServices.createDefault(),
+    private val timeouts: FileTransferTimeouts = FileTransferTimeouts(),
 ) : FileTransferServerService {
     private val eventPublisher: FileTransferEventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher")
     private val handshake = SecureFileTransferHandshake(Objects.requireNonNull(cryptoServices, "cryptoServices"))
     private val lifecycleLock = Any()
     private val running = AtomicBoolean(false)
     private val tcpServer = TcpServer("file-transfer-server")
+    private val activeSockets = mutableSetOf<Socket>()
+    private var generation = 0L
 
     @Volatile
     private var config: FileTransferServerConfig? = null
@@ -42,7 +52,8 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                 this.config = config
                 running.set(true)
                 val activeConfig = config
-                tcpServer.start(config.port(), { socket -> handleClient(socket, activeConfig) }, this::publishAcceptError)
+                val activeGeneration = ++generation
+                tcpServer.start(config.port(), { socket -> handleClient(socket, activeConfig, activeGeneration) }, this::publishAcceptError)
             } catch (e: Exception) {
                 if (e is IOException || e is RuntimeException) {
                     cleanupFailedStart()
@@ -59,11 +70,33 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
         }
     }
 
-    private fun handleClient(socket: Socket, activeConfig: FileTransferServerConfig) {
+    private fun handleClient(socket: Socket, activeConfig: FileTransferServerConfig, activeGeneration: Long) {
+        synchronized(lifecycleLock) {
+            if (!running.get() || generation != activeGeneration) {
+                socket.close()
+                return
+            }
+            activeSockets.add(socket)
+        }
+        var knownMetadata: FileTransferMetadata? = null
+        var temporary: Path? = null
+        val deadline = AtomicLong(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeouts.inactivityMillis))
+        fun arm(millis: Long) { deadline.set(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis)) }
+        val watchdog = Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "file-receive-watchdog").apply { isDaemon = true }
+        }
+        watchdog.scheduleWithFixedDelay({
+            if (System.nanoTime() - deadline.get() >= 0) {
+                try { socket.close() } catch (_: IOException) { }
+            }
+        }, 1, minOf(1_000L, timeouts.inactivityMillis, timeouts.acceptanceMillis), TimeUnit.MILLISECONDS)
         socket.use { activeSocket ->
             try {
                 FileTransferSession(activeSocket).use { session ->
                     val metadata = handshake.performServerHandshake(session, activeConfig.sessionPassword())
+                    knownMetadata = metadata
+                    if (metadata.fileSize < 0) throw IOException("Invalid file size")
+                    arm(timeouts.acceptanceMillis)
                     if (!activeConfig.acceptanceHandler().accept(metadata, session.remoteAddress())) {
                         handshake.rejectTransfer(session, "File transfer rejected by receiver")
                         eventPublisher.publish(
@@ -77,10 +110,12 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                         )
                         return
                     }
+                    arm(timeouts.inactivityMillis)
                     handshake.acceptTransfer(session)
                     eventPublisher.publish(FileTransferStartedEvent(metadata.transferId, metadata.fileName, metadata.fileSize, false))
 
-                    val target = createUniqueTargetPath(metadata.fileName, activeConfig)
+                    val staging = Files.createTempFile(activeConfig.storageDirectory(), ".securelan-", ".part")
+                    temporary = staging
                     var transferred = 0L
                     val progressPublisher = ThrottledFileTransferProgressPublisher(
                         eventPublisher,
@@ -88,36 +123,50 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                         metadata.fileSize,
                         false,
                     )
-                    Files.newOutputStream(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { outputStream ->
+                    Files.newOutputStream(staging, StandardOpenOption.WRITE).use { outputStream ->
                         while (true) {
                             val chunk = session.readEncryptedBytes()
                             if (chunk.isEmpty()) {
                                 break
                             }
+                            if (metadata.fileSize > 0 && chunk.size.toLong() > metadata.fileSize - transferred) {
+                                throw IOException("Received file exceeds declared size")
+                            }
                             outputStream.write(chunk)
-                            transferred += chunk.size.toLong()
+                            transferred = Math.addExact(transferred, chunk.size.toLong())
+                            arm(timeouts.inactivityMillis)
                             progressPublisher.report(transferred)
                         }
                     }
+                    if (metadata.fileSize > 0 && transferred != metadata.fileSize) {
+                        throw IOException("Received file length differs from declared size")
+                    }
+                    val target = publishUniqueTarget(staging, metadata.fileName, activeConfig)
+                    Files.deleteIfExists(staging)
+                    temporary = null
+                    arm(timeouts.confirmationMillis)
                     session.writeEncryptedText("DONE")
-                    eventPublisher.publish(FileTransferCompletedEvent(metadata.transferId, metadata.fileName, target, metadata.fileSize, false))
+                    eventPublisher.publish(FileTransferCompletedEvent(metadata.transferId, target.fileName.toString(), target, transferred, false))
                 }
             } catch (e: Exception) {
-                eventPublisher.publish(FileTransferFailedEvent("incoming", "", failureMessage(e, "Incoming file transfer failed"), e, false))
+                eventPublisher.publish(FileTransferFailedEvent(knownMetadata?.transferId ?: "incoming", knownMetadata?.fileName ?: "", "Incoming file transfer failed", e, false))
+            } finally {
+                watchdog.shutdownNow()
+                temporary?.let { path ->
+                    try { Files.deleteIfExists(path) } catch (_: IOException) { }
+                }
+                synchronized(lifecycleLock) { activeSockets.remove(socket) }
             }
         }
     }
 
     @Throws(IOException::class)
-    private fun createUniqueTargetPath(fileName: String?, activeConfig: FileTransferServerConfig): Path {
+    private fun publishUniqueTarget(staging: Path, fileName: String?, activeConfig: FileTransferServerConfig): Path {
         val storageDirectory = activeConfig.storageDirectory().normalize()
         val safeFileName = sanitizeFileName(fileName)
         val candidate = storageDirectory.resolve(safeFileName).normalize()
         if (!candidate.startsWith(storageDirectory)) {
             throw IOException("Invalid target file path")
-        }
-        if (!Files.exists(candidate)) {
-            return candidate
         }
         val dot = safeFileName.lastIndexOf('.')
         val baseName: String
@@ -129,13 +178,43 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
             baseName = safeFileName
             extension = ""
         }
-        var index = 1
+        var index = 0
         while (true) {
-            val alternative = storageDirectory.resolve("$baseName-$index$extension").normalize()
-            if (!Files.exists(alternative)) {
+            val alternative = if (index == 0) candidate else storageDirectory.resolve("$baseName-$index$extension").normalize()
+            try {
+                // Link creation atomically publishes complete bytes and fails on collision.
+                // ATOMIC_MOVE is unsuitable: providers may replace an existing target.
+                Files.createLink(alternative, staging)
                 return alternative
+            } catch (_: FileAlreadyExistsException) {
+                index++
+            } catch (_: UnsupportedOperationException) {
+                return moveToUniqueTarget(staging, storageDirectory, candidate, baseName, extension, index)
+            } catch (_: FileSystemException) {
+                // FAT/exFAT, SMB, and some custom providers cannot create hard links.
+                return moveToUniqueTarget(staging, storageDirectory, candidate, baseName, extension, index)
             }
-            index++
+        }
+    }
+
+    private fun moveToUniqueTarget(
+        staging: Path,
+        storageDirectory: Path,
+        candidate: Path,
+        baseName: String,
+        extension: String,
+        initialIndex: Int,
+    ): Path {
+        var index = initialIndex
+        while (true) {
+            val alternative = if (index == 0) candidate else storageDirectory.resolve("$baseName-$index$extension").normalize()
+            try {
+                // A same-directory move preserves the no-overwrite contract on providers
+                // where hard links are unavailable and consumes the staging file.
+                return Files.move(staging, alternative)
+            } catch (_: FileAlreadyExistsException) {
+                index++
+            }
         }
     }
 
@@ -177,12 +256,10 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
         return if (WINDOWS_RESERVED_FILE_NAMES.contains(stem.uppercase(Locale.ROOT))) "_$fileName" else fileName
     }
 
-    private fun failureMessage(exception: Exception, fallback: String): String =
-        if (!exception.message.isNullOrBlank()) exception.message!! else "$fallback: ${exception.javaClass.simpleName}"
-
     override fun stop() {
         synchronized(lifecycleLock) {
             running.set(false)
+            activeSockets.forEach { try { it.close() } catch (_: IOException) { } }
             tcpServer.close()
             config = null
         }

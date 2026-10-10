@@ -48,8 +48,8 @@ internal fun TransferActivityRow(row: ComposeTransferRow) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(tokens.radius.small),
-        border = BorderStroke(tokens.border.subtle, interactive.borderColor.copy(alpha = 0.55f)),
-        color = interactive.backgroundColor.copy(alpha = if (row.active || row.completed || row.failed) 0.74f else 0.42f),
+        border = BorderStroke(tokens.border.subtle, interactive.borderColor.copy(alpha = if (tone == MicrointeractionTone.NEUTRAL) 0.55f else 0.35f)),
+        color = interactive.backgroundColor,
     ) {
     Column(
         modifier = Modifier.padding(tokens.spacing.xs),

@@ -20,6 +20,7 @@ import com.shterneregen.securelan.desktop.compose.ui.peerlist.LivePeerListCard
 import com.shterneregen.securelan.desktop.compose.ui.quickshare.LiveQuickShareDialog
 import com.shterneregen.securelan.desktop.compose.ui.settings.LiveSettingsDialog
 import com.shterneregen.securelan.desktop.compose.ui.steganography.LiveSteganographyDialog
+import com.shterneregen.securelan.desktop.compose.ui.transfer.LiveTransferBatchDialog
 import com.shterneregen.securelan.desktop.compose.util.resolveAttachCandidatePeer
 import com.shterneregen.securelan.desktop.compose.util.resolveSelectedJoinTarget
 
@@ -168,6 +169,12 @@ internal fun LiveComposeShellContent(
         LiveQuickShareDialog(
             hostAdapter = hostAdapter,
             onClose = { quickShareDialogOpen = false },
+        )
+    }
+    if (hostAdapter.transferReviewVisible && hostAdapter.transferDraft != null) {
+        LiveTransferBatchDialog(
+            hostAdapter = hostAdapter,
+            onClose = { hostAdapter.dismissTransferReview() },
         )
     }
     steganographyDialogMode?.let { mode ->

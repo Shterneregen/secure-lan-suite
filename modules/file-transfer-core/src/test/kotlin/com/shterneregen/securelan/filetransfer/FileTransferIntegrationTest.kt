@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.ServerSocket
+import java.net.URI
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -175,6 +177,54 @@ class FileTransferIntegrationTest {
             TimeUnit.MILLISECONDS.sleep(250)
             assertTrue(Files.exists(inbox.resolve(longName)))
             assertEquals(Files.size(sourceFile), Files.size(inbox.resolve(longName)))
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun shouldPublishReceivedFileWhenStorageProviderDoesNotSupportHardLinks() {
+        val tempDir = Files.createTempDirectory("file-transfer-no-hard-links")
+        val sourceFile = tempDir.resolve("sample.txt")
+        Files.writeString(sourceFile, "provider fallback payload")
+        val archiveUri = URI.create("jar:${tempDir.resolve("inbox.zip").toUri()}")
+
+        FileSystems.newFileSystem(archiveUri, mapOf("create" to "true")).use { fileSystem ->
+            val inbox = fileSystem.getPath("/inbox")
+            Files.createDirectories(inbox)
+            val server = DefaultFileTransferServerService(FileTransferEventPublisher { })
+            val port = findAvailablePort()
+            server.start(FileTransferServerConfig(port, inbox, "files-pass"))
+            try {
+                val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+                client.sendFile(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile))
+
+                assertEquals("provider fallback payload", Files.readString(inbox.resolve("sample.txt")))
+            } finally {
+                server.stop()
+            }
+        }
+    }
+
+    @Test
+    fun shouldInsertDuplicateNumberBeforeFileExtension() {
+        val tempDir = Files.createTempDirectory("file-transfer-duplicate-name")
+        val inbox = tempDir.resolve("inbox")
+        Files.createDirectories(inbox)
+        val sourceFile = tempDir.resolve("archive.tar.gz")
+        Files.writeString(sourceFile, "duplicate payload")
+        val server = DefaultFileTransferServerService(FileTransferEventPublisher { })
+        val port = findAvailablePort()
+        server.start(FileTransferServerConfig(port, inbox, "files-pass"))
+        try {
+            val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+            val request = FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile)
+            client.sendFile(request)
+            client.sendFile(request)
+
+            assertEquals("duplicate payload", Files.readString(inbox.resolve("archive.tar.gz")))
+            assertEquals("duplicate payload", Files.readString(inbox.resolve("archive.tar-1.gz")))
+            assertFalse(Files.exists(inbox.resolve("archive.tar.gz-1")))
         } finally {
             server.stop()
         }

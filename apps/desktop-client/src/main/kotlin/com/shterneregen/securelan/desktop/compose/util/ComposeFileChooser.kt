@@ -7,12 +7,12 @@ import javax.swing.filechooser.FileNameExtensionFilter
 
 internal data class ComposeFileChooserFilter(
     val description: String,
-    val extensions: Array<String>,
+    val extensions: List<String>,
 )
 
-internal val ComposeImageFiles = ComposeFileChooserFilter("Image files", arrayOf("bmp", "png", "jpg", "jpeg", "gif"))
-internal val ComposeBmpFiles = ComposeFileChooserFilter("BMP images", arrayOf("bmp"))
-internal val ComposeTextFiles = ComposeFileChooserFilter("Text files", arrayOf("txt"))
+internal val ComposeImageFiles = ComposeFileChooserFilter("Image files", listOf("bmp", "png", "jpg", "jpeg", "gif"))
+internal val ComposeBmpFiles = ComposeFileChooserFilter("BMP images", listOf("bmp"))
+internal val ComposeTextFiles = ComposeFileChooserFilter("Text files", listOf("txt"))
 
 internal fun openComposeFileChooser(
     title: String,
@@ -26,7 +26,7 @@ internal fun openComposeFileChooser(
         fileSelectionMode = JFileChooser.FILES_ONLY
         isAcceptAllFileFilterUsed = filter == null
         filter?.let { chooserFilter ->
-            fileFilter = FileNameExtensionFilter(chooserFilter.description, *chooserFilter.extensions)
+            fileFilter = FileNameExtensionFilter(chooserFilter.description, *chooserFilter.extensions.toTypedArray())
         }
         initialFile?.toAbsolutePath()?.normalize()?.let { path ->
             currentDirectory = path.parent?.toFile()
@@ -38,6 +38,22 @@ internal fun openComposeFileChooser(
     val result = if (save) chooser.showSaveDialog(parent) else chooser.showOpenDialog(parent)
     return chooser.selectedFile?.toPath()?.toAbsolutePath()?.normalize()
         ?.takeIf { result == JFileChooser.APPROVE_OPTION }
+}
+
+/** Transfer-specific multi-file picker. Other tools keep the single-file [openComposeFileChooser]. */
+internal fun openComposeTransferFileChooser(title: String): List<Path> {
+    val chooser = JFileChooser().apply {
+        dialogTitle = title
+        dialogType = JFileChooser.OPEN_DIALOG
+        fileSelectionMode = JFileChooser.FILES_ONLY
+        isAcceptAllFileFilterUsed = true
+        isMultiSelectionEnabled = true
+    }
+    val parent = KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow
+    if (chooser.showOpenDialog(parent) != JFileChooser.APPROVE_OPTION) {
+        return emptyList()
+    }
+    return chooser.selectedFiles.map { it.toPath().toAbsolutePath().normalize() }
 }
 
 internal fun openComposeDirectoryChooser(title: String, initialDirectory: Path? = null): Path? {
@@ -52,12 +68,4 @@ internal fun openComposeDirectoryChooser(title: String, initialDirectory: Path? 
     } else {
         null
     }
-}
-
-internal fun ComposeFileChooserFilter.accepts(fileName: String): Boolean {
-    if (extensions.isEmpty()) {
-        return true
-    }
-    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
-    return extension.isNotBlank() && extensions.any { it.lowercase() == extension }
 }

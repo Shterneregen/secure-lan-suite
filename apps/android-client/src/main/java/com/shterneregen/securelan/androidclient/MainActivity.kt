@@ -2,6 +2,11 @@ package com.shterneregen.securelan.androidclient
 
 import android.annotation.SuppressLint
 import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.ConnectivityManager
@@ -11,6 +16,9 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.LocaleList
+import android.util.AndroidRuntimeException
+import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivityResultRegistryOwner
@@ -21,8 +29,8 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,21 +49,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
+
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -105,6 +111,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
@@ -112,6 +119,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -121,11 +129,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -135,7 +145,6 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Visibility
@@ -153,12 +162,20 @@ import com.shterneregen.securelan.androidclient.model.ThemeMode
 import com.shterneregen.securelan.androidclient.model.TransferDirection
 import com.shterneregen.securelan.androidclient.model.TransferRecord
 import com.shterneregen.securelan.androidclient.model.TransferResult
+import com.shterneregen.securelan.androidclient.transfer.BatchStatus
+import com.shterneregen.securelan.androidclient.transfer.TransferItem
+import com.shterneregen.securelan.androidclient.transfer.TransferPhase
+import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
 import java.util.Locale
 
 private val LocalAppResources = staticCompositionLocalOf<Resources> {
     error("Localized application resources are not available")
+}
+
+private val LocalActivityContext = staticCompositionLocalOf<Context> {
+    error("Activity context is not available")
 }
 
 @Composable
@@ -248,6 +265,7 @@ private fun SecureLanAndroidApp(
     onNotificationsChange: (Boolean) -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
+    val queue by viewModel.transferQueue.collectAsState()
     val baseContext = LocalContext.current
     val activityResultRegistryOwner = requireNotNull(LocalActivityResultRegistryOwner.current) {
         "SecureLan must be hosted by an ActivityResultRegistryOwner"
@@ -275,6 +293,7 @@ private fun SecureLanAndroidApp(
             LocalContext provides localizedContext,
             LocalConfiguration provides localizedContext.resources.configuration,
             LocalActivityResultRegistryOwner provides activityResultRegistryOwner,
+            LocalActivityContext provides baseContext,
             LocalAppResources provides localizedContext.resources,
         ) {
             MaterialTheme(colorScheme = colorScheme) {
@@ -286,6 +305,7 @@ private fun SecureLanAndroidApp(
                 ) {
                     RedesignedMainScreen(
                         state = state,
+                        queue = queue,
                         onNicknameChange = viewModel::updateNickname,
                         onPasswordChange = viewModel::updateSessionPassword,
                         onThemeModeChange = viewModel::updateThemeMode,
@@ -300,8 +320,14 @@ private fun SecureLanAndroidApp(
                         onDisconnect = viewModel::disconnect,
                         onInputChange = viewModel::updateInputMessage,
                         onSendMessage = viewModel::sendTextMessage,
-                        onFileSelected = viewModel::selectFile,
-                        onSendFile = viewModel::sendSelectedFile,
+                        onBeginFileSelection = viewModel::beginFileSelection,
+                        onFilesPicked = viewModel::addSelectedFiles,
+                        onClearFiles = viewModel::clearFiles,
+                        onRemoveFile = viewModel::removeFile,
+                        onStartFileBatch = viewModel::startFileBatch,
+                        onRetryFailedFiles = viewModel::retryFailedFiles,
+                        onSkipFailedFiles = viewModel::skipFailedFiles,
+                        onStopAfterCurrentFile = viewModel::stopAfterCurrentFile,
                         onRequestNearbyPermission = onRequestNearbyPermission,
                         onRetryDiscovery = viewModel::restartDiscovery,
                         onStopDiscovery = viewModel::stopDiscovery,
@@ -387,6 +413,7 @@ private enum class PrimaryDestination(val labelRes: Int, val icon: ImageVector) 
 @Composable
 private fun RedesignedMainScreen(
     state: MainUiState,
+    queue: TransferQueueState,
     onNicknameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -401,8 +428,14 @@ private fun RedesignedMainScreen(
     onDisconnect: () -> Unit,
     onInputChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onFileSelected: (android.net.Uri) -> Unit,
-    onSendFile: () -> Unit,
+    onBeginFileSelection: () -> Boolean,
+    onFilesPicked: (List<android.net.Uri>) -> Unit,
+    onClearFiles: () -> Unit,
+    onRemoveFile: (String) -> Unit,
+    onStartFileBatch: () -> Unit,
+    onRetryFailedFiles: () -> Unit,
+    onSkipFailedFiles: () -> Unit,
+    onStopAfterCurrentFile: () -> Unit,
     onRequestNearbyPermission: () -> Unit,
     onRetryDiscovery: () -> Unit,
     onStopDiscovery: () -> Unit,
@@ -416,11 +449,16 @@ private fun RedesignedMainScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val friendlyErrorTitle = state.error?.let { stringResource(it.toFriendlyErrorTitleRes()) }
     val errorDetailsLabel = stringResource(R.string.error_details)
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            onFileSelected(uri)
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            onFilesPicked(uris)
             settingsVisible = false
             destination = PrimaryDestination.FILES
+        }
+    }
+    val launchFilePicker: () -> Unit = {
+        if (onBeginFileSelection()) {
+            filePicker.launch(arrayOf("*/*"))
         }
     }
 
@@ -479,8 +517,8 @@ private fun RedesignedMainScreen(
     if (logsVisible) LogsDialog(logs = state.logs, onDismiss = { logsVisible = false })
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val layoutSpec = adaptiveLayoutSpec(maxWidth)
-        val showDeviceSidebar = maxWidth >= 1200.dp && !settingsVisible && destination != PrimaryDestination.DEVICES
+        val layoutSpec = adaptiveLayoutSpec(this.maxWidth)
+        val showDeviceSidebar = this.maxWidth >= 1200.dp && !settingsVisible && destination != PrimaryDestination.DEVICES
         Scaffold(
             topBar = {
                 RedesignedAppHeader(
@@ -571,15 +609,21 @@ private fun RedesignedMainScreen(
                             state = state,
                             onInputChange = onInputChange,
                             onSendMessage = onSendMessage,
-                            onAttachFile = { filePicker.launch(arrayOf("*/*")) },
+                            onAttachFile = launchFilePicker,
                             onChooseDevice = { destination = PrimaryDestination.DEVICES },
                             onReconnect = onConnect,
                             layoutSpec = layoutSpec,
                         )
                         PrimaryDestination.FILES -> RedesignedFilesScreen(
                             state = state,
-                            onChooseFile = { filePicker.launch(arrayOf("*/*")) },
-                            onSendFile = onSendFile,
+                            queue = queue,
+                            onChooseFile = launchFilePicker,
+                            onSendBatch = onStartFileBatch,
+                            onClearFiles = onClearFiles,
+                            onRemoveFile = onRemoveFile,
+                            onRetryFailed = onRetryFailedFiles,
+                            onSkipFailed = onSkipFailedFiles,
+                            onStopAfterCurrent = onStopAfterCurrentFile,
                             onChooseDevice = { destination = PrimaryDestination.DEVICES },
                             layoutSpec = layoutSpec,
                         )
@@ -1262,8 +1306,14 @@ private fun RedesignedChatComposer(
 @Composable
 private fun RedesignedFilesScreen(
     state: MainUiState,
+    queue: TransferQueueState,
     onChooseFile: () -> Unit,
-    onSendFile: () -> Unit,
+    onSendBatch: () -> Unit,
+    onClearFiles: () -> Unit,
+    onRemoveFile: (String) -> Unit,
+    onRetryFailed: () -> Unit,
+    onSkipFailed: () -> Unit,
+    onStopAfterCurrent: () -> Unit,
     onChooseDevice: () -> Unit,
     layoutSpec: AdaptiveLayoutSpec,
 ) {
@@ -1279,7 +1329,7 @@ private fun RedesignedFilesScreen(
                     ?: stringResource(if (state.hosting) R.string.files_choose_participant else R.string.files_connect_first),
             )
         }
-        if (!state.connected) {
+        if (!state.connected && !state.hosting) {
             item {
                 RedesignedEmptyState(
                     Icons.Outlined.Folder,
@@ -1290,9 +1340,21 @@ private fun RedesignedFilesScreen(
                 )
             }
         } else {
-            item { FilePickerCard(state, onChooseFile, onSendFile) }
+            item {
+                FilesBatchCard(
+                    queue = queue,
+                    recipientName = state.fileRecipient?.nickname,
+                    onAddFiles = onChooseFile,
+                    onSendBatch = onSendBatch,
+                    onClearFiles = onClearFiles,
+                    onRemoveFile = onRemoveFile,
+                    onRetryFailed = onRetryFailed,
+                    onSkipFailed = onSkipFailed,
+                    onStopAfterCurrent = onStopAfterCurrent,
+                )
+            }
             item { ReceiverReadyCard(state) }
-            if (state.fileProgress.active || state.incomingFileProgress.active) item { ActiveTransferCard(state) }
+            if (state.incomingFileProgress.active) item { IncomingTransferCard(state) }
         }
         item {
             Text(stringResource(R.string.recent_transfers), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -1306,39 +1368,221 @@ private fun RedesignedFilesScreen(
 }
 
 @Composable
-private fun FilePickerCard(state: MainUiState, onChooseFile: () -> Unit, onSendFile: () -> Unit) {
+private fun FilesBatchCard(
+    queue: TransferQueueState,
+    recipientName: String?,
+    onAddFiles: () -> Unit,
+    onSendBatch: () -> Unit,
+    onClearFiles: () -> Unit,
+    onRemoveFile: (String) -> Unit,
+    onRetryFailed: () -> Unit,
+    onSkipFailed: () -> Unit,
+    onStopAfterCurrent: () -> Unit,
+) {
+    val items = queue.items
+    val running = queue.status == BatchStatus.RUNNING || queue.status == BatchStatus.STOP_REQUESTED
+    val paused = queue.status == BatchStatus.PAUSED
+    val finished = queue.status == BatchStatus.FINISHED
+    var expanded by remember { mutableStateOf(false) }
     RedesignedCard {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    if (state.selectedFile == null) stringResource(R.string.choose_file_title) else stringResource(R.string.selected_file),
+                    if (items.isEmpty()) stringResource(R.string.choose_file_title) else stringResource(R.string.files_selected_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    state.selectedFile?.name ?: stringResource(R.string.choose_file_message),
+                    if (items.isEmpty()) stringResource(R.string.choose_file_message) else stringResource(R.string.file_will_be_sent, recipientName.orEmpty()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                state.selectedFile?.let {
-                    Text(AndroidUiFormatters.formatBytes(it.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (items.isNotEmpty()) {
+            if (running || paused || finished) {
+                val current = items.firstOrNull { it.phase == TransferPhase.PREPARING || it.phase == TransferPhase.WAITING_FOR_ACCEPTANCE || it.phase == TransferPhase.SENDING || it.phase == TransferPhase.WAITING_FOR_CONFIRMATION }
+                    ?: items.lastOrNull { it.phase != TransferPhase.QUEUED }
+                val attempt = current?.attempts?.lastOrNull()
+                val total = attempt?.total
+                val bytes = attempt?.bytes ?: 0L
+                if (current != null) {
+                    Text(
+                        stringResource(R.string.transfer_current_file, current.source.name),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    stringResource(R.string.transfer_completed_count, queue.confirmed, items.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (total != null && total > 0L) {
+                    LinearProgressIndicator(
+                        progress = { (bytes.toFloat() / total.toFloat()).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text(stringResource(R.string.transfer_details))
+                }
+                if (expanded) {
+                    items.forEach { item ->
+                        BatchItemRow(
+                            item = item,
+                            onRemove = if (item.phase == TransferPhase.QUEUED) {
+                                { onRemoveFile(item.id) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+            } else {
+                items.forEach { item -> DraftItemRow(item, onRemoveFile) }
+            }
+        }
+        when {
+            finished -> {
+                if (items.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.batch_result, queue.confirmed, items.size, queue.failed, queue.skipped),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = onAddFiles, enabled = recipientName != null, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.add_files))
+                    }
+                    OutlinedButton(onClick = onClearFiles, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.clear_files))
+                    }
+                }
+            }
+            paused -> {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = onRetryFailed, enabled = recipientName != null, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.retry_failed))
+                    }
+                    OutlinedButton(onClick = onSkipFailed, enabled = recipientName != null, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.skip_and_continue))
+                    }
+                }
+                OutlinedButton(onClick = onStopAfterCurrent, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.stop_after_current))
+                }
+            }
+            running -> {
+                OutlinedButton(onClick = onStopAfterCurrent, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.stop_after_current))
+                }
+            }
+            else -> {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = onAddFiles, enabled = recipientName != null, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.add_files))
+                    }
+                    if (items.isNotEmpty()) {
+                        OutlinedButton(onClick = onClearFiles, modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.clear_files))
+                        }
+                    }
+                }
+                Button(
+                    onClick = onSendBatch,
+                    enabled = items.isNotEmpty() && recipientName != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(pluralStringResource(R.plurals.send_files_count, items.size, items.size))
                 }
             }
         }
-        state.fileRecipient?.let {
-            Text(stringResource(R.string.file_will_be_sent, it.nickname), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun DraftItemRow(item: TransferItem, onRemove: (String) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(item.source.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                item.source.size?.let { AndroidUiFormatters.formatBytes(it) } ?: stringResource(R.string.file_size_pending),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (item.source.unavailable) {
+                Text(stringResource(R.string.file_unavailable), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = onChooseFile, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.choose_file)) }
-            Button(
-                onClick = onSendFile,
-                enabled = state.selectedFile != null && state.fileRecipient != null && !state.fileProgress.active,
-                modifier = Modifier.weight(1f),
-            ) { Text(stringResource(R.string.send_file)) }
+        IconButton(onClick = { onRemove(item.id) }) {
+            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.remove_file))
         }
+    }
+}
+
+@Composable
+private fun BatchItemRow(item: TransferItem, onRemove: (() -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(item.source.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                item.source.size?.let { AndroidUiFormatters.formatBytes(it) } ?: stringResource(R.string.file_size_pending),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            transferPhaseLabel(item.phase),
+            style = MaterialTheme.typography.labelMedium,
+            color = transferPhaseColor(item.phase),
+        )
+        if (onRemove != null) {
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.remove_file))
+            }
+        }
+    }
+}
+
+@Composable
+private fun transferPhaseLabel(phase: TransferPhase): String = stringResource(
+    when (phase) {
+        TransferPhase.QUEUED -> R.string.phase_queued
+        TransferPhase.PREPARING -> R.string.phase_preparing
+        TransferPhase.WAITING_FOR_ACCEPTANCE -> R.string.phase_waiting_acceptance
+        TransferPhase.SENDING -> R.string.phase_sending
+        TransferPhase.WAITING_FOR_CONFIRMATION -> R.string.phase_waiting_confirmation
+        TransferPhase.COMPLETED -> R.string.phase_completed
+        TransferPhase.FAILED -> R.string.phase_failed
+        TransferPhase.OUTCOME_UNKNOWN -> R.string.phase_outcome_unknown
+        TransferPhase.SKIPPED -> R.string.phase_skipped
+    },
+)
+
+@Composable
+private fun transferPhaseColor(phase: TransferPhase): Color = when (phase) {
+    TransferPhase.COMPLETED -> SuccessGreen
+    TransferPhase.FAILED, TransferPhase.OUTCOME_UNKNOWN -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun IncomingTransferCard(state: MainUiState) {
+    RedesignedCard {
+        Text(state.incomingFileProgress.fileName.ifBlank { stringResource(R.string.transfer_received) }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        LinearProgressIndicator(progress = { state.incomingFileProgress.percent }, modifier = Modifier.fillMaxWidth())
+        Text("${(state.incomingFileProgress.percent * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -1371,20 +1615,11 @@ private fun ReceiverReadyCard(state: MainUiState) {
 }
 
 @Composable
-private fun ActiveTransferCard(state: MainUiState) {
-    val incoming = state.incomingFileProgress.active
-    val title = if (incoming) state.incomingFileProgress.fileName else state.fileProgress.fileName
-    val progress = if (incoming) state.incomingFileProgress.percent else state.fileProgress.percent
-    RedesignedCard {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-        Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-    }
-}
-
-@Composable
 private fun TransferHistoryRow(record: TransferRecord) {
     val failed = record.result == TransferResult.FAILED
+    val activityContext = LocalActivityContext.current
+    val openFileTitle = stringResource(R.string.open_file)
+    val unavailableMessage = stringResource(R.string.open_file_unavailable)
     RedesignedCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(
@@ -1402,8 +1637,58 @@ private fun TransferHistoryRow(record: TransferRecord) {
                 )
                 record.savedPath?.let { Text(stringResource(R.string.transfer_saved_to, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            Text(AndroidUiFormatters.formatBytes(record.bytes), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(AndroidUiFormatters.formatBytes(record.bytes), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (record.direction == TransferDirection.RECEIVED &&
+                    record.result == TransferResult.COMPLETED &&
+                    record.contentUri != null
+                ) {
+                    TextButton(
+                        onClick = {
+                            openReceivedFile(activityContext, record, openFileTitle, unavailableMessage)
+                        },
+                    ) {
+                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.open_file))
+                    }
+                }
+            }
         }
+    }
+}
+
+private fun openReceivedFile(
+    context: Context,
+    record: TransferRecord,
+    chooserTitle: String,
+    unavailableMessage: String,
+) {
+    val uri = record.contentUri ?: return
+    val providerMimeType = context.contentResolver.getType(uri)
+    val extensionMimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+        record.fileName.substringAfterLast('.', "").lowercase(Locale.ROOT),
+    )
+    val mimeType = providerMimeType
+        ?.takeUnless { it == "application/octet-stream" }
+        ?: extensionMimeType
+        ?: "application/octet-stream"
+    val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType)
+        clipData = ClipData.newRawUri(record.fileName, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooserIntent = Intent.createChooser(viewIntent, chooserTitle).apply {
+        if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(chooserIntent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, unavailableMessage, Toast.LENGTH_SHORT).show()
+    } catch (_: SecurityException) {
+        Toast.makeText(context, unavailableMessage, Toast.LENGTH_SHORT).show()
+    } catch (_: AndroidRuntimeException) {
+        Toast.makeText(context, unavailableMessage, Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -1607,6 +1892,7 @@ private fun DeviceSidebar(
     }
 }
 
+@Suppress("unused")
 @Composable
 private fun MainScreen(
     state: MainUiState,
@@ -2715,23 +3001,28 @@ private fun LinkifiedText(text: String, textColor: Color, linkColor: Color, styl
                 val trailing = match.value.substring(rawUrl.length)
                 val url = rawUrl.withUrlScheme()
                 pushStringAnnotation(tag = UrlAnnotationTag, annotation = url)
-                pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
-                append(rawUrl)
-                pop()
-                pop()
+                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+                    append(rawUrl)
+                }
                 append(trailing)
                 currentIndex = match.range.last + 1
             }
             append(text.substring(currentIndex))
         }
     }
-    ClickableText(
+    var layoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
         text = annotatedText,
         style = style.merge(color = textColor),
-        onClick = { offset ->
-            annotatedText.getStringAnnotations(tag = UrlAnnotationTag, start = offset, end = offset)
-                .firstOrNull()
-                ?.let { onOpenUri(it.item) }
+        onTextLayout = { layoutResult = it },
+        modifier = Modifier.pointerInput(annotatedText) {
+            detectTapGestures { position ->
+                val result = layoutResult ?: return@detectTapGestures
+                val offset = result.getOffsetForPosition(position)
+                annotatedText.getStringAnnotations(tag = UrlAnnotationTag, start = offset, end = offset)
+                    .firstOrNull()
+                    ?.let { onOpenUri(it.item) }
+            }
         },
     )
 }

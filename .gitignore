@@ -51,6 +51,7 @@ bin/
 /apps/desktop-client/downloads/
 
 ### Local infrastructure / AI tooling ###
+/plans/
 /.codex/
 
 ### Android CLient ###

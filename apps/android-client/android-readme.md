@@ -274,17 +274,43 @@ Hosting runs in a foreground service so the room remains available while the act
 ### Android -> desktop
 
 1. Connect to a desktop peer.
-2. Open **Files** and click **Choose file**. The connected desktop is selected automatically.
-3. Select a file through the Android document picker.
-4. Click **Send file**.
+2. Open **Files** and use the file-selection action. The connected desktop is selected automatically unless a room participant was explicitly selected.
+3. Select one or more files through the Android document picker. Review the recipient and list; add more files or remove unwanted entries before sending.
+4. Start the batch with the send action showing the selected file count.
 5. The desktop client must be ready to receive files through its encrypted file-transfer listener.
+
+Files are sent sequentially, each through the existing encrypted single-file
+protocol. There is one unfinished outgoing batch, bound to its original
+recipient. Changing the selected device does not redirect queued files. The UI
+shows individual outcomes and confirmed file counts; 100% bytes sent is not a
+delivery confirmation until the receiver replies with `DONE`.
+
+A failed file pauses the queue. Retry, skip and continue, or finish explicitly;
+successful files are not automatically sent again. If final confirmation was
+lost, the file may already be saved at the destination, and retry can create a
+duplicate. **Stop after current file** waits for the current operation, then
+skips remaining files. It is not immediate cancellation of that file. Desktop
+with auto-save disabled continues to ask separately for every incoming file.
+
+The picker uses Android's document access grants rather than broad storage
+access. A provider can revoke or fail access before a queued item is read. If a
+provider cannot report its file size, the app prepares that one file in private
+temporary storage before sending; this requires sufficient free space. Files
+are streamed, not loaded entirely into memory. Canceling the picker preserves
+the current draft, and selecting the same URI again does not add it twice.
+
+Drafts and the queue survive Activity configuration changes, but are kept only
+in memory. File execution while the app is in the background is best effort;
+the room-hosting foreground service is not a file-transfer service. A killed
+process or app restart does not restore or resume the queue. Disconnecting
+stops further files, and reconnecting never automatically resumes an old batch.
 
 ### Desktop -> Android
 
 1. Enter the session password on Android.
 2. Keep **Receive files automatically** enabled in Settings (the default).
 3. Android starts listening on the incoming file-transfer port as soon as the secure chat connection is established.
-4. Send a file from the desktop client to the Android peer.
+4. Select the Android peer on desktop, choose one or more files through **Attach**, review the list, and send.
 5. On Android 10+, received files are saved through `MediaStore` into public Downloads:
 
 ```text
@@ -292,6 +318,11 @@ Downloads/SecureLan/<file-name>
 ```
 
 On Android 9 and older, the app uses public external storage under the Downloads directory and declares `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`. The actual saved path is also shown in the Android UI after the receive operation completes.
+
+Each incoming file has its own result. The receiver cannot know a sender-side
+batch's total size or count, and does not claim that an entire batch arrived.
+Incomplete new receives are cleaned up rather than published as successful
+files; previous client versions may still leave partial files after an error.
 
 When Android hosts the room, its receiver listens on the file port configured in the hosting sheet (normally `5051`). Select a connected room participant on **Devices** before sending a file from the Android host.
 

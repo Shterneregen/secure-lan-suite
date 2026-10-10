@@ -105,6 +105,7 @@ data class TransferRecord(
     val result: TransferResult,
     val peerName: String? = null,
     val savedPath: String? = null,
+    val contentUri: Uri? = null,
     val timestamp: Instant = Instant.now(),
 )
 

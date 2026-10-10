@@ -100,6 +100,8 @@
     <string name="transfer_received">Получено</string>
     <string name="transfer_failed">Ошибка</string>
     <string name="transfer_saved_to">Сохранено в %1$s</string>
+    <string name="open_file">Открыть</string>
+    <string name="open_file_unavailable">Нет приложения для открытия этого файла.</string>
     <string name="settings_profile">Профиль</string>
     <string name="settings_profile_hint">Это имя видят другие участники комнаты.</string>
     <string name="settings_theme">Тема</string>
@@ -152,4 +154,33 @@
     <string name="logs_empty">Записей пока нет.</string>
     <string name="copy_all">Копировать всё</string>
     <string name="close">Закрыть</string>
+    <string name="files_selected_title">Выбранные файлы</string>
+    <string name="add_files">Добавить файлы</string>
+    <string name="clear_files">Очистить</string>
+    <string name="remove_file">Удалить</string>
+    <string name="file_size_pending">Размер уточняется</string>
+    <string name="file_unavailable">Недоступен</string>
+    <string name="files_select_recipient">Выберите получателя перед добавлением файлов.</string>
+    <plurals name="send_files_count">
+        <item quantity="one">Отправить %1$d файл</item>
+        <item quantity="few">Отправить %1$d файла</item>
+        <item quantity="many">Отправить %1$d файлов</item>
+        <item quantity="other">Отправить %1$d файла</item>
+    </plurals>
+    <string name="transfer_details">Подробности</string>
+    <string name="transfer_completed_count">Завершено %1$d из %2$d</string>
+    <string name="transfer_current_file">Отправка %1$s</string>
+    <string name="retry_failed">Повторить неудачные</string>
+    <string name="skip_and_continue">Пропустить и продолжить</string>
+    <string name="stop_after_current">Остановить после текущего</string>
+    <string name="batch_result">Отправлено %1$d из %2$d · %3$d с ошибкой · %4$d пропущено</string>
+    <string name="phase_queued">В очереди</string>
+    <string name="phase_preparing">Подготовка</string>
+    <string name="phase_waiting_acceptance">Ожидание согласия</string>
+    <string name="phase_sending">Отправка</string>
+    <string name="phase_waiting_confirmation">Ожидание подтверждения</string>
+    <string name="phase_completed">Отправлено</string>
+    <string name="phase_failed">Ошибка</string>
+    <string name="phase_outcome_unknown">Подтверждение не получено</string>
+    <string name="phase_skipped">Пропущено</string>
 </resources>

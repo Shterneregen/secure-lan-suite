@@ -21,12 +21,10 @@ import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.AppLanguage
 import com.shterneregen.securelan.androidclient.model.ChatLine
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
-import com.shterneregen.securelan.androidclient.model.FileSendProgress
 import com.shterneregen.securelan.androidclient.model.IncomingFileProgress
 import com.shterneregen.securelan.androidclient.model.MainUiState
 import com.shterneregen.securelan.androidclient.model.NearbyPermissionState
 import com.shterneregen.securelan.androidclient.model.PeerRole
-import com.shterneregen.securelan.androidclient.model.SelectedFile
 import com.shterneregen.securelan.androidclient.model.SecureLanPorts
 import com.shterneregen.securelan.androidclient.model.ThemeMode
 import com.shterneregen.securelan.androidclient.model.TransferDirection
@@ -40,6 +38,12 @@ import com.shterneregen.securelan.androidclient.network.SecureChatClient
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.androidclient.network.SecureFileSender
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
+import com.shterneregen.securelan.androidclient.transfer.BatchStatus
+import com.shterneregen.securelan.androidclient.transfer.TransferCoordinator
+import com.shterneregen.securelan.androidclient.transfer.TransferPhase
+import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
+import com.shterneregen.securelan.androidclient.transfer.TransferRecipient
+import com.shterneregen.securelan.androidclient.transfer.TransferSource
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,15 +57,35 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val randomNicknameService = DefaultRandomNicknameService()
     private val discoveryRepository = PeerDiscoveryRepository()
     private val chatClient = SecureChatClient()
-    private val fileSender = SecureFileSender(application.contentResolver)
+    private val fileSender = SecureFileSender(application.contentResolver, application.cacheDir)
     private val fileReceiver = SecureFileReceiver(application)
     private val localNetworkAddressResolver = AndroidLocalNetworkAddressResolver(application)
+
+    private var connectionGeneration = 0L
+    private val transferCoordinator = TransferCoordinator(
+        scope = viewModelScope,
+        isAvailable = { recipient -> isTransferRecipientAvailable(recipient) },
+        send = { recipient, source, onUpdate ->
+            val current = _uiState.value
+            fileSender.sendFile(
+                host = recipient.host,
+                port = recipient.port,
+                senderId = current.nickname,
+                recipientId = recipient.name,
+                sessionPassword = current.sessionPassword,
+                selectedFile = source,
+                onUpdate = onUpdate,
+            )
+        },
+    )
+    val transferQueue: StateFlow<TransferQueueState> = transferCoordinator.state
 
     private val _uiState = MutableStateFlow(
         MainUiState(
@@ -99,6 +123,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         createNotificationChannel()
         observeHostService()
+        observeTransferQueue()
         refreshLocalRoomAddresses()
     }
 
@@ -122,8 +147,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         preferences.edit { putString(KEY_APP_LANGUAGE, value.name) }
         createNotificationChannel()
     }
-
-    fun updateDarkThemeEnabled(value: Boolean) = updateThemeMode(if (value) ThemeMode.DARK else ThemeMode.LIGHT)
 
     fun updateNotificationsEnabled(value: Boolean) {
         _uiState.update { it.copy(notificationsEnabled = value) }
@@ -158,9 +181,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateInputMessage(value: String) = _uiState.update { it.copy(inputMessage = value) }
 
     fun selectPeer(peer: DiscoveredPeer) {
+        val previousRecipient = _uiState.value.fileRecipient
         _uiState.update {
             val connectionPeer = if (peer.role == PeerRole.SERVER) peer else it.connectionPeer
             it.copy(selectedPeer = peer, connectionPeer = connectionPeer, status = "Selected ${peer.nickname}")
+        }
+        if (transferRecipientKey(previousRecipient) != transferRecipientKey(_uiState.value.fileRecipient)) {
+            connectionGeneration++
         }
         addLog("Selected peer ${peer.nickname} at ${peer.host}:${peer.chatPort}")
     }
@@ -174,7 +201,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         addLog("Started peer discovery")
         discoveryTimeoutJob?.cancel()
         discoveryTimeoutJob = viewModelScope.launch {
-            delay(DISCOVERY_EMPTY_STATE_DELAY_MS)
+            delay(DISCOVERY_EMPTY_STATE_DELAY_MS.milliseconds)
             if (_uiState.value.peers.none { it.role == PeerRole.SERVER }) {
                 _uiState.update { it.copy(discoveryTimedOut = true) }
             }
@@ -324,7 +351,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         }
                     },
-                    onCompleted = { metadata, savedPath ->
+                    onCompleted = { metadata, receivedFile ->
                         _uiState.update {
                             it.copy(
                                 incomingFileProgress = it.incomingFileProgress.copy(
@@ -332,7 +359,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     bytesReceived = metadata.fileSize,
                                     totalBytes = metadata.fileSize,
                                     active = false,
-                                    completedPath = savedPath,
+                                    completedPath = receivedFile.savedPath,
                                     error = null,
                                 ),
                                 recentTransfers = listOf(
@@ -342,14 +369,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         direction = TransferDirection.RECEIVED,
                                         result = TransferResult.COMPLETED,
                                         peerName = metadata.senderId,
-                                        savedPath = savedPath,
+                                        savedPath = receivedFile.savedPath,
+                                        contentUri = receivedFile.contentUri,
                                     ),
                                 ) + it.recentTransfers.take(MAX_RECENT_TRANSFERS - 1),
                                 status = "Received ${metadata.fileName}",
                             )
                         }
-                        addLog("Received file ${metadata.fileName}; saved to $savedPath")
-                        postFileReceivedNotification(metadata.fileName, savedPath)
+                        addLog("Received file ${metadata.fileName}; saved to ${receivedFile.savedPath}")
+                        postFileReceivedNotification(metadata.fileName, receivedFile.savedPath)
                     },
                     onError = { message, _ ->
                         _uiState.update {
@@ -452,6 +480,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         receiveJob = null
         fileReceiverJob?.cancel()
         fileReceiverJob = null
+        connectionGeneration++
+        fileSender.close()
         _uiState.update { it.copy(hostingStarting = false, status = "Stopping hosted room") }
         viewModelScope.launch {
             chatClient.disconnect()
@@ -496,6 +526,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 preferences.edit { putString(KEY_NICKNAME, acceptedNickname) }
+                connectionGeneration++
                 addLog("Connected as $acceptedNickname")
                 startReceiving()
                 if (_uiState.value.autoReceiveFiles) startFileReceiver()
@@ -516,6 +547,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         receiveJob = null
         fileReceiverJob?.cancel()
         fileReceiverJob = null
+        connectionGeneration++
+        fileSender.close()
         viewModelScope.launch {
             chatClient.disconnect()
             _uiState.update { it.copy(connected = false, fileReceiverRunning = false, error = null, status = "Disconnected") }
@@ -542,72 +575,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun selectFile(uri: Uri) {
-        val file = resolveSelectedFile(uri)
-        _uiState.update { it.copy(selectedFile = file, status = "Selected ${file.name}", error = null) }
-        addLog("Selected file ${file.name} (${file.size} bytes)")
+    fun beginFileSelection(): Boolean {
+        val recipient = currentTransferRecipient()
+        if (recipient == null) {
+            setError("Select a recipient first")
+            return false
+        }
+        val accepted = transferCoordinator.beginSelection(recipient)
+        if (!accepted) {
+            setError("Finish the current file batch first")
+        }
+        return accepted
     }
 
-    fun sendSelectedFile() {
-        val state = _uiState.value
-        if (!state.connected) return setError("Connect to a desktop first")
-        val peer = state.fileRecipient ?: return setError("Select a recipient first")
-        val file = state.selectedFile ?: return setError("Select a file first")
-        _uiState.update { it.copy(fileProgress = FileSendProgress(file.name, 0, file.size, active = true), error = null) }
-        addLog("Sending file ${file.name} (${file.size} bytes) to ${peer.nickname} via ${peer.fileTargetHost}:${peer.fileTargetPort}")
+    fun addSelectedFiles(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val token = transferCoordinator.selectionToken() ?: return
         viewModelScope.launch {
-            runCatching {
-                fileSender.sendFile(
-                    host = peer.fileTargetHost,
-                    port = peer.fileTargetPort,
-                    senderId = state.nickname,
-                    recipientId = peer.nickname,
-                    sessionPassword = state.sessionPassword,
-                    selectedFile = file,
-                ) { sent, total ->
-                    _uiState.update { current ->
-                        current.copy(fileProgress = current.fileProgress.copy(bytesSent = sent, totalBytes = total, active = true))
-                    }
-                }
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        fileProgress = it.fileProgress.copy(active = false),
-                        recentTransfers = listOf(
-                            TransferRecord(
-                                fileName = file.name,
-                                bytes = file.size,
-                                direction = TransferDirection.SENT,
-                                result = TransferResult.COMPLETED,
-                                peerName = peer.nickname,
-                            ),
-                        ) + it.recentTransfers.take(MAX_RECENT_TRANSFERS - 1),
-                        status = "File sent",
-                    )
-                }
-                addLog("File sent: ${file.name}")
-            }.onFailure { error ->
-                val message = userFacingError(error, "Unable to send file")
-                _uiState.update {
-                    it.copy(
-                        fileProgress = it.fileProgress.copy(active = false, error = message),
-                        recentTransfers = listOf(
-                            TransferRecord(
-                                fileName = file.name,
-                                bytes = file.size,
-                                direction = TransferDirection.SENT,
-                                result = TransferResult.FAILED,
-                                peerName = peer.nickname,
-                            ),
-                        ) + it.recentTransfers.take(MAX_RECENT_TRANSFERS - 1),
-                        error = message,
-                        status = "File send failed",
-                    )
-                }
-                addLog(message, level = "ERROR")
-            }
+            val sources = withContext(Dispatchers.IO) { uris.map { resolveTransferSource(it) } }
+            transferCoordinator.addSelection(token, sources)
         }
     }
+
+    fun clearFiles() = transferCoordinator.clear()
+
+    fun removeFile(id: String) = transferCoordinator.remove(id)
+
+    fun startFileBatch() = transferCoordinator.start()
+
+    fun retryFailedFiles() = transferCoordinator.retry()
+
+    fun skipFailedFiles() = transferCoordinator.skipAndContinue()
+
+    fun stopAfterCurrentFile() = transferCoordinator.stopAfterCurrent()
 
     private fun startReceiving() {
         receiveJob?.cancel()
@@ -693,12 +693,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun handleUserLeft(nickname: String) {
         val peerNickname = nickname.trim()
         if (peerNickname.isBlank()) return
+        val recipient = _uiState.value.fileRecipient
         _uiState.update { state ->
             state.copy(
                 peers = state.peers.filterNot { it.role == PeerRole.CHAT_CLIENT && it.nickname.equals(peerNickname, ignoreCase = true) },
                 status = "$peerNickname left the chat",
             )
         }
+        if (recipient?.nickname.equals(peerNickname, ignoreCase = true)) connectionGeneration++
         addLog("Peer left chat: $peerNickname")
     }
 
@@ -729,23 +731,99 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun androidCapabilities(fileReceivePort: Int): PeerCapabilities = PeerCapabilities.android(
         APP_VERSION,
         fileReceivePort,
-        android.os.Build.MODEL ?: "Android device",
+        Build.MODEL ?: "Android device",
     )
 
-    private fun resolveSelectedFile(uri: Uri): SelectedFile {
+    private fun resolveTransferSource(uri: Uri): TransferSource {
         val resolver = getApplication<Application>().contentResolver
-        var name = uri.lastPathSegment ?: "selected-file"
-        var size = -1L
-        val cursor: Cursor? = resolver.query(uri, null, null, null, null)
-        cursor?.use {
-            if (it.moveToFirst()) {
-                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                val sizeIndex = it.getColumnIndex(OpenableColumns.SIZE)
-                if (nameIndex >= 0) name = it.getString(nameIndex) ?: name
-                if (sizeIndex >= 0) size = it.getLong(sizeIndex)
+        var name = uri.lastPathSegment?.takeIf { it.isNotBlank() } ?: "selected-file"
+        var size: Long? = null
+        val resolved = runCatching {
+            val cursor: Cursor? = resolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0) {
+                        it.getString(nameIndex)?.takeIf { value -> value.isNotBlank() }?.let { value -> name = value }
+                    }
+                    val sizeIndex = it.getColumnIndex(OpenableColumns.SIZE)
+                    if (sizeIndex >= 0 && !it.isNull(sizeIndex)) {
+                        val raw = it.getLong(sizeIndex)
+                        if (raw >= 0) size = raw
+                    }
+                }
+            }
+            true
+        }.getOrDefault(false)
+        return TransferSource(reference = uri.toString(), name = name, size = size, unavailable = !resolved)
+    }
+
+    private fun currentTransferRecipient(): TransferRecipient? {
+        val state = _uiState.value
+        if (!state.connected && !state.hosting) return null
+        val peer = state.fileRecipient ?: return null
+        return TransferRecipient(
+            id = peer.peerId,
+            name = peer.nickname,
+            host = peer.fileTargetHost,
+            port = peer.fileTargetPort,
+            generation = connectionGeneration,
+        )
+    }
+
+    private fun isTransferRecipientAvailable(recipient: TransferRecipient): Boolean {
+        val current = currentTransferRecipient() ?: return false
+        return current.id == recipient.id &&
+            current.name == recipient.name &&
+            current.host == recipient.host &&
+            current.port == recipient.port &&
+            current.generation == recipient.generation
+    }
+
+    private fun transferRecipientKey(peer: DiscoveredPeer?): String? =
+        peer?.let { "${it.peerId}|${it.fileTargetHost}|${it.fileTargetPort}" }
+
+    private fun observeTransferQueue() {
+        viewModelScope.launch {
+            transferCoordinator.state.collect { queue ->
+                if (queue.status == BatchStatus.FINISHED) {
+                    recordFinalTransfers(queue)
+                    publishBatchResult(queue)
+                    // Finished batches leave no persistent panel; per-file outcomes stay in history.
+                    transferCoordinator.clear()
+                }
             }
         }
-        return SelectedFile(uri, name, size.coerceAtLeast(0L))
+    }
+
+    private fun publishBatchResult(queue: TransferQueueState) {
+        if (queue.items.isEmpty()) return
+        val summary = "Sent ${queue.confirmed} of ${queue.items.size}: ${queue.failed} failed or unconfirmed, ${queue.skipped} skipped"
+        _uiState.update { it.copy(status = summary) }
+        addLog(summary)
+    }
+
+    private fun recordFinalTransfers(queue: TransferQueueState) {
+        val terminal = queue.items.filter { it.phase in TRANSFER_TERMINAL_PHASES }
+        if (terminal.isEmpty()) return
+        val records = terminal.map { item ->
+            TransferRecord(
+                fileName = item.source.name,
+                bytes = item.attempts.lastOrNull()?.total ?: item.source.size ?: 0L,
+                direction = TransferDirection.SENT,
+                result = if (item.phase == TransferPhase.COMPLETED) TransferResult.COMPLETED else TransferResult.FAILED,
+                peerName = queue.recipient?.name,
+            )
+        }
+        _uiState.update {
+            it.copy(recentTransfers = (records.asReversed() + it.recentTransfers).take(MAX_RECENT_TRANSFERS))
+        }
     }
 
     private fun setError(message: String) {
@@ -758,12 +836,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updatedLogs = (state.logs + AppLogEntry(level = level, message = message)).takeLast(MAX_LOG_ENTRIES)
             state.copy(logs = updatedLogs)
         }
-    }
-
-    private fun userFacingError(error: Throwable, fallback: String): String {
-        val message = error.message?.takeIf { it.isNotBlank() }
-        if (message != null) return message
-        return error::class.simpleName?.let { "$fallback: $it" } ?: fallback
     }
 
     private fun localFileReceiverPort(state: MainUiState): Int {
@@ -885,6 +957,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fileReceiverJob?.cancel()
             fileReceiverJob = null
             disconnectRequested = true
+            connectionGeneration++
+            fileSender.close()
             viewModelScope.launch { chatClient.disconnect() }
             _uiState.update {
                 it.copy(
@@ -909,7 +983,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshLocalRoomAddresses()
         localAddressWatchJob = viewModelScope.launch {
             while (isActive && _uiState.value.hosting) {
-                delay(LOCAL_ADDRESS_REFRESH_INTERVAL_MS)
+                delay(LOCAL_ADDRESS_REFRESH_INTERVAL_MS.milliseconds)
                 if (_uiState.value.hosting) refreshLocalRoomAddresses()
             }
         }
@@ -967,6 +1041,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fileReceiverJob?.cancel()
         localAddressRefreshJob?.cancel()
         localAddressWatchJob?.cancel()
+        fileSender.close()
         viewModelScope.launch { chatClient.disconnect() }
         super.onCleared()
     }
@@ -978,6 +1053,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val MAX_RECENT_TRANSFERS = 20
         private const val DISCOVERY_EMPTY_STATE_DELAY_MS = 8_000L
         private const val LOCAL_ADDRESS_REFRESH_INTERVAL_MS = 10_000L
+        private val TRANSFER_TERMINAL_PHASES = setOf(
+            TransferPhase.COMPLETED,
+            TransferPhase.FAILED,
+            TransferPhase.OUTCOME_UNKNOWN,
+            TransferPhase.SKIPPED,
+        )
         private const val PREFERENCES_NAME = "secure_lan_preferences"
         private const val KEY_NICKNAME = "nickname"
         private const val KEY_THEME_MODE = "theme_mode"

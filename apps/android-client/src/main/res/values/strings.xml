@@ -96,6 +96,8 @@
     <string name="transfer_received">Received</string>
     <string name="transfer_failed">Failed</string>
     <string name="transfer_saved_to">Saved to %1$s</string>
+    <string name="open_file">Open</string>
+    <string name="open_file_unavailable">No app can open this file.</string>
     <string name="settings_profile">Profile</string>
     <string name="settings_profile_hint">This name is shown to other people in the room.</string>
     <string name="settings_theme">Theme</string>
@@ -144,4 +146,31 @@
     <string name="logs_empty">No log entries yet.</string>
     <string name="copy_all">Copy all</string>
     <string name="close">Close</string>
+    <string name="files_selected_title">Selected files</string>
+    <string name="add_files">Add files</string>
+    <string name="clear_files">Clear</string>
+    <string name="remove_file">Remove</string>
+    <string name="file_size_pending">Size pending</string>
+    <string name="file_unavailable">Unavailable</string>
+    <string name="files_select_recipient">Select a recipient before adding files.</string>
+    <plurals name="send_files_count">
+        <item quantity="one">Send %1$d file</item>
+        <item quantity="other">Send %1$d files</item>
+    </plurals>
+    <string name="transfer_details">Details</string>
+    <string name="transfer_completed_count">Completed %1$d of %2$d</string>
+    <string name="transfer_current_file">Sending %1$s</string>
+    <string name="retry_failed">Retry failed</string>
+    <string name="skip_and_continue">Skip and continue</string>
+    <string name="stop_after_current">Stop after current</string>
+    <string name="batch_result">Sent %1$d of %2$d · %3$d failed · %4$d skipped</string>
+    <string name="phase_queued">Queued</string>
+    <string name="phase_preparing">Preparing</string>
+    <string name="phase_waiting_acceptance">Waiting for acceptance</string>
+    <string name="phase_sending">Sending</string>
+    <string name="phase_waiting_confirmation">Waiting for confirmation</string>
+    <string name="phase_completed">Sent</string>
+    <string name="phase_failed">Failed</string>
+    <string name="phase_outcome_unknown">Confirmation not received</string>
+    <string name="phase_skipped">Skipped</string>
 </resources>

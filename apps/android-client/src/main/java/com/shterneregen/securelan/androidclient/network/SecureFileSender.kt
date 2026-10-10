@@ -1,50 +1,154 @@
 package com.shterneregen.securelan.androidclient.network
 
 import android.content.ContentResolver
-import com.shterneregen.securelan.androidclient.model.SelectedFile
+import android.net.Uri
+import com.shterneregen.securelan.androidclient.transfer.TransferSource
+import com.shterneregen.securelan.androidclient.transfer.TransferAttempt
+import com.shterneregen.securelan.androidclient.transfer.TransferPhase
+import com.shterneregen.securelan.androidclient.transfer.stageStream
+import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
 import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.FileTransferMetadata
 import com.shterneregen.securelan.androidclient.protocol.FileTransferSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import java.io.Closeable
+import java.io.File
+import java.io.InputStream
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
-class SecureFileSender(private val contentResolver: ContentResolver) {
+data class FileTransferTimeouts(val connectMillis: Int = 10_000, val acceptanceMillis: Int = 300_000, val inactivityMillis: Int = 60_000, val confirmationMillis: Int = 60_000)
+
+class SecureFileSender(private val contentResolver: ContentResolver, private val cacheDirectory: File, private val timeouts: FileTransferTimeouts = FileTransferTimeouts()) {
+    @Volatile private var active: Operation? = null
+
+    fun close() { active?.close() }
+
     suspend fun sendFile(
         host: String,
         port: Int,
         senderId: String,
         recipientId: String,
         sessionPassword: String,
-        selectedFile: SelectedFile,
-        onProgress: (sent: Long, total: Long) -> Unit,
+        selectedFile: TransferSource,
+        onUpdate: (TransferAttempt) -> Unit,
     ): String = withContext(Dispatchers.IO) {
+        val context = currentCoroutineContext()
         val transferId = UUID.randomUUID().toString()
-        val metadata = FileTransferMetadata(transferId, senderId, recipientId, safeTransferFileName(selectedFile.name), selectedFile.size)
-        Socket(host, port).use { socket ->
-            FileTransferSession(socket).use { session ->
-                performHandshake(session, sessionPassword, metadata)
-                contentResolver.openInputStream(selectedFile.uri).use { input ->
-                    requireNotNull(input) { "Unable to open selected file" }
-                    val buffer = ByteArray(CHUNK_SIZE)
-                    var sent = 0L
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        session.writeEncryptedBytes(buffer.copyOf(read))
-                        sent += read
-                        onProgress(sent, selectedFile.size)
+        val operation = Operation()
+        check(active == null) { "A transfer is already active" }
+        active = operation
+        var attempt = TransferAttempt(wireId = transferId, total = selectedFile.size)
+        fun publish(phase: TransferPhase, bytes: Long = attempt.bytes, total: Long? = attempt.total) {
+            attempt = attempt.copy(phase = phase, bytes = bytes, total = total)
+            onUpdate(attempt)
+        }
+        val watchdog = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "file-transfer-watchdog").apply { isDaemon = true } }
+        watchdog.scheduleAtFixedRate({
+            if (!context.isActive || System.nanoTime() >= operation.deadline) operation.close()
+        }, 100, 100, TimeUnit.MILLISECONDS)
+        var staged: File? = null
+        try {
+            publish(TransferPhase.PREPARING)
+            operation.touch(timeouts.inactivityMillis)
+            cacheDirectory.mkdirs()
+            // This directory belongs exclusively to the single sender slot.
+            cacheDirectory.listFiles()?.filter { it.name.startsWith("outgoing-") }?.forEach { it.delete() }
+            var size = selectedFile.size
+            val original = requireNotNull(contentResolver.openInputStream(Uri.parse(selectedFile.reference))) { "Source unavailable" }
+            operation.own(original)
+            if (size == null) {
+                val temp = File.createTempFile("outgoing-", ".tmp", cacheDirectory)
+                staged = temp
+                original.use { input ->
+                    temp.outputStream().use { output ->
+                        size = stageStream(input, output) { context.ensureActive(); operation.checkOpen(); operation.touch(timeouts.inactivityMillis) }
                     }
                 }
+                operation.own(temp.inputStream())
+            }
+            val exactSize = requireNotNull(size)
+            val metadata = FileTransferMetadata(transferId, senderId, recipientId, safeTransferFileName(selectedFile.name), exactSize)
+            operation.checkOpen()
+            val socket = operation.socket
+            operation.touch(timeouts.connectMillis)
+            socket.connect(InetSocketAddress(host, port), timeouts.connectMillis)
+            socket.soTimeout = timeouts.acceptanceMillis
+            operation.touch(timeouts.acceptanceMillis)
+            FileTransferSession(socket).use { session ->
+                publish(TransferPhase.WAITING_FOR_ACCEPTANCE, total = exactSize)
+                performHandshake(session, sessionPassword, metadata)
+                socket.soTimeout = timeouts.inactivityMillis
+                operation.touch(timeouts.inactivityMillis)
+                publish(TransferPhase.SENDING)
+                requireNotNull(operation.input).use { input ->
+                    val buffer = ByteArray(CHUNK_SIZE)
+                    var sent = 0L
+                    var lastUpdate = 0L
+                    while (true) {
+                        context.ensureActive()
+                        operation.checkOpen()
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        validateTransferLength(exactSize, Math.addExact(sent, read.toLong()), false)
+                        session.writeEncryptedBytes(buffer.copyOf(read))
+                        sent += read
+                        operation.touch(timeouts.inactivityMillis)
+                        val now = System.nanoTime()
+                        if (now - lastUpdate >= 100_000_000 || sent == exactSize) {
+                            publish(TransferPhase.SENDING, sent)
+                            lastUpdate = now
+                        }
+                    }
+                    validateTransferLength(exactSize, sent, true)
+                }
+                context.ensureActive()
+                operation.checkOpen()
+                // Once EOF submission begins, a lost response cannot prove non-delivery.
+                socket.soTimeout = timeouts.confirmationMillis
+                operation.touch(timeouts.confirmationMillis)
+                publish(TransferPhase.WAITING_FOR_CONFIRMATION, exactSize)
                 session.writeEncryptedBytes(ByteArray(0))
                 val result = session.readEncryptedText()
-                require(result == "DONE") { result }
+                require(result == "DONE") { "Confirmation unavailable" }
             }
+            transferId
+        } catch (error: Exception) {
+            context.ensureActive()
+            throw error
+        } finally {
+            operation.close()
+            watchdog.shutdownNow()
+            staged?.delete()
+            active = null
         }
-        transferId
+    }
+
+    private class Operation : Closeable {
+        val socket = Socket()
+        @Volatile var input: InputStream? = null
+        @Volatile var deadline: Long = Long.MAX_VALUE
+        @Volatile private var closed = false
+        fun touch(millis: Int) { deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis.toLong()) }
+        @Synchronized fun own(stream: InputStream) {
+            if (closed) { stream.close(); error("Transfer stopped") }
+            input = stream
+        }
+        fun checkOpen() { check(!closed) { "Transfer stopped" } }
+        override fun close() {
+            closed = true
+            runCatching { socket.close() }
+            runCatching { input?.close() }
+        }
     }
 
     private fun performHandshake(session: FileTransferSession, sessionPassword: String, metadata: FileTransferMetadata) {

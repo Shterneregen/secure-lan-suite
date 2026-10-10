@@ -9,6 +9,8 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 - Host or join password-protected LAN chat rooms.
 - Discover compatible peers with UDP broadcast or connect manually by host and port.
 - Exchange encrypted chat messages and files with transfer progress and configurable downloads.
+- Select multiple files on Compose desktop or Android, review the recipient and
+  send them as a sequential queue with per-file results and explicit retries.
 - Create temporary Quick Share browser links for files or text, with expiration and access limits. Quick Share is intended only for trusted LANs because browser transfers use plain local HTTP.
 - Use voice sessions and experimental 1-to-1 video calls through WebRTC,
   including microphone, speaker, and camera selection and diagnostics.
@@ -71,6 +73,11 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 
 - LAN discovery uses UDP broadcast and may require additional hardening for complex networks, firewalls, VPNs, and multi-adapter setups.
 - Key management and advanced file-transfer controls are not fully exposed in the desktop UI.
+- File batches are local sender queues of independent encrypted transfers, not
+  atomic deliveries. Receiver approval remains per file. Stopping a batch waits
+  for its current file; missing final confirmation can mean the file was saved,
+  so retrying can create a duplicate. Queues are not restored after app restart,
+  and Android background execution is not guaranteed.
 - Voice/video behavior and device selection still need broader cross-device validation; video calls and preview remain experimental.
 - Desktop steganography exposes text workflows for uncompressed 24-bit/32-bit BMP images. Binary payloads are supported by the core API but not by the UI.
 - Android remains an experimental interoperability client and does not yet support voice, WebRTC data channels, camera/video, steganography, screen sharing, or Quick Share.

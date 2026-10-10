@@ -1,12 +1,14 @@
 package com.shterneregen.securelan.desktop.compose.ui.chat
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.Icon
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -33,12 +35,16 @@ import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolKind
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopBatchPhase
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferBatch
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferPhase
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
 import com.shterneregen.securelan.desktop.compose.ui.components.SubtleContentSurface
-import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
+import com.shterneregen.securelan.desktop.compose.util.openComposeTransferFileChooser
 import com.shterneregen.securelan.desktop.compose.util.resolveAttachCandidatePeer
 import java.awt.Cursor
 
@@ -92,9 +98,17 @@ internal fun LiveChatWorkspaceCard(
     }
 
     fun attachSelectedFile() {
+        // Reopening restores an existing draft instead of discarding it.
+        if (hostAdapter.transferDraft != null) {
+            hostAdapter.openTransferReview()
+            return
+        }
         val peer = selectedFilePeer ?: return
-        val path = openComposeFileChooser("Choose file to send to ${peer.nickname}") ?: return
-        hostAdapter.sendFileToPeer(path, hostAdapter.statusState.nickname, peer, hostAdapter.currentRoomPassword)
+        val target = hostAdapter.captureTransferTarget(peer) ?: return
+        val paths = openComposeTransferFileChooser("Choose files to send to ${peer.nickname}")
+        if (paths.isNotEmpty()) {
+            hostAdapter.addTransferFiles(target, paths)
+        }
     }
 
     Column(
@@ -175,6 +189,9 @@ internal fun LiveChatWorkspaceCard(
             }
         }
         if (!videoStageVisible || focusMode.showsChat) {
+            hostAdapter.transferBatch?.let { batch ->
+                DesktopTransferBatchSummary(hostAdapter, batch)
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = ComposeShellMetadata.COMPOSER_MIN_HEIGHT),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -325,6 +342,97 @@ private fun LiveTranscriptSurface(
                 ) {
                     items(transcript.size) { index ->
                         ChatTranscriptLine(transcript[index], localNickname)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopTransferBatchSummary(
+    hostAdapter: ComposeDesktopHostAdapter,
+    batch: DesktopTransferBatch,
+) {
+    // Finished results live in the per-file transcript events and Transfers, not in a persistent panel.
+    if (!batch.unfinished) return
+    val tokens = LocalSecureLanDesignTokens.current
+    val title = "Sending to ${batch.target.nickname}: ${batch.completed} of ${batch.items.size} confirmed"
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = tokens.colors.surfaceLevel2.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(tokens.radius.medium),
+        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = SecureLanIcons.File,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.subtitle2)
+                    Text(
+                        text = batch.summary,
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f),
+                    )
+                }
+                when (batch.phase) {
+                    DesktopBatchPhase.RUNNING -> CompactButton(
+                        onClick = { hostAdapter.stopTransferBatch() },
+                        tone = CompactButtonTone.TERTIARY,
+                    ) { Text("Stop after current") }
+
+                    DesktopBatchPhase.STOP_REQUESTED -> Text(
+                        "Stopping after current file…",
+                        style = MaterialTheme.typography.caption,
+                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
+                    )
+
+                    DesktopBatchPhase.PAUSED -> {
+                        CompactButton(onClick = { hostAdapter.retryTransferBatch() }) { Text("Retry") }
+                        CompactButton(
+                            onClick = { hostAdapter.skipFailedTransferAndContinue() },
+                            tone = CompactButtonTone.TERTIARY,
+                        ) { Text("Skip") }
+                        CompactButton(
+                            onClick = { hostAdapter.stopTransferBatch() },
+                            tone = CompactButtonTone.DESTRUCTIVE,
+                        ) { Text("Finish") }
+                    }
+
+                    DesktopBatchPhase.FINISHED -> Unit
+                }
+            }
+            val queued = batch.items.filter { it.phase == DesktopTransferPhase.QUEUED }
+            if (queued.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 144.dp),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                ) {
+                    items(queued.size, key = { queued[it].id }) { index ->
+                        val item = queued[index]
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                        ) {
+                            Text(item.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.caption)
+                            CompactButton(
+                                onClick = { hostAdapter.removeQueuedTransferItem(item.id) },
+                                tone = CompactButtonTone.TERTIARY,
+                            ) { Text("Remove") }
+                        }
                     }
                 }
             }

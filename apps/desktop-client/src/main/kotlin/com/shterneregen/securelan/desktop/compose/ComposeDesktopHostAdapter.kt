@@ -31,6 +31,7 @@ import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetada
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPrompt
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPromptStatus
+import com.shterneregen.securelan.desktop.compose.state.transfer.*
 import com.shterneregen.securelan.desktop.compose.tray.DesktopChatTrayNotification
 import com.shterneregen.securelan.desktop.compose.tray.shouldPublishChatTrayNotification
 import com.shterneregen.securelan.desktop.ui.*
@@ -44,6 +45,8 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientService
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
+import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
+import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
 import com.shterneregen.securelan.stego.StegoServices
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import com.shterneregen.securelan.stego.service.SteganographyService
@@ -62,6 +65,7 @@ import java.time.Instant
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
@@ -194,6 +198,100 @@ class ComposeDesktopHostAdapter(
     /** Dedicated scope for blocking desktop network-client work. */
     private val networkIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectionInProgress = AtomicBoolean(false)
+    private val transferGeneration = AtomicLong()
+    var transferDraft: DesktopTransferDraft? by mutableStateOf(null)
+        private set
+    var transferBatch: DesktopTransferBatch? by mutableStateOf(null)
+        private set
+
+    /** Draft review surface visibility; separate from the draft so Escape can hide it without clearing. */
+    var transferReviewVisible: Boolean by mutableStateOf(false)
+        private set
+    private var publishedTransferBatchResultId: String? = null
+    private val transferCoordinator = DesktopTransferCoordinator(
+        execute = { work -> networkIoScope.launch { work() } },
+        validTarget = ::isTransferTargetCurrent,
+        operation = ::createTransferOperation,
+        publish = { draft, batch ->
+            dispatchUiStateUpdate {
+                transferDraft = draft
+                transferBatch = batch
+                if (batch?.phase == DesktopBatchPhase.FINISHED && publishedTransferBatchResultId != batch.id) {
+                    publishedTransferBatchResultId = batch.id
+                    appendChatTranscript("[transfer] ${batch.summary}")
+                    SecureLanLogger.logTransfer(batch.summary)
+                }
+            }
+        },
+    )
+
+    fun captureTransferTarget(peer: DiscoveredPeer): DesktopTransferTarget? =
+        DesktopTransferTarget(transferGeneration.get(), peer.peerId, peer.nickname, peer.host, peer.filePort)
+            .takeIf(::isTransferTargetCurrent)
+
+    private fun isTransferTargetCurrent(target: DesktopTransferTarget): Boolean =
+        !shuttingDown.get() && chatConnected && target.generation == transferGeneration.get() &&
+            target.host.isNotBlank() && target.port > 0 && discoveredPeerFor(target.nickname)?.let {
+                it.peerId == target.peerId && it.host == target.host && it.filePort == target.port
+            } == true
+
+    fun addTransferFiles(target: DesktopTransferTarget, paths: List<Path>): Boolean {
+        val added = transferCoordinator.add(target, paths)
+        if (added) transferReviewVisible = true
+        return added
+    }
+    fun removeTransferDraftItem(id: String) = transferCoordinator.removeDraft(id)
+    fun clearTransferDraft() {
+        transferCoordinator.clearDraft()
+        transferReviewVisible = false
+    }
+    fun dismissTransferReview() {
+        transferReviewVisible = false
+    }
+    fun openTransferReview() {
+        if (transferDraft != null) transferReviewVisible = true
+    }
+    fun startTransferDraft(): Boolean {
+        val started = transferCoordinator.startDraft()
+        if (started) transferReviewVisible = false
+        return started
+    }
+    fun retryTransferBatch(): Boolean = transferCoordinator.retry()
+    fun skipFailedTransferAndContinue() = transferCoordinator.skipAndContinue()
+    fun stopTransferBatch() = transferCoordinator.stopAfterCurrent()
+    fun removeQueuedTransferItem(id: String) = transferCoordinator.removeQueued(id)
+
+    private fun createTransferOperation(target: DesktopTransferTarget, item: DesktopTransferItem, update: (DesktopTransferAttempt) -> Unit): DesktopTransferOperation {
+        val client = checkNotNull(fileTransferClientService)
+        val operation = client.createOperation(
+            FileTransferClientRequest(target.host, target.port, statusState.nickname.trim(), target.nickname, currentRoomPassword, item.path),
+        ) { event ->
+            update(DesktopTransferAttempt("", event.transferId, DesktopTransferPhase.valueOf(event.phase.name), event.transferredBytes, event.totalBytes))
+        }
+        return object : DesktopTransferOperation {
+            override fun execute(): DesktopTransferAttempt = when (val result = operation.execute()) {
+                is FileTransferOutcome.Completed -> DesktopTransferAttempt("", result.transferId, DesktopTransferPhase.COMPLETED, item.size ?: 0, item.size)
+                is FileTransferOutcome.Failed -> DesktopTransferAttempt("", result.transferId,
+                    if (result.kind == FileTransferFailureKind.OUTCOME_UNKNOWN) DesktopTransferPhase.OUTCOME_UNKNOWN else DesktopTransferPhase.FAILED,
+                    error = when (result.kind) {
+                        FileTransferFailureKind.OUTCOME_UNKNOWN -> "Confirmation not received; the recipient may have saved this file. Retrying may create a duplicate."
+                        FileTransferFailureKind.REJECTED -> "The recipient declined this file."
+                        else -> "Transfer failed. Check the source file and connection before retrying."
+                    })
+            }
+            override fun close() = operation.close()
+        }
+    }
+
+    private fun invalidateTransferSession() {
+        transferGeneration.incrementAndGet()
+        transferCoordinator.invalidateSession()
+        pendingIncomingTransferDecisions.values.forEach { it.complete(false) }
+        pendingIncomingTransferDecisions.clear()
+        incomingTransferPrompts = incomingTransferPrompts.map {
+            if (it.waitingForDecision) it.withStatus(ComposeIncomingTransferPromptStatus.REJECTED) else it
+        }
+    }
 
     /** Quick-share rows for browser-link workspace wiring. */
     var quickShareEntries: List<QuickShareEntry> by mutableStateOf(emptyList())
@@ -275,10 +373,12 @@ class ComposeDesktopHostAdapter(
     private fun handleChatEvent(event: ChatCoreEvent) {
         when (event) {
             is ChatConnectedEvent -> {
+                invalidateTransferSession()
                 // Do not render a local-client connection line in the chat transcript.
                 clearChatPeers()
             }
             is ChatDisconnectedEvent -> {
+                invalidateTransferSession()
                 appendChatTranscript(disconnectedTranscriptLine(event))
                 clearChatPeers()
                 statusState = statusState.withClientDisconnected()
@@ -463,6 +563,7 @@ class ComposeDesktopHostAdapter(
             return
         }
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Stopping hosting.")
+        invalidateTransferSession()
 
         try {
             if (chatClientService.isConnected()) {
@@ -569,6 +670,7 @@ class ComposeDesktopHostAdapter(
             return
         }
 
+        invalidateTransferSession()
         try {
             chatClientService.disconnect()
             clearChatPeers()
@@ -695,6 +797,11 @@ class ComposeDesktopHostAdapter(
                 return@runUiStateUpdateAndWait
             }
 
+            if (pendingIncomingTransferDecisions.size >= 20 || pendingIncomingTransferDecisions.containsKey(metadata.transferId)) {
+                incomingTransferPrompts = upsertIncomingTransferPrompt(ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED))
+                immediateDecision = false
+                return@runUiStateUpdateAndWait
+            }
             val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.WAITING)
             incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
             playTransferNotificationSound(completion = false)
@@ -712,19 +819,24 @@ class ComposeDesktopHostAdapter(
             return false
         }
         return try {
-            decision.get()
+            decision.get(5, TimeUnit.MINUTES)
         } catch (e: Exception) {
             dispatchUiStateUpdate { SecureLanLogger.logTransfer(DesktopTransferFormatters.fileConfirmationFailedDiagnostics(e.message)) }
             false
         } finally {
             pendingPromptId?.let { pendingIncomingTransferDecisions.remove(it) }
+            dispatchUiStateUpdate {
+                incomingTransferPrompts = incomingTransferPrompts.map {
+                    if (it.id == pendingPromptId && it.waitingForDecision) it.withStatus(ComposeIncomingTransferPromptStatus.REJECTED) else it
+                }
+            }
         }
     }
 
     /** Record an explicit Compose receive-prompt decision. */
     fun recordIncomingFileDecision(promptId: String, accepted: Boolean) {
         val prompt = incomingTransferPrompts.firstOrNull { it.id == promptId } ?: return
-        pendingIncomingTransferDecisions[promptId]?.complete(accepted)
+        if (!prompt.waitingForDecision || pendingIncomingTransferDecisions[promptId]?.complete(accepted) != true) return
         incomingTransferPrompts = incomingTransferPrompts.map {
             if (it.id == promptId) {
                 it.withStatus(
@@ -744,8 +856,11 @@ class ComposeDesktopHostAdapter(
         SecureLanLogger.logTransfer("Incoming file ${if (accepted) "accepted" else "rejected"}: ${prompt.fileName} from ${prompt.senderId}.")
     }
 
-    private fun upsertIncomingTransferPrompt(prompt: ComposeIncomingTransferPrompt): List<ComposeIncomingTransferPrompt> =
-        (incomingTransferPrompts.filterNot { it.id == prompt.id } + prompt).takeLast(20)
+    private fun upsertIncomingTransferPrompt(prompt: ComposeIncomingTransferPrompt): List<ComposeIncomingTransferPrompt> {
+        val all = incomingTransferPrompts.filterNot { it.id == prompt.id } + prompt
+        val historyIds = all.filterNot { it.waitingForDecision }.takeLast(20).mapTo(HashSet()) { it.id }
+        return all.filter { it.waitingForDecision || it.id in historyIds }
+    }
 
     private fun findPeerForIncomingFile(metadata: FileTransferMetadata, remoteAddress: String): PeerPresence? {
         val remoteHost = remoteHostOnly(remoteAddress)
@@ -827,51 +942,9 @@ class ComposeDesktopHostAdapter(
     }
 
     fun sendFileToPeer(filePath: Path, senderId: String, recipient: DiscoveredPeer, sessionPassword: String): CompletableFuture<String?> {
-        if (shuttingDown.get()) return CompletableFuture.completedFuture(null)
-        val completion = CompletableFuture<String?>()
-        val client = fileTransferClientService
-        if (client == null) {
-            SecureLanLogger.logTransfer("Outgoing file send unavailable: file-transfer client service is not configured.")
-            completion.complete(null)
-            return completion
-        }
-        if (!chatClientService.isConnected()) {
-            SecureLanLogger.logTransfer("Outgoing file send blocked: connect to chat before sending files.")
-            completion.complete(null)
-            return completion
-        }
-
-        SecureLanLogger.logTransfer("Outgoing file send queued for ${recipient.nickname}; file checks and transfer will run on the IO dispatcher.")
-        networkIoScope.launch {
-            val normalizedFile = filePath.toAbsolutePath().normalize()
-            if (!Files.isRegularFile(normalizedFile)) {
-                dispatchUiStateUpdate { SecureLanLogger.logTransfer("Outgoing file send blocked: file does not exist: $normalizedFile.") }
-                completion.complete(null)
-                return@launch
-            }
-            try {
-                val transferId = client.sendFile(
-                    FileTransferClientRequest(
-                        recipient.host,
-                        recipient.filePort,
-                        senderId.trim(),
-                        recipient.nickname,
-                        sessionPassword,
-                        normalizedFile,
-                    ),
-                )
-                dispatchUiStateUpdate { SecureLanLogger.logTransfer("Outgoing file send finished: ${normalizedFile.fileName} to ${recipient.nickname}.") }
-                completion.complete(transferId)
-            } catch (e: Exception) {
-                val message = "Outgoing file send failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
-                dispatchUiStateUpdate {
-                    SecureLanLogger.logTransfer(message)
-                    publish(ComposeConnectionEventKind.ERROR, message)
-                }
-                completion.complete(null)
-            }
-        }
-        return completion
+        if (fileTransferClientService == null || senderId.trim() != statusState.nickname.trim() || sessionPassword != currentRoomPassword) return CompletableFuture.completedFuture(null)
+        val target = captureTransferTarget(recipient) ?: return CompletableFuture.completedFuture(null)
+        return transferCoordinator.startSingle(target, filePath)
     }
 
     fun startQuickShare(port: Int) {
@@ -1264,6 +1337,7 @@ class ComposeDesktopHostAdapter(
     /** Shut down the adapter and all underlying services. */
     fun shutdown() {
         if (!shuttingDown.compareAndSet(false, true)) return
+        invalidateTransferSession()
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Adapter shutdown initiated.")
         pendingIncomingTransferDecisions.values.forEach { it.complete(false) }
         pendingIncomingTransferDecisions.clear()

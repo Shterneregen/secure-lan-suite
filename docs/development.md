@@ -80,6 +80,47 @@ expanded. Completed or failed transfers are under **Recent files**, collapsed by
 default; **Auto-save: on/off** expands to explain and change the receive setting.
 Start a new file transfer with **Attach** in chat after selecting its recipient.
 
+### Multiple files
+
+Select one or more files from **Attach**, review the explicit recipient and file
+list, then start the batch. Adding files extends the draft; canceling the system
+picker does not clear it. Removing a queued file does not undo a completed
+transfer. The batch stays bound to its original recipient even if another peer
+is selected in the workspace.
+
+There is one unfinished outgoing batch per application. Files use independent
+`SECURE_FILE_TRANSFER_V1` connections in order; a batch does not add metadata or
+messages to the chat protocol. The next file waits for the receiver's final
+`DONE`, not merely 100% local byte progress. A failure pauses the queue for an
+explicit retry, skip, or finish action. **Stop after current file** leaves the
+current operation running and skips the remaining queue after it finishes.
+
+Desktop receiver approval remains per file when auto-save is off. No action
+implicitly enables auto-save or approves the remaining files. A missing final
+acknowledgement has an uncertain outcome: the receiver may already have saved
+the file. Retrying is explicit and can create a duplicate. Disconnecting does not
+silently resume the batch in a new room or redirect it to another person.
+
+Focused validation:
+
+```powershell
+.\gradlew.bat :modules:file-transfer-core:test :apps:desktop-client:test
+.\gradlew.bat :apps:android-client:testDebugUnitTest :apps:android-client:assembleDebug
+```
+
+Exercise 1, 3, and 25 files in both desktop/Android directions, then repeat with
+desktop auto-save disabled. Reject the second file and verify that the third is
+not offered automatically. Include a zero-byte file, same-named files from
+different folders, a changed/unavailable source, disconnect, stop-after-current,
+and a file larger than available RAM. Confirm that successful files are not
+repeated and that the summary is independent of the short recent-files history.
+
+On desktop, check the review dialog, keyboard focus, and access to batch details
+at the default size and below the 1280 dp drawer breakpoint. On Android, check
+document-provider errors, unknown-size preparation, rotation, storage failures,
+and large text. JVM tests do not substitute for these UI/device checks or real
+interoperability with the previous single-file client.
+
 ## Android interoperability smoke test
 
 1. Install or run the Android client and start a desktop room on the same LAN.
