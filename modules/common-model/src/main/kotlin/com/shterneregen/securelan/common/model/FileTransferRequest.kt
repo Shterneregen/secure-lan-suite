@@ -1,7 +1,15 @@
 package com.shterneregen.securelan.common.model
 
-import java.util.Objects
-
+/**
+ * Describes a file offered for transfer between two peers.
+ *
+ * @property transferId identifier shared by the transfer's events.
+ * @property senderId identifier of the sending peer.
+ * @property recipientId identifier of the receiving peer.
+ * @property fileName name of the offered file; must not be blank.
+ * @property fileSize size in bytes; must be non-negative.
+ * @throws IllegalArgumentException if [fileName] is blank or [fileSize] is negative.
+ */
 @JvmRecord
 data class FileTransferRequest(
     val transferId: String,
@@ -11,10 +19,6 @@ data class FileTransferRequest(
     val fileSize: Long,
 ) {
     init {
-        Objects.requireNonNull(transferId, "transferId must not be null")
-        Objects.requireNonNull(senderId, "senderId must not be null")
-        Objects.requireNonNull(recipientId, "recipientId must not be null")
-        Objects.requireNonNull(fileName, "fileName must not be null")
         require(fileName.isNotBlank()) { "fileName must not be blank" }
         require(fileSize >= 0) { "fileSize must not be negative" }
     }

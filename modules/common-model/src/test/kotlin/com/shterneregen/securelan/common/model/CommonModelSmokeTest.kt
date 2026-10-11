@@ -11,4 +11,11 @@ class CommonModelSmokeTest {
 
         assertEquals("hello", message.content)
     }
+
+    @Test
+    fun shouldCalculatePercentageWithoutOverflow() {
+        val progress = FileTransferProgress("transfer-1", Long.MAX_VALUE / 2, Long.MAX_VALUE, TransferStatus.IN_PROGRESS)
+
+        assertEquals(49, progress.percent())
+    }
 }

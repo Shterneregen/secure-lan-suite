@@ -1,8 +1,15 @@
 package com.shterneregen.securelan.common.model
 
 import java.time.Instant
-import java.util.Objects
 
+/**
+ * Describes an application event.
+ *
+ * @property type kind of event.
+ * @property message human-readable description; must not be blank.
+ * @property createdAt time at which the event was created.
+ * @throws IllegalArgumentException if [message] is blank.
+ */
 @JvmRecord
 data class AppEvent(
     val type: AppEventType,
@@ -10,9 +17,6 @@ data class AppEvent(
     val createdAt: Instant,
 ) {
     init {
-        Objects.requireNonNull(type, "type must not be null")
-        Objects.requireNonNull(message, "message must not be null")
-        Objects.requireNonNull(createdAt, "createdAt must not be null")
         require(message.isNotBlank()) { "message must not be blank" }
     }
 }

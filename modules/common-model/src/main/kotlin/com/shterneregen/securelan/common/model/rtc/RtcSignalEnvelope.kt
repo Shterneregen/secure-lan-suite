@@ -3,6 +3,26 @@ package com.shterneregen.securelan.common.model.rtc
 import java.util.Objects
 import java.util.UUID
 
+/**
+ * Value object carrying an RTC signalling message between peers.
+ *
+ * Nullable text fields are normalized to defaults. A null [sessionId] receives a new UUID,
+ * while a null [mode] becomes [RtcSessionMode.DATA]. Empty strings are preserved.
+ *
+ * @param sessionId identifier shared by signals in one session.
+ * @param fromPeer sender's peer name.
+ * @param toPeer intended recipient; empty means any peer.
+ * @param type signalling action.
+ * @param mode requested media mode.
+ * @param dataChannelLabel label for the data channel.
+ * @param audioEnabled whether audio is enabled for this signal.
+ * @param videoEnabled whether video is enabled for this signal.
+ * @param sdp session description for an offer or answer.
+ * @param iceCandidate ICE candidate text.
+ * @param sdpMid media stream identifier for an ICE candidate.
+ * @param sdpMLineIndex media line index for an ICE candidate; -1 when absent.
+ * @param message optional explanatory text.
+ */
 class RtcSignalEnvelope(
     sessionId: String?,
     fromPeer: String?,
@@ -31,20 +51,34 @@ class RtcSignalEnvelope(
     private val sdpMid: String = normalize(sdpMid, "")
     private val message: String = normalize(message, "")
 
+    /** Returns the session identifier. */
     fun sessionId(): String = sessionId
+    /** Returns the sender's peer name. */
     fun fromPeer(): String = fromPeer
+    /** Returns the intended recipient, or an empty string for any peer. */
     fun toPeer(): String = toPeer
+    /** Returns the signalling action. */
     fun type(): RtcSignalType = type
+    /** Returns the requested media mode. */
     fun mode(): RtcSessionMode = mode
+    /** Returns the data channel label. */
     fun dataChannelLabel(): String = dataChannelLabel
+    /** Returns whether audio is enabled. */
     fun audioEnabled(): Boolean = audioEnabled
+    /** Returns whether video is enabled. */
     fun videoEnabled(): Boolean = videoEnabled
+    /** Returns the session description. */
     fun sdp(): String = sdp
+    /** Returns the ICE candidate text. */
     fun iceCandidate(): String = iceCandidate
+    /** Returns the media stream identifier. */
     fun sdpMid(): String = sdpMid
+    /** Returns the media line index, or -1 when absent. */
     fun sdpMLineIndex(): Int = sdpMLineIndex
+    /** Returns the optional explanatory message. */
     fun message(): String = message
 
+    /** Returns a copy of this signal with [sender] as its sender. */
     fun withSender(sender: String): RtcSignalEnvelope = RtcSignalEnvelope(
         sessionId,
         sender,
@@ -61,6 +95,7 @@ class RtcSignalEnvelope(
         message,
     )
 
+    /** Returns whether this signal is addressed to [nickname] or has no recipient. */
     fun targets(nickname: String): Boolean = toPeer.isBlank() || toPeer.equals(nickname, ignoreCase = true)
 
     override fun equals(other: Any?): Boolean =
@@ -104,14 +139,23 @@ class RtcSignalEnvelope(
     companion object {
         private fun normalize(value: String?, fallback: String): String = value ?: fallback
 
+        /** Creates a new offer with a generated session identifier. */
         @JvmStatic
         fun offer(fromPeer: String, toPeer: String, mode: RtcSessionMode, dataChannelLabel: String, sdp: String): RtcSignalEnvelope =
-            RtcSignalEnvelope(UUID.randomUUID().toString(), fromPeer, toPeer, RtcSignalType.OFFER, mode, dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), sdp, "", "", -1, "")
+            RtcSignalEnvelope(
+                UUID.randomUUID().toString(), fromPeer, toPeer, RtcSignalType.OFFER, mode,
+                dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), sdp, "", "", -1, "",
+            )
 
+        /** Creates an answer for an existing [sessionId]. */
         @JvmStatic
         fun answer(sessionId: String, fromPeer: String, toPeer: String, mode: RtcSessionMode, dataChannelLabel: String, sdp: String): RtcSignalEnvelope =
-            RtcSignalEnvelope(sessionId, fromPeer, toPeer, RtcSignalType.ANSWER, mode, dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), sdp, "", "", -1, "")
+            RtcSignalEnvelope(
+                sessionId, fromPeer, toPeer, RtcSignalType.ANSWER, mode,
+                dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), sdp, "", "", -1, "",
+            )
 
+        /** Creates an ICE candidate signal for an existing [sessionId]. */
         @JvmStatic
         fun iceCandidate(
             sessionId: String,
@@ -122,14 +166,25 @@ class RtcSignalEnvelope(
             candidate: String,
             sdpMid: String,
             sdpMLineIndex: Int,
-        ): RtcSignalEnvelope = RtcSignalEnvelope(sessionId, fromPeer, toPeer, RtcSignalType.ICE_CANDIDATE, mode, dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), "", candidate, sdpMid, sdpMLineIndex, "")
+        ): RtcSignalEnvelope = RtcSignalEnvelope(
+            sessionId, fromPeer, toPeer, RtcSignalType.ICE_CANDIDATE, mode,
+            dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), "", candidate, sdpMid, sdpMLineIndex, "",
+        )
 
+        /** Creates a hangup signal for an existing [sessionId]. */
         @JvmStatic
         fun hangup(sessionId: String, fromPeer: String, toPeer: String, mode: RtcSessionMode, dataChannelLabel: String, message: String): RtcSignalEnvelope =
-            RtcSignalEnvelope(sessionId, fromPeer, toPeer, RtcSignalType.HANGUP, mode, dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), "", "", "", -1, message)
+            RtcSignalEnvelope(
+                sessionId, fromPeer, toPeer, RtcSignalType.HANGUP, mode,
+                dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), "", "", "", -1, message,
+            )
 
+        /** Creates an error signal for an existing [sessionId]. */
         @JvmStatic
         fun error(sessionId: String, fromPeer: String, toPeer: String, mode: RtcSessionMode, dataChannelLabel: String, message: String): RtcSignalEnvelope =
-            RtcSignalEnvelope(sessionId, fromPeer, toPeer, RtcSignalType.ERROR, mode, dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), "", "", "", -1, message)
+            RtcSignalEnvelope(
+                sessionId, fromPeer, toPeer, RtcSignalType.ERROR, mode,
+                dataChannelLabel, mode.audioEnabled(), mode.videoEnabled(), "", "", "", -1, message,
+            )
     }
 }

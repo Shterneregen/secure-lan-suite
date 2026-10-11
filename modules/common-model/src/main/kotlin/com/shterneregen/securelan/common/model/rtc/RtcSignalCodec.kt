@@ -5,8 +5,10 @@ import java.util.Base64
 import java.util.LinkedHashMap
 import java.util.Objects
 
+/** Encodes and decodes [RtcSignalEnvelope] values for transport as semicolon-separated fields. */
 class RtcSignalCodec private constructor() {
     companion object {
+        /** Serializes [envelope] using version 1 of the signalling format. */
         @JvmStatic
         fun serialize(envelope: RtcSignalEnvelope): String {
             Objects.requireNonNull(envelope, "envelope must not be null")
@@ -29,6 +31,12 @@ class RtcSignalCodec private constructor() {
             return fields.entries.joinToString(";") { entry -> "${entry.key}=${entry.value}" }
         }
 
+        /**
+         * Parses a signalling [payload]. Missing fields use the envelope's default values;
+         * unknown fields and tokens without an equals sign are ignored.
+         *
+         * @throws IllegalArgumentException if a field has an invalid enum, number, or Base64 value.
+         */
         @JvmStatic
         fun deserialize(payload: String): RtcSignalEnvelope {
             Objects.requireNonNull(payload, "payload must not be null")

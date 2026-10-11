@@ -1,8 +1,17 @@
 package com.shterneregen.securelan.common.model
 
 import java.time.Instant
-import java.util.Objects
 
+/**
+ * A single chat message.
+ *
+ * @property id identifier for this message.
+ * @property senderId identifier of the sending peer.
+ * @property recipientId identifier of the intended recipient.
+ * @property content text body; must not be blank.
+ * @property createdAt time at which the message was created.
+ * @throws IllegalArgumentException if [content] is blank.
+ */
 @JvmRecord
 data class ChatMessage(
     val id: String,
@@ -12,11 +21,6 @@ data class ChatMessage(
     val createdAt: Instant,
 ) {
     init {
-        Objects.requireNonNull(id, "id must not be null")
-        Objects.requireNonNull(senderId, "senderId must not be null")
-        Objects.requireNonNull(recipientId, "recipientId must not be null")
-        Objects.requireNonNull(content, "content must not be null")
-        Objects.requireNonNull(createdAt, "createdAt must not be null")
         require(content.isNotBlank()) { "content must not be blank" }
     }
 }

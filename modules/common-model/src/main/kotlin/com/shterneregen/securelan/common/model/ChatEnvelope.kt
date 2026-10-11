@@ -1,14 +1,13 @@
 package com.shterneregen.securelan.common.model
 
-import java.util.Objects
-
+/**
+ * Pairs a [ChatMessage] with its current [DeliveryStatus].
+ *
+ * @property message chat message being tracked.
+ * @property status current delivery status of the message.
+ */
 @JvmRecord
 data class ChatEnvelope(
     val message: ChatMessage,
     val status: DeliveryStatus,
-) {
-    init {
-        Objects.requireNonNull(message, "message must not be null")
-        Objects.requireNonNull(status, "status must not be null")
-    }
-}
+)

@@ -1,7 +1,13 @@
 package com.shterneregen.securelan.common.model
 
-import java.util.Objects
-
+/**
+ * Network address and security preference for a connection.
+ *
+ * @property host hostname or IP address of the remote endpoint.
+ * @property port port number in the range `1..65535`.
+ * @property secure whether a secure connection is requested.
+ * @throws IllegalArgumentException if [port] is outside the valid range.
+ */
 @JvmRecord
 data class ConnectionInfo(
     val host: String,
@@ -9,7 +15,6 @@ data class ConnectionInfo(
     val secure: Boolean,
 ) {
     init {
-        Objects.requireNonNull(host, "host must not be null")
         require(port in 1..65_535) { "port must be between 1 and 65535" }
     }
 }

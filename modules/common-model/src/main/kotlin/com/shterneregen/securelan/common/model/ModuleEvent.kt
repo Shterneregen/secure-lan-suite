@@ -1,19 +1,19 @@
 package com.shterneregen.securelan.common.model
 
 import java.time.Instant
-import java.util.Objects
 
+/**
+ * An application event associated with a specific [module].
+ *
+ * @property module module that emitted the event.
+ * @property type kind of event.
+ * @property message event description; an empty string is allowed.
+ * @property createdAt time at which the event was created.
+ */
 @JvmRecord
 data class ModuleEvent(
     val module: ModuleType,
     val type: AppEventType,
     val message: String,
     val createdAt: Instant,
-) {
-    init {
-        Objects.requireNonNull(module, "module must not be null")
-        Objects.requireNonNull(type, "type must not be null")
-        Objects.requireNonNull(message, "message must not be null")
-        Objects.requireNonNull(createdAt, "createdAt must not be null")
-    }
-}
+)
