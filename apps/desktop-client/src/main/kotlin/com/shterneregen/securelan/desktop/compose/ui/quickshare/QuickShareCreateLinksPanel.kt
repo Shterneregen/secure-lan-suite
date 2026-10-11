@@ -315,6 +315,7 @@ private fun TextLinkForm(
             value = textDraft,
             onValueChange = onTextDraftChange,
             label = { Text("Text to share") },
+            placeholder = { Text("Paste a message, note, or short instruction") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 2,
             maxLines = 4,

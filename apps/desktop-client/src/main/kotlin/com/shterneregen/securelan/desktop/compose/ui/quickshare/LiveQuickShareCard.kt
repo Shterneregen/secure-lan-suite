@@ -34,7 +34,8 @@ internal fun LiveQuickShareCard(hostAdapter: ComposeDesktopHostAdapter) {
         )
     }
     var filePath by remember { mutableStateOf("") }
-    var textDraft by remember { mutableStateOf("SecureLanSuite quick-share text") }
+    // Keep the text mode empty so a click can never publish placeholder content by accident.
+    var textDraft by remember { mutableStateOf("") }
     var expirationMinutes by remember { mutableStateOf("10") }
     var accessLimit by remember { mutableStateOf("3") }
     var useCustomPort by remember { mutableStateOf(false) }

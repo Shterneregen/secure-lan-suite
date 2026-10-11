@@ -1,17 +1,12 @@
 package com.shterneregen.securelan.desktop.compose.ui.quickshare
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Checkbox
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
@@ -35,117 +30,117 @@ internal fun QuickShareAdvancedPanel(
     unlimitedAccess: Boolean,
     onUnlimitedAccessChange: (Boolean) -> Unit,
 ) {
+    var customExpiration by remember { mutableStateOf(!noExpiration && expirationMinutes !in listOf("10", "60")) }
+    var customLimit by remember { mutableStateOf(!unlimitedAccess && accessLimit !in listOf("1", "3", "10")) }
     ComposeAdvancedPane(title = "Advanced") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PolicyField(
-                    label = "Link expires after",
-                    value = expirationMinutes,
-                    suffix = "minutes",
-                    enabled = !noExpiration,
-                    error = state.expirationValidationMessage,
-                    onValueChange = {
-                        onNoExpirationChange(false)
-                        onExpirationMinutesChange(it)
-                    },
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    PresetButton("10 min", !noExpiration && expirationMinutes == "10") {
-                        onNoExpirationChange(false)
-                        onExpirationMinutesChange("10")
+            PolicySelector(
+                label = "Link lifetime",
+                value = when {
+                    noExpiration -> "Until stopped"
+                    customExpiration -> "Custom duration"
+                    expirationMinutes == "60" -> "1 hour"
+                    else -> "10 minutes"
+                },
+                options = listOf("10 minutes", "1 hour", "Until stopped", "Custom duration"),
+                onSelected = { option ->
+                    customExpiration = option == "Custom duration"
+                    onNoExpirationChange(option == "Until stopped")
+                    when (option) {
+                        "10 minutes" -> onExpirationMinutesChange("10")
+                        "1 hour" -> onExpirationMinutesChange("60")
                     }
-                    PresetButton("1 hour", !noExpiration && expirationMinutes == "60") {
-                        onNoExpirationChange(false)
-                        onExpirationMinutesChange("60")
+                },
+            )
+            if (customExpiration && !noExpiration) {
+                PolicyField("Minutes", expirationMinutes, true, state.expirationValidationMessage, onExpirationMinutesChange)
+            }
+            PolicySelector(
+                label = "Download limit",
+                value = when {
+                    unlimitedAccess -> "Unlimited"
+                    customLimit -> "Custom limit"
+                    accessLimit == "1" -> "1 download"
+                    else -> "$accessLimit downloads"
+                },
+                options = listOf("1 download", "3 downloads", "10 downloads", "Unlimited", "Custom limit"),
+                onSelected = { option ->
+                    customLimit = option == "Custom limit"
+                    onUnlimitedAccessChange(option == "Unlimited")
+                    when (option) {
+                        "1 download" -> onAccessLimitChange("1")
+                        "3 downloads" -> onAccessLimitChange("3")
+                        "10 downloads" -> onAccessLimitChange("10")
                     }
-                    PresetButton("Until stopped", noExpiration) {
-                        onNoExpirationChange(true)
-                    }
-                }
-
-                PolicyField(
-                    label = "Download limit",
-                    value = accessLimit,
-                    suffix = "downloads",
-                    enabled = !unlimitedAccess,
-                    error = state.accessValidationMessage,
-                    onValueChange = {
-                        onUnlimitedAccessChange(false)
-                        onAccessLimitChange(it)
-                    },
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    listOf("1", "3", "10").forEach { preset ->
-                        PresetButton(preset, !unlimitedAccess && accessLimit == preset) {
-                            onUnlimitedAccessChange(false)
-                            onAccessLimitChange(preset)
-                        }
-                    }
-                    PresetButton("Unlimited", unlimitedAccess) {
-                        onUnlimitedAccessChange(true)
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(
-                        checked = useCustomPort,
-                        onCheckedChange = onUseCustomPortChange,
-                        enabled = !state.running,
-                    )
-                    Text(
-                        text = "Use custom port",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.body2,
-                    )
-                }
-                if (useCustomPort) {
-                    PolicyField(
-                        label = "Port",
-                        value = port,
-                        suffix = "",
-                        enabled = !state.running,
-                        error = state.portValidationMessage,
-                        onValueChange = onPortChange,
-                    )
-                }
-                if (state.running) {
-                    Text(
-                        text = "Stop Quick Share before changing its port. Link-policy changes apply only to new links.",
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
-                    )
-                }
-                if (!state.serverError.isNullOrBlank()) {
-                    Text(
-                        text = state.serverError,
-                        style = MaterialTheme.typography.caption,
-                        color = MaterialTheme.colors.error,
-                    )
-                }
-
+                },
+            )
+            if (customLimit && !unlimitedAccess) {
+                PolicyField("Number of downloads", accessLimit, true, state.accessValidationMessage, onAccessLimitChange)
+            }
+            Text(
+                "Applies to new links.",
+                style = MaterialTheme.typography.caption,
+                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().toggleable(
+                    value = useCustomPort,
+                    enabled = !state.running,
+                    role = Role.Checkbox,
+                    onValueChange = onUseCustomPortChange,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = useCustomPort, onCheckedChange = null, enabled = !state.running)
+                Text("Use custom port", style = MaterialTheme.typography.body2)
+            }
+            if (useCustomPort) {
+                PolicyField("Port", port, !state.running, state.portValidationMessage, onPortChange)
+            }
+            if (state.running && useCustomPort) {
                 Text(
-                    text = state.policySentence,
+                    "Stop sharing to change the port.",
                     style = MaterialTheme.typography.caption,
-                    color = if (
-                        state.expirationValidationMessage == null &&
-                        state.accessValidationMessage == null &&
-                        state.portValidationMessage == null
-                    ) {
-                        MaterialTheme.colors.primary
-                    } else {
-                        MaterialTheme.colors.onSurface.copy(alpha = 0.58f)
-                    },
-                    modifier = Modifier.padding(horizontal = 2.dp),
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
                 )
+            }
+            state.serverError?.takeIf { it.isNotBlank() && (!useCustomPort || it != state.portValidationMessage) }?.let {
+                Text(it, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.error)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PolicySelector(
+    label: String,
+    value: String,
+    options: List<String>,
+    onSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f))
+        Box(Modifier.fillMaxWidth()) {
+            CompactButton(
+                onClick = { expanded = true },
+                tone = CompactButtonTone.TERTIARY,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(value, modifier = Modifier.weight(1f))
+                Text("⌄")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { option ->
+                    DropdownMenuItem(onClick = {
+                        expanded = false
+                        onSelected(option)
+                    }) {
+                        Text(option, color = if (option == value) MaterialTheme.colors.primary else MaterialTheme.colors.onSurface)
+                    }
+                }
+            }
         }
     }
 }
@@ -154,57 +149,20 @@ internal fun QuickShareAdvancedPanel(
 private fun PolicyField(
     label: String,
     value: String,
-    suffix: String,
     enabled: Boolean,
     error: String?,
     onValueChange: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-        )
-        Row(
+        CompactTextField(
+            value = value,
+            onValueChange = { onValueChange(it.filter(Char::isDigit)) },
+            label = label,
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CompactTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = "",
-                enabled = enabled,
-                modifier = Modifier.weight(1f),
-            )
-            if (suffix.isNotBlank()) {
-                Text(
-                    text = suffix,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f),
-                )
-            }
-        }
+        )
         if (!error.isNullOrBlank()) {
-            Text(
-                text = error,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.error,
-            )
+            Text(error, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.error)
         }
-    }
-}
-
-@Composable
-private fun PresetButton(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    CompactButton(
-        onClick = onClick,
-        tone = if (selected) CompactButtonTone.SECONDARY else CompactButtonTone.TERTIARY,
-    ) {
-        Text(label)
     }
 }

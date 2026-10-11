@@ -1,15 +1,14 @@
 package com.shterneregen.securelan.desktop.compose.state.quickshare
 
 import com.shterneregen.securelan.common.net.NetworkConstants
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeEmptyStateVisualWeight
 import com.shterneregen.securelan.desktop.ui.DesktopQuickShareFormatters
 import com.shterneregen.securelan.desktop.ui.QuickShareEntry
 
-public data class ComposeQuickShareState(
+data class ComposeQuickShareState(
     val running: Boolean = false,
     val portText: String = NetworkConstants.DEFAULT_QUICK_SHARE_PORT.toString(),
     val selectedFilePath: String = "",
-    val textDraft: String = "SecureLanSuite quick-share text",
+    val textDraft: String = "",
     val expirationMinutesText: String = "10",
     val accessLimitText: String = "3",
     val useCustomPort: Boolean = false,
@@ -36,15 +35,14 @@ public data class ComposeQuickShareState(
     val hasText: Boolean = textDraft.trim().isNotEmpty()
     val activeEntries: List<QuickShareEntry> = entries.filter { it.active() }
     val inactiveEntries: List<QuickShareEntry> = entries.filterNot { it.active() }
-    val statusText: String = if (running && port != null) DesktopQuickShareFormatters.formatServerStatus() else "Quick share is stopped"
+    val statusText: String =
+        if (running && port != null) DesktopQuickShareFormatters.formatServerStatus() else "Quick share is stopped"
     val statusDetail: String = if (running) {
-        "Links are available until their time or access limit is reached."
+        "Sharing is ready. Links expire according to the policy below."
     } else {
-        "Choose a file or enter text, then create a link. Quick Share starts automatically."
+        "Choose a file or enter text. Sharing starts automatically when you create the link."
     }
     val landingText: String = DesktopQuickShareFormatters.formatLandingValue(landingUrls)
-    val trustedLanWarning: String =
-        "Trusted LAN only. These links have no login, so stop shares when everyone has downloaded them."
     val canStartServer: Boolean = !running && port != null
     val canStopServer: Boolean = running
     val canCreateFileShare: Boolean = hasSelectedFile && expirationPolicyValid && accessPolicyValid
@@ -52,7 +50,6 @@ public data class ComposeQuickShareState(
     val canCreateFileLinkNow: Boolean = canCreateFileShare && port != null
     val canCreateTextLinkNow: Boolean = canCreateTextShare && port != null
     val canCopyIndex: Boolean = running && landingUrls.isNotEmpty()
-    val shareRows: List<String> = entries.map { DesktopQuickShareFormatters.formatSnapshotMeta(it.snapshot()) }
     val activeShareCountLabel: String = when (activeEntries.size) {
         0 -> "No active links"
         1 -> "1 active link"
@@ -64,8 +61,10 @@ public data class ComposeQuickShareState(
         else -> "${inactiveEntries.size} stopped or expired links"
     }
     val linkPolicySummary: String = buildList {
-        add(if (noExpiration) "available until stopped" else expirationMinutes?.let { "expires after $it min" } ?: "set expiration")
-        add(if (unlimitedAccess) "unlimited downloads" else accessLimit?.let { "$it downloads max" } ?: "set download limit")
+        add(if (noExpiration) "available until stopped" else expirationMinutes?.let { "expires after $it min" }
+            ?: "set expiration")
+        add(if (unlimitedAccess) "unlimited downloads" else accessLimit?.let { "$it downloads max" }
+            ?: "set download limit")
     }.joinToString(" · ")
     val policySentence: String = when {
         noExpiration && unlimitedAccess -> "Link remains available until stopped, with unlimited downloads."
@@ -87,7 +86,7 @@ public data class ComposeQuickShareState(
     } else {
         "Ready to create temporary browser links"
     }
-    val createLinkHint: String = "Creating a link starts Quick Share automatically."
+    val createLinkHint: String = "Creating a link starts sharing automatically."
     val readinessSummary: String = buildList {
         if (port == null) add("Enter a valid port from 1 to 65535.")
         if (!expirationPolicyValid) add("Set expiration to at least 1 minute.")
@@ -113,13 +112,6 @@ public data class ComposeQuickShareState(
     } else {
         "$emptySharesExplanation $emptySharesNextAction to create links for this LAN."
     }
-    val emptySharesStructuredCopy: List<String> = listOf(emptySharesSituation, emptySharesExplanation, emptySharesNextAction)
-    val emptySharesVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.INLINE
-    val quickStartSteps: List<String> = listOf(
-        "1. Choose a file or type text.",
-        "2. Create a link; Quick Share starts automatically.",
-        "3. Send the link to trusted LAN peers.",
-    )
     val primaryLandingUrl: String = DesktopQuickShareFormatters.pickPrimaryLandingUrl(landingUrls, preferredHost)
     val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map { ComposeQuickShareRow.from(it, preferredHost) }
 }
