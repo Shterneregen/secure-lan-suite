@@ -10,20 +10,55 @@ import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * In-memory, thread-safe implementation of [ChatBroadcastService].
+ *
+ * Connected clients and their capabilities are stored in [ConcurrentHashMap]s keyed by nickname.
+ * Broadcast operations iterate over the map and write to each session's socket; write failures
+ * for individual sessions are swallowed to avoid one bad client from disrupting others.
+ *
+ * Signal routing enforces two security constraints:
+ * 1. The `fromPeer` field of every signal is **always overwritten** with [senderNickname] so
+ *    that clients cannot spoof each other.
+ * 2. Signals with a blank target or an unknown target nickname are silently dropped.
+ *
+ * @param historyService The [ChatHistoryService] where chat and system lines are recorded.
+ */
 class InMemoryChatBroadcastService(private val historyService: ChatHistoryService) : ChatBroadcastService {
+
     private val clients = ConcurrentHashMap<String, ChatSocketSession>()
     private val clientCapabilities = ConcurrentHashMap<String, PeerCapabilities>()
 
+    /**
+     * Registers [session] under [nickname] so it receives future broadcasts.
+     *
+     * @param nickname     The unique, registry-approved nickname of the client.
+     * @param session      The active TCP session.
+     * @param capabilities The capabilities the client advertised during the handshake.
+     */
     override fun addClient(nickname: String, session: ChatSocketSession, capabilities: PeerCapabilities) {
         clients[nickname] = session
         clientCapabilities[nickname] = capabilities
     }
 
+    /**
+     * Removes [nickname] from the broadcast list and the capabilities map.
+     *
+     * @param nickname The nickname of the client to remove.
+     */
     override fun removeClient(nickname: String) {
         clients.remove(nickname)
         clientCapabilities.remove(nickname)
     }
 
+    /**
+     * Sends a [WireMessageType.USER_JOINED] frame for each currently connected peer to [session],
+     * sorted alphabetically, so that the new client receives a complete peer list.
+     *
+     * @param session         The session of the joining client.
+     * @param excludeNickname The joining client's own nickname (excluded from the sync); `null`
+     *                        to include all clients.
+     */
     override fun syncPeers(session: ChatSocketSession, excludeNickname: String?) {
         clients.keys
             .asSequence()
@@ -35,6 +70,12 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
             }
     }
 
+    /**
+     * Broadcasts a join event and a system announcement, then records the event in history.
+     *
+     * @param nickname     The nickname of the client that joined.
+     * @param capabilities The capabilities of the joining client.
+     */
     override fun publishUserJoined(nickname: String, capabilities: PeerCapabilities) {
         val line = "[system] $nickname joined the chat"
         historyService.append(line)
@@ -42,6 +83,11 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
         broadcast(WireMessage(WireMessageType.SYSTEM, "system", line))
     }
 
+    /**
+     * Broadcasts a leave event and a system announcement, then records the event in history.
+     *
+     * @param nickname The nickname of the client that left.
+     */
     override fun publishUserLeft(nickname: String) {
         val line = "[system] $nickname left the chat"
         historyService.append(line)
@@ -49,23 +95,51 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
         broadcast(WireMessage(WireMessageType.SYSTEM, "system", line))
     }
 
+    /**
+     * Broadcasts a chat message to all connected clients and records it in history.
+     *
+     * @param senderNickname The nickname of the client who sent the message.
+     * @param text           The message text.
+     */
     override fun publishMessage(senderNickname: String, text: String) {
         val line = "$senderNickname: $text"
         historyService.append(line)
         broadcast(WireMessage(WireMessageType.CHAT, senderNickname, text))
     }
 
+    /**
+     * Routes a WebRTC signalling message to the addressed peer.
+     *
+     * The [payload] is deserialized, the sender is canonicalized to [senderNickname], and the
+     * resulting message is delivered to the target peer's session.  Signals with an invalid
+     * payload, a blank `sessionId`, or a blank/unknown target peer are silently dropped.
+     *
+     * @param senderNickname The authenticated sender's nickname.
+     * @param payload        The raw serialized [com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope].
+     */
     override fun publishSignal(senderNickname: String, payload: String) {
-        val signal = runCatching { RtcSignalCodec.deserialize(payload).withSender(senderNickname) }.getOrNull() ?: return
+        val signal = runCatching { RtcSignalCodec.deserialize(payload).withSender(senderNickname) }.getOrNull()
+            ?: return
         if (signal.toPeer().isBlank() || signal.sessionId().isBlank()) return
-        val recipient = clients.entries.firstOrNull { it.key.equals(signal.toPeer(), ignoreCase = true) }?.value ?: return
+        val recipient = clients.entries
+            .firstOrNull { it.key.equals(signal.toPeer(), ignoreCase = true) }?.value ?: return
         writeQuietly(recipient, WireMessage(WireMessageType.SIGNAL, senderNickname, RtcSignalCodec.serialize(signal)))
     }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
     private fun broadcast(message: WireMessage) {
         clients.forEach { (_, session) -> writeQuietly(session, message) }
     }
 
+    /**
+     * Writes [message] to [session], swallowing any [IOException].
+     *
+     * Individual write failures (e.g. a client that has already disconnected) must not
+     * propagate and disrupt the broadcast loop for other clients.
+     */
     private fun writeQuietly(session: ChatSocketSession, message: WireMessage) {
         try {
             session.writeMessage(message)

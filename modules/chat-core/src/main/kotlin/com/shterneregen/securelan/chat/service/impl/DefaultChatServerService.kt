@@ -19,7 +19,26 @@ import java.util.Objects
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Default production implementation of [ChatServerService].
+ *
+ * ## Architecture
+ * - A [TcpServer] accepts incoming TCP connections on a dedicated thread pool and dispatches
+ *   each connection to [handleConnection] on a separate thread.
+ * - Each connection goes through [SimpleHandshakeService]; successfully authenticated clients
+ *   are handed off to a [ServerChatSessionHandler] that blocks until the client disconnects.
+ * - [InMemoryChatBroadcastService] fan-outs messages and signals to all connected clients.
+ * - [InMemoryNicknameRegistryService] enforces case-insensitive nickname uniqueness.
+ *
+ * ## Thread safety
+ * [running] is an [AtomicBoolean].  [activeSessions] is a concurrent set.  All shared state
+ * is safe for concurrent access by [TcpServer]'s accept threads.
+ *
+ * @param eventPublisher Receives server-side lifecycle events (user joins, errors, etc.).
+ * @throws NullPointerException if [eventPublisher] is `null`.
+ */
 class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerService {
+
     private val eventPublisher: ChatEventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher")
     private val handshakeService: SecureHandshakeService = SimpleHandshakeService()
     private val nicknameRegistry: NicknameRegistryService = InMemoryNicknameRegistryService()
@@ -31,6 +50,14 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
 
     private lateinit var config: ChatServerConfig
 
+    /**
+     * Starts the TCP server on [ChatServerConfig.port].
+     *
+     * If the server is already running, this call is a no-op.
+     *
+     * @param config Server configuration (port and session password).
+     * @throws IllegalStateException if the TCP server fails to bind.
+     */
     override fun start(config: ChatServerConfig) {
         if (!running.compareAndSet(false, true)) {
             return
@@ -47,12 +74,25 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
         }
     }
 
+    /**
+     * Publishes an accept-loop error as a [ChatErrorEvent], but only while the server is
+     * still running (errors during [stop] are intentional and are suppressed).
+     */
     private fun publishAcceptError(message: String, cause: Throwable) {
         if (running.get()) {
             eventPublisher.publish(ChatErrorEvent(message, cause))
         }
     }
 
+    /**
+     * Handles a single accepted TCP connection:
+     * 1. Wraps [socket] in a [ChatSocketSession].
+     * 2. Performs the secure handshake.
+     * 3. Syncs existing peers and broadcasts the join event.
+     * 4. Runs [ServerChatSessionHandler] until the client disconnects.
+     *
+     * The session is always removed from [activeSessions] in the finally block.
+     */
     private fun handleConnection(socket: Socket) {
         if (!running.get()) {
             SocketClose.closeQuietly(socket)
@@ -62,6 +102,7 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
         try {
             session = ChatSocketSession(socket)
             activeSessions.add(session)
+            // Re-check running after adding to activeSessions; stop() may have just fired.
             if (!running.get()) {
                 session.close()
                 return
@@ -96,6 +137,9 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
         }
     }
 
+    /**
+     * Stops the server, closes all active client sessions, and clears internal state.
+     */
     override fun stop() {
         running.set(false)
         tcpServer.close()
@@ -108,11 +152,14 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
         activeSessions.clear()
     }
 
+    /** Returns `true` if the server is currently accepting connections. */
     override fun isRunning(): Boolean = running.get()
 
+    /** Returns the number of clients that have completed the handshake and are connected. */
     override fun connectedUsers(): Int = nicknameRegistry.getActiveNicknames().size
 
     companion object {
+        /** Read timeout (ms) applied to new connections during the handshake phase. */
         private const val HANDSHAKE_TIMEOUT_MILLIS = 10_000
     }
 }

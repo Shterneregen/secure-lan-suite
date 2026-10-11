@@ -22,14 +22,40 @@ import java.io.IOException
 import java.util.Objects
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Default production implementation of [ChatClientService].
+ *
+ * ## Connection flow
+ * 1. Opens a TCP connection using [ClientSocketFactory].
+ * 2. Performs the secure RSA+AES handshake via [SimpleHandshakeService] (timeout controlled by
+ *    [handshakeTimeoutMillis]).
+ * 3. On success, publishes [ChatConnectedEvent] and starts a background [ClientReceiveLoop] thread
+ *    that forwards incoming [com.shterneregen.securelan.chat.protocol.WireMessage]s as events.
+ * 4. On failure, publishes [ChatErrorEvent] and cleans up.
+ *
+ * ## Thread safety
+ * [connected] is an [AtomicBoolean].  [session] and [nickname] are only mutated from [connect]
+ * (caller's thread) before the receive loop starts, so no additional synchronization is needed
+ * for reads performed from the receive loop.
+ *
+ * @param eventPublisher        Callback that receives all [com.shterneregen.securelan.chat.event.ChatCoreEvent]s.
+ * @param clientSocketFactory   Factory used to open the TCP connection.  Defaults to [ClientSocketFactory.systemDefault].
+ * @param handshakeTimeoutMillis Read timeout (in milliseconds) applied to the session during
+ *                               the handshake phase.  Must be positive.  Defaults to 5 000 ms.
+ *
+ * @throws NullPointerException     if [eventPublisher] or [clientSocketFactory] is `null`.
+ * @throws IllegalArgumentException if [handshakeTimeoutMillis] is not positive.
+ */
 class DefaultChatClientService @JvmOverloads constructor(
     eventPublisher: ChatEventPublisher,
     clientSocketFactory: ClientSocketFactory = ClientSocketFactory.systemDefault(),
     private val handshakeTimeoutMillis: Int = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS,
 ) : ChatClientService {
+
     private val eventPublisher: ChatEventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher")
     private val handshakeService: SecureHandshakeService = SimpleHandshakeService()
-    private val clientSocketFactory: ClientSocketFactory = Objects.requireNonNull(clientSocketFactory, "clientSocketFactory")
+    private val clientSocketFactory: ClientSocketFactory =
+        Objects.requireNonNull(clientSocketFactory, "clientSocketFactory")
     private val connected = AtomicBoolean(false)
 
     private var session: ChatSocketSession? = null
@@ -40,15 +66,28 @@ class DefaultChatClientService @JvmOverloads constructor(
         require(handshakeTimeoutMillis > 0) { "Handshake timeout must be positive" }
     }
 
+    /**
+     * Connects to the server, performs the handshake, and starts the receive loop.
+     *
+     * Returns `true` immediately if already connected.
+     *
+     * @param request Connection parameters.
+     * @return `true` on success, `false` on failure.
+     */
     override fun connect(request: ChatClientConnectRequest): Boolean {
         if (connected.get()) {
             return true
         }
         try {
-            val activeSession = ChatSocketSession(clientSocketFactory.connect(TransportEndpoint.of(request.host, request.port)))
+            val activeSession = ChatSocketSession(
+                clientSocketFactory.connect(TransportEndpoint.of(request.host, request.port)),
+            )
             session = activeSession
             activeSession.setReadTimeout(handshakeTimeoutMillis)
-            val response = handshakeService.performClientHandshake(activeSession, HandshakeRequest(request.nickname, request.sessionPassword, request.capabilities))
+            val response = handshakeService.performClientHandshake(
+                activeSession,
+                HandshakeRequest(request.nickname, request.sessionPassword, request.capabilities),
+            )
             if (!response.accepted()) {
                 eventPublisher.publish(ChatErrorEvent(response.reason(), null))
                 disconnect()
@@ -58,7 +97,10 @@ class DefaultChatClientService @JvmOverloads constructor(
             nickname = response.nickname()
             connected.set(true)
             eventPublisher.publish(ChatConnectedEvent(nickname, activeSession.remoteAddress(), request.capabilities))
-            receiverThread = Thread(ClientReceiveLoop(activeSession, nickname, connected, eventPublisher), "chat-client-receive-loop").also { it.start() }
+            receiverThread = Thread(
+                ClientReceiveLoop(activeSession, nickname, connected, eventPublisher),
+                "chat-client-receive-loop",
+            ).also { it.start() }
             return true
         } catch (e: IOException) {
             eventPublisher.publish(ChatErrorEvent("Unable to connect to chat server", e))
@@ -67,6 +109,10 @@ class DefaultChatClientService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Sends a graceful `DISCONNECT` frame, closes the session, and publishes
+     * [ChatDisconnectedEvent] if the client was connected or had a nickname.
+     */
     override fun disconnect() {
         val wasConnected = connected.getAndSet(false)
         val activeSession = session
@@ -86,6 +132,13 @@ class DefaultChatClientService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Sends a chat message to the server.
+     *
+     * Silently ignored if not connected, [text] is `null`, or [text] is blank.
+     *
+     * @param text The message text to send.
+     */
     override fun sendMessage(text: String?) {
         val activeSession = session
         if (!connected.get() || text.isNullOrBlank() || activeSession == null) {
@@ -99,6 +152,14 @@ class DefaultChatClientService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Sends a WebRTC signalling envelope to the server.
+     *
+     * The sender field of [signal] is overwritten with the local [nickname] to prevent spoofing.
+     * Silently ignored if not connected or [signal] is `null`.
+     *
+     * @param signal The [RtcSignalEnvelope] to forward.
+     */
     override fun sendSignal(signal: RtcSignalEnvelope?) {
         val activeSession = session
         if (!connected.get() || signal == null || activeSession == null) {
@@ -106,15 +167,19 @@ class DefaultChatClientService @JvmOverloads constructor(
         }
         try {
             val outboundSignal = signal.withSender(nickname ?: signal.fromPeer())
-            activeSession.writeMessage(WireMessage(WireMessageType.SIGNAL, outboundSignal.fromPeer(), RtcSignalCodec.serialize(outboundSignal)))
+            activeSession.writeMessage(
+                WireMessage(WireMessageType.SIGNAL, outboundSignal.fromPeer(), RtcSignalCodec.serialize(outboundSignal)),
+            )
         } catch (e: IOException) {
             eventPublisher.publish(ChatErrorEvent("Unable to send realtime signal", e))
         }
     }
 
+    /** Returns `true` if an authenticated session is currently active. */
     override fun isConnected(): Boolean = connected.get()
 
     companion object {
+        /** Default read timeout (in milliseconds) applied during the handshake phase. */
         private const val DEFAULT_HANDSHAKE_TIMEOUT_MILLIS = 5_000
     }
 }

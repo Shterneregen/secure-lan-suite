@@ -16,10 +16,34 @@ import java.util.Objects
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * UDP broadcast-based implementation of [PeerDiscoveryService].
+ *
+ * ## How it works
+ * Two daemon threads are started on [start]:
+ * - **Receiver thread** — binds to [PeerDiscoveryConfig.discoveryPort] with `SO_REUSEADDR` and
+ *   `SO_BROADCAST`, reads incoming UDP datagrams, and calls [PeerDiscoveryListener.onPeerDiscovered]
+ *   for each valid packet from a different peer.
+ * - **Announcer thread** — periodically encodes this peer's identity as a [DiscoveryMessage],
+ *   broadcasts it to all local network interfaces, and evicts stale peers whose
+ *   [DiscoveredPeer.lastSeen] is older than [PeerDiscoveryConfig.staleTimeout].
+ *
+ * Announcing can be paused/resumed at any time via [setAnnounceEnabled] without restarting the service.
+ *
+ * ## Thread safety
+ * The peer map is a [ConcurrentHashMap]; state flags use [AtomicBoolean].  All public methods
+ * are safe to call from any thread.
+ *
+ * @param broadcastAddressResolver Resolves the broadcast addresses for all active network
+ *                                 interfaces.  Defaults to the no-arg [BroadcastAddressResolver].
+ */
 class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
     broadcastAddressResolver: BroadcastAddressResolver = BroadcastAddressResolver(),
 ) : PeerDiscoveryService {
-    private val broadcastAddressResolver: BroadcastAddressResolver = Objects.requireNonNull(broadcastAddressResolver, "broadcastAddressResolver")
+
+    private val broadcastAddressResolver: BroadcastAddressResolver =
+        Objects.requireNonNull(broadcastAddressResolver, "broadcastAddressResolver")
+
     private val running = AtomicBoolean(false)
     private val announceEnabled = AtomicBoolean(false)
     private val peers = ConcurrentHashMap<String, DiscoveredPeer>()
@@ -31,6 +55,16 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
     private lateinit var config: PeerDiscoveryConfig
     private var listener: PeerDiscoveryListener? = null
 
+    /**
+     * Starts the discovery service.
+     *
+     * If the service is already running, it is stopped and restarted with the new configuration.
+     * On socket creation failure an error is reported via [PeerDiscoveryListener.onDiscoveryError]
+     * and the service is left in the stopped state.
+     *
+     * @param config   Discovery configuration.
+     * @param listener Event callback for peer and error notifications.
+     */
     override fun start(config: PeerDiscoveryConfig, listener: PeerDiscoveryListener) {
         if (running.get()) {
             stop()
@@ -60,6 +94,12 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Stops the discovery service, closes the UDP socket, and clears all known peers.
+     *
+     * Closing the socket will unblock the receiver thread.  The announcer thread is woken
+     * by the socket close because `receive()` throws [SocketException].
+     */
     override fun stop() {
         running.set(false)
         announceEnabled.set(false)
@@ -67,15 +107,37 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
         peers.clear()
     }
 
+    /**
+     * Enables or disables outbound UDP announcements without restarting the service.
+     *
+     * @param announceEnabled `true` to broadcast presence; `false` to stop broadcasting.
+     */
     override fun setAnnounceEnabled(announceEnabled: Boolean) {
         this.announceEnabled.set(announceEnabled)
     }
 
+    /** Returns `true` if the service is currently running. */
     override fun isRunning(): Boolean = running.get()
 
+    /**
+     * Returns a snapshot of all currently known peers sorted alphabetically by nickname
+     * (case-insensitive).
+     *
+     * @return An immutable list of the current peer snapshots.
+     */
     override fun snapshot(): List<DiscoveredPeer> = peers.values
         .sortedWith(Comparator.comparing(DiscoveredPeer::nickname, String.CASE_INSENSITIVE_ORDER))
 
+    // -------------------------------------------------------------------------
+    // Background thread logic
+    // -------------------------------------------------------------------------
+
+    /**
+     * Loop executed by the announcer thread.
+     *
+     * Broadcasts this peer's identity on each announce-interval tick (if announcing is enabled)
+     * and evicts stale entries after every interval.
+     */
     private fun announceLoop() {
         while (running.get()) {
             try {
@@ -93,6 +155,13 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Loop executed by the receiver thread.
+     *
+     * Blocks on [DatagramSocket.receive] and delegates each valid datagram to [handlePacket].
+     * A [SocketException] that occurs while the service is still running is reported as an error;
+     * one that occurs after [stop] is called (i.e. due to socket closure) is silently ignored.
+     */
     private fun receiveLoop() {
         val buffer = ByteArray(RECEIVE_BUFFER_SIZE)
         while (running.get()) {
@@ -110,6 +179,15 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Processes a received UDP datagram.
+     *
+     * Packets from this peer itself (matched by [PeerDiscoveryConfig.peerId]) are silently
+     * discarded.  For all others, the peer map is updated and [PeerDiscoveryListener.onPeerDiscovered]
+     * is invoked.
+     *
+     * @param packet The received datagram.
+     */
     private fun handlePacket(packet: DatagramPacket) {
         val message = DiscoveryMessageCodec.fromBytes(packet.data, packet.length)
         if (config.peerId == message.peerId) {
@@ -127,6 +205,11 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
         listener?.onPeerDiscovered(peer)
     }
 
+    /**
+     * Sends a single UDP discovery broadcast to all resolved broadcast addresses.
+     *
+     * @throws IOException if any broadcast send fails.
+     */
     @Throws(IOException::class)
     private fun announceOnce() {
         val data = DiscoveryMessageCodec.toBytes(
@@ -138,6 +221,11 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Removes peers whose [DiscoveredPeer.lastSeen] is older than [PeerDiscoveryConfig.staleTimeout].
+     *
+     * [PeerDiscoveryListener.onPeerExpired] is called for each evicted peer.
+     */
     private fun expireStalePeers() {
         val cutoff = Instant.now().minus(config.staleTimeout)
         for (peer in ArrayList(peers.values)) {
@@ -157,6 +245,7 @@ class UdpBroadcastPeerDiscoveryService @JvmOverloads constructor(
     }
 
     companion object {
+        /** Maximum UDP datagram size to buffer in the receiver thread. */
         private const val RECEIVE_BUFFER_SIZE = 1024
     }
 }

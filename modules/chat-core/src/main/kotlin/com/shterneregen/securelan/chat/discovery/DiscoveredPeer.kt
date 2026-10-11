@@ -3,6 +3,22 @@ package com.shterneregen.securelan.chat.discovery
 import java.time.Instant
 import java.util.Objects
 
+/**
+ * An immutable snapshot of a discovered LAN peer at a specific point in time.
+ *
+ * Instances are created by [com.shterneregen.securelan.chat.discovery.impl.UdpBroadcastPeerDiscoveryService]
+ * whenever a valid UDP discovery broadcast is received from a remote peer.
+ *
+ * @property peerId      A stable, unique identifier for the peer (e.g. a UUID).  Must not be blank.
+ * @property nickname    The human-readable display name advertised by the peer.  Must not be blank.
+ * @property host        The IP address from which the discovery packet was received.  Must not be blank.
+ * @property chatPort    The TCP port on which the peer is listening for chat connections (1–65 535).
+ * @property filePort    The TCP port on which the peer is listening for file-transfer connections (1–65 535).
+ * @property lastSeen    The [Instant] at which the most recent discovery packet was received.
+ *
+ * @throws IllegalArgumentException if any of the string fields is blank or either port is out of range.
+ * @throws NullPointerException     if [peerId], [nickname], [host], or [lastSeen] is `null`.
+ */
 @JvmRecord
 data class DiscoveredPeer(
     val peerId: String,
