@@ -3,7 +3,7 @@ package com.shterneregen.securelan.chat.service.impl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
-import java.util.random.RandomGenerator
+import java.util.Random
 
 class DefaultRandomNicknameServiceTest {
     @Test
@@ -29,9 +29,10 @@ class DefaultRandomNicknameServiceTest {
         assertEquals("randomGenerator must not be null", exception.message)
     }
 
-    private class FixedBoundRandomGenerator(private val index: Int) : RandomGenerator {
-        override fun nextLong(): Long = index.toLong()
-
-        override fun nextInt(bound: Int): Int = index
+    private class FixedBoundRandomGenerator(private val index: Int) : Random(0L) {
+        override fun nextInt(bound: Int): Int {
+            assertEquals(32, bound)
+            return index
+        }
     }
 }

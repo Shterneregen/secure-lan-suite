@@ -2,12 +2,13 @@ package com.shterneregen.securelan.chat.service.impl
 
 import com.shterneregen.securelan.chat.service.RandomNicknameService
 import java.security.SecureRandom
-import java.util.random.RandomGenerator
+import java.util.Random
 
 class DefaultRandomNicknameService @JvmOverloads constructor(
-    randomGenerator: RandomGenerator? = SecureRandom(),
+    // RandomGenerator is only available on Android API 35 and above.
+    randomGenerator: Random? = SecureRandom(),
 ) : RandomNicknameService {
-    private val randomGenerator: RandomGenerator =
+    private val randomGenerator: Random =
         randomGenerator ?: throw NullPointerException("randomGenerator must not be null")
 
     override fun generate(): String = NICKNAMES[randomGenerator.nextInt(NICKNAMES.size)]
