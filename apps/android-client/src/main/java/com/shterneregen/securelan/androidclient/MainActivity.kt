@@ -1,10 +1,7 @@
 package com.shterneregen.securelan.androidclient
 
-import android.annotation.SuppressLint
-import com.shterneregen.securelan.androidclient.call.CallHost
-import com.shterneregen.securelan.androidclient.call.CallButtons
-import com.shterneregen.securelan.androidclient.call.CallPhase
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -29,150 +26,64 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.exclude
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.*
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.AttachFile
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Computer
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Devices
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.outlined.Wifi
-import com.shterneregen.securelan.androidclient.model.AppLogEntry
-import com.shterneregen.securelan.androidclient.model.AppLanguage
-import com.shterneregen.securelan.androidclient.model.ChatLine
-import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
-import com.shterneregen.securelan.androidclient.model.MainUiState
-import com.shterneregen.securelan.androidclient.model.NearbyPermissionState
-import com.shterneregen.securelan.androidclient.model.PeerRole
-import com.shterneregen.securelan.androidclient.model.SecureLanPorts
-import com.shterneregen.securelan.androidclient.model.ThemeMode
-import com.shterneregen.securelan.androidclient.model.TransferDirection
-import com.shterneregen.securelan.androidclient.model.TransferRecord
-import com.shterneregen.securelan.androidclient.model.TransferResult
+import com.shterneregen.securelan.androidclient.call.CallButtons
+import com.shterneregen.securelan.androidclient.call.CallHost
+import com.shterneregen.securelan.androidclient.call.CallPhase
+import com.shterneregen.securelan.androidclient.model.*
 import com.shterneregen.securelan.androidclient.transfer.BatchStatus
 import com.shterneregen.securelan.androidclient.transfer.TransferItem
 import com.shterneregen.securelan.androidclient.transfer.TransferPhase
 import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
-import java.util.Locale
+import kotlinx.coroutines.launch
+import java.util.*
 
 private val LocalAppResources = staticCompositionLocalOf<Resources> {
     error("Localized application resources are not available")
@@ -464,13 +375,15 @@ private fun RedesignedMainScreen(
     onRetryDiscovery: () -> Unit,
     onStopDiscovery: () -> Unit,
 ) {
-    var destination by remember { mutableStateOf(PrimaryDestination.DEVICES) }
-    var settingsVisible by remember { mutableStateOf(false) }
+    var destination by rememberSaveable { mutableStateOf(PrimaryDestination.DEVICES) }
+    var settingsVisible by rememberSaveable { mutableStateOf(false) }
     var connectionSheetVisible by remember { mutableStateOf(false) }
     var manualConnectionSheetVisible by remember { mutableStateOf(false) }
     var hostRoomSheetVisible by remember { mutableStateOf(false) }
     var logsVisible by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var wasConnected by rememberSaveable { mutableStateOf(state.connected) }
     val friendlyErrorTitle = state.error?.let { stringResource(it.toFriendlyErrorTitleRes()) }
     val errorDetailsLabel = stringResource(R.string.error_details)
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -489,12 +402,13 @@ private fun RedesignedMainScreen(
     BackHandler(enabled = settingsVisible) { settingsVisible = false }
 
     LaunchedEffect(state.connected) {
-        if (state.connected) {
+        if (state.connected && !wasConnected) {
             connectionSheetVisible = false
             manualConnectionSheetVisible = false
             settingsVisible = false
             destination = PrimaryDestination.CHAT
         }
+        wasConnected = state.connected
     }
     LaunchedEffect(state.hosting) {
         if (state.hosting) hostRoomSheetVisible = false
@@ -542,8 +456,10 @@ private fun RedesignedMainScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val layoutSpec = adaptiveLayoutSpec(this.maxWidth)
+        val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val showDeviceSidebar = this.maxWidth >= 1200.dp && !settingsVisible && destination != PrimaryDestination.DEVICES
         Scaffold(
+            modifier = Modifier.imePadding(),
             topBar = {
                 RedesignedAppHeader(
                     state = state,
@@ -554,14 +470,18 @@ private fun RedesignedMainScreen(
                         else -> stringResource(destination.labelRes)
                     },
                     settingsVisible = settingsVisible,
-                    onSettingsClick = { settingsVisible = !settingsVisible },
+                    onSettingsClick = {
+                        keyboardController?.hide()
+                        settingsVisible = !settingsVisible
+                    },
                 )
             },
             bottomBar = {
-                if (!layoutSpec.usesNavigationRail) {
+                if (!layoutSpec.usesNavigationRail && !keyboardVisible) {
                     RedesignedNavigationBar(
                         selected = destination,
                         onSelected = {
+                            keyboardController?.hide()
                             settingsVisible = false
                             destination = it
                         },
@@ -581,6 +501,7 @@ private fun RedesignedMainScreen(
                     RedesignedNavigationRail(
                         selected = destination,
                         onSelected = {
+                            keyboardController?.hide()
                             settingsVisible = false
                             destination = it
                         },
@@ -600,7 +521,7 @@ private fun RedesignedMainScreen(
                     )
                     Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
                 }
-                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     if (settingsVisible) {
                         RedesignedSettingsScreen(
                             state = state,
@@ -670,11 +591,17 @@ private fun RedesignedAppHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
+                .heightIn(min = 76.dp)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (!settingsVisible) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(Icons.Outlined.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(12.dp).size(24.dp))
+                }
+            }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = title,
@@ -712,7 +639,7 @@ private fun RedesignedConnectionStatus(state: MainUiState) {
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -970,7 +897,7 @@ private fun DeviceCard(peer: DiscoveredPeer, connected: Boolean, onClick: (Disco
     Card(
         onClick = { onClick(peer) },
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        colors = CardDefaults.cardColors(containerColor = if (connected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer),
         border = BorderStroke(1.dp, if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(18.dp),
     ) {
@@ -980,9 +907,13 @@ private fun DeviceCard(peer: DiscoveredPeer, connected: Boolean, onClick: (Disco
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("SecureLan · ${peer.host}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text("SecureLan · ${peer.host}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Text(if (connected) "✓" else stringResource(R.string.connect), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Icon(
+                if (connected) Icons.Outlined.CheckCircle else Icons.Outlined.ChevronRight,
+                contentDescription = stringResource(if (connected) R.string.status_selected else R.string.connect),
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -1281,11 +1212,17 @@ private fun RedesignedChatScreen(
     layoutSpec: AdaptiveLayoutSpec,
 ) {
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    var previousMessageCount by remember { mutableStateOf(0) }
     LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
+        val nearBottom = (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= previousMessageCount - 2
+        if (state.messages.isNotEmpty() && (previousMessageCount == 0 || nearBottom || state.messages.last().outbound)) {
+            listState.animateScrollToItem(state.messages.lastIndex)
+        }
+        previousMessageCount = state.messages.size
     }
     Column(
-        modifier = Modifier.fillMaxSize().widthIn(max = layoutSpec.chatMaxWidth).padding(horizontal = layoutSpec.horizontalPadding),
+        modifier = Modifier.widthIn(max = layoutSpec.chatMaxWidth).fillMaxSize().padding(horizontal = layoutSpec.horizontalPadding),
     ) {
         if (state.connected) callActions()
         if (!state.connected && state.messages.isEmpty()) {
@@ -1300,22 +1237,34 @@ private fun RedesignedChatScreen(
             }
             return@Column
         }
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            state = listState,
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (state.messages.isEmpty()) {
-                item {
-                    RedesignedEmptyState(
-                        icon = Icons.AutoMirrored.Outlined.Chat,
-                        title = stringResource(R.string.no_messages_title),
-                        message = stringResource(R.string.no_messages_message),
-                    )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (state.messages.isEmpty()) {
+                    item {
+                        RedesignedEmptyState(
+                            icon = Icons.AutoMirrored.Outlined.Chat,
+                            title = stringResource(R.string.no_messages_title),
+                            message = stringResource(R.string.no_messages_message),
+                        )
+                    }
+                } else {
+                    items(state.messages) { ChatBubble(it, layoutSpec.chatBubbleWidthFraction) }
                 }
-            } else {
-                items(state.messages) { ChatBubble(it, layoutSpec.chatBubbleWidthFraction) }
+            }
+            if (listState.canScrollForward && state.messages.isNotEmpty()) {
+                FilledTonalButton(
+                    onClick = { coroutineScope.launch { listState.animateScrollToItem(state.messages.lastIndex) } },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                ) {
+                    Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.latest_messages))
+                }
             }
         }
         if (state.connected) {
@@ -1336,7 +1285,7 @@ private fun RedesignedChatComposer(
     onAttachFile: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).imePadding(),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -1350,6 +1299,9 @@ private fun RedesignedChatComposer(
                 modifier = Modifier.weight(1f),
                 minLines = 1,
                 maxLines = 4,
+                shape = RoundedCornerShape(18.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { if (state.inputMessage.isNotBlank()) onSendMessage() }),
             )
             IconButton(onClick = onSendMessage, enabled = state.inputMessage.isNotBlank()) {
                 Icon(Icons.AutoMirrored.Outlined.Send, stringResource(R.string.send_message), tint = if (state.inputMessage.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
@@ -1373,7 +1325,7 @@ private fun RedesignedFilesScreen(
     layoutSpec: AdaptiveLayoutSpec,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().widthIn(max = layoutSpec.contentMaxWidth),
+        modifier = Modifier.widthIn(max = layoutSpec.contentMaxWidth).fillMaxSize(),
         contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1771,7 +1723,7 @@ private fun RedesignedSettingsScreen(
     layoutSpec: AdaptiveLayoutSpec,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().widthIn(max = 760.dp),
+        modifier = Modifier.widthIn(max = 760.dp).fillMaxSize(),
         contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1790,23 +1742,18 @@ private fun RedesignedSettingsScreen(
         }
         item {
             SettingsGroup(stringResource(R.string.settings_language)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxWidth().selectableGroup()) {
                     AppLanguage.entries.forEach { language ->
-                        FilterChip(
+                        SettingsChoiceRow(
                             selected = state.appLanguage == language,
                             onClick = { onLanguageChange(language) },
-                            label = {
-                                Text(
-                                    stringResource(
-                                        when (language) {
-                                            AppLanguage.SYSTEM -> R.string.language_system
-                                            AppLanguage.ENGLISH -> R.string.language_english
-                                            AppLanguage.RUSSIAN -> R.string.language_russian
-                                        },
-                                    ),
-                                )
-                            },
-                            modifier = Modifier.weight(1f),
+                            label = stringResource(
+                                when (language) {
+                                    AppLanguage.SYSTEM -> R.string.language_system
+                                    AppLanguage.ENGLISH -> R.string.language_english
+                                    AppLanguage.RUSSIAN -> R.string.language_russian
+                                },
+                            ),
                         )
                     }
                 }
@@ -1814,19 +1761,18 @@ private fun RedesignedSettingsScreen(
         }
         item {
             SettingsGroup(stringResource(R.string.settings_theme)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxWidth().selectableGroup()) {
                     ThemeMode.entries.forEach { mode ->
-                        FilterChip(
+                        SettingsChoiceRow(
                             selected = state.themeMode == mode,
                             onClick = { onThemeModeChange(mode) },
-                            label = {
-                                Text(stringResource(when (mode) {
+                            label = stringResource(
+                                when (mode) {
                                     ThemeMode.SYSTEM -> R.string.theme_system
                                     ThemeMode.LIGHT -> R.string.theme_light
                                     ThemeMode.DARK -> R.string.theme_dark
-                                }))
-                            },
-                            modifier = Modifier.weight(1f),
+                                },
+                            ),
                         )
                     }
                 }
@@ -1885,12 +1831,33 @@ private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> 
 
 @Composable
 private fun ToggleSettingRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+private fun SettingsChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .heightIn(min = 52.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        RadioButton(selected = selected, onClick = null)
     }
 }
 
@@ -1915,9 +1882,11 @@ private fun RedesignedEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Icon(icon, contentDescription = null, modifier = Modifier.padding(20.dp).size(36.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         if (action != null && onAction != null) Button(onClick = onAction) { Text(action) }
     }
 }
@@ -1929,6 +1898,7 @@ private fun RedesignedCard(content: @Composable ColumnScope.() -> Unit) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         shape = RoundedCornerShape(18.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
@@ -3018,14 +2988,14 @@ private fun ChatBubble(line: ChatLine, widthFraction: Float) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val alignment = if (line.outbound) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (line.outbound) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-    val textColor = if (line.outbound) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-    val linkColor = if (line.outbound) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+    val bubbleColor = if (line.outbound) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+    val textColor = if (line.outbound) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    val linkColor = MaterialTheme.colorScheme.primary
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(widthFraction)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = if (line.outbound) 20.dp else 6.dp, bottomEnd = if (line.outbound) 6.dp else 20.dp))
                 .background(bubbleColor)
                 .combinedClickable(
                     onClick = {},
@@ -3037,6 +3007,9 @@ private fun ChatBubble(line: ChatLine, widthFraction: Float) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
                     text = if (line.outbound) stringResource(R.string.you) else line.sender,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelMedium,
                     color = textColor.copy(alpha = 0.76f),
                 )
@@ -3428,32 +3401,37 @@ private const val UrlAnnotationTag = "URL"
 private val UrlRegex = Regex("""(?i)\b((?:https?://|www\.)[^\s<>()]+|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+[^\s<>()]*)""")
 
 private val SecureLanDarkColors = darkColorScheme(
-    primary = Color(0xFF9AD6FF),
-    onPrimary = Color(0xFF00344F),
-    primaryContainer = Color(0xFF0E3952),
-    onPrimaryContainer = Color(0xFFD3EDFF),
+    primary = Color(0xFF8AB4FF),
+    onPrimary = Color(0xFF082F6B),
+    primaryContainer = Color(0xFF1B304D),
+    onPrimaryContainer = Color(0xFFDCE8FF),
     secondary = Color(0xFFC8DAE8),
     onSecondary = Color(0xFF22323D),
     secondaryContainer = Color(0xFF374955),
     onSecondaryContainer = Color(0xFFDDEAF4),
-    background = Color(0xFF0E1419),
+    background = Color(0xFF0B111A),
     onBackground = Color(0xFFE3E8ED),
-    surface = Color(0xFF141B21),
+    surface = Color(0xFF0F1825),
+    surfaceContainerLowest = Color(0xFF0B111A),
+    surfaceContainerLow = Color(0xFF111C2B),
+    surfaceContainer = Color(0xFF152131),
+    surfaceContainerHigh = Color(0xFF1B2A3E),
+    surfaceContainerHighest = Color(0xFF24344A),
     onSurface = Color(0xFFE3E8ED),
-    surfaceVariant = Color(0xFF3F4850),
+    surfaceVariant = Color(0xFF24344A),
     onSurfaceVariant = Color(0xFFC0C8D0),
     outline = Color(0xFF89939C),
-    outlineVariant = Color(0xFF3F4850),
+    outlineVariant = Color(0xFF2C3E56),
     error = Color(0xFFFFB4AB),
     errorContainer = Color(0xFF93000A),
     onErrorContainer = Color(0xFFFFDAD6),
 )
 
 private val SecureLanLightColors = lightColorScheme(
-    primary = Color(0xFF00658F),
+    primary = Color(0xFF2864C7),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFC8E6FF),
-    onPrimaryContainer = Color(0xFF001E2E),
+    primaryContainer = Color(0xFFDCE8FF),
+    onPrimaryContainer = Color(0xFF123263),
     secondary = Color(0xFF50606B),
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFD4E4F1),
@@ -3461,6 +3439,11 @@ private val SecureLanLightColors = lightColorScheme(
     background = Color(0xFFF7FAFD),
     onBackground = Color(0xFF181C20),
     surface = Color(0xFFFFFFFF),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF1F5FC),
+    surfaceContainer = Color(0xFFEDF2FA),
+    surfaceContainerHigh = Color(0xFFE5ECF7),
+    surfaceContainerHighest = Color(0xFFDCE5F2),
     onSurface = Color(0xFF181C20),
     surfaceVariant = Color(0xFFDDE3EA),
     onSurfaceVariant = Color(0xFF41484D),

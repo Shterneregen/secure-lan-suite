@@ -69,6 +69,8 @@
     <string name="hide_password">Hide password</string>
     <string name="connecting">Connecting…</string>
     <string name="chat_title">Chat</string>
+    <string name="latest_messages">Latest messages</string>
+    <string name="status_selected">Selected</string>
     <string name="connect_first_title">Connect to start chatting</string>
     <string name="connect_first_message">Choose a device on the Devices screen. Your messages stay inside the local network.</string>
     <string name="choose_device">Choose device</string>

@@ -71,6 +71,8 @@
     <string name="hide_password">Скрыть пароль</string>
     <string name="connecting">Подключение…</string>
     <string name="chat_title">Чат</string>
+    <string name="latest_messages">К последним сообщениям</string>
+    <string name="status_selected">Выбрано</string>
     <string name="connect_first_title">Подключитесь, чтобы начать чат</string>
     <string name="connect_first_message">Выберите устройство на экране «Устройства». Сообщения останутся внутри локальной сети.</string>
     <string name="choose_device">Выбрать устройство</string>
