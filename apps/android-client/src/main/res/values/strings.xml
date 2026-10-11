@@ -1,9 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="quick_share_qr_title">Quick Share QR code</string>
+    <string name="quick_share_intro">Create temporary links for people on your local network. Anyone with a link can access it.</string>
+    <string name="quick_share_address">LAN address: %1$s</string>
+    <string name="quick_share_text_input">Text to share</string>
+    <string name="quick_share_expiration">Expires (minutes)</string>
+    <string name="quick_share_limit">Opens (blank = unlimited)</string>
+    <string name="quick_share_create_text">Create text link</string>
+    <string name="quick_share_create_file">Share file</string>
+    <string name="quick_share_empty">No active links yet.</string>
+    <string name="quick_share_text_type">Text</string>
+    <string name="quick_share_file_type">File</string>
+    <string name="quick_share_accesses">%1$s · Opens: %2$s</string>
+    <string name="quick_share_copy_link">Copy link</string>
+    <string name="quick_share_stop">Stop</string>
+    <string name="quick_share_show_qr">Show QR code</string>
+    <string name="quick_share_qr_description">QR code for the shared link</string>
+    <string name="quick_share_qr_hint">Scan on another device connected to the same local network.</string>
+    <string name="quick_share_qr_close">Close</string>
     <string name="app_name">SecureLan</string>
     <string name="nav_devices">Devices</string>
     <string name="nav_chat">Chat</string>
     <string name="nav_files">Files</string>
+    <string name="nav_quick_share">Quick Share</string>
     <string name="settings">Settings</string>
     <string name="back">Back</string>
     <string name="status_connected">Connected to %1$s</string>

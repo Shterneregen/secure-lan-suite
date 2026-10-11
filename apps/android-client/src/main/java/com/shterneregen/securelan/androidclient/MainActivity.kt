@@ -8,7 +8,6 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.content.res.Resources
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -82,12 +81,10 @@ import com.shterneregen.securelan.androidclient.transfer.TransferPhase
 import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
+import com.shterneregen.securelan.androidclient.ui.QuickShareScreen
+import com.shterneregen.securelan.androidclient.ui.LocalAppResources
 import kotlinx.coroutines.launch
 import java.util.*
-
-private val LocalAppResources = staticCompositionLocalOf<Resources> {
-    error("Localized application resources are not available")
-}
 
 private val LocalActivityContext = staticCompositionLocalOf<Context> {
     error("Activity context is not available")
@@ -197,6 +194,7 @@ private fun SecureLanAndroidApp(
 ) {
     val state by viewModel.uiState.collectAsState()
     val queue by viewModel.transferQueue.collectAsState()
+    val quickShares by viewModel.quickShares.collectAsState()
     val baseContext = LocalContext.current
     val activityResultRegistryOwner = requireNotNull(LocalActivityResultRegistryOwner.current) {
         "SecureLan must be hosted by an ActivityResultRegistryOwner"
@@ -239,6 +237,12 @@ private fun SecureLanAndroidApp(
                             callActions = { CallButtons(state.callPeers, state.connected, requestCall) },
                             state = state,
                             queue = queue,
+                            quickShares = quickShares,
+                            quickShareUrls = viewModel.quickShareUrls,
+                            onQuickShareText = viewModel::createQuickShareText,
+                            onQuickShareFile = viewModel::createQuickShareFile,
+                            onStopQuickShare = viewModel::stopQuickShare,
+                            onQuickShareRefresh = viewModel::refreshQuickShares,
                             onNicknameChange = viewModel::updateNickname,
                             onPasswordChange = viewModel::updateSessionPassword,
                             onThemeModeChange = viewModel::updateThemeMode,
@@ -341,6 +345,7 @@ private enum class PrimaryDestination(val labelRes: Int, val icon: ImageVector) 
     DEVICES(R.string.nav_devices, Icons.Outlined.Devices),
     CHAT(R.string.nav_chat, Icons.AutoMirrored.Outlined.Chat),
     FILES(R.string.nav_files, Icons.Outlined.Description),
+    QUICK_SHARE(R.string.nav_quick_share, Icons.Outlined.Share),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -349,6 +354,12 @@ private fun RedesignedMainScreen(
     callActions: @Composable () -> Unit,
     state: MainUiState,
     queue: TransferQueueState,
+    quickShares: List<com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem>,
+    quickShareUrls: List<String>,
+    onQuickShareText: (String, Long, Int?) -> Unit,
+    onQuickShareFile: (android.net.Uri, String, Long, Int?) -> Unit,
+    onStopQuickShare: (String) -> Unit,
+    onQuickShareRefresh: () -> Unit,
     onNicknameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -392,6 +403,20 @@ private fun RedesignedMainScreen(
             settingsVisible = false
             destination = PrimaryDestination.FILES
         }
+    }
+    var quickSharePickerPending by remember { mutableStateOf(false) }
+    var quickShareFilePolicy by remember { mutableStateOf<Pair<Long, Int?>>(60L to 1) }
+    val shareContext = LocalContext.current
+    val quickSharePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val name = runCatching {
+                shareContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "shared-file"
+            onQuickShareFile(uri, name, quickShareFilePolicy.first, quickShareFilePolicy.second)
+        }
+        quickSharePickerPending = false
     }
     val launchFilePicker: () -> Unit = {
         if (onBeginFileSelection()) {
@@ -572,6 +597,14 @@ private fun RedesignedMainScreen(
                             onStopAfterCurrent = onStopAfterCurrentFile,
                             onChooseDevice = { destination = PrimaryDestination.DEVICES },
                             layoutSpec = layoutSpec,
+                        )
+                        PrimaryDestination.QUICK_SHARE -> QuickShareScreen(
+                            items = quickShares,
+                            urls = quickShareUrls,
+                            onShareText = onQuickShareText,
+                            onChooseFile = { duration, limit -> quickShareFilePolicy = duration to limit; quickSharePickerPending = true; quickSharePicker.launch(arrayOf("*/*")) },
+                            onStop = onStopQuickShare,
+                            onRefresh = onQuickShareRefresh,
                         )
                     }
                 }

@@ -39,6 +39,8 @@ import com.shterneregen.securelan.androidclient.network.AndroidHostServiceState
 import com.shterneregen.securelan.androidclient.network.SecureChatClient
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.androidclient.network.SecureFileSender
+import com.shterneregen.securelan.androidclient.network.AndroidQuickShareServer
+import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.androidclient.transfer.BatchStatus
 import com.shterneregen.securelan.androidclient.transfer.TransferCoordinator
@@ -69,6 +71,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val fileSender = SecureFileSender(application.contentResolver, application.cacheDir)
     private val fileReceiver = SecureFileReceiver(application)
     private val localNetworkAddressResolver = AndroidLocalNetworkAddressResolver(application)
+    private val quickShareServer = AndroidQuickShareServer(application.contentResolver, application.cacheDir)
+    private val _quickShares = MutableStateFlow<List<AndroidQuickShareItem>>(emptyList())
+    val quickShares: StateFlow<List<AndroidQuickShareItem>> = _quickShares.asStateFlow()
+    @Volatile var quickShareUrls: List<String> = emptyList(); private set
+
+    fun createQuickShareText(text: String, minutes: Long, limit: Int?) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { quickShareServer.createText(text, minutes, limit) }.onSuccess { refreshQuickShares() } }
+    }
+    fun createQuickShareFile(uri: Uri, name: String, minutes: Long, limit: Int?) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { quickShareServer.createFile(uri, name, minutes, limit) }.onSuccess { refreshQuickShares() } }
+    }
+    fun stopQuickShare(id: String) { quickShareServer.stopShare(id); refreshQuickShares() }
+    fun refreshQuickShares() { _quickShares.value = quickShareServer.items(); quickShareUrls = quickShareServer.urls }
 
     private var connectionGeneration = 0L
     private val transferCoordinator = TransferCoordinator(
@@ -1092,6 +1107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        quickShareServer.close()
         calls.close()
         incomingCallNotification.clear()
         discoveryJob?.cancel()

@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="quick_share_qr_title">QR-код Quick Share</string>
+    <string name="quick_share_intro">Создавайте временные ссылки для устройств в локальной сети. Любой, у кого есть ссылка, может открыть её.</string>
+    <string name="quick_share_address">Адрес в локальной сети: %1$s</string>
+    <string name="quick_share_text_input">Текст для отправки</string>
+    <string name="quick_share_expiration">Срок (минуты)</string>
+    <string name="quick_share_limit">Открытия (пусто = без лимита)</string>
+    <string name="quick_share_create_text">Создать ссылку</string>
+    <string name="quick_share_create_file">Поделиться файлом</string>
+    <string name="quick_share_empty">Активных ссылок пока нет.</string>
+    <string name="quick_share_text_type">Текст</string>
+    <string name="quick_share_file_type">Файл</string>
+    <string name="quick_share_accesses">%1$s · Открытия: %2$s</string>
+    <string name="quick_share_copy_link">Копировать ссылку</string>
+    <string name="quick_share_stop">Остановить</string>
+    <string name="quick_share_show_qr">Показать QR-код</string>
+    <string name="quick_share_qr_description">QR-код ссылки для доступа</string>
+    <string name="quick_share_qr_hint">Отсканируйте на другом устройстве в той же локальной сети.</string>
+    <string name="quick_share_qr_close">Закрыть</string>
+    <string name="nav_quick_share">Быстрая отправка</string>
     <string name="app_name">SecureLan</string>
     <string name="nav_devices">Устройства</string>
     <string name="nav_chat">Чат</string>
