@@ -61,6 +61,13 @@ def rawProjectVersion = project.version.toString()
 def appVersion = rawProjectVersion.replaceAll(/-SNAPSHOT$/, '')
 def mainJarName = "${project.name}-${project.version}.jar"
 
+tasks.named('processResources') {
+    inputs.property('secureLanVersion', appVersion)
+    filesMatching('securelan-version.properties') {
+        expand(secureLanVersion: appVersion)
+    }
+}
+
 def packageInputDir = layout.buildDirectory.dir('package-input')
 def packageOutputDir = layout.buildDirectory.dir('packaging')
 def appImageDir = packageOutputDir.map { it.dir(appName) }
@@ -132,7 +139,8 @@ tasks.named('jar') {
 
     manifest {
         attributes(
-                'Main-Class': application.mainClass.get()
+                'Main-Class': application.mainClass.get(),
+                'Implementation-Version': appVersion
         )
     }
 }

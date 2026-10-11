@@ -9,10 +9,12 @@ import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimenta
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import java.util.Properties
 
 object ComposeShellMetadata {
-    const val WINDOW_TITLE: String = "SecureLanSuite Chat"
     const val APP_NAME: String = "SecureLanSuite"
+    val APP_VERSION: String = loadAppVersion()
+    val WINDOW_TITLE: String = "$APP_NAME $APP_VERSION"
 
     // Composer pinning / overflow-safe startup layout constants
     val COMPOSER_MIN_HEIGHT: Dp = 52.dp
@@ -58,4 +60,9 @@ object ComposeShellMetadata {
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
         workspaceState = DEFAULT_WORKSPACE_STATE,
     )
+
+    private fun loadAppVersion(): String = Properties().run {
+        ComposeShellMetadata::class.java.getResourceAsStream("/securelan-version.properties")?.use(::load)
+        getProperty("version")?.trim().orEmpty().ifBlank { "dev" }
+    }
 }

@@ -66,7 +66,7 @@ internal fun SecureLanAppShell(
                         }
                     }
                 }
-                AppToolsMenu(
+                AppToolButtons(
                     onOpenQuickShare = onOpenQuickShare,
                     onOpenSteganography = onOpenSteganography,
                 )
