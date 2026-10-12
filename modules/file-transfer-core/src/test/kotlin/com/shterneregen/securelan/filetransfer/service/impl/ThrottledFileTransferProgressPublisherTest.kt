@@ -1,7 +1,6 @@
 package com.shterneregen.securelan.filetransfer.service.impl
 
 import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
-import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -13,7 +12,7 @@ class ThrottledFileTransferProgressPublisherTest {
         var now = 1_000L
         val events = mutableListOf<FileTransferProgressEvent>()
         val publisher = ThrottledFileTransferProgressPublisher(
-            FileTransferEventPublisher { event -> events += event as FileTransferProgressEvent },
+            { event -> events += event as FileTransferProgressEvent },
             transferId = "transfer-1",
             totalBytes = 1_000L,
             outgoing = false,
@@ -35,10 +34,10 @@ class ThrottledFileTransferProgressPublisherTest {
 
     @Test
     fun shouldPublishAtMostOneUpdatePerIntervalDuringChunkBurst() {
-        var now = 5_000L
+        val now = 5_000L
         val events = mutableListOf<FileTransferProgressEvent>()
         val publisher = ThrottledFileTransferProgressPublisher(
-            FileTransferEventPublisher { event -> events += event as FileTransferProgressEvent },
+            { event -> events += event as FileTransferProgressEvent },
             transferId = "transfer-2",
             totalBytes = 10_000L,
             outgoing = true,

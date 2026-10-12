@@ -7,7 +7,35 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
+/**
+ * Handles the multi-step handshake protocol for authenticated and encrypted file transfers.
+ *
+ * Handshake sequence:
+ * 1. Protocol banner verification (`SECURE_FILE_TRANSFER_V1`).
+ * 2. Receiver provides an ephemeral RSA public key.
+ * 3. Sender generates a symmetric AES-256 session key, encrypts it and the session password
+ *    using receiver's RSA public key, and sends it.
+ * 4. Both peers activate AES-GCM transport encryption on the [FileTransferSession].
+ * 5. Sender transmits compact [FileTransferMetadata] payload.
+ * 6. Receiver verifies password and consults acceptance policy before responding with `ACCEPTED` or `REJECTED:<reason>`.
+ *
+ * @param cryptoServices Cryptographic services provider.
+ */
 internal class SecureFileTransferHandshake(private val cryptoServices: CryptoServices) {
+    /**
+     * Executes the sender side of the handshake.
+     *
+     * @param session Connected transport session.
+     * @param senderId Local sender identifier.
+     * @param recipientId Target recipient identifier.
+     * @param sessionPassword Shared secret / room password.
+     * @param fileName Name of the file being sent.
+     * @param fileSize Size of the file in bytes.
+     * @param transferId Unique transfer session identifier.
+     * @param awaitingAcceptance Callback invoked when metadata is sent and the client waits for receiver approval.
+     * @return Negotiated [FileTransferMetadata].
+     * @throws IOException If handshake fails, connection drops, or receiver rejects the transfer.
+     */
     @Throws(IOException::class)
     fun performClientHandshake(
         session: FileTransferSession,
@@ -32,22 +60,46 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
         awaitingAcceptance()
         val response = session.readEncryptedText()
         if (ACCEPTED != response) {
-            if (response.startsWith(REJECTED_PREFIX)) throw TransferRejectedException()
+            if (response.startsWith(REJECTED_PREFIX)) {
+                val reason = response.removePrefix(REJECTED_PREFIX).trim()
+                throw TransferRejectedException(if (reason.isNotBlank()) "File transfer rejected by receiver: $reason" else "File transfer rejected by receiver")
+            }
             throw IOException("Unexpected transfer handshake response")
         }
         return metadata
     }
 
+    /**
+     * Sends an acceptance confirmation to the sender over the encrypted session.
+     *
+     * @param session The active encrypted transfer session.
+     * @throws IOException If writing to the session fails.
+     */
     @Throws(IOException::class)
     fun acceptTransfer(session: FileTransferSession) {
         session.writeEncryptedText(ACCEPTED)
     }
 
+    /**
+     * Sends a rejection notice to the sender over the encrypted session.
+     *
+     * @param session The active encrypted transfer session.
+     * @param reason Optional human-readable rejection explanation.
+     * @throws IOException If writing to the session fails.
+     */
     @Throws(IOException::class)
     fun rejectTransfer(session: FileTransferSession, reason: String?) {
         session.writeEncryptedText(REJECTED_PREFIX + if (reason.isNullOrBlank()) "Transfer rejected" else reason)
     }
 
+    /**
+     * Executes the receiver side of the handshake, verifying protocol version and password.
+     *
+     * @param session Connected transport session.
+     * @param expectedPassword Shared password expected from the client.
+     * @return Decoded [FileTransferMetadata] from the sender.
+     * @throws IOException If protocol is unsupported, password is wrong, or payload is malformed.
+     */
     @Throws(IOException::class)
     fun performServerHandshake(session: FileTransferSession, expectedPassword: String): FileTransferMetadata {
         val protocol = session.readUtf()
@@ -58,7 +110,7 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
         session.writeUtf(Base64.getEncoder().encodeToString(cryptoServices.keyEncodingService().encodePublicKey(rsaKeyPair.public)))
         val encryptedPayload = session.readBytes()
         val payload = String(cryptoServices.rsaCryptoService().decrypt(encryptedPayload, rsaKeyPair.private), StandardCharsets.UTF_8)
-        val parts = payload.split("\n", limit = 7).toTypedArray()
+        val parts = payload.split("\n", limit = 7)
         if (parts.size != 2 && parts.size != 7) {
             throw IOException("Malformed secure file transfer payload")
         }
@@ -72,11 +124,12 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
     }
 
     @Throws(IOException::class)
-    private fun decodeMetadata(parts: Array<String>): FileTransferMetadata =
+    private fun decodeMetadata(parts: List<String>): FileTransferMetadata =
         if (parts[2].contains("|")) {
             decodeCompactMetadata(parts[2])
         } else {
-            FileTransferMetadata(parts[2], parts[3], parts[4], parts[5], parts[6].toLong())
+            val size = parts[6].toLongOrNull() ?: throw IOException("Invalid file size in transfer payload")
+            FileTransferMetadata(parts[2], parts[3], parts[4], parts[5], size)
         }
 
     @Throws(IOException::class)
@@ -93,4 +146,11 @@ internal class SecureFileTransferHandshake(private val cryptoServices: CryptoSer
     }
 }
 
-internal class TransferRejectedException : IOException("File transfer rejected by receiver")
+/**
+ * Exception thrown when the remote receiver explicitly rejects an incoming file transfer.
+ *
+ * @param message Rejection explanation message.
+ */
+internal class TransferRejectedException(
+    message: String = "File transfer rejected by receiver",
+) : IOException(message)

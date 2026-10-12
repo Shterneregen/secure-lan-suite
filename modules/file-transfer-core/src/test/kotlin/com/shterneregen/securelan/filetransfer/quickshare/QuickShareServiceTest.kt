@@ -18,7 +18,7 @@ class QuickShareServiceTest {
     @Test
     fun shouldServeTextShareAndEnforceAccessLimit() {
         val events = CopyOnWriteArrayList<String>()
-        val service = DefaultQuickShareService(QuickShareEventPublisher { event -> events.add(event.message()) })
+        val service = DefaultQuickShareService({ event -> events.add(event.message()) })
         service.start(QuickShareServerConfig(findAvailablePort(), listOf("127.0.0.1")))
         try {
             val snapshot = service.share(QuickShareCreateRequest.text("hello from LAN", "Greeting", Duration.ofMinutes(5), 1))

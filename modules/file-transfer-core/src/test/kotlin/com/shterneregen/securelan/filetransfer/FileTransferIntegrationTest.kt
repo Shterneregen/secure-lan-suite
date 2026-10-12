@@ -1,6 +1,5 @@
 package com.shterneregen.securelan.filetransfer
 
-import com.shterneregen.securelan.filetransfer.service.FileTransferAcceptanceHandler
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
 import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
@@ -98,9 +97,9 @@ class FileTransferIntegrationTest {
         val serverPublisher = FileTransferEventPublisher { event -> serverEvents.add(event.javaClass.simpleName) }
         val server = DefaultFileTransferServerService(serverPublisher)
         val port = findAvailablePort()
-        server.start(FileTransferServerConfig(port, inbox, "files-pass", FileTransferAcceptanceHandler { _, _ -> false }))
+        server.start(FileTransferServerConfig(port, inbox, "files-pass") { _, _ -> false })
         try {
-            val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+            val client = DefaultFileTransferClientService({ })
             try {
                 client.sendFile(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile))
             } catch (_: IllegalStateException) {
@@ -124,25 +123,24 @@ class FileTransferIntegrationTest {
         Files.writeString(sourceFile, "accepted payload")
 
         val invoked = AtomicBoolean(false)
-        val server = DefaultFileTransferServerService(FileTransferEventPublisher { })
+        val server = DefaultFileTransferServerService({ })
         val port = findAvailablePort()
         server.start(
             FileTransferServerConfig(
                 port,
                 inbox,
                 "files-pass",
-                FileTransferAcceptanceHandler { metadata, remoteAddress ->
-                    invoked.set(true)
-                    assertEquals("alice", metadata.senderId)
-                    assertEquals("bob", metadata.recipientId)
-                    assertEquals("sample.txt", metadata.fileName)
-                    assertFalse(remoteAddress.isBlank())
-                    true
-                },
-            ),
+            ) { metadata, remoteAddress ->
+                invoked.set(true)
+                assertEquals("alice", metadata.senderId)
+                assertEquals("bob", metadata.recipientId)
+                assertEquals("sample.txt", metadata.fileName)
+                assertFalse(remoteAddress.isBlank())
+                true
+            },
         )
         try {
-            val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+            val client = DefaultFileTransferClientService({ })
             client.sendFile(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile))
 
             TimeUnit.MILLISECONDS.sleep(250)
@@ -167,11 +165,11 @@ class FileTransferIntegrationTest {
         }
         Files.write(sourceFile, payload)
 
-        val server = DefaultFileTransferServerService(FileTransferEventPublisher { })
+        val server = DefaultFileTransferServerService({ })
         val port = findAvailablePort()
         server.start(FileTransferServerConfig(port, inbox, "files-pass"))
         try {
-            val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+            val client = DefaultFileTransferClientService({ })
             client.sendFile(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile))
 
             TimeUnit.MILLISECONDS.sleep(250)
@@ -192,11 +190,11 @@ class FileTransferIntegrationTest {
         FileSystems.newFileSystem(archiveUri, mapOf("create" to "true")).use { fileSystem ->
             val inbox = fileSystem.getPath("/inbox")
             Files.createDirectories(inbox)
-            val server = DefaultFileTransferServerService(FileTransferEventPublisher { })
+            val server = DefaultFileTransferServerService({ })
             val port = findAvailablePort()
             server.start(FileTransferServerConfig(port, inbox, "files-pass"))
             try {
-                val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+                val client = DefaultFileTransferClientService({ })
                 client.sendFile(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile))
 
                 assertEquals("provider fallback payload", Files.readString(inbox.resolve("sample.txt")))
@@ -213,11 +211,11 @@ class FileTransferIntegrationTest {
         Files.createDirectories(inbox)
         val sourceFile = tempDir.resolve("archive.tar.gz")
         Files.writeString(sourceFile, "duplicate payload")
-        val server = DefaultFileTransferServerService(FileTransferEventPublisher { })
+        val server = DefaultFileTransferServerService({ })
         val port = findAvailablePort()
         server.start(FileTransferServerConfig(port, inbox, "files-pass"))
         try {
-            val client = DefaultFileTransferClientService(FileTransferEventPublisher { })
+            val client = DefaultFileTransferClientService({ })
             val request = FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "files-pass", sourceFile)
             client.sendFile(request)
             client.sendFile(request)
@@ -242,15 +240,15 @@ class FileTransferIntegrationTest {
         Files.writeString(aliceFile, "hello from alice")
         Files.writeString(bobFile, "hello from bob")
 
-        val aliceReceiver = DefaultFileTransferServerService(FileTransferEventPublisher { })
-        val bobReceiver = DefaultFileTransferServerService(FileTransferEventPublisher { })
+        val aliceReceiver = DefaultFileTransferServerService({ })
+        val bobReceiver = DefaultFileTransferServerService({ })
         val alicePort = findAvailablePort()
         val bobPort = findAvailablePort()
         aliceReceiver.start(FileTransferServerConfig(alicePort, aliceInbox, "files-pass"))
         bobReceiver.start(FileTransferServerConfig(bobPort, bobInbox, "files-pass"))
         try {
-            val aliceSender = DefaultFileTransferClientService(FileTransferEventPublisher { })
-            val bobSender = DefaultFileTransferClientService(FileTransferEventPublisher { })
+            val aliceSender = DefaultFileTransferClientService({ })
+            val bobSender = DefaultFileTransferClientService({ })
 
             aliceSender.sendFile(FileTransferClientRequest("127.0.0.1", bobPort, "alice", "bob", "files-pass", aliceFile))
             bobSender.sendFile(FileTransferClientRequest("127.0.0.1", alicePort, "bob", "alice", "files-pass", bobFile))

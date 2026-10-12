@@ -2,8 +2,19 @@ package com.shterneregen.securelan.filetransfer.quickshare
 
 import java.util.Locale
 
-/** Browser pages shared by desktop and Android; no platform HTTP dependencies. */
+/**
+ * HTML page rendering templates for the Quick Share local web server.
+ *
+ * Generates lightweight, styled responsive web pages shared between desktop and Android
+ * clients without external HTTP template or framework dependencies.
+ */
 object QuickShareHtml {
+    /**
+     * Renders the root index HTML page displaying all active shares.
+     *
+     * @param snapshots List of current share snapshots.
+     * @return Full HTML string.
+     */
     fun indexHtml(snapshots: List<QuickShareSnapshot>): String {
         val activeShares = snapshots.filter { it.active() }
         val body = StringBuilder(baseHtmlStart("SecureLanSuite quick shares"))
@@ -27,6 +38,12 @@ object QuickShareHtml {
         return body.toString()
     }
 
+    /**
+     * Renders the details page for a shared file with a download button.
+     *
+     * @param snapshot Share snapshot.
+     * @return Full HTML string.
+     */
     fun fileItemHtml(snapshot: QuickShareSnapshot): String = baseHtmlStart(snapshot.displayName()) +
         "<h1>${escapeHtml(snapshot.displayName())}</h1>" +
         "<p>File: <strong>${escapeHtml(snapshot.fileName())}</strong></p>" +
@@ -36,6 +53,13 @@ object QuickShareHtml {
         "<p><a href='/'>Back to active shares</a></p>" +
         baseHtmlEnd()
 
+    /**
+     * Renders the details page for a shared text snippet with a copy button.
+     *
+     * @param snapshot Share snapshot.
+     * @param text Shared text content.
+     * @return Full HTML string.
+     */
     fun textItemHtml(snapshot: QuickShareSnapshot, text: String): String = baseHtmlStart(snapshot.displayName()) +
         "<h1>${escapeHtml(snapshot.displayName())}</h1>" +
         "<p>${escapeHtml(accessSummary(snapshot))}</p>" +
@@ -44,6 +68,12 @@ object QuickShareHtml {
         "<p><a href='/'>Back to active shares</a></p>" +
         baseHtmlEnd()
 
+    /**
+     * Renders an error page when a share is expired, limit-reached, or stopped.
+     *
+     * @param snapshot Optional share snapshot.
+     * @return Full HTML string.
+     */
     fun unavailableHtml(snapshot: QuickShareSnapshot?): String {
         val status = snapshot?.status()?.name?.lowercase(Locale.ROOT)?.replace('_', ' ') ?: "unavailable"
         return baseHtmlStart("Share unavailable") +
@@ -53,6 +83,11 @@ object QuickShareHtml {
             baseHtmlEnd()
     }
 
+    /**
+     * Renders a 404 Not Found HTML page.
+     *
+     * @return Full HTML string.
+     */
     fun notFoundHtml(): String = baseHtmlStart("Not found") +
         "<h1>Not found</h1><p>The requested share does not exist.</p><p><a href='/'>Back to active shares</a></p>" +
         baseHtmlEnd()

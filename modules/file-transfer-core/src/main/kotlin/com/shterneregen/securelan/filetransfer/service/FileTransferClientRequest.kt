@@ -3,6 +3,16 @@ package com.shterneregen.securelan.filetransfer.service
 import java.nio.file.Path
 import java.util.Objects
 
+/**
+ * Immutable request model containing all parameters required for an outgoing secure file transfer.
+ *
+ * @property host Remote peer IP address or hostname.
+ * @property port Remote peer file transfer server TCP port (1..65535).
+ * @property senderId Identifier of the local sending peer.
+ * @property recipientId Identifier of the target remote peer.
+ * @property sessionPassword Shared session or room password used to authenticate the transfer handshake.
+ * @property file Local filesystem path to the file to be transmitted.
+ */
 @JvmRecord
 data class FileTransferClientRequest(
     val host: String,

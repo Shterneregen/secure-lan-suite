@@ -3,6 +3,24 @@ package com.shterneregen.securelan.filetransfer.quickshare
 import java.time.Instant
 import java.util.Objects
 
+/**
+ * Immutable snapshot of a Quick Share item's state at a point in time.
+ *
+ * Provides access to metadata, URLs, expiration time, download/access count,
+ * and current lifecycle status.
+ *
+ * @param id Unique identifier of the share.
+ * @param type Payload type ([QuickShareType.FILE] or [QuickShareType.TEXT]).
+ * @param displayName Human-readable label for the share.
+ * @param fileName Name of the underlying file (or empty for text shares).
+ * @param fileSize Size of the shared payload in bytes.
+ * @param createdAt Creation timestamp.
+ * @param expiresAt Optional expiration timestamp, or `null` if unlimited.
+ * @param accessLimit Optional maximum allowed accesses, or `null` if unlimited.
+ * @param accessCount Total successful accesses recorded so far.
+ * @param status Current lifecycle status of the share.
+ * @param urls List of HTTP URLs where the share can be accessed across available network interfaces.
+ */
 class QuickShareSnapshot(
     id: String?,
     type: QuickShareType?,
@@ -35,31 +53,71 @@ class QuickShareSnapshot(
         urlsValue = requiredUrls.toList()
     }
 
+    /**
+     * Unique identifier of this share.
+     */
     fun id(): String = idValue
 
+    /**
+     * Payload type of this share.
+     */
     fun type(): QuickShareType = typeValue
 
+    /**
+     * Human-readable display name.
+     */
     fun displayName(): String = displayNameValue
 
+    /**
+     * Filename of the shared file, or empty string for text shares.
+     */
     fun fileName(): String = fileNameValue
 
+    /**
+     * Size of the payload in bytes.
+     */
     fun fileSize(): Long = fileSizeValue
 
+    /**
+     * Timestamp when the share was created.
+     */
     fun createdAt(): Instant = createdAtValue
 
+    /**
+     * Expiration timestamp, or `null` if the share does not expire automatically.
+     */
     fun expiresAt(): Instant? = expiresAtValue
 
+    /**
+     * Configured access limit, or `null` if access is unlimited.
+     */
     fun accessLimit(): Int? = accessLimitValue
 
+    /**
+     * Number of times this share has been accessed.
+     */
     fun accessCount(): Int = accessCountValue
 
+    /**
+     * Current status of the share.
+     */
     fun status(): QuickShareStatus = statusValue
 
+    /**
+     * All advertised HTTP URLs where this share can be reached.
+     */
     fun urls(): List<String> = urlsValue
 
+    /**
+     * Returns `true` if the share is currently [QuickShareStatus.ACTIVE].
+     */
     fun active(): Boolean = statusValue == QuickShareStatus.ACTIVE
 
+    /**
+     * Returns the primary HTTP access URL, or empty string if no URLs are advertised.
+     */
     fun primaryUrl(): String = urlsValue.firstOrNull() ?: ""
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is QuickShareSnapshot) return false

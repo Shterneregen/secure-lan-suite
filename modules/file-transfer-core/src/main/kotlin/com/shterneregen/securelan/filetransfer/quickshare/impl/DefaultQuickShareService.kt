@@ -3,12 +3,12 @@ package com.shterneregen.securelan.filetransfer.quickshare.impl
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateRequest
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEventPublisher
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareHtml
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareStatus
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareType
-import com.shterneregen.securelan.filetransfer.quickshare.QuickShareHtml
 import com.sun.net.httpserver.Headers
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -36,12 +36,22 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Default implementation of [QuickShareService] backed by the JDK's built-in [HttpServer].
+ *
+ * Hosts temporary files and text snippets accessible over standard HTTP GET requests
+ * within the local network. Handles time-to-live expiration via a background scheduled task
+ * and enforces maximum download limits.
+ *
+ * @param eventPublisher Optional publisher for lifecycle events; defaults to [QuickShareEventPublisher.noOp].
+ * @param clock Time source for measuring share creation, access, and expiration (defaults to UTC system clock).
+ */
 class DefaultQuickShareService @JvmOverloads constructor(
     eventPublisher: QuickShareEventPublisher?,
     private val clock: Clock = Clock.systemUTC(),
 ) : QuickShareService {
     private val eventPublisher: QuickShareEventPublisher = eventPublisher ?: QuickShareEventPublisher.noOp()
-    private val lifecycleLock = Object()
+    private val lifecycleLock = Any()
     private val running = AtomicBoolean(false)
     private val threadSequence = AtomicLong(0)
     private val items: MutableMap<String, SharedItem> = ConcurrentHashMap()
@@ -87,7 +97,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
             advertisedHosts = resolveAdvertisedHosts(config.advertisedHosts())
             running.set(true)
             createdServer.start()
-            createdExpiryExecutor.scheduleAtFixedRate(this::expireInactiveShares, 1, 1, TimeUnit.SECONDS)
+            createdExpiryExecutor.scheduleWithFixedDelay(this::expireInactiveShares, 1, 1, TimeUnit.SECONDS)
             eventPublisher.publish(QuickShareEvent("", null, "Quick-share server started on port $activePort", ""))
         }
     }
@@ -204,7 +214,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
 
     @Throws(IOException::class)
     private fun handleHttpExchange(exchange: HttpExchange) {
-        try {
+        exchange.use {
             if (!"GET".equals(exchange.requestMethod, ignoreCase = true)) {
                 sendText(exchange, 405, "Method Not Allowed", "text/plain; charset=utf-8")
                 return
@@ -214,7 +224,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
                 sendText(exchange, 200, indexHtml(), "text/html; charset=utf-8")
                 return
             }
-            val sharePath = parseSharePath(path.split("/").toTypedArray())
+            val sharePath = parseSharePath(path.split("/"))
             if (sharePath == null) {
                 sendText(exchange, 404, notFoundHtml(), "text/html; charset=utf-8")
                 return
@@ -225,22 +235,21 @@ class DefaultQuickShareService @JvmOverloads constructor(
                 "text" == sharePath.action -> handleText(exchange, sharePath.id)
                 else -> sendText(exchange, 404, notFoundHtml(), "text/html; charset=utf-8")
             }
-        } finally {
-            exchange.close()
         }
     }
 
-    private fun parseSharePath(parts: Array<String>): ParsedSharePath? = when {
-        parts.size == 2 && parts[1].isNotBlank() ->
-            ParsedSharePath(URLDecoder.decode(parts[1], StandardCharsets.UTF_8), "")
-        parts.size == 3 && "s" == parts[1] ->
-            ParsedSharePath(URLDecoder.decode(parts[2], StandardCharsets.UTF_8), "")
-        parts.size == 3 && parts[1].isNotBlank() ->
-            ParsedSharePath(URLDecoder.decode(parts[1], StandardCharsets.UTF_8), parts[2])
-        parts.size == 4 && "s" == parts[1] ->
-            ParsedSharePath(URLDecoder.decode(parts[2], StandardCharsets.UTF_8), parts[3])
+    private fun parseSharePath(parts: List<String>): ParsedSharePath? = when (parts.size) {
+        2 -> if (parts[1].isNotBlank()) ParsedSharePath(decodeUrl(parts[1]), "") else null
+        3 -> when {
+            "s" == parts[1] -> ParsedSharePath(decodeUrl(parts[2]), "")
+            parts[1].isNotBlank() -> ParsedSharePath(decodeUrl(parts[1]), parts[2])
+            else -> null
+        }
+        4 -> if ("s" == parts[1]) ParsedSharePath(decodeUrl(parts[2]), parts[3]) else null
         else -> null
     }
+
+    private fun decodeUrl(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8.name())
 
     @Throws(IOException::class)
     private fun handleItemPage(exchange: HttpExchange, id: String) {
@@ -294,6 +303,11 @@ class DefaultQuickShareService @JvmOverloads constructor(
             sendText(exchange, 404, "Not Found", "text/plain; charset=utf-8")
             return
         }
+        val file = item.file
+        if (file == null || !Files.isRegularFile(file) || !Files.isReadable(file)) {
+            sendText(exchange, 404, "File not found or unreadable", "text/plain; charset=utf-8")
+            return
+        }
         val access = item.registerAccess(clock.instant())
         if (!access.allowed) {
             sendText(exchange, 410, "Share is no longer available", "text/plain; charset=utf-8")
@@ -308,7 +322,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
         headers["Content-Disposition"] = "attachment; filename=\"${contentDispositionFileName(item.fileName)}\""
         headers["Cache-Control"] = "no-store"
         exchange.sendResponseHeaders(200, item.fileSize)
-        exchange.responseBody.use { outputStream -> Files.copy(item.file!!, outputStream) }
+        exchange.responseBody.use { outputStream -> Files.copy(file, outputStream) }
     }
 
     private fun indexHtml(): String = QuickShareHtml.indexHtml(shares())
@@ -345,8 +359,8 @@ class DefaultQuickShareService @JvmOverloads constructor(
     @Throws(IOException::class)
     private fun createSharedItem(id: String, request: QuickShareCreateRequest, now: Instant, urls: List<String>): SharedItem {
         val file = request.file()
-        val fileName = if (request.type() == QuickShareType.FILE) file!!.fileName.toString() else ""
-        val fileSize = if (request.type() == QuickShareType.FILE) {
+        val fileName = if (request.type() == QuickShareType.FILE) file?.fileName?.toString() ?: "" else ""
+        val fileSize = if (request.type() == QuickShareType.FILE && file != null) {
             Files.size(file)
         } else {
             request.text().toByteArray(StandardCharsets.UTF_8).size.toLong()
@@ -385,7 +399,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
                 }
             }
         }
-        val result = if (siteLocalAddresses.isNotEmpty()) siteLocalAddresses else otherNonLoopbackAddresses
+        val result = siteLocalAddresses.ifEmpty { otherNonLoopbackAddresses }
         result.sortWith(Comparator.naturalOrder())
         return result.distinct()
     }
@@ -400,7 +414,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
 
     private data class AccessResult(val allowed: Boolean, val snapshot: QuickShareSnapshot)
 
-    private inner class SharedItem(
+    private class SharedItem(
         private val id: String,
         val type: QuickShareType,
         private val displayName: String,

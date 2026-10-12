@@ -5,7 +5,19 @@ import com.shterneregen.securelan.common.model.TransferStatus
 import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
 import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
 
-/** Keeps per-chunk progress updates from overwhelming UI event queues during fast transfers. */
+/**
+ * Throttles per-chunk progress update events to prevent flooding UI event queues during fast local transfers.
+ *
+ * Guarantees that the first update and the final 100% completion update are always emitted immediately,
+ * while intermediate updates are emitted at most once per [minimumIntervalNanos].
+ *
+ * @param eventPublisher Destination publisher for progress events.
+ * @param transferId Unique transfer session identifier.
+ * @param totalBytes Declared total size in bytes.
+ * @param outgoing `true` if this peer is sending; `false` if receiving.
+ * @param minimumIntervalNanos Minimum elapsed interval in nanoseconds between successive progress events.
+ * @param nanoTime Source for elapsed time in nanoseconds (defaults to [System.nanoTime]).
+ */
 internal class ThrottledFileTransferProgressPublisher(
     private val eventPublisher: FileTransferEventPublisher,
     private val transferId: String,
@@ -21,12 +33,17 @@ internal class ThrottledFileTransferProgressPublisher(
         require(minimumIntervalNanos >= 0) { "minimumIntervalNanos must not be negative" }
     }
 
+    /**
+     * Reports current transferred bytes. Emits an event if threshold/completion criteria are met.
+     *
+     * @param transferredBytes Total bytes transferred so far.
+     */
     fun report(transferredBytes: Long) {
         if (transferredBytes == lastPublishedBytes) return
 
         val now = nanoTime()
         val firstUpdate = lastPublishedBytes < 0
-        val completed = totalBytes > 0 && transferredBytes >= totalBytes
+        val completed = totalBytes in 1..transferredBytes
         val intervalElapsed = now - lastPublishedAt >= minimumIntervalNanos
         if (!firstUpdate && !completed && !intervalElapsed) return
 

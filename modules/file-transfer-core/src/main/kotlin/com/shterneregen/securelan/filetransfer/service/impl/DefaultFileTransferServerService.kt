@@ -5,26 +5,39 @@ import com.shterneregen.securelan.crypto.CryptoServices
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
-import com.shterneregen.securelan.filetransfer.protocol.FileTransferSession
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
-import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferSession
 import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
+import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
 import java.io.IOException
 import java.net.Socket
-import java.nio.file.Files
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileSystemException
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.Locale
 import java.util.Objects
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Standard implementation of [FileTransferServerService] listening for incoming file transfers.
+ *
+ * Incoming transfers undergo RSA/AES key exchange and room password verification before invoking the
+ * configured [com.shterneregen.securelan.filetransfer.service.FileTransferAcceptanceHandler]. Files are initially written
+ * to an isolated temporary `.part` file in the configured storage directory and atomically published upon
+ * completion using hard links (with fallback to rename) to prevent overwriting existing files or corrupting
+ * partial downloads.
+ *
+ * @param eventPublisher Publisher emitting file transfer lifecycle events.
+ * @param cryptoServices Cryptographic services provider (defaults to [CryptoServices.createDefault]).
+ * @param timeouts Configured timeouts for inactivity, acceptance, and confirmation.
+ */
 class DefaultFileTransferServerService @JvmOverloads constructor(
     eventPublisher: FileTransferEventPublisher,
     cryptoServices: CryptoServices = CryptoServices.createDefault(),
@@ -41,6 +54,12 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
     @Volatile
     private var config: FileTransferServerConfig? = null
 
+    /**
+     * Starts listening for incoming file transfers.
+     *
+     * @param config Server port, destination folder, password, and acceptance policy.
+     * @throws IllegalStateException If the server cannot be started or port is already bound.
+     */
     override fun start(config: FileTransferServerConfig) {
         Objects.requireNonNull(config, "config")
         synchronized(lifecycleLock) {
@@ -51,9 +70,8 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                 Files.createDirectories(config.storageDirectory())
                 this.config = config
                 running.set(true)
-                val activeConfig = config
                 val activeGeneration = ++generation
-                tcpServer.start(config.port(), { socket -> handleClient(socket, activeConfig, activeGeneration) }, this::publishAcceptError)
+                tcpServer.start(config.port(), { socket -> handleClient(socket, config, activeGeneration) }, this::publishAcceptError)
             } catch (e: Exception) {
                 if (e is IOException || e is RuntimeException) {
                     cleanupFailedStart()
@@ -256,6 +274,9 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
         return if (WINDOWS_RESERVED_FILE_NAMES.contains(stem.uppercase(Locale.ROOT))) "_$fileName" else fileName
     }
 
+    /**
+     * Stops the running server, disconnects active transfer sockets, and releases ports.
+     */
     override fun stop() {
         synchronized(lifecycleLock) {
             running.set(false)
@@ -265,6 +286,9 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Returns `true` if the server is currently running.
+     */
     override fun isRunning(): Boolean = running.get()
 
     private fun cleanupFailedStart() {

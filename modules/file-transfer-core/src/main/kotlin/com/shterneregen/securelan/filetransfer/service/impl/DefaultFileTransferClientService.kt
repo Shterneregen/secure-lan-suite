@@ -7,7 +7,16 @@ import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferSession
-import com.shterneregen.securelan.filetransfer.service.*
+import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
+import com.shterneregen.securelan.filetransfer.service.FileTransferClientService
+import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublisher
+import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
+import com.shterneregen.securelan.filetransfer.service.FileTransferOperation
+import com.shterneregen.securelan.filetransfer.service.FileTransferOperationListener
+import com.shterneregen.securelan.filetransfer.service.FileTransferOperationUpdate
+import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
+import com.shterneregen.securelan.filetransfer.service.FileTransferPhase
+import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
 import java.io.IOException
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -21,6 +30,17 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Standard implementation of [FileTransferClientService] supporting authenticated, encrypted file transfers.
+ *
+ * Transfers are encrypted over TLS-equivalent symmetric AES-GCM channels after an RSA/session key handshake.
+ * Individual transfers can be executed synchronously via [sendFile] or managed through [createOperation].
+ *
+ * @param eventPublisher Publisher emitting file transfer lifecycle events.
+ * @param cryptoServices Crypto provider instance (defaults to [CryptoServices.createDefault]).
+ * @param clientSocketFactory Optional socket factory for custom transport layers or proxies.
+ * @param timeouts Configured timeouts for connect, acceptance, inactivity, and confirmation phases.
+ */
 class DefaultFileTransferClientService @JvmOverloads constructor(
     private val eventPublisher: FileTransferEventPublisher,
     cryptoServices: CryptoServices = CryptoServices.createDefault(),
@@ -29,12 +49,26 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
 ) : FileTransferClientService {
     private val handshake = SecureFileTransferHandshake(cryptoServices)
 
+    /**
+     * Sends a file synchronously to the recipient specified in [request].
+     *
+     * @param request Transfer request parameters.
+     * @return Unique transfer session identifier upon success.
+     * @throws IllegalStateException If transfer fails or is rejected.
+     */
     override fun sendFile(request: FileTransferClientRequest): String =
         when (val outcome = createOperation(request).execute()) {
             is FileTransferOutcome.Completed -> outcome.transferId
             is FileTransferOutcome.Failed -> throw IllegalStateException("Unable to send file: ${outcome.kind}", outcome.cause)
         }
 
+    /**
+     * Creates a cancelable [FileTransferOperation] instance for the given request.
+     *
+     * @param request Transfer request parameters.
+     * @param listener Listener receiving progressive state updates.
+     * @return Configured [FileTransferOperation].
+     */
     override fun createOperation(request: FileTransferClientRequest, listener: FileTransferOperationListener): FileTransferOperation =
         Operation(request, listener)
 
