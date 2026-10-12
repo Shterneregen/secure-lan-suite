@@ -1,9 +1,10 @@
 package com.shterneregen.securelan.androidclient.protocol
 
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
-import com.shterneregen.securelan.chat.discovery.DiscoveryCodec as CoreDiscoveryCodec
 import java.net.InetAddress
+import com.shterneregen.securelan.chat.discovery.DiscoveryCodec as CoreDiscoveryCodec
 
+/** Adapts the shared discovery codec to Android models using the datagram source as the peer host. */
 object DiscoveryCodec {
     fun encode(peerId: String, nickname: String, chatPort: Int, filePort: Int): ByteArray {
         return CoreDiscoveryCodec.toBytes(CoreDiscoveryCodec.Message(peerId, nickname, chatPort, filePort))

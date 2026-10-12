@@ -2,17 +2,21 @@ package com.shterneregen.securelan.androidclient.transfer
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 enum class TransferPhase { QUEUED, PREPARING, WAITING_FOR_ACCEPTANCE, SENDING, WAITING_FOR_CONFIRMATION, COMPLETED, FAILED, OUTCOME_UNKNOWN, SKIPPED }
 enum class BatchStatus { READY, RUNNING, STOP_REQUESTED, PAUSED, FINISHED }
+/** Immutable batch destination; [generation] prevents resuming work in a different connection context. */
 data class TransferRecipient(val id: String, val name: String, val host: String, val port: Int, val generation: Long)
+/** Document-provider source; a null [size] requires staging, while zero denotes a known empty file. */
 data class TransferSource(val reference: String, val name: String, val size: Long?, val unavailable: Boolean = false)
+/** One send attempt; [id] correlates local callbacks and [wireId] identifies its protocol transfer. */
 data class TransferAttempt(val id: String = UUID.randomUUID().toString(), val wireId: String? = null, val phase: TransferPhase = TransferPhase.PREPARING, val bytes: Long = 0, val total: Long? = null)
 data class TransferItem(val id: String = UUID.randomUUID().toString(), val source: TransferSource, val phase: TransferPhase = TransferPhase.QUEUED, val attempts: List<TransferAttempt> = emptyList())
+/** In-memory batch snapshot; confirmed files received `DONE`, and failed outcomes may be uncertain. */
 data class TransferQueueState(
     val recipient: TransferRecipient? = null,
     val items: List<TransferItem> = emptyList(),
@@ -34,7 +38,12 @@ data class TransferQueueState(
     }
 }
 
-/** One application-owned slot, including paused work. Callbacks are attempt-correlated. */
+/**
+ * Owns one in-memory outgoing batch, including paused work, bound to its original recipient.
+ * Files run sequentially; a failure pauses the queue for explicit retry, skip or finish.
+ * Attempt-correlated callbacks cannot rewrite a completed attempt. Successful sends return only
+ * after delivery confirmation; retrying an uncertain outcome can create a remote duplicate.
+ */
 class TransferCoordinator(
     private val scope: CoroutineScope,
     private val isAvailable: (TransferRecipient) -> Boolean,
@@ -54,6 +63,7 @@ class TransferCoordinator(
         return true
     }
 
+    /** Consumes the picker destination and captures a revision so stale selections can be discarded. */
     @Synchronized fun selectionToken(): Pair<TransferRecipient, Long>? {
         val recipient = picker ?: return null
         picker = null
@@ -93,6 +103,7 @@ class TransferCoordinator(
         launchWorker()
     }
 
+    /** Retries failed/uncertain items explicitly, retaining successful items and prior attempts. */
     @Synchronized fun retry() {
         val s = mutableState.value
         if (worker || s.status != BatchStatus.PAUSED || s.recipient?.let(isAvailable) != true) return
@@ -107,6 +118,7 @@ class TransferCoordinator(
         launchWorker()
     }
 
+    /** Lets the active file finish, then skips queued files; paused batches finish immediately. */
     @Synchronized fun stopAfterCurrent() {
         val s = mutableState.value
         if (worker) mutableState.value = s.copy(status = BatchStatus.STOP_REQUESTED)

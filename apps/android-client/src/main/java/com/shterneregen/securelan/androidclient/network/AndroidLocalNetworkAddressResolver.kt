@@ -17,6 +17,7 @@ internal data class LocalAddressCandidate(
     val activeLan: Boolean = false,
 )
 
+/** Finds usable private IPv4 endpoints, preferring the active physical LAN over VPN interfaces. */
 internal class AndroidLocalNetworkAddressResolver(context: Context) {
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
 
@@ -75,6 +76,7 @@ internal class AndroidLocalNetworkAddressResolver(context: Context) {
     }
 }
 
+/** Filters non-LAN/mobile addresses and returns distinct endpoints in deterministic preference order. */
 internal fun selectLocalRoomAddresses(candidates: List<LocalAddressCandidate>): List<String> = candidates
     .asSequence()
     .filter { candidate ->

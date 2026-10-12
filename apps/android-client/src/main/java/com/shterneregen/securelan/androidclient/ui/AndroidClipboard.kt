@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 
+/** Copies explicitly requested messages/diagnostics using plain-text platform clipboard entries. */
 object AndroidClipboard {
     fun copyMessage(context: Context, message: String) {
         copyText(context, "SecureLan message", message)

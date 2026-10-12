@@ -4,6 +4,37 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+configurations {
+    kotlinLint {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
+def kotlinLintSources = fileTree('src') { include '**/*.kt' }
+
+tasks.register('lintKotlin', JavaExec) {
+    group = 'verification'
+    description = 'Check Android Kotlin source hygiene and KDoc placement with ktlint.'
+    classpath = configurations.kotlinLint
+    mainClass = 'com.pinterest.ktlint.Main'
+    inputs.files(kotlinLintSources)
+    inputs.file('.editorconfig')
+    workingDir = projectDir
+    args 'src/**/*.kt'
+}
+
+tasks.register('formatKotlin', JavaExec) {
+    group = 'formatting'
+    description = 'Fix Android Kotlin source hygiene with ktlint.'
+    classpath = configurations.kotlinLint
+    mainClass = 'com.pinterest.ktlint.Main'
+    workingDir = projectDir
+    args '--format', 'src/**/*.kt'
+}
+
+tasks.named('check') { dependsOn tasks.named('lintKotlin') }
+
 def releaseStoreFilePath = findProperty('android.release.storeFile') ?: System.getenv('ANDROID_RELEASE_STORE_FILE')
 def releaseStorePassword = findProperty('android.release.storePassword') ?: System.getenv('ANDROID_RELEASE_STORE_PASSWORD')
 def releaseKeyAlias = findProperty('android.release.keyAlias') ?: System.getenv('ANDROID_RELEASE_KEY_ALIAS')
@@ -68,6 +99,7 @@ android {
 }
 
 dependencies {
+    kotlinLint 'com.pinterest.ktlint:ktlint-cli:1.7.1'
     def composeBom = platform('androidx.compose:compose-bom:2024.12.01')
     implementation composeBom
     androidTestImplementation composeBom

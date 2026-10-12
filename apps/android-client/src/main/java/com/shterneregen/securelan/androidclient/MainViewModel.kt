@@ -17,10 +17,8 @@ import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.shterneregen.securelan.androidclient.call.*
-import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
-import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
-import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.AppLanguage
+import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.ChatLine
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
 import com.shterneregen.securelan.androidclient.model.IncomingFileProgress
@@ -32,15 +30,15 @@ import com.shterneregen.securelan.androidclient.model.ThemeMode
 import com.shterneregen.securelan.androidclient.model.TransferDirection
 import com.shterneregen.securelan.androidclient.model.TransferRecord
 import com.shterneregen.securelan.androidclient.model.TransferResult
-import com.shterneregen.securelan.androidclient.network.AndroidLocalNetworkAddressResolver
-import com.shterneregen.securelan.androidclient.network.PeerDiscoveryRepository
 import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
 import com.shterneregen.securelan.androidclient.network.AndroidHostServiceState
+import com.shterneregen.securelan.androidclient.network.AndroidLocalNetworkAddressResolver
+import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
+import com.shterneregen.securelan.androidclient.network.AndroidQuickShareServer
+import com.shterneregen.securelan.androidclient.network.PeerDiscoveryRepository
 import com.shterneregen.securelan.androidclient.network.SecureChatClient
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.androidclient.network.SecureFileSender
-import com.shterneregen.securelan.androidclient.network.AndroidQuickShareServer
-import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.androidclient.transfer.BatchStatus
 import com.shterneregen.securelan.androidclient.transfer.TransferCoordinator
@@ -49,6 +47,8 @@ import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
 import com.shterneregen.securelan.androidclient.transfer.TransferRecipient
 import com.shterneregen.securelan.androidclient.transfer.TransferSource
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
+import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
+import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -63,6 +63,11 @@ import java.util.Locale
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * Owns the Android workspace, chat connection, in-memory transfer queue, calls and Quick Share.
+ * Configuration changes retain this state. Preferences persist settings, never the room password;
+ * process death does not restore drafts or network operations. Hosting belongs to its service.
+ */
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val randomNicknameService = DefaultRandomNicknameService()
@@ -77,13 +82,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile var quickShareUrls: List<String> = emptyList(); private set
 
     fun createQuickShareText(text: String, minutes: Long, limit: Int?) {
-        viewModelScope.launch(Dispatchers.IO) { runCatching { quickShareServer.createText(text, minutes, limit) }.onSuccess { refreshQuickShares() } }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { quickShareServer.createText(text, minutes, limit) } }
+                .onSuccess { refreshQuickShares() }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) setError("Unable to create Quick Share link") }
+        }
     }
     fun createQuickShareFile(uri: Uri, name: String, minutes: Long, limit: Int?) {
-        viewModelScope.launch(Dispatchers.IO) { runCatching { quickShareServer.createFile(uri, name, minutes, limit) }.onSuccess { refreshQuickShares() } }
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { quickShareServer.createFile(uri, name, minutes, limit) } }
+                .onSuccess { refreshQuickShares() }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) setError("Unable to create Quick Share link") }
+        }
     }
     fun stopQuickShare(id: String) { quickShareServer.stopShare(id); refreshQuickShares() }
-    fun refreshQuickShares() { _quickShares.value = quickShareServer.items(); quickShareUrls = quickShareServer.urls }
+    fun refreshQuickShares() { quickShareUrls = quickShareServer.urls; _quickShares.value = quickShareServer.items() }
 
     private var connectionGeneration = 0L
     private val transferCoordinator = TransferCoordinator(
@@ -1117,7 +1130,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         localAddressRefreshJob?.cancel()
         localAddressWatchJob?.cancel()
         fileSender.close()
-        viewModelScope.launch { chatClient.disconnect() }
+        chatClient.close()
+        fileReceiver.close()
         super.onCleared()
     }
 

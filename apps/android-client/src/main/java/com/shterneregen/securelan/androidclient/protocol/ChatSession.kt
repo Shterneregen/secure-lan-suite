@@ -10,11 +10,17 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import javax.crypto.SecretKey
 
+/**
+ * UTF-8 line-framed chat transport: plaintext handshake followed by Base64 AES-GCM frames.
+ * One reader may run alongside serialized writers. Enable encryption before publishing the session;
+ * closing the session closes its socket and unblocks the reader.
+ */
 class ChatSession(private val socket: Socket) : Closeable {
     private val reader = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
     private val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))
     private var transportKey: SecretKey? = null
 
+    /** Returns the next decoded message, or null at transport EOF; malformed frames throw. */
     fun readMessage(): WireMessage? {
         var line = reader.readLine() ?: return null
         val key = transportKey

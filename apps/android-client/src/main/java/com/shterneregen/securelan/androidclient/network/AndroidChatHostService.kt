@@ -36,12 +36,14 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
 
+/** Authenticated remote participant with the file-receive endpoint advertised during its handshake. */
 data class HostedParticipant(
     val nickname: String,
     val host: String,
     val filePort: Int,
 )
 
+/** Process-local host status without room secrets; observed independently of Activity lifecycle. */
 data class AndroidHostServiceState(
     val starting: Boolean = false,
     val running: Boolean = false,
@@ -53,7 +55,11 @@ data class AndroidHostServiceState(
     val error: String? = null,
 )
 
-/** Owns the desktop-compatible chat server while Android is in host mode. */
+/**
+ * Owns the desktop-compatible chat server and LAN announcements in a foreground service.
+ * Activity recreation does not stop hosting. The process-local state contains no password;
+ * explicit stop releases the server and announcements, and process death does not restart hosting.
+ */
 class AndroidChatHostService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val participants = ConcurrentHashMap<String, HostedParticipant>()

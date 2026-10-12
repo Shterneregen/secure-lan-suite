@@ -2,21 +2,26 @@ package com.shterneregen.securelan.androidclient.protocol
 
 import java.nio.ByteBuffer
 import java.security.KeyFactory
+import java.security.KeyPair
+import java.security.KeyPairGenerator
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.spec.MGF1ParameterSpec
-import java.security.KeyPair
-import java.security.KeyPairGenerator
 import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
-import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
+/**
+ * Android crypto adapter for the existing desktop RSA-OAEP/AES-GCM wire format.
+ * OAEP intentionally uses SHA-256 with MGF1-SHA1 for compatibility. AES payloads contain
+ * a one-byte IV length, a fresh random IV, ciphertext and the 128-bit authentication tag.
+ */
 object CryptoCompat {
     private const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
     private const val RSA_TRANSFORMATION = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
@@ -70,6 +75,7 @@ object CryptoCompat {
             .array()
     }
 
+    /** Authenticates and decrypts a framed AES-GCM payload; malformed or tampered data throws. */
     fun aesDecrypt(payload: ByteArray, key: SecretKey): ByteArray {
         val buffer = ByteBuffer.wrap(payload)
         val ivLength = buffer.get().toInt() and 0xff

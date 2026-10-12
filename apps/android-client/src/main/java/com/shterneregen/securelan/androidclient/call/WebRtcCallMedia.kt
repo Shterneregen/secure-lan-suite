@@ -19,6 +19,11 @@ class VideoOutput(private val track: VideoTrack, val eglContext: EglBase.Context
     fun close() { if (!closed) { sinks.forEach(track::removeSink); sinks.clear(); closed = true } }
 }
 
+/**
+ * Owns native WebRTC resources for one LAN audio/video call with host ICE candidates only.
+ * Methods run on the main dispatcher; native callbacks return through [scope] and a generation guard.
+ * Renderers must detach before tracks/EGL are disposed. Failed startup is cleaned up by [close].
+ */
 class WebRtcCallMedia(private val context: Context, private val scope: CoroutineScope) : CallMedia {
     private var egl: EglBase? = null
     private var factory: PeerConnectionFactory? = null

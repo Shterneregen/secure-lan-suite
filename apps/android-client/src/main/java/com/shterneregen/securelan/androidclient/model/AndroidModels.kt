@@ -4,6 +4,7 @@ import android.net.Uri
 import com.shterneregen.securelan.common.net.NetworkConstants
 import java.time.Instant
 
+/** Shared port defaults; Android receive endpoints may use an offset to avoid local conflicts. */
 object SecureLanPorts {
     val DEFAULT_CHAT_PORT: Int = NetworkConstants.DEFAULT_CHAT_PORT
     val DEFAULT_FILE_TRANSFER_PORT: Int = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT
@@ -44,6 +45,7 @@ enum class TransferResult {
     FAILED,
 }
 
+/** Nearby room or joined participant; file endpoints may differ from the room's chat endpoint. */
 data class DiscoveredPeer(
     val peerId: String,
     val nickname: String,
@@ -109,6 +111,12 @@ data class TransferRecord(
     val timestamp: Instant = Instant.now(),
 )
 
+/**
+ * Immutable workspace snapshot retained by the ViewModel across configuration changes.
+ * [connectionPeer] identifies the room; [selectedPeer] may identify a different file recipient.
+ * [sessionPassword] is memory-only and must never be logged or persisted. [callPeers] maps
+ * voice-capable participant names to video support. Outgoing batches have their own state owner.
+ */
 data class MainUiState(
     val callPeers: Map<String, Boolean> = emptyMap(),
     val nickname: String = "",
@@ -150,7 +158,7 @@ data class MainUiState(
         get() = selectedPeer?.takeIf { it.role == PeerRole.CHAT_CLIENT }
             ?: connectionPeer.takeUnless { hosting }
 
-    /** Compatibility for legacy composables kept while the redesigned screens settle. */
+    /** Theme adapter for legacy composables; system mode is resolved by the active Compose shell. */
     val darkThemeEnabled: Boolean
         get() = themeMode == ThemeMode.DARK
 }

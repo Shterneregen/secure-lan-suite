@@ -70,6 +70,8 @@ task has no sources in this module and does not generate Kotlin documentation.
 .\gradlew.bat :apps:android-client:assembleDebug
 .\gradlew.bat :apps:android-client:assembleRelease
 .\gradlew.bat :apps:android-client:testDebugUnitTest
+.\gradlew.bat :apps:android-client:lintKotlin :apps:android-client:lintDebug
+.\gradlew.bat :apps:android-client:formatKotlin
 .\gradlew.bat :apps:android-client:connectedDebugAndroidTest
 ```
 
@@ -160,8 +162,9 @@ interoperability with the previous single-file client.
 6. When relevant, host a room from Android and connect from desktop. Android
    hosting runs in a foreground service and is advertised through LAN discovery.
 
-Android does not currently provide voice, RTC data channels, camera/video,
-screen sharing, steganography, or browser Quick Share.
+Android supports LAN audio/video calls and browser Quick Share. RTC data
+channels, screen sharing and steganography are not implemented. See the Android
+guide for call permission/device checks and the unauthenticated HTTP trust boundary.
 
 ## Ports
 

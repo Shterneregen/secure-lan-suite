@@ -6,6 +6,7 @@ import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/** Temporarily owns communication audio focus/routing and restores the previous device state on stop. */
 @Suppress("DEPRECATION")
 class AudioRouteManager(private val context: Context, private val onFocusLost: () -> Unit) {
     private val audio = context.getSystemService(AudioManager::class.java)
@@ -26,6 +27,7 @@ class AudioRouteManager(private val context: Context, private val onFocusLost: (
         override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) { if (started) route(mutableSpeaker.value) }
     }
 
+    /** Acquires call audio focus and initially prefers the speaker for video calls. Main-thread only. */
     fun start(video: Boolean) {
         if (started) return
         previousMode = audio.mode; previousSpeaker = audio.isSpeakerphoneOn

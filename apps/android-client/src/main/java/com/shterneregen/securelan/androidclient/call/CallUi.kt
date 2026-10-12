@@ -9,14 +9,13 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.shterneregen.securelan.androidclient.MainActivity
 import com.shterneregen.securelan.androidclient.MainViewModel
 import com.shterneregen.securelan.androidclient.R
@@ -37,6 +37,7 @@ import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import kotlin.math.roundToInt
 
+/** Hosts permission requests and call overlays while preserving the underlying workspace. */
 @Composable
 fun CallHost(viewModel: MainViewModel, activity: MainActivity, content: @Composable ((String, Boolean) -> Unit) -> Unit) {
     val context = LocalContext.current
@@ -84,6 +85,7 @@ fun CallHost(viewModel: MainViewModel, activity: MainActivity, content: @Composa
     )
 }
 
+/** Offers calls only to advertised voice-capable peers; map values indicate video capability. */
 @Composable
 fun CallButtons(peers: Map<String, Boolean>, connected: Boolean, onCall: (String, Boolean) -> Unit) {
     var expanded by remember { mutableStateOf(false) }

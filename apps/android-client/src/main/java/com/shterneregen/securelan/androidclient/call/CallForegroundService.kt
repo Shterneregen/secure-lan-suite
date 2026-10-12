@@ -79,6 +79,7 @@ class CallForegroundService : Service() {
         private data class Request(val id: String, val peer: String, val video: Boolean, val end: () -> Unit,
             val mute: () -> Unit, val ready: CompletableDeferred<Unit> = CompletableDeferred())
         private var pending: Request? = null
+        /** Waits for foreground promotion before returning; timeout or failure stops the pending service. */
         suspend fun start(context: Context, id: String, peer: String, video: Boolean, end: () -> Unit, mute: () -> Unit) {
             val request = Request(id, peer, video, end, mute)
             pending = request

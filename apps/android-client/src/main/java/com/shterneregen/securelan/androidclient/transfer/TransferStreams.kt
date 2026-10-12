@@ -10,6 +10,7 @@ internal fun validateTransferLength(expected: Long, actual: Long, complete: Bool
     require(actual <= expected && (!complete || actual == expected)) { "File length changed" }
 }
 
+/** Copies with bounded memory and cancellation checks, returning the exact length without closing streams. */
 internal fun stageStream(input: InputStream, output: OutputStream, checkActive: () -> Unit): Long {
     val buffer = ByteArray(16 * 1024)
     var length = 0L
@@ -25,6 +26,7 @@ internal fun stageStream(input: InputStream, output: OutputStream, checkActive: 
     return length
 }
 
+/** Appends a duplicate suffix before the extension; index zero preserves the original name. */
 internal fun numberedTransferFileName(fileName: String, index: Int): String {
     require(index >= 0) { "Invalid duplicate index" }
     if (index == 0) return fileName

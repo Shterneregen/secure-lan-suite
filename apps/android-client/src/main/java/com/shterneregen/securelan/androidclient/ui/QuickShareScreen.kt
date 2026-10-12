@@ -6,30 +6,31 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.QrCode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import kotlinx.coroutines.delay
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
-import com.shterneregen.securelan.androidclient.ui.appStringResource as stringResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
-import com.shterneregen.securelan.androidclient.R
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.shterneregen.securelan.androidclient.R
+import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
+import kotlinx.coroutines.delay
+import com.shterneregen.securelan.androidclient.ui.appStringResource as stringResource
 
+/** Publishes trusted-LAN links and displays their access limits; lifecycle and IO belong to callbacks. */
 @Composable
 fun QuickShareScreen(
     items: List<AndroidQuickShareItem>, urls: List<String>,

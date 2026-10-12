@@ -8,15 +8,28 @@ import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.Closeable
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
-class SecureChatClient {
+/**
+ * Owns one desktop-compatible encrypted chat connection and any pending handshake.
+ * Blocking IO runs on [Dispatchers.IO]. [close] may be called from lifecycle cleanup to
+ * unblock readers immediately; a failed or interrupted handshake never retains its socket.
+ */
+class SecureChatClient : Closeable {
+    private val lock = Any()
+    @Volatile private var connecting: Socket? = null
+    @Volatile
     private var session: ChatSession? = null
     private var nickname: String = ""
 
+    /** Returns the server-assigned nickname after completing the password/key handshake. */
     suspend fun connect(
         host: String,
         port: Int,
@@ -24,11 +37,41 @@ class SecureChatClient {
         sessionPassword: String,
         capabilities: PeerCapabilities,
     ): String = withContext(Dispatchers.IO) {
-        val createdSession = ChatSession(Socket(host, port))
+        val socket = synchronized(lock) {
+            check(session == null && connecting == null) { "Chat already connected or connecting" }
+            Socket().also { connecting = it }
+        }
+        var accepted = false
+        try {
+            socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            socket.soTimeout = HANDSHAKE_TIMEOUT_MS
+            val createdSession = ChatSession(socket)
+            val acceptedNickname = performHandshake(createdSession, requestedNickname, sessionPassword, capabilities)
+            currentCoroutineContext().ensureActive()
+            synchronized(lock) {
+                check(connecting === socket && !socket.isClosed) { "Chat connection stopped" }
+                socket.soTimeout = 0
+                nickname = acceptedNickname
+                session = createdSession
+                connecting = null
+                accepted = true
+            }
+            acceptedNickname
+        } finally {
+            synchronized(lock) { if (connecting === socket) connecting = null }
+            if (!accepted) socket.close()
+        }
+    }
+
+    private fun performHandshake(
+        createdSession: ChatSession,
+        requestedNickname: String,
+        sessionPassword: String,
+        capabilities: PeerCapabilities,
+    ): String {
         createdSession.writeMessage(WireMessage(WireMessageType.HELLO, requestedNickname, SECURE_PROTOCOL))
         val serverKeyMessage = requireNotNull(createdSession.readMessage()) { "No handshake response from server" }
         if (serverKeyMessage.type == WireMessageType.REJECTED) {
-            createdSession.close()
             error(serverKeyMessage.payload.ifBlank { "Handshake rejected" })
         }
         require(serverKeyMessage.type == WireMessageType.SERVER_KEY) { "Unexpected handshake response: ${serverKeyMessage.type}" }
@@ -42,16 +85,13 @@ class SecureChatClient {
         createdSession.enableTransportEncryption(aesKey)
         val response = requireNotNull(createdSession.readMessage()) { "No encrypted handshake response from server" }
         if (response.type != WireMessageType.ACCEPTED) {
-            createdSession.close()
             error(response.payload.ifBlank { "Handshake rejected" })
         }
-        nickname = response.payload
-        session = createdSession
-        nickname
+        return response.payload
     }
 
     suspend fun sendMessage(text: String) = withContext(Dispatchers.IO) {
-        session?.writeMessage(WireMessage(WireMessageType.CHAT, nickname, text))
+        checkNotNull(session) { "Chat disconnected" }.writeMessage(WireMessage(WireMessageType.CHAT, nickname, text))
     }
 
     suspend fun readMessage(): WireMessage? = withContext(Dispatchers.IO) {
@@ -64,13 +104,29 @@ class SecureChatClient {
     }
 
     suspend fun disconnect() = withContext(Dispatchers.IO) {
-        val active = session ?: return@withContext
-        runCatching { active.writeMessage(WireMessage(WireMessageType.DISCONNECT, nickname, "")) }
-        runCatching { active.close() }
-        session = null
+        val active = session
+        try {
+            runCatching { active?.writeMessage(WireMessage(WireMessageType.DISCONNECT, nickname, "")) }
+        } finally {
+            close()
+        }
+    }
+
+    /** Closes active and pending sockets synchronously, including after the ViewModel scope is canceled. */
+    override fun close() {
+        val resources = synchronized(lock) {
+            val captured = session to connecting
+            session = null
+            connecting = null
+            captured
+        }
+        runCatching { resources.first?.close() }
+        runCatching { resources.second?.close() }
     }
 
     companion object {
         private const val SECURE_PROTOCOL = "SECURE_V1"
+        private const val CONNECT_TIMEOUT_MS = 10_000
+        private const val HANDSHAKE_TIMEOUT_MS = 15_000
     }
 }

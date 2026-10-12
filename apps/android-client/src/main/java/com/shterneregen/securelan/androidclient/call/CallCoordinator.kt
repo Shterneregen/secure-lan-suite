@@ -9,6 +9,7 @@ import java.util.UUID
 
 enum class CallPhase { IDLE, INCOMING, OUTGOING, CONNECTING, ACTIVE, ENDED }
 enum class CallEndReason { COMPLETED, DECLINED, BUSY, TIMEOUT, CONNECTION_LOST, ERROR }
+/** Call snapshot; [startedAt] is a monotonic clock value set only when media becomes active. */
 data class CallState(
     val phase: CallPhase = CallPhase.IDLE,
     val id: String = "",
@@ -35,6 +36,12 @@ interface CallMedia {
     }
 }
 
+/**
+ * Coordinates one call on the owning main dispatcher without capturing media for an incoming offer.
+ * [prepare] must establish foreground/permission readiness before media starts; [release] restores
+ * platform resources on termination. Signaling is ordered and correlated by session and peer.
+ * [now] supplies a monotonic clock, and stale callbacks cannot revive a finished call.
+ */
 class CallCoordinator(
     private val scope: CoroutineScope,
     private val nickname: () -> String,
@@ -77,6 +84,7 @@ class CallCoordinator(
         }
     }
 
+    /** Accepts only the current offer; [sendVideo] allows answering a video offer with audio only. */
     fun accept(id: String, sendVideo: Boolean) {
         val offer = incoming ?: return
         val current = state.value
@@ -93,6 +101,7 @@ class CallCoordinator(
         }
     }
 
+    /** Handles a signal whose [sender] comes from the authenticated chat transport. */
     fun receive(sender: String, signal: RtcSignalEnvelope) {
         if (!available() || signal.sessionId().isBlank() || signal.toPeer().isBlank() ||
             !signal.toPeer().equals(nickname(), true) || !signal.fromPeer().equals(sender, true) ||

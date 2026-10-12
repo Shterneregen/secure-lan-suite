@@ -12,7 +12,7 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 - Supported flows include desktop-compatible UDP discovery, secure chat handshake, encrypted chat messages, AES-GCM/RSA file-transfer handshake, Android-to-desktop file sending, and desktop-to-Android file receiving.
 - The app starts UDP discovery automatically on launch, lets the user stop or restart it from the Devices screen, and requests `NEARBY_WIFI_DEVICES` on Android 13+.
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
-- Android-to-Android and Android-to-desktop voice/video calls use WebRTC in the LAN, with the existing encrypted TCP connection for signaling. WebRTC data channels, screen sharing, steganography tools, and the desktop no-auth browser quick-share HTTP flow are not implemented in the Android client yet.
+- Android-to-Android and Android-to-desktop voice/video calls use WebRTC in the LAN, with the existing encrypted TCP connection for signaling. WebRTC data channels, screen sharing and steganography tools are not implemented yet. Browser Quick Share supports temporary file/text links and QR codes.
 - For discovery and file receiving, the phone and desktop must be on the same network. Firewalls, VPNs, guest Wi-Fi networks, client-isolated Wi-Fi, and mobile hotspots can block UDP broadcast or inbound TCP connections.
 
 ## Requirements
@@ -338,6 +338,23 @@ files; previous client versions may still leave partial files after an error.
 
 When Android hosts the room, its receiver listens on the file port configured in the hosting sheet (normally `5051`). Select a connected room participant on **Devices** before sending a file from the Android host.
 
+## Browser Quick Share
+
+Open **Quick Share** to publish text or a selected document with an expiration
+and optional access limit, then copy its link or show the QR code. Links use
+**unauthenticated, unencrypted local HTTP**: anyone on the LAN who knows or
+discovers a link can access it. Use this only on trusted networks. The index
+page lists current shares, so link names are not access-control secrets.
+
+The server prefers TCP port `5053`, tries `5054` through `5063` when occupied,
+then uses an available system-assigned port. It stages documents in private
+cache and streams downloads without loading whole files into memory. A failed
+creation removes its temporary file and reports an error in the workspace.
+Content requests count against the access limit; file landing pages do not.
+Shares are kept only in memory and end when the owning ViewModel is cleared
+or the process exits. Activity configuration changes retain them; background
+availability is best effort, without a dedicated Quick Share foreground service.
+
 ## Ports
 
 Default ports:
@@ -363,11 +380,34 @@ On Android 13+, the app requests `NEARBY_WIFI_DEVICES` at startup. Without netwo
 
 ## Tests
 
+Kotlin source hygiene and Android Lint:
+
+```powershell
+.\gradlew.bat :apps:android-client:lintKotlin :apps:android-client:lintDebug
+.\gradlew.bat :apps:android-client:formatKotlin
+```
+
+`check` includes Kotlin lint. The module's `.editorconfig` uses the same focused
+source-hygiene rules as desktop, preserving Compose names and existing layouts.
+Android Lint reports are written to `build/reports/lint-results-debug.html`.
+Do not replace synchronous receive-file recovery journal writes with asynchronous
+preferences updates: the journal must survive process death before file IO.
+
+Source documentation uses English **KDoc**, the Kotlin equivalent of Javadoc.
+It describes ownership, threading, persistence, protocol compatibility and
+recovery contracts. Java's `javadoc` task does not document Kotlin sources.
+
 Android module unit tests:
 
 ```powershell
 .\gradlew.bat :apps:android-client:testDebugUnitTest
 ```
+
+The JVM suite includes loopback chat handshake/socket-cleanup tests, discovery
+cancellation and port-reuse checks, and HTTP Quick Share tests for concurrency,
+access limits, expiration validation and shutdown. These do not replace physical
+device checks for permissions, Downloads providers, background services, PiP or
+desktop interoperability.
 
 Instrumented tests on a connected device or emulator:
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="quick_share_qr_title">Quick Share QR code</string>
-    <string name="quick_share_intro">Create temporary links for people on your local network. Anyone with a link can access it.</string>
+    <string name="quick_share_intro">Create temporary links for people on your local network. Links use unencrypted HTTP without authentication. Anyone with a link can access it. Use only on trusted networks.</string>
     <string name="quick_share_address">LAN address: %1$s</string>
     <string name="quick_share_text_input">Text to share</string>
     <string name="quick_share_expiration">Expires (minutes)</string>
@@ -104,9 +104,6 @@
     <string name="files_choose_participant">Select a room participant on Devices before sending a file.</string>
     <string name="choose_file_title">Send a protected file</string>
     <string name="choose_file_message">Choose a document from this device. It will be encrypted before transfer.</string>
-    <string name="choose_file">Choose file</string>
-    <string name="selected_file">Selected file</string>
-    <string name="send_file">Send file</string>
     <string name="file_will_be_sent">Will be sent securely to %1$s</string>
     <string name="receiving_ready">Ready to receive files</string>
     <string name="receiving_ready_message">Incoming files are saved automatically to Downloads/SecureLan.</string>
@@ -173,7 +170,6 @@
     <string name="remove_file">Remove</string>
     <string name="file_size_pending">Size pending</string>
     <string name="file_unavailable">Unavailable</string>
-    <string name="files_select_recipient">Select a recipient before adding files.</string>
     <plurals name="send_files_count">
         <item quantity="one">Send %1$d file</item>
         <item quantity="other">Send %1$d files</item>
@@ -184,7 +180,8 @@
     <string name="retry_failed">Retry failed</string>
     <string name="skip_and_continue">Skip and continue</string>
     <string name="stop_after_current">Stop after current</string>
-    <string name="batch_result">Sent %1$d of %2$d · %3$d failed · %4$d skipped</string>
+    <!-- Independent counts with invariant labels; no single quantity governs this summary. -->
+    <string name="batch_result" tools:ignore="PluralsCandidate">Sent %1$d of %2$d · %3$d failed · %4$d skipped</string>
     <string name="phase_queued">Queued</string>
     <string name="phase_preparing">Preparing</string>
     <string name="phase_waiting_acceptance">Waiting for acceptance</string>

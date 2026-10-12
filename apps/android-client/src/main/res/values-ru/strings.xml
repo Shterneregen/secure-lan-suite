@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="quick_share_qr_title">QR-код Quick Share</string>
-    <string name="quick_share_intro">Создавайте временные ссылки для устройств в локальной сети. Любой, у кого есть ссылка, может открыть её.</string>
+    <string name="quick_share_intro">Создавайте временные ссылки для устройств в локальной сети. Ссылки используют HTTP без шифрования и аутентификации. Любой, у кого есть ссылка, может открыть её. Используйте только в доверенных сетях.</string>
     <string name="quick_share_address">Адрес в локальной сети: %1$s</string>
     <string name="quick_share_text_input">Текст для отправки</string>
     <string name="quick_share_expiration">Срок (минуты)</string>
@@ -106,9 +106,6 @@
     <string name="files_choose_participant">Перед отправкой файла выберите участника комнаты на экране «Устройства».</string>
     <string name="choose_file_title">Защищённая передача файла</string>
     <string name="choose_file_message">Выберите документ на этом устройстве. Перед отправкой он будет зашифрован.</string>
-    <string name="choose_file">Выбрать файл</string>
-    <string name="selected_file">Выбранный файл</string>
-    <string name="send_file">Отправить файл</string>
     <string name="file_will_be_sent">Будет защищённо отправлен на %1$s</string>
     <string name="receiving_ready">Готово к получению файлов</string>
     <string name="receiving_ready_message">Входящие файлы автоматически сохраняются в Downloads/SecureLan.</string>
@@ -179,7 +176,6 @@
     <string name="remove_file">Удалить</string>
     <string name="file_size_pending">Размер уточняется</string>
     <string name="file_unavailable">Недоступен</string>
-    <string name="files_select_recipient">Выберите получателя перед добавлением файлов.</string>
     <plurals name="send_files_count">
         <item quantity="one">Отправить %1$d файл</item>
         <item quantity="few">Отправить %1$d файла</item>

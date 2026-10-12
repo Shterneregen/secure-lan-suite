@@ -9,6 +9,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.shterneregen.securelan.androidclient.model.SecureLanPorts
 import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.FileTransferMetadata
@@ -16,10 +18,10 @@ import com.shterneregen.securelan.androidclient.protocol.FileTransferSession
 import com.shterneregen.securelan.androidclient.transfer.numberedTransferFileName
 import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
 import java.net.ServerSocket
@@ -30,6 +32,11 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+/**
+ * Receives files sequentially on the IO dispatcher using the desktop encrypted transfer protocol.
+ * Publishes complete files to Downloads and removes unfinished targets on failure or the next start.
+ * Callbacks run on the IO thread; [close] unblocks both the listener and current transfer.
+ */
 class SecureFileReceiver(private val context: Context) {
     @Volatile private var listener: ServerSocket? = null
     @Volatile private var accepted: java.net.Socket? = null
@@ -51,29 +58,36 @@ class SecureFileReceiver(private val context: Context) {
         require(port in 1..65535) { "File receiver port out of range: $port" }
         val coroutine = currentCoroutineContext()
         val watchdog = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "file-receiver-watchdog").apply { isDaemon = true } }
-        watchdog.scheduleAtFixedRate({ if (!coroutine.isActive) close() }, 100, 100, TimeUnit.MILLISECONDS)
+        watchdog.scheduleWithFixedDelay({ if (!coroutine.isActive) close() }, 100, 100, TimeUnit.MILLISECONDS)
         try {
-        cleanupPending()
-        ServerSocket(port).use { serverSocket ->
-            listener = serverSocket
-            serverSocket.soTimeout = ACCEPT_TIMEOUT_MS
-            while (isActive) {
-                try {
-                    val socket = serverSocket.accept()
-                    accepted = socket
-                    socket.soTimeout = 60_000
+            cleanupPending()
+            ServerSocket(port).use { serverSocket ->
+                listener = serverSocket
+                serverSocket.soTimeout = ACCEPT_TIMEOUT_MS
+                while (isActive) {
                     try {
-                        coroutine.ensureActive()
-                        socket.use { handleClient(it, sessionPassword, onStarted, onProgress, onCompleted) }
-                    } catch (error: Exception) {
-                        coroutine.ensureActive()
-                        onError("Incoming file transfer failed", error)
-                    } finally { accepted = null; socket.close() }
-                } catch (_: SocketTimeoutException) {
+                        val socket = serverSocket.accept()
+                        accepted = socket
+                        socket.soTimeout = 60_000
+                        try {
+                            coroutine.ensureActive()
+                            socket.use { handleClient(it, sessionPassword, onStarted, onProgress, onCompleted) }
+                        } catch (error: Exception) {
+                            coroutine.ensureActive()
+                            onError("Incoming file transfer failed", error)
+                        } finally {
+                            accepted = null
+                            socket.close()
+                        }
+                    } catch (_: SocketTimeoutException) {
+                    }
                 }
             }
+        } finally {
+            close()
+            listener = null
+            watchdog.shutdownNow()
         }
-        } finally { close(); listener = null; watchdog.shutdownNow() }
     }
 
     private fun handleClient(
@@ -93,25 +107,27 @@ class SecureFileReceiver(private val context: Context) {
             var received = 0L
             var published = false
             try {
-            target.openOutputStream().use { output ->
-                while (true) {
-                    val chunk = session.readEncryptedBytes()
-                    if (chunk.isEmpty()) break
-                    validateTransferLength(metadata.fileSize, Math.addExact(received, chunk.size.toLong()), false, legacyUnknown = true)
-                    output.write(chunk)
-                    received += chunk.size
-                    onProgress(metadata, received)
+                target.openOutputStream().use { output ->
+                    while (true) {
+                        val chunk = session.readEncryptedBytes()
+                        if (chunk.isEmpty()) break
+                        validateTransferLength(metadata.fileSize, Math.addExact(received, chunk.size.toLong()), false, legacyUnknown = true)
+                        output.write(chunk)
+                        received += chunk.size
+                        onProgress(metadata, received)
+                    }
                 }
+                validateTransferLength(metadata.fileSize, received, true, legacyUnknown = true)
+                val receivedFile = target.publish()
+                published = true
+                onCompleted(
+                    metadata.copy(fileName = receivedFile.savedPath.substringAfterLast('/'), fileSize = received),
+                    receivedFile,
+                )
+                session.writeEncryptedText(DONE)
+            } finally {
+                if (!published) target.discard()
             }
-            validateTransferLength(metadata.fileSize, received, true, legacyUnknown = true)
-            val receivedFile = target.publish()
-            published = true
-            onCompleted(
-                metadata.copy(fileName = receivedFile.savedPath.substringAfterLast('/'), fileSize = received),
-                receivedFile,
-            )
-            session.writeEncryptedText(DONE)
-            } finally { if (!published) target.discard() }
         }
     }
 
@@ -152,6 +168,7 @@ class SecureFileReceiver(private val context: Context) {
 
     private fun decodeCompactText(value: String): String = String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
 
+    // This recovery journal must reach disk before file IO; asynchronous apply() can lose it on process death.
     private fun createReceiveTarget(fileName: String): ReceiveTarget {
         val safeName = safeFileName(fileName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -164,12 +181,12 @@ class SecureFileReceiver(private val context: Context) {
             }
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: error("Unable to create Downloads/$DOWNLOAD_SUBDIRECTORY/$safeName")
-            pending.edit().putString("uri", uri.toString()).commit()
+            pending.edit(commit = true) { putString("uri", uri.toString()) }
             val displayName = try {
                 stabilizeMediaStoreDisplayName(resolver, uri, safeName)
             } catch (error: Exception) {
                 resolver.delete(uri, null, null)
-                pending.edit().remove("uri").commit()
+                pending.edit(commit = true) { remove("uri") }
                 throw error
             }
             return ReceiveTarget(
@@ -178,7 +195,7 @@ class SecureFileReceiver(private val context: Context) {
                 },
                 publish = {
                     check(resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null) == 1)
-                    pending.edit().remove("uri").commit()
+                    pending.edit(commit = true) { remove("uri") }
                     val actualName = resolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use {
                         if (it.moveToFirst()) it.getString(0) else null
                     } ?: displayName
@@ -187,13 +204,13 @@ class SecureFileReceiver(private val context: Context) {
                         contentUri = uri,
                     )
                 },
-                discard = { resolver.delete(uri, null, null); pending.edit().remove("uri").commit(); Unit },
+                discard = { resolver.delete(uri, null, null); pending.edit(commit = true) { remove("uri") } },
             )
         }
 
         val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), DOWNLOAD_SUBDIRECTORY).apply { mkdirs() }
         val temp = File.createTempFile(".securelan-incoming-", ".tmp", directory)
-        pending.edit().putString("temp", temp.absolutePath).commit()
+        pending.edit(commit = true) { putString("temp", temp.absolutePath) }
         return ReceiveTarget(
             openOutputStream = { temp.outputStream() },
             publish = {
@@ -202,14 +219,14 @@ class SecureFileReceiver(private val context: Context) {
                 try {
                     val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
                     check(temp.renameTo(target)) { "Unable to publish received file" }
-                    pending.edit().remove("temp").commit()
+                    pending.edit(commit = true) { remove("temp") }
                     ReceivedFile(savedPath = target.absolutePath, contentUri = contentUri)
                 } catch (error: Exception) {
                     target.delete()
                     throw error
                 }
             },
-            discard = { temp.delete(); pending.edit().remove("temp").commit(); Unit },
+            discard = { temp.delete(); pending.edit(commit = true) { remove("temp") } },
         )
     }
 
@@ -271,15 +288,17 @@ class SecureFileReceiver(private val context: Context) {
         val discard: () -> Unit,
     )
 
+    /** Published download with a display path and a shareable content URI, never a partial target. */
     data class ReceivedFile(
         val savedPath: String,
         val contentUri: Uri,
     )
 
+    // Recovery journal changes are persisted synchronously on the IO thread.
     private fun cleanupPending() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             pending.getString("uri", null)?.let { value ->
-                val uri = Uri.parse(value)
+                val uri = value.toUri()
                 runCatching {
                     val isPending = context.contentResolver.query(uri, arrayOf(MediaStore.Downloads.IS_PENDING), null, null, null)?.use { it.moveToFirst() && it.getInt(0) == 1 } == true
                     if (isPending) context.contentResolver.delete(uri, null, null)
@@ -290,7 +309,7 @@ class SecureFileReceiver(private val context: Context) {
             val file = File(path)
             if (file.name.startsWith(".securelan-incoming-") && file.parentFile == File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), DOWNLOAD_SUBDIRECTORY)) file.delete()
         }
-        pending.edit().clear().commit()
+        pending.edit(commit = true) { clear() }
     }
 
     companion object {

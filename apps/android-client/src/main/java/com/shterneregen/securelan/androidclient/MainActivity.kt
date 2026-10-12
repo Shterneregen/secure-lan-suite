@@ -81,8 +81,8 @@ import com.shterneregen.securelan.androidclient.transfer.TransferPhase
 import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
-import com.shterneregen.securelan.androidclient.ui.QuickShareScreen
 import com.shterneregen.securelan.androidclient.ui.LocalAppResources
+import com.shterneregen.securelan.androidclient.ui.QuickShareScreen
 import kotlinx.coroutines.launch
 import java.util.*
 
@@ -101,6 +101,7 @@ private fun stringResource(id: Int, vararg formatArgs: Any): String =
 private fun pluralStringResource(id: Int, count: Int, vararg formatArgs: Any): String =
     LocalAppResources.current.getQuantityString(id, count, *formatArgs)
 
+/** Hosts the adaptive Compose workspace, runtime permission prompts and call Picture-in-Picture. */
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     var inCallPip by mutableStateOf(false)

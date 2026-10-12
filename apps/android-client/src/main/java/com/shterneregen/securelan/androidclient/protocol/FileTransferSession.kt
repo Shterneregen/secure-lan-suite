@@ -7,6 +7,11 @@ import java.net.Socket
 import java.nio.charset.StandardCharsets
 import javax.crypto.SecretKey
 
+/**
+ * Desktop file-transfer framing: modified UTF handshake fields and length-prefixed binary frames.
+ * Encryption wraps frame bodies after key negotiation. One reader and serialized writers share
+ * the owned socket; callers configure IO timeouts and provide protocol-appropriate payloads.
+ */
 class FileTransferSession(private val socket: Socket) : Closeable {
     private val input = DataInputStream(socket.getInputStream())
     private val output = DataOutputStream(socket.getOutputStream())

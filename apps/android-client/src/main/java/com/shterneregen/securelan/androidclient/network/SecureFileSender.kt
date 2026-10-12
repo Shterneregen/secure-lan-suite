@@ -1,20 +1,20 @@
 package com.shterneregen.securelan.androidclient.network
 
 import android.content.ContentResolver
-import android.net.Uri
-import com.shterneregen.securelan.androidclient.transfer.TransferSource
-import com.shterneregen.securelan.androidclient.transfer.TransferAttempt
-import com.shterneregen.securelan.androidclient.transfer.TransferPhase
-import com.shterneregen.securelan.androidclient.transfer.stageStream
-import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
+import androidx.core.net.toUri
 import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.FileTransferMetadata
 import com.shterneregen.securelan.androidclient.protocol.FileTransferSession
+import com.shterneregen.securelan.androidclient.transfer.TransferAttempt
+import com.shterneregen.securelan.androidclient.transfer.TransferPhase
+import com.shterneregen.securelan.androidclient.transfer.TransferSource
+import com.shterneregen.securelan.androidclient.transfer.stageStream
+import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.io.File
 import java.io.InputStream
@@ -26,13 +26,21 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+/** Per-stage IO deadlines in milliseconds; acceptance includes a remote user's approval wait. */
 data class FileTransferTimeouts(val connectMillis: Int = 10_000, val acceptanceMillis: Int = 300_000, val inactivityMillis: Int = 60_000, val confirmationMillis: Int = 60_000)
 
+/**
+ * Streams one encrypted file at a time on the IO dispatcher using the desktop transfer protocol.
+ * Unknown sizes are staged in private cache; deadlines and cancellation close owned streams/sockets.
+ * Returning from [sendFile] means the receiver acknowledged `DONE`, not just that bytes were sent.
+ */
 class SecureFileSender(private val contentResolver: ContentResolver, private val cacheDirectory: File, private val timeouts: FileTransferTimeouts = FileTransferTimeouts()) {
     @Volatile private var active: Operation? = null
 
+    /** Interrupts the current operation; future sends may reuse this sender. */
     fun close() { active?.close() }
 
+    /** Reports transfer stages from the IO thread and returns the confirmed wire transfer ID. */
     suspend fun sendFile(
         host: String,
         port: Int,
@@ -53,7 +61,7 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
             onUpdate(attempt)
         }
         val watchdog = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "file-transfer-watchdog").apply { isDaemon = true } }
-        watchdog.scheduleAtFixedRate({
+        watchdog.scheduleWithFixedDelay({
             if (!context.isActive || System.nanoTime() >= operation.deadline) operation.close()
         }, 100, 100, TimeUnit.MILLISECONDS)
         var staged: File? = null
@@ -64,7 +72,7 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
             // This directory belongs exclusively to the single sender slot.
             cacheDirectory.listFiles()?.filter { it.name.startsWith("outgoing-") }?.forEach { it.delete() }
             var size = selectedFile.size
-            val original = requireNotNull(contentResolver.openInputStream(Uri.parse(selectedFile.reference))) { "Source unavailable" }
+            val original = requireNotNull(contentResolver.openInputStream(selectedFile.reference.toUri())) { "Source unavailable" }
             operation.own(original)
             if (size == null) {
                 val temp = File.createTempFile("outgoing-", ".tmp", cacheDirectory)
