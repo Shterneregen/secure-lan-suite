@@ -10,6 +10,11 @@ import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
 
+/**
+ * Default implementation of [RsaCryptoService] using `RSA/ECB/OAEPWithSHA-256AndMGF1Padding`
+ * configured with explicit parameters (`SHA-256`, `MGF1` with `SHA-1`, `PSource.PSpecified.DEFAULT`)
+ * to ensure deterministic cross-platform compatibility between standard JVM and Android runtimes.
+ */
 class DefaultRsaCryptoService : RsaCryptoService {
     override fun encrypt(plainText: ByteArray, publicKey: PublicKey): ByteArray {
         Objects.requireNonNull(plainText, "plainText")

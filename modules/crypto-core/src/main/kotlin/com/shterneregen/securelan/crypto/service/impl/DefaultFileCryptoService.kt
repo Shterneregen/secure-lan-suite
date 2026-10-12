@@ -12,6 +12,9 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import java.util.Objects
 
+/**
+ * Default implementation of [FileCryptoService] delegating to [HybridFileCryptoWorkflow] and [PasswordFileCryptoWorkflow].
+ */
 class DefaultFileCryptoService(
     private val hybridWorkflow: HybridFileCryptoWorkflow,
     private val passwordWorkflow: PasswordFileCryptoWorkflow,
@@ -21,13 +24,17 @@ class DefaultFileCryptoService(
         Objects.requireNonNull(passwordWorkflow, "passwordWorkflow")
     }
 
-    override fun encryptFileWithPublicKey(path: Path, publicKey: PublicKey): HybridEncryptedData = hybridWorkflow.encrypt(readAllBytes(path), publicKey)
+    override fun encryptFileWithPublicKey(path: Path, publicKey: PublicKey): HybridEncryptedData =
+        hybridWorkflow.encrypt(readAllBytes(path), publicKey)
 
-    override fun decryptFileWithPrivateKey(encryptedData: HybridEncryptedData, privateKey: PrivateKey): ByteArray = hybridWorkflow.decrypt(encryptedData, privateKey)
+    override fun decryptFileWithPrivateKey(encryptedData: HybridEncryptedData, privateKey: PrivateKey): ByteArray =
+        hybridWorkflow.decrypt(encryptedData, privateKey)
 
-    override fun encryptFileWithPassword(path: Path, password: CharArray): PasswordEncryptedData = passwordWorkflow.encrypt(readAllBytes(path), password)
+    override fun encryptFileWithPassword(path: Path, password: CharArray): PasswordEncryptedData =
+        passwordWorkflow.encrypt(readAllBytes(path), password)
 
-    override fun decryptFileWithPassword(encryptedData: PasswordEncryptedData, password: CharArray): ByteArray = passwordWorkflow.decrypt(encryptedData, password)
+    override fun decryptFileWithPassword(encryptedData: PasswordEncryptedData, password: CharArray): ByteArray =
+        passwordWorkflow.decrypt(encryptedData, password)
 
     private fun readAllBytes(path: Path): ByteArray {
         Objects.requireNonNull(path, "path")

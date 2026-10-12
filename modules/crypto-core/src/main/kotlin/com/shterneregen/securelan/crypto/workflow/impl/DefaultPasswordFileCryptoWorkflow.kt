@@ -12,6 +12,10 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
+/**
+ * Default implementation of [PasswordFileCryptoWorkflow] using `PBKDF2WithHmacSHA256` (65,536 iterations, 256-bit key)
+ * and `AES/GCM/NoPadding` (128-bit tag, 12-byte IV).
+ */
 class DefaultPasswordFileCryptoWorkflow : PasswordFileCryptoWorkflow {
     override fun encrypt(fileBytes: ByteArray, password: CharArray): PasswordEncryptedData {
         Objects.requireNonNull(fileBytes, "fileBytes")

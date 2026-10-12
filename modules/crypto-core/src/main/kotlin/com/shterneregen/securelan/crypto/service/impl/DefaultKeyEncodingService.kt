@@ -11,6 +11,10 @@ import java.util.Objects
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 
+/**
+ * Default implementation of [KeyEncodingService] supporting standard X.509 encoding for RSA public keys,
+ * PKCS#8 encoding for RSA private keys, and raw byte encoding for symmetric AES keys.
+ */
 class DefaultKeyEncodingService : KeyEncodingService {
     override fun encodePublicKey(publicKey: PublicKey): ByteArray {
         Objects.requireNonNull(publicKey, "publicKey")

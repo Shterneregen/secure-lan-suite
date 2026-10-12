@@ -6,6 +6,9 @@ import java.security.NoSuchAlgorithmException
 import java.util.HexFormat
 import java.util.Objects
 
+/**
+ * Default implementation of [HashService] providing standard SHA-256 computation and hex formatting.
+ */
 class DefaultHashService : HashService {
     override fun sha256(input: ByteArray): ByteArray {
         Objects.requireNonNull(input, "input")

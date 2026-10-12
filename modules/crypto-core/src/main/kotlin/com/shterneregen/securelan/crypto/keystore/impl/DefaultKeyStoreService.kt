@@ -11,6 +11,9 @@ import java.security.PublicKey
 import java.security.cert.Certificate
 import java.util.Objects
 
+/**
+ * Default implementation of [KeyStoreService] backed by standard PKCS#12 keystores.
+ */
 class DefaultKeyStoreService : KeyStoreService {
     override fun createPkcs12(): KeyStore = try {
         KeyStore.getInstance(TYPE).apply { load(null, null) }
@@ -23,6 +26,7 @@ class DefaultKeyStoreService : KeyStoreService {
     @Throws(IOException::class, GeneralSecurityException::class)
     override fun load(path: Path, password: CharArray): KeyStore {
         Objects.requireNonNull(path, "path")
+        Objects.requireNonNull(password, "password")
         val keyStore = KeyStore.getInstance(TYPE)
         Files.newInputStream(path).use { inputStream -> keyStore.load(inputStream, password) }
         return keyStore
@@ -32,6 +36,7 @@ class DefaultKeyStoreService : KeyStoreService {
     override fun store(keyStore: KeyStore, path: Path, password: CharArray) {
         Objects.requireNonNull(keyStore, "keyStore")
         Objects.requireNonNull(path, "path")
+        Objects.requireNonNull(password, "password")
         path.parent?.let { Files.createDirectories(it) }
         Files.newOutputStream(path).use { outputStream -> keyStore.store(outputStream, password) }
     }
@@ -45,27 +50,45 @@ class DefaultKeyStoreService : KeyStoreService {
         chain: Array<Certificate>,
     ) {
         Objects.requireNonNull(keyStore, "keyStore")
+        Objects.requireNonNull(alias, "alias")
+        Objects.requireNonNull(privateKey, "privateKey")
+        Objects.requireNonNull(entryPassword, "entryPassword")
+        Objects.requireNonNull(chain, "chain")
         keyStore.setKeyEntry(alias, privateKey, entryPassword, chain)
     }
 
     @Throws(GeneralSecurityException::class)
     override fun setCertificateEntry(keyStore: KeyStore, alias: String, certificate: Certificate) {
         Objects.requireNonNull(keyStore, "keyStore")
+        Objects.requireNonNull(alias, "alias")
+        Objects.requireNonNull(certificate, "certificate")
         keyStore.setCertificateEntry(alias, certificate)
     }
 
     @Throws(GeneralSecurityException::class)
     override fun getPrivateKey(keyStore: KeyStore, alias: String, entryPassword: CharArray): PrivateKey {
         Objects.requireNonNull(keyStore, "keyStore")
-        return keyStore.getKey(alias, entryPassword) as PrivateKey
+        Objects.requireNonNull(alias, "alias")
+        Objects.requireNonNull(entryPassword, "entryPassword")
+        val key = keyStore.getKey(alias, entryPassword)
+            ?: throw IllegalStateException("No key entry found for alias: $alias")
+        if (key !is PrivateKey) {
+            throw IllegalStateException("Key for alias '$alias' is not a PrivateKey (found: ${key::class.java.name})")
+        }
+        return key
     }
 
     @Throws(GeneralSecurityException::class)
-    override fun getPublicKey(keyStore: KeyStore, alias: String): PublicKey? = getCertificate(keyStore, alias)?.publicKey
+    override fun getPublicKey(keyStore: KeyStore, alias: String): PublicKey? {
+        Objects.requireNonNull(keyStore, "keyStore")
+        Objects.requireNonNull(alias, "alias")
+        return getCertificate(keyStore, alias)?.publicKey
+    }
 
     @Throws(GeneralSecurityException::class)
     override fun getCertificate(keyStore: KeyStore, alias: String): Certificate? {
         Objects.requireNonNull(keyStore, "keyStore")
+        Objects.requireNonNull(alias, "alias")
         return keyStore.getCertificate(alias)
     }
 

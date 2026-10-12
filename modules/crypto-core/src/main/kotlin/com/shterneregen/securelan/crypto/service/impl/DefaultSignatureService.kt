@@ -6,6 +6,9 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import java.util.Objects
 
+/**
+ * Default implementation of [SignatureService] using the `SHA256withRSA` signature algorithm.
+ */
 class DefaultSignatureService : SignatureService {
     override fun sign(data: ByteArray, privateKey: PrivateKey): ByteArray {
         Objects.requireNonNull(data, "data")
@@ -22,7 +25,7 @@ class DefaultSignatureService : SignatureService {
 
     override fun verify(data: ByteArray, signature: ByteArray, publicKey: PublicKey): Boolean {
         Objects.requireNonNull(data, "data")
-        Objects.requireNonNull(signature, "signatureBytes")
+        Objects.requireNonNull(signature, "signature")
         Objects.requireNonNull(publicKey, "publicKey")
         try {
             val verifier = java.security.Signature.getInstance(ALGORITHM)

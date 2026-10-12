@@ -11,6 +11,10 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import java.util.Objects
 
+/**
+ * Default implementation of [HybridFileCryptoWorkflow] delegating to [AesGcmCryptoService], [RsaCryptoService],
+ * [KeyGenerationService], and [KeyEncodingService].
+ */
 class DefaultHybridFileCryptoWorkflow(
     private val aesGcmCryptoService: AesGcmCryptoService,
     private val rsaCryptoService: RsaCryptoService,

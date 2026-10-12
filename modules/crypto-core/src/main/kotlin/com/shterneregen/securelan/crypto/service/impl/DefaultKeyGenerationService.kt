@@ -7,6 +7,9 @@ import java.security.KeyPairGenerator
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
+/**
+ * Default implementation of [KeyGenerationService] generating 256-bit AES keys and 2048-bit RSA key pairs.
+ */
 class DefaultKeyGenerationService : KeyGenerationService {
     override fun generateAesKey(): SecretKey = try {
         KeyGenerator.getInstance("AES").apply { init(AES_KEY_SIZE) }.generateKey()

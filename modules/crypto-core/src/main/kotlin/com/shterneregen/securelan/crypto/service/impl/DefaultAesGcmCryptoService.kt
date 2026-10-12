@@ -9,6 +9,10 @@ import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+/**
+ * Default implementation of [AesGcmCryptoService] using `AES/GCM/NoPadding` with a 128-bit authentication tag
+ * and a 12-byte (96-bit) initialization vector generated per encryption operation via [SecureRandom].
+ */
 class DefaultAesGcmCryptoService : AesGcmCryptoService {
     override fun encrypt(plainText: ByteArray, key: SecretKey): ByteArray {
         Objects.requireNonNull(plainText, "plainText")
@@ -34,9 +38,12 @@ class DefaultAesGcmCryptoService : AesGcmCryptoService {
         Objects.requireNonNull(key, "key")
         try {
             val buffer = ByteBuffer.wrap(cipherPayload)
+            if (buffer.remaining() < 1) {
+                throw IllegalArgumentException("Invalid AES-GCM payload: payload is empty")
+            }
             val ivLength = buffer.get().toInt() and 0xff
             if (ivLength <= 0 || buffer.remaining() <= ivLength) {
-                throw IllegalArgumentException("Invalid AES-GCM payload")
+                throw IllegalArgumentException("Invalid AES-GCM payload: insufficient data for IV and ciphertext")
             }
             val iv = ByteArray(ivLength)
             buffer.get(iv)
