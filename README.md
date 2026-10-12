@@ -49,18 +49,21 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 
 ### Desktop
 
-<img src="docs/images/app-main-0.5.0.png" alt="Secure LAN Suite 0.5.0 desktop client" width="900">
+<img src="docs/images/app-main-0.9.3.png" alt="Secure LAN Suite 0.9.3 desktop client" width="900">
 
 ### Android
 
 <p align="center">
-  <img src="docs/images/android-devices-0.5.0.jpg" alt="Secure LAN Suite Android devices screen" width="30%">
-  <img src="docs/images/android-chat-0.5.0.jpg" alt="Secure LAN Suite Android chat screen" width="30%">
-  <img src="docs/images/android-files-0.5.0.jpg" alt="Secure LAN Suite Android files screen" width="30%">
+  <img src="docs/images/android-devices-0.9.3.jpg" alt="Secure LAN Suite Android devices screen" width="30%">
+  <img src="docs/images/android-chat-0.9.3.jpg" alt="Secure LAN Suite Android chat screen" width="30%">
+  <img src="docs/images/android-files-0.9.3.jpg" alt="Secure LAN Suite Android files screen" width="30%">
 </p>
 
 ## Documentation
 
+- Shared instructions for Kilo, Codex, Antigravity, and other coding agents: [`AGENTS.md`](AGENTS.md)
+- Desktop product and UX guidance: [`docs/product-ui.md`](docs/product-ui.md)
+- UI quality checklists: [`docs/quality/`](docs/quality/)
 - Development, build, run, and smoke-test guide: [`docs/development.md`](docs/development.md)
 - Deprecated JavaFX fallback client: [`docs/javafx-client.md`](docs/javafx-client.md)
 - Android build, signing, and installation: [`apps/android-client/android-readme.md`](apps/android-client/android-readme.md)
