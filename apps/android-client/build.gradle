@@ -1,6 +1,7 @@
+import com.android.build.api.artifact.SingleArtifact
+
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
@@ -17,6 +18,7 @@ tasks.register('lintKotlin', JavaExec) {
     group = 'verification'
     description = 'Check Android Kotlin source hygiene and KDoc placement with ktlint.'
     classpath = configurations.kotlinLint
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
     mainClass = 'com.pinterest.ktlint.Main'
     inputs.files(kotlinLintSources)
     inputs.file('.editorconfig')
@@ -28,6 +30,7 @@ tasks.register('formatKotlin', JavaExec) {
     group = 'formatting'
     description = 'Fix Android Kotlin source hygiene with ktlint.'
     classpath = configurations.kotlinLint
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
     mainClass = 'com.pinterest.ktlint.Main'
     workingDir = projectDir
     args '--format', 'src/**/*.kt'
@@ -41,9 +44,22 @@ def releaseKeyAlias = findProperty('android.release.keyAlias') ?: System.getenv(
 def releaseKeyPassword = findProperty('android.release.keyPassword') ?: System.getenv('ANDROID_RELEASE_KEY_PASSWORD')
 def hasReleaseSigningConfig = releaseStoreFilePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
 
+def appVersion = project.version.toString().replaceAll(/-SNAPSHOT$/, '')
+def versionParts = appVersion.tokenize('.')
+if (!(appVersion ==~ /\d{1,3}\.\d{1,3}\.\d{1,3}/)) {
+    throw new GradleException('secureLanVersion must use major.minor.patch, with components from 0 to 999.')
+}
+def derivedVersionCode = versionParts[0].toInteger() * 1000000 +
+        versionParts[1].toInteger() * 1000 + versionParts[2].toInteger()
+def appVersionCode = providers.gradleProperty('androidVersionCode').map { it.toInteger() }
+        .getOrElse(derivedVersionCode)
+if (appVersionCode < 1 || appVersionCode > 2100000000) {
+    throw new GradleException('androidVersionCode must be between 1 and 2100000000.')
+}
+
 android {
-    namespace 'com.shterneregen.securelan.androidclient'
-    compileSdk 35
+    namespace = 'com.shterneregen.securelan.androidclient'
+    compileSdk = 35
 
     bundle {
         language {
@@ -52,49 +68,60 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.shterneregen.securelan.androidclient'
-        minSdk 26
-        targetSdk 35
-        versionCode 1
-        versionName project.version.toString().replaceAll(/-SNAPSHOT$/, '')
+        applicationId = 'com.shterneregen.securelan.androidclient'
+        minSdk = 26
+        targetSdk = 35
+        versionCode = appVersionCode
+        versionName = appVersion
 
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
     }
 
     buildFeatures {
-        compose true
+        compose = true
     }
 
     signingConfigs {
         release {
             if (hasReleaseSigningConfig) {
-                storeFile file(releaseStoreFilePath)
-                storePassword releaseStorePassword
-                keyAlias releaseKeyAlias
-                keyPassword releaseKeyPassword
+                storeFile = file(releaseStoreFilePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig hasReleaseSigningConfig ? signingConfigs.release : signingConfigs.debug
+            signingConfig = hasReleaseSigningConfig ? signingConfigs.release : signingConfigs.debug
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+}
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
+kotlin {
+    jvmToolchain(17)
+}
 
-    applicationVariants.configureEach { variant ->
-        variant.outputs.configureEach { output ->
-            outputFileName = "secure-lan-${variant.versionName}.apk"
+// Export named APKs without changing AGP's install metadata or using legacy APIs.
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    def variantTaskSuffix = variant.name.capitalize()
+    def exportApk = tasks.register("export${variantTaskSuffix}Apk", Sync) {
+        group = 'distribution'
+        description = "Export the ${variant.name} APK with the application version in its filename."
+        from(variant.artifacts.get(SingleArtifact.APK.INSTANCE)) {
+            include '*.apk'
+            rename { "secure-lan-${appVersion}.apk" }
         }
+        into(layout.buildDirectory.dir("distributions/apk/${variant.name}"))
+    }
+    tasks.matching { it.name == "assemble${variantTaskSuffix}" }.configureEach {
+        dependsOn exportApk
     }
 }
 

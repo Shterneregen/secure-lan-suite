@@ -38,7 +38,11 @@ The [reviewed implementation and device acceptance checklist](../../docs/android
 - Android SDK Platform 35.
 - Android SDK Build Tools compatible with the configured Android Gradle Plugin.
 - Android SDK Platform Tools (`adb`).
-- JDK 17 or newer for Android Gradle Plugin. JDK 25 is supported by the current Android toolchain used by this module.
+- JDK 17 or newer to run Gradle; the Android client and its shared JVM modules
+  compile and run unit tests with a JDK 17 toolchain. Gradle can provision a
+  missing toolchain through Foojay.
+- Android 8.0 (API 26) or newer on the device. Android 9 and 10 remain supported.
+  The build JDK, `compileSdk 35` and `targetSdk 35` do not raise `minSdk 26`.
 - Internet access for the first build so Gradle, Android, Kotlin, and Compose dependencies can be downloaded.
 
 Exact Android Gradle Plugin and Kotlin versions are defined in `settings.gradle`;
@@ -47,7 +51,14 @@ Android Gradle Plugin is 9.1.1.
 
 ### When building the whole monorepo
 
-JDK 25 is recommended for full repository builds because the desktop/core modules compile with Java 25. Android-only tasks also work on JDK 17+ when run with the Android Gradle Plugin-supported toolchain.
+JDK 25 is recommended for full repository builds because the desktop and
+desktop-only modules target Java 25. `common-model`, `common-net`, `crypto-core`,
+`chat-core` and `file-transfer-core` target Java 17 for Android reuse.
+Android-only tasks can run Gradle on JDK 17 without requiring JDK 25.
+The Android application uses AGP's built-in Kotlin support.
+Shared SHA-256 hex formatting uses platform-independent lowercase encoding
+instead of `java.util.HexFormat`, which requires Android API 34. Changing the
+build JDK does not make newer Java APIs available on older Android devices.
 
 ## Android SDK setup
 
@@ -101,6 +112,16 @@ The Android application id is `com.shterneregen.securelan.androidclient`. APK
 filenames use `secure-lan-<version>.apk`, where `<version>` comes from
 `secureLanVersion` in the root `gradle.properties`.
 
+The assemble tasks export versioned APKs under `build/distributions/apk/` using
+the Android Components artifact API. AGP's original APKs and installation
+metadata remain under `build/outputs/apk/`; `installDebug` uses those originals.
+
+`versionCode` is derived as `major * 1000000 + minor * 1000 + patch` from
+`secureLanVersion` (each component must be 0–999). For example, `0.9.11` maps to
+`9011`. Increase the application version for each release. If an existing
+distribution uses a higher code, override with `-PandroidVersionCode=<integer>`
+and keep future codes above it; the override must be 1–2100000000.
+
 Debug APK on Windows:
 
 ```powershell
@@ -116,7 +137,7 @@ Debug APK on macOS/Linux:
 Expected APK path:
 
 ```text
-apps/android-client/build/outputs/apk/debug/secure-lan-<version>.apk
+apps/android-client/build/distributions/apk/debug/secure-lan-<version>.apk
 ```
 
 Release APK:
@@ -128,7 +149,7 @@ Release APK:
 Output path:
 
 ```text
-apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk
+apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 ```
 
 By default, release APKs fall back to the local Android debug key when no release signing configuration is provided. This keeps local release builds installable, but it is not a real production signature. For a real release, provide a private signing key through Gradle properties or environment variables.
@@ -168,7 +189,7 @@ Verify an APK signature before copying it to a phone:
 
 ```powershell
 $buildTools = Get-ChildItem "$env:LOCALAPPDATA\Android\Sdk\build-tools" -Directory | Sort-Object Name -Descending | Select-Object -First 1
-& "$($buildTools.FullName)\apksigner.bat" verify --verbose apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk
+& "$($buildTools.FullName)\apksigner.bat" verify --verbose apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 ```
 
 A valid local result can look like this:
@@ -187,7 +208,7 @@ For this app, `v2: true` is sufficient because the module has `minSdk 26`. `v1: 
 To confirm that the APK was signed with the intended release certificate rather than the debug key, print the APK certificate and compare its SHA-256 digest with the keystore entry:
 
 ```powershell
-& "$($buildTools.FullName)\apksigner.bat" verify --print-certs apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk
+& "$($buildTools.FullName)\apksigner.bat" verify --print-certs apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 keytool -list -v -keystore D:\Projects\My\keys\secure-lan-release.jks -alias secure-lan
 ```
 
@@ -220,26 +241,26 @@ Install the debug build through Gradle:
 Or install the generated APK directly:
 
 ```powershell
-adb install -r apps/android-client/build/outputs/apk/debug/secure-lan-<version>.apk
+adb install -r apps/android-client/build/distributions/apk/debug/secure-lan-<version>.apk
 ```
 
 Install the release APK directly:
 
 ```powershell
-adb install -r apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk
+adb install -r apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 ```
 
 If a debug build is already installed and the release APK is signed with a different key, Android may reject the update. Remove the old package and install again:
 
 ```powershell
 adb uninstall com.shterneregen.securelan.androidclient
-adb install apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk
+adb install apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 ```
 
 If multiple devices are connected, specify the device serial:
 
 ```powershell
-adb -s <device-serial> install -r apps/android-client/build/outputs/apk/debug/secure-lan-<version>.apk
+adb -s <device-serial> install -r apps/android-client/build/distributions/apk/debug/secure-lan-<version>.apk
 ```
 
 ## Run from Android Studio
@@ -475,7 +496,7 @@ sdk.dir=C\:\\Users\\admin\\AppData\\Local\\Android\\Sdk
 
 ```powershell
 adb uninstall com.shterneregen.securelan.androidclient
-adb install apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk
+adb install apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 ```
 
 ### `apksigner` shows `v1: false`, `v2: true`, `v3: false`, `v4: false`

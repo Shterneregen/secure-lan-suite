@@ -20,7 +20,7 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 
 ## Tech stack
 
-- Java 25 and Kotlin
+- Java 25 for desktop, Java 17 for Android and its shared modules, and Kotlin
 - Gradle Wrapper
 - Compose Multiplatform for the primary desktop client
 - Jetpack Compose and Android Gradle Plugin for the Android client

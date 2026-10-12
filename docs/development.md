@@ -6,6 +6,8 @@ The owning Gradle files define exact dependency and plugin versions.
 ## Requirements
 
 - JDK 25 for full repository and desktop builds.
+- JDK 17 for Android-only builds and the shared modules used by Android. Gradle
+  selects the required toolchain and can provision missing JDKs through Foojay.
 - The checked-in Gradle Wrapper; no separate Gradle or Kotlin installation is
   needed.
 - Internet access for the first dependency download.
@@ -77,8 +79,14 @@ task has no sources in this module and does not generate Kotlin documentation.
 
 APK names use `secureLanVersion` from `gradle.properties`:
 
-- `apps/android-client/build/outputs/apk/debug/secure-lan-<version>.apk`
-- `apps/android-client/build/outputs/apk/release/secure-lan-<version>.apk`
+- `apps/android-client/build/distributions/apk/debug/secure-lan-<version>.apk`
+- `apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk`
+
+These are exports from AGP's standard APK artifacts, produced by `assembleDebug`
+and `assembleRelease`. `installDebug` continues to use AGP's original APK and
+installation metadata. Android uses `minSdk 26` (Android 8.0), including Android
+9 and 10; JDK 17 and `compileSdk`/`targetSdk 35` do not raise this minimum.
+See the Android guide for version-code derivation and release overrides.
 
 See the [Android client guide](../apps/android-client/android-readme.md) for SDK
 setup, signing, install, lifecycle, permissions, and troubleshooting.
@@ -215,9 +223,22 @@ Build the Windows EXE installer:
 .\gradlew.bat :apps:desktop-client:buildExe
 ```
 
-Installer output is written under `apps/desktop-client/build/packaging/`. The
+Installer output is written under `apps/desktop-client/build/packaging/installers/`. The
 `:apps:desktop-client:createExe` task remains available as the direct packaging
 task. Follow the
 [Windows installer guide](wix-installation.md) for the verified WiX setup and
 troubleshooting. The deprecated fallback client has separate instructions in
 [the JavaFX guide](javafx-client.md).
+
+App-image creation cleans only its own image; installer creation cleans only
+the installer directory. Both outputs survive `buildExe buildPortable` and the
+reverse order. Standard `installDist`, `distZip` and `distTar` use Maven group
+names in dependency filenames and matching launcher classpaths, so same-named
+JARs from different groups are preserved.
+
+Desktop native dependencies and package icons follow the host OS/architecture:
+Windows x64, Linux x64/ARM64 and macOS x64/ARM64 have WebRTC artifacts in the
+pinned release. Windows ARM64 is not supported by that release. Native packaging
+does not cross-build. Windows uses ICO, Linux PNG, and macOS ICNS generated from
+the existing PNG icons; macOS ZIPs preserve the `.app` bundle. Linux/macOS device
+and packaged runtime behavior still require validation on those platforms.

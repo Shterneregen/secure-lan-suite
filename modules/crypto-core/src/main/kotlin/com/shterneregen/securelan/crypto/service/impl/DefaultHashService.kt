@@ -3,7 +3,6 @@ package com.shterneregen.securelan.crypto.service.impl
 import com.shterneregen.securelan.crypto.service.HashService
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
-import java.util.HexFormat
 import java.util.Objects
 
 /**
@@ -19,5 +18,15 @@ class DefaultHashService : HashService {
         }
     }
 
-    override fun sha256Hex(input: ByteArray): String = HexFormat.of().formatHex(sha256(input))
+    override fun sha256Hex(input: ByteArray): String {
+        val digest = sha256(input)
+        val digits = "0123456789abcdef"
+        val hex = CharArray(digest.size * 2)
+        digest.forEachIndexed { index, byte ->
+            val value = byte.toInt() and 0xff
+            hex[index * 2] = digits[value ushr 4]
+            hex[index * 2 + 1] = digits[value and 0x0f]
+        }
+        return String(hex)
+    }
 }

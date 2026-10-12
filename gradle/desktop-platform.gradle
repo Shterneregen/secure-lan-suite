@@ -1,0 +1,23 @@
+// Keep WebRTC, packaging and resource validation on the same native platform.
+ext.resolveDesktopPlatform = { String osName, String architecture ->
+    def os = osName.toLowerCase(Locale.ROOT)
+    def arch = architecture.toLowerCase(Locale.ROOT)
+    def platformOs = os.contains('windows') ? 'windows' :
+            os.contains('mac') || os.contains('darwin') ? 'macos' :
+                    os.contains('linux') ? 'linux' : null
+    def platformArch = arch in ['amd64', 'x86_64', 'x64'] ? 'x86_64' :
+            arch in ['aarch64', 'arm64'] ? 'aarch64' : null
+    def supported = platformOs && platformArch &&
+            !(platformOs == 'windows' && platformArch == 'aarch64')
+    def skikoArch = platformArch == 'x86_64' ? 'x64' : 'arm64'
+    def nativeExtension = platformOs == 'windows' ? 'dll' : platformOs == 'macos' ? 'dylib' : 'so'
+    def nativePrefix = platformOs == 'windows' ? '' : 'lib'
+    [
+            os: platformOs,
+            classifier: supported ? "${platformOs}-${platformArch}".toString() : null,
+            skikoLibrary: "${nativePrefix}skiko-${platformOs}-${skikoArch}.${nativeExtension}".toString(),
+            webrtcLibrary: "${nativePrefix}webrtc-java-${platformOs}-${platformArch}.${nativeExtension}".toString()
+    ]
+}
+
+ext.desktopPlatform = resolveDesktopPlatform(System.getProperty('os.name'), System.getProperty('os.arch'))

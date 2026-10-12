@@ -3,7 +3,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(':modules:common-model')
-    implementation project(':modules:common-net')
-    implementation project(':modules:crypto-core')
+    api project(':modules:common-model')
+    api project(':modules:common-net')
+    api project(':modules:crypto-core')
 }

@@ -141,13 +141,13 @@ or
 The generated EXE installer is written to:
 
 ```text
-apps/desktop-client/build/packaging/
+apps/desktop-client/build/packaging/installers/
 ```
 
 Expected output file:
 
 ```text
-apps/desktop-client/build/packaging/SecureLanSuite-<version>.exe
+apps/desktop-client/build/packaging/installers/SecureLanSuite-<version>.exe
 ```
 
 If the project version contains a `-SNAPSHOT` suffix, the packaging version strips that suffix before passing it to `jpackage`.

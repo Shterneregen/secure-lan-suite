@@ -31,6 +31,10 @@ application {
     ]
 }
 
+tasks.named('run') {
+    dependsOn ':modules:webrtc-core:verifyNativePlatform'
+}
+
 configurations {
     kotlinLint {
         canBeConsumed = false
@@ -66,6 +70,7 @@ tasks.register('lintKotlin', JavaExec) {
     group = 'verification'
     description = 'Check desktop Kotlin source hygiene and KDoc placement with ktlint.'
     classpath = configurations.kotlinLint
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
     mainClass = 'com.pinterest.ktlint.Main'
     inputs.files(kotlinLintSources)
     inputs.file('.editorconfig')
@@ -77,6 +82,7 @@ tasks.register('formatKotlin', JavaExec) {
     group = 'formatting'
     description = 'Fix desktop Kotlin source hygiene with ktlint.'
     classpath = configurations.kotlinLint
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
     mainClass = 'com.pinterest.ktlint.Main'
     workingDir = projectDir
     args '--format', 'src/**/*.kt', '!src/main/kotlin/androidx/**'
@@ -108,14 +114,56 @@ tasks.named('processResources') {
 
 def packageInputDir = layout.buildDirectory.dir('package-input')
 def packageOutputDir = layout.buildDirectory.dir('packaging')
-def appImageDir = packageOutputDir.map { it.dir(appName) }
+def installerOutputDir = layout.buildDirectory.dir('packaging/installers')
+def desktopPlatform = rootProject.ext.desktopPlatform
+def appImageName = desktopPlatform.os == 'macos' ? "${appName}.app".toString() : appName
+def appImageDir = packageOutputDir.map { it.dir(appImageName) }
+def packagingLauncher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(25)
+}
+def jpackageExecutable = packagingLauncher.map {
+    it.metadata.installationPath.file("bin/jpackage${desktopPlatform.os == 'windows' ? '.exe' : ''}")
+}
+def packageIconExtension = desktopPlatform.os == 'windows' ? 'ico' : desktopPlatform.os == 'macos' ? 'icns' : 'png'
+def packageIconFile = layout.buildDirectory.file("package-icon/app-icon.${packageIconExtension}")
+def packageIconSources = desktopPlatform.os == 'macos' ? [16, 32, 128, 256, 512].collect {
+    file("src/main/resources/icons/app-icon-${it}.png")
+} : [file(desktopPlatform.os == 'windows' ?
+        'src/main/resources/icons/app-icon.ico' : 'src/main/resources/icons/app-icon-512.png')]
+
+tasks.register('preparePackageIcon') {
+    inputs.files(packageIconSources)
+    outputs.file(packageIconFile)
+    doLast {
+        def target = packageIconFile.get().asFile
+        mkdir(target.parentFile)
+        if (desktopPlatform.os == 'macos') {
+            // ICNS embeds the existing PNGs; no platform tool or image resampling is needed.
+            def types = ['icp4', 'icp5', 'ic07', 'ic08', 'ic09']
+            def entries = packageIconSources.withIndex().collect { source, index ->
+                [type: types[index], data: Files.readAllBytes(source.toPath())]
+            }
+            target.withDataOutputStream { stream ->
+                stream.writeBytes('icns')
+                stream.writeInt(8 + entries.sum { it.data.length + 8 })
+                entries.each { entry ->
+                    stream.writeBytes(entry.type)
+                    stream.writeInt(entry.data.length + 8)
+                    stream.write(entry.data)
+                }
+            }
+        } else {
+            Files.copy(packageIconSources.first().toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+}
 
 def proguardMainJarName = "${project.name}-${project.version}-proguard.jar"
 def proguardOutputJar = layout.buildDirectory.file("libs/${proguardMainJarName}")
 def proguardReportsDir = layout.buildDirectory.dir('reports/proguard')
 def proguardPackageInputDir = layout.buildDirectory.dir('proguard-package-input')
 def proguardPackageOutputDir = layout.buildDirectory.dir('proguard-packaging')
-def proguardAppImageDir = proguardPackageOutputDir.map { it.dir(appName) }
+def proguardAppImageDir = proguardPackageOutputDir.map { it.dir(appImageName) }
 
 def sanitizePackageFilePart = { String value ->
     value.replaceAll(/[^A-Za-z0-9_.-]/, '-')
@@ -151,6 +199,7 @@ def prepareJpackageDirectory = {
 }
 
 tasks.register('runComposeShell', JavaExec) {
+    dependsOn ':modules:webrtc-core:verifyNativePlatform'
     group = 'application'
     description = 'Run the Compose desktop client (compatibility alias for run).'
     classpath = sourceSets.main.runtimeClasspath
@@ -158,16 +207,31 @@ tasks.register('runComposeShell', JavaExec) {
     jvmArgs = application.applicationDefaultJvmArgs
 }
 
-tasks.named('distTar') {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+def runtimeArtifactNames = providers.provider {
+    configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.collectEntries {
+        [(it.file): runtimeArtifactFileName(it)]
+    }
 }
 
-tasks.named('distZip') {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+distributions.main.contents {
+    eachFile { details ->
+        def uniqueName = runtimeArtifactNames.get()[details.file]
+        if (uniqueName) {
+            details.name = uniqueName
+        }
+    }
 }
 
-tasks.named('installDist') {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+tasks.named('startScripts') {
+    // Generate the launcher classpath from the actual, uniquely named packaged JARs.
+    classpath = files(packageInputDir.map { it.asFileTree.matching { include '*.jar' } })
+            .builtBy('prepareJpackageInput')
+}
+
+['distTar', 'distZip', 'installDist'].each { taskName ->
+    tasks.named(taskName) {
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+    }
 }
 
 tasks.named('jar') {
@@ -184,6 +248,7 @@ tasks.named('jar') {
 }
 
 tasks.register('prepareJpackageInput') {
+    dependsOn ':modules:webrtc-core:verifyNativePlatform'
     dependsOn tasks.named('jar')
     inputs.files(tasks.named('jar'), configurations.runtimeClasspath)
     outputs.dir(packageInputDir)
@@ -195,12 +260,18 @@ tasks.register('prepareJpackageInput') {
 
 tasks.register('createAppImage', Exec) {
     dependsOn tasks.named('prepareJpackageInput')
+    dependsOn tasks.named('preparePackageIcon')
+    inputs.dir(packageInputDir)
+    inputs.file(packageIconFile)
+    inputs.property('appVersion', appVersion)
+    inputs.property('jvmArgs', application.applicationDefaultJvmArgs)
+    outputs.dir(appImageDir)
 
     doFirst {
         def outDir = packageOutputDir.get().asFile
 
-        if (outDir.exists()) {
-            delete(outDir)
+        if (appImageDir.get().asFile.exists()) {
+            delete(appImageDir.get().asFile)
         }
         mkdir(outDir)
 
@@ -215,7 +286,7 @@ tasks.register('createAppImage', Exec) {
     }
 
     commandLine(
-            'jpackage',
+            jpackageExecutable.get().asFile.absolutePath,
             '--type', 'app-image',
             '--name', appName,
             '--app-version', appVersion,
@@ -224,14 +295,19 @@ tasks.register('createAppImage', Exec) {
             '--main-class', application.mainClass.get(),
             '--add-modules', appRuntimeModules.join(','),
             '--dest', packageOutputDir.get().asFile.absolutePath,
-            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath
+            '--java-options', application.applicationDefaultJvmArgs.join(' '),
+            '--icon', packageIconFile.get().asFile.absolutePath
     )
 }
 
 tasks.register('portableDistZip', Zip) {
     dependsOn tasks.named('createAppImage')
 
-    from(appImageDir)
+    from(appImageDir) {
+        if (desktopPlatform.os == 'macos') {
+            into(appImageName)
+        }
+    }
     destinationDirectory.set(layout.buildDirectory.dir('distributions'))
     archiveFileName.set("${appName}-${appVersion}-portable.zip")
 }
@@ -249,6 +325,7 @@ tasks.register('buildComposePortable') {
 }
 
 tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
+    dependsOn ':modules:webrtc-core:verifyNativePlatform'
     group = 'distribution'
     description = 'Create an experimental shrunk and optimized JAR without obfuscation.'
 
@@ -283,7 +360,7 @@ tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
     }
     outjars(proguardOutputJar)
 
-    def jmodsDir = new File(System.getProperty('java.home'), 'jmods')
+    def jmodsDir = packagingLauncher.get().metadata.installationPath.dir('jmods').asFile
     if (!jmodsDir.isDirectory()) {
         throw new GradleException("JDK modules directory was not found: ${jmodsDir.absolutePath}")
     }
@@ -303,11 +380,13 @@ tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
         def outputFile = proguardOutputJar.get().asFile
         def requiredResources = [
                 'icons/app-icon.png',
-                'skiko-windows-x64.dll',
-                'skiko-windows-x64.dll.sha256',
-                'icudtl.dat',
-                'webrtc-java-windows-x86_64.dll'
+                desktopPlatform.skikoLibrary,
+                "${desktopPlatform.skikoLibrary}.sha256".toString(),
+                desktopPlatform.webrtcLibrary
         ]
+        if (desktopPlatform.os == 'windows') {
+            requiredResources.add('icudtl.dat')
+        }
         def outputZip = new ZipFile(outputFile)
         try {
             def missingResources = requiredResources.findAll { outputZip.getEntry(it) == null }
@@ -367,6 +446,12 @@ tasks.register('createProguardAppImage', Exec) {
     group = 'distribution'
     description = 'Create an isolated jpackage app-image from the shrunk and optimized JAR.'
     dependsOn tasks.named('prepareProguardJpackageInput')
+    dependsOn tasks.named('preparePackageIcon')
+    inputs.dir(proguardPackageInputDir)
+    inputs.file(packageIconFile)
+    inputs.property('appVersion', appVersion)
+    inputs.property('jvmArgs', application.applicationDefaultJvmArgs)
+    outputs.dir(proguardAppImageDir)
 
     doFirst {
         def outDir = proguardPackageOutputDir.get().asFile
@@ -382,7 +467,7 @@ tasks.register('createProguardAppImage', Exec) {
     }
 
     commandLine(
-            'jpackage',
+            jpackageExecutable.get().asFile.absolutePath,
             '--type', 'app-image',
             '--name', appName,
             '--app-version', appVersion,
@@ -391,7 +476,8 @@ tasks.register('createProguardAppImage', Exec) {
             '--main-class', application.mainClass.get(),
             '--add-modules', appRuntimeModules.join(','),
             '--dest', proguardPackageOutputDir.get().asFile.absolutePath,
-            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath
+            '--java-options', application.applicationDefaultJvmArgs.join(' '),
+            '--icon', packageIconFile.get().asFile.absolutePath
     )
 }
 
@@ -400,7 +486,11 @@ tasks.register('proguardPortableDistZip', Zip) {
     description = 'Archive the experimental shrunk and optimized app-image as a portable ZIP.'
     dependsOn tasks.named('createProguardAppImage')
 
-    from(proguardAppImageDir)
+    from(proguardAppImageDir) {
+        if (desktopPlatform.os == 'macos') {
+            into(appImageName)
+        }
+    }
     destinationDirectory.set(layout.buildDirectory.dir('distributions'))
     archiveFileName.set("${appName}-${appVersion}-proguard-portable.zip")
 }
@@ -411,7 +501,7 @@ tasks.register('buildProguardPortable') {
     dependsOn tasks.named('proguardPortableDistZip')
 }
 
-def isWindows = System.getProperty('os.name').toLowerCase().contains('win')
+def isWindows = desktopPlatform.os == 'windows'
 
 def wixOnPath = {
     def pathValue = System.getenv('PATH') ?: ''
@@ -426,6 +516,12 @@ def wixOnPath = {
 
 tasks.register('createExe', Exec) {
     dependsOn tasks.named('prepareJpackageInput')
+    dependsOn tasks.named('preparePackageIcon')
+    inputs.dir(packageInputDir)
+    inputs.file(packageIconFile)
+    inputs.property('appVersion', appVersion)
+    inputs.property('jvmArgs', application.applicationDefaultJvmArgs)
+    outputs.dir(installerOutputDir)
 
     doFirst {
         if (!isWindows) {
@@ -435,7 +531,7 @@ tasks.register('createExe', Exec) {
             throw new GradleException('WiX Toolset was not found in PATH. Install WiX and make sure wix.exe or candle.exe/light.exe are available.')
         }
 
-        def outDir = packageOutputDir.get().asFile
+        def outDir = installerOutputDir.get().asFile
         if (outDir.exists()) {
             delete(outDir)
         }
@@ -448,7 +544,7 @@ tasks.register('createExe', Exec) {
     }
 
     commandLine(
-            'jpackage',
+            jpackageExecutable.get().asFile.absolutePath,
             '--type', 'exe',
             '--name', appName,
             '--app-version', appVersion,
@@ -456,8 +552,9 @@ tasks.register('createExe', Exec) {
             '--main-jar', mainJarName,
             '--main-class', application.mainClass.get(),
             '--add-modules', appRuntimeModules.join(','),
-            '--dest', packageOutputDir.get().asFile.absolutePath,
-            '--icon', file('src/main/resources/icons/app-icon.ico').absolutePath,
+            '--dest', installerOutputDir.get().asFile.absolutePath,
+            '--java-options', application.applicationDefaultJvmArgs.join(' '),
+            '--icon', packageIconFile.get().asFile.absolutePath,
             '--win-menu',
             '--win-shortcut',
             '--win-dir-chooser'
@@ -468,4 +565,12 @@ tasks.register('buildExe') {
     group = 'distribution'
     description = 'Build the Windows EXE installer for the Compose desktop client.'
     dependsOn tasks.named('createExe')
+}
+
+['createAppImage', 'createProguardAppImage', 'createExe'].each { taskName ->
+    tasks.named(taskName) {
+        inputs.property('jpackageJdk', packagingLauncher.map { it.metadata.javaRuntimeVersion })
+        inputs.property('runtimeModules', appRuntimeModules)
+        inputs.property('mainClass', application.mainClass)
+    }
 }

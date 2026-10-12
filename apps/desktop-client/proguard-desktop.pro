@@ -77,8 +77,12 @@
 
 # Addressed optional/false-positive references from the exact resolved dependencies:
 # - coroutines carries Android/build-tool-only annotations that are not needed on desktop;
-# - JBR API invokes MethodHandle signature-polymorphic methods with descriptors that
+# - JBR API and these FlatLaf classes invoke MethodHandle signature-polymorphic methods with descriptors that
 #   ProGuard cannot match to the varargs declaration present in java.base.
 -dontwarn android.annotation.SuppressLint
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 -dontwarn com.jetbrains.JBR
+-dontwarn com.formdev.flatlaf.ui.FlatPopupFactory
+-dontwarn com.formdev.flatlaf.ui.FlatStylingSupport
+-dontwarn com.formdev.flatlaf.ui.JavaCompatibility2
+-dontwarn com.formdev.flatlaf.util.JavaCompatibility

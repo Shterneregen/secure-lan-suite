@@ -11,18 +11,6 @@ and owning build files take precedence over this plan.
 | Qualify desktop communication across machines | Repeatable discovery, chat, encrypted file transfer, and voice checks on representative LANs; failures and recovery recorded |
 | Qualify the Android interoperability client | Discovery, room join/host, chat, file send/receive, permissions, background hosting, and signed install/update exercised on representative devices |
 | Qualify Windows distribution | Portable archive and EXE build, install, launch, upgrade, uninstall, signing, and release notes validated on supported Windows versions |
-| Close Gradle and Android plugin deprecations | Remove properties scheduled for Android Gradle Plugin 10 removal, evaluate `android.dependency.excludeLibraryComponentsFromConstraints`, and run builds with full Gradle warning output |
-
-The Android plugin cleanup currently includes reviewing these
-`gradle.properties` entries:
-
-- `android.usesSdkInManifest.disallowed`
-- `android.sdk.defaultTargetSdkToCompileSdkIfUnset`
-- `android.enableAppCompileTimeRClass`
-- `android.builtInKotlin`
-- `android.newDsl`
-- `android.r8.optimizedResourceShrinking`
-- `android.defaults.buildfeatures.resvalues`
 
 ## Reliability and product hardening
 
