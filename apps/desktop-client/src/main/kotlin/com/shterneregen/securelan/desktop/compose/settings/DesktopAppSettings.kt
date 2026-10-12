@@ -7,6 +7,7 @@ import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import java.nio.file.Path
 
+/** Restorable window geometry in Compose dp; missing coordinates use the platform's placement. */
 data class DesktopWindowSettings(
     val width: Int = 1360,
     val height: Int = 860,
@@ -14,6 +15,7 @@ data class DesktopWindowSettings(
     val y: Int? = null,
     val maximized: Boolean = false,
 ) {
+    /** Bounds persisted geometry so malformed settings cannot create an unusable window. */
     fun normalized(): DesktopWindowSettings = copy(
         width = width.coerceIn(820, 10_000),
         height = height.coerceIn(640, 10_000),
@@ -22,6 +24,7 @@ data class DesktopWindowSettings(
     )
 }
 
+/** Preferred device IDs and output volume; an empty ID selects the system default device. */
 data class DesktopMediaSettings(
     val microphoneDeviceId: String = "",
     val cameraDeviceId: String = "",
@@ -36,18 +39,22 @@ data class DesktopMediaSettings(
     )
 }
 
+/** The entry workflow to restore the next time the connection surface opens. */
 enum class DesktopConnectionMode { HOST, JOIN }
 
+/** A recent room endpoint without its password or other session secrets. */
 data class DesktopRecentRoom(
     val host: String,
     val chatPort: Int = NetworkConstants.DEFAULT_CHAT_PORT,
     val filePort: Int = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
 ) {
+    /** Returns a trimmed endpoint, or `null` when the address or either port is invalid. */
     fun normalizedOrNull(): DesktopRecentRoom? = copy(host = host.trim()).takeIf {
         it.host.isNotEmpty() && it.chatPort in 1..65_535 && it.filePort in 1..65_535
     }
 }
 
+/** Connection defaults and a bounded, most-recent-first history of room endpoints. */
 data class DesktopNetworkSettings(
     val discoverable: Boolean = true,
     val serverChatPort: Int = NetworkConstants.DEFAULT_CHAT_PORT,
@@ -57,6 +64,7 @@ data class DesktopNetworkSettings(
     val lastConnectionMode: DesktopConnectionMode = DesktopConnectionMode.HOST,
     val recentRooms: List<DesktopRecentRoom> = emptyList(),
 ) {
+    /** Repairs invalid ports and removes invalid, duplicate, or excess recent endpoints. */
     fun normalized(): DesktopNetworkSettings = copy(
         serverChatPort = serverChatPort.validPortOr(NetworkConstants.DEFAULT_CHAT_PORT),
         serverFilePort = serverFilePort.validPortOr(NetworkConstants.DEFAULT_FILE_TRANSFER_PORT),
@@ -67,6 +75,7 @@ data class DesktopNetworkSettings(
             .take(MAX_RECENT_ROOMS),
     )
 
+    /** Moves a valid endpoint to the front of the history without storing its credentials. */
     fun withRecentRoom(room: DesktopRecentRoom): DesktopNetworkSettings {
         val normalizedRoom = room.normalizedOrNull() ?: return this
         return copy(
@@ -82,6 +91,7 @@ data class DesktopNetworkSettings(
     }
 }
 
+/** Independent notification preferences, gated by the master [enabled] flag. */
 data class DesktopNotificationSettings(
     val enabled: Boolean = true,
     val soundsEnabled: Boolean = true,
@@ -89,15 +99,18 @@ data class DesktopNotificationSettings(
     val messageNotificationsEnabled: Boolean = true,
 )
 
+/** Window-close preference; hiding still requires an available system tray. */
 data class DesktopLifecycleSettings(
     val keepRunningAfterWindowClose: Boolean = true,
 )
 
+/** Incoming file policy; automatic acceptance still requires a connected, known peer. */
 enum class IncomingFileConfirmationMode {
     ASK,
     AUTO_ACCEPT_KNOWN_PEERS,
 }
 
+/** Receive-approval and completion-feedback preferences for encrypted file transfers. */
 data class DesktopTransferSettings(
     val incomingFileConfirmation: IncomingFileConfirmationMode = IncomingFileConfirmationMode.ASK,
     val notifyOnCompletion: Boolean = true,
@@ -116,6 +129,7 @@ data class DesktopAppSettings(
     val notifications: DesktopNotificationSettings = DesktopNotificationSettings(),
     val transfers: DesktopTransferSettings = DesktopTransferSettings(),
 ) {
+    /** Returns safe restore values while preserving all unrelated preferences. */
     fun normalized(): DesktopAppSettings = copy(
         displayName = displayName?.trim()?.takeIf(String::isNotEmpty),
         window = window.normalized(),
@@ -126,13 +140,18 @@ data class DesktopAppSettings(
 
     fun withDisplayName(value: String?): DesktopAppSettings = copy(displayName = value).normalized()
 
+    /** Resolves the configured output directory, falling back to portable downloads for an invalid path. */
     fun downloadsPath(): Path = runCatching {
         Path.of(downloadsDirectory).toAbsolutePath().normalize()
     }.getOrElse { Path.of(defaultDownloadsDirectory()) }
 }
 
+/** Persistence boundary for non-secret desktop preferences. */
 interface DesktopAppSettingsStore {
+    /** Returns restorable preferences, using defaults when stored data cannot be read. */
     fun load(): DesktopAppSettings
+
+    /** Returns whether normalized preferences were successfully persisted. */
     fun save(settings: DesktopAppSettings): Boolean
 }
 
@@ -144,6 +163,10 @@ class DesktopAppSettingsController(
     var settings: DesktopAppSettings by mutableStateOf(initialSettings.normalized())
         private set
 
+    /**
+     * Normalizes and applies a preference change, then persists it when values actually differ.
+     * A failed save leaves the updated in-memory preferences active for the current session.
+     */
     @Synchronized
     fun update(transform: (DesktopAppSettings) -> DesktopAppSettings): DesktopAppSettings {
         val updated = transform(settings).normalized()

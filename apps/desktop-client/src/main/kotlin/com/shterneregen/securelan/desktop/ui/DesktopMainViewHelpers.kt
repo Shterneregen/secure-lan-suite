@@ -1,7 +1,7 @@
 package com.shterneregen.securelan.desktop.ui
 
-import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
+import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.stego.model.BmpCapacity
@@ -15,12 +15,15 @@ import java.nio.file.Path
 import java.util.Locale
 import javax.imageio.ImageIO
 
+/** A local IPv4 address paired with a user-facing network-adapter label. */
 data class LocalNetworkAddress(
     val address: String,
     val interfaceLabel: String,
 )
 
+/** Desktop presentation helpers for file paths, peer capabilities, and local network information. */
 object DesktopMainViewHelpers {
+    /** Suggests a sibling BMP output path with a `-stego` suffix, without creating or writing it. */
     @JvmStatic
     fun suggestedStegoOutputPath(coverPath: Path): Path {
         val fileName = coverPath.fileName.toString()
@@ -40,6 +43,12 @@ object DesktopMainViewHelpers {
         return if (isBmpPath(path)) path else Path.of("$text.bmp").toAbsolutePath().normalize()
     }
 
+    /**
+     * Reads existing BMP bytes unchanged, or converts a supported image to an opaque RGB BMP.
+     * This performs blocking file IO and image conversion; callers own scheduling and size limits.
+     *
+     * @throws IOException If the file cannot be read, decoded, or encoded as BMP.
+     */
     @JvmStatic
     @Throws(IOException::class)
     fun readImageAsBmpBytes(imagePath: Path): ByteArray {
@@ -70,6 +79,7 @@ object DesktopMainViewHelpers {
             capacity.bitsPerPixel,
         )
 
+    /** Selects the host port or an offset client port from already validated numeric form values. */
     @JvmStatic
     fun resolveLocalFilePort(
         serverRunning: Boolean,
@@ -104,6 +114,7 @@ object DesktopMainViewHelpers {
         return if (message.isNullOrBlank()) candidate.javaClass.simpleName else message
     }
 
+    /** Extracts a host from socket-address text, including slash prefixes and bracketed IPv6. */
     @JvmStatic
     fun hostFromRemoteAddress(remoteAddress: String?): String {
         var value = remoteAddress?.trim().orEmpty()
@@ -122,6 +133,7 @@ object DesktopMainViewHelpers {
         return if (colon > 0) value.substring(0, colon) else value
     }
 
+    /** Compares stable peer IDs when both are known, otherwise falls back to case-insensitive nicknames. */
     @JvmStatic
     fun samePeer(peer: PeerPresence, nickname: String?, peerId: String?): Boolean {
         if (!peerId.isNullOrBlank() && !peer.peerId().isNullOrBlank()) {
@@ -142,6 +154,7 @@ object DesktopMainViewHelpers {
         chatPeer.capabilities(),
     )
 
+    /** Allows unchanged discovery or compatible listen-only sessions to reuse the current UDP listener. */
     @JvmStatic
     fun canReuseDiscoverySession(active: PeerDiscoveryConfig?, requested: PeerDiscoveryConfig): Boolean {
         if (active == requested) {
@@ -208,6 +221,11 @@ object DesktopMainViewHelpers {
     @JvmStatic
     fun localNetworkInfoErrorMessage(message: String?): String = "failed to determine local network IP: $message"
 
+    /**
+     * Enumerates active, non-loopback IPv4 addresses, preferring private addresses and physical adapters.
+     *
+     * @throws SocketException If the operating system cannot enumerate network interfaces.
+     */
     @JvmStatic
     @Throws(SocketException::class)
     fun resolveLocalLanAddresses(): List<LocalNetworkAddress> {

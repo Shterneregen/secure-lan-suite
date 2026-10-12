@@ -4,6 +4,11 @@ import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import java.time.Instant
 import java.util.Objects
 
+/**
+ * Mutable peer accumulator combining chat presence, discovery endpoints, and negotiated capabilities.
+ * Replace or copy the instance before publishing changes to Compose state; field mutation is not observable.
+ * Missing IDs and endpoints represent information that discovery or a later handshake may enrich.
+ */
 class PeerPresence @JvmOverloads constructor(
     private val nickname: String,
     online: Boolean,
@@ -22,6 +27,10 @@ class PeerPresence @JvmOverloads constructor(
     private var lastSeen: Instant? = lastSeen
     private var capabilities: PeerCapabilities = capabilities
 
+    /**
+     * Updates presence and enriches known metadata without erasing it with missing values.
+     * Returns whether any stored field changed. A negotiated receive port takes precedence.
+     */
     @JvmOverloads
     fun apply(
         online: Boolean,
@@ -64,6 +73,7 @@ class PeerPresence @JvmOverloads constructor(
         return changed
     }
 
+    /** Marks the peer offline and returns whether it was previously online. */
     fun markOffline(): Boolean {
         val changed = online
         online = false
@@ -86,6 +96,7 @@ class PeerPresence @JvmOverloads constructor(
 
     fun capabilities(): PeerCapabilities = capabilities
 
+    /** Accepts advertised receive support and the existing compatibility fallback for desktop peers. */
     fun hasFileEndpoint(): Boolean = !host.isNullOrBlank() && filePort > 0 &&
         (
             capabilities == PeerCapabilities.unknown() ||
@@ -94,4 +105,4 @@ class PeerPresence @JvmOverloads constructor(
             )
 
     fun discovered(): Boolean = !host.isNullOrBlank() && chatPort > 0 && filePort > 0
-} 
+}

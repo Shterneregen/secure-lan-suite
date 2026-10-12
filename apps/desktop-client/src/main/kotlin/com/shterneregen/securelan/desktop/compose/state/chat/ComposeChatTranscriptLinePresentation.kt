@@ -1,8 +1,12 @@
 package com.shterneregen.securelan.desktop.compose.state.chat
 
-import java.time.Instant
 import java.nio.file.Path
+import java.time.Instant
 
+/**
+ * UI classification and display copy derived from a transcript line, without changing wire text.
+ * Quick Share rows may expose a link/QR action; received-file rows may expose a local open action.
+ */
 data class ComposeChatTranscriptLinePresentation(
     val kind: ComposeChatTranscriptLineKind,
     val label: String,

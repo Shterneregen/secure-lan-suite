@@ -2,7 +2,6 @@ package com.shterneregen.securelan.desktop.compose.ui.shell
 
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
-
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeAppShellState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata

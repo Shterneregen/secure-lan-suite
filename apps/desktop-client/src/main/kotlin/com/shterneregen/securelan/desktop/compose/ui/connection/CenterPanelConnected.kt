@@ -14,9 +14,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.shterneregen.securelan.desktop.compose.ui.shell.CallBanner
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceState
+import com.shterneregen.securelan.desktop.compose.ui.shell.CallBanner
 
 @Composable
 internal fun CenterPanelConnected(

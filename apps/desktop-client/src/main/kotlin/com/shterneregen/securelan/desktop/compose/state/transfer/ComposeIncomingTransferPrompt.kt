@@ -3,6 +3,7 @@ package com.shterneregen.securelan.desktop.compose.state.transfer
 import com.shterneregen.securelan.desktop.ui.DesktopTransferFormatters
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
 
+/** Immutable per-file approval prompt; accepting it does not approve other files in a batch. */
 public data class ComposeIncomingTransferPrompt(
     val id: String,
     val senderId: String,

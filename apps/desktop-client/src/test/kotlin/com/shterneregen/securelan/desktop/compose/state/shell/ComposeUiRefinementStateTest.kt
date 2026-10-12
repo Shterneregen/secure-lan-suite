@@ -1,12 +1,12 @@
 package com.shterneregen.securelan.desktop.compose.state.shell
 
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeCallWorkspaceFocusMode
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLinePresentation
-import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeVideoPreviewCorner
-import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.media.settleVideoPreviewCorner
+import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.ui.TransferEntry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

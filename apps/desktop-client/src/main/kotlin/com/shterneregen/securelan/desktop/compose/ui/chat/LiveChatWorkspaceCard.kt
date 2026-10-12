@@ -30,14 +30,14 @@ import com.shterneregen.securelan.desktop.compose.LocalReducedMotion
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.motionTween
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeCallWorkspaceFocusMode
-import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatWorkspaceState
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatWorkspaceState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeAttachmentToolsState
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopBatchPhase
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferBatch
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferPhase
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField

@@ -15,9 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
+import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.quickshare.ComposeQuickShareState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
-import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.util.copyToSystemClipboard
 import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
 import com.shterneregen.securelan.desktop.compose.util.openInBrowser

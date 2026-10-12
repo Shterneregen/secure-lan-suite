@@ -3,6 +3,10 @@ package com.shterneregen.securelan.desktop.compose.state.connection
 import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
 
+/**
+ * Immutable host/join form and live connection status with derived port validation.
+ * Text fields retain intermediate edits; parsed port values are `null` until valid.
+ */
 data class ComposeStatusConnectionState(
     val nickname: String = "Compose Preview",
     val roomPasswordPlaceholder: String = "chatpass",

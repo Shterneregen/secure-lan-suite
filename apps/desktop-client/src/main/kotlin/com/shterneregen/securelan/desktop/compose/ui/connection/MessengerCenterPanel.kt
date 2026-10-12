@@ -12,13 +12,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.settings.DesktopConnectionMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionHubMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceState
 import com.shterneregen.securelan.desktop.compose.ui.shell.WorkspaceCenterColumn
-import com.shterneregen.securelan.desktop.compose.settings.DesktopConnectionMode
 
 @Composable
 internal fun MessengerCenterPanel(

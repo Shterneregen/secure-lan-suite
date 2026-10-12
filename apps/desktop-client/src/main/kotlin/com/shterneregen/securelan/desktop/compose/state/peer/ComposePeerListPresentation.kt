@@ -84,4 +84,3 @@ public data class ComposePeerListSectionPresentation(
     val countLabel: String = "$count ${if (count == 1) "person" else "people"}"
     val accessibilityLabel: String = "$title peers, $countLabel"
 }
-

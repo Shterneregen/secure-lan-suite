@@ -2,6 +2,7 @@ package com.shterneregen.securelan.desktop.ui
 
 import com.shterneregen.securelan.webrtc.service.RtcMediaDevice
 
+/** Device-selector option; an empty [deviceId] denotes the system-default route. */
 @JvmRecord
 data class MediaDeviceChoice(
     val deviceId: String,

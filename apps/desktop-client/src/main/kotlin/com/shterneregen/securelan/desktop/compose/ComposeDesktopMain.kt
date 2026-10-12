@@ -6,8 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import com.shterneregen.securelan.chat.discovery.impl.UdpBroadcastPeerDiscoveryService
 import com.shterneregen.securelan.chat.service.ChatEventPublisher
@@ -15,28 +15,29 @@ import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService
 import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
-import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
-import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
-import com.shterneregen.securelan.filetransfer.quickshare.impl.DefaultQuickShareService
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
-import com.shterneregen.securelan.desktop.compose.settings.PropertiesDesktopAppSettingsStore
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
 import com.shterneregen.securelan.desktop.compose.settings.DesktopWindowSettings
-import com.shterneregen.securelan.desktop.compose.tray.DesktopCloseOutcome
+import com.shterneregen.securelan.desktop.compose.settings.PropertiesDesktopAppSettingsStore
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.tray.DesktopChatTrayNotification
+import com.shterneregen.securelan.desktop.compose.tray.DesktopCloseOutcome
 import com.shterneregen.securelan.desktop.compose.tray.DesktopTrayMenuState
 import com.shterneregen.securelan.desktop.compose.tray.SecureLanTray
 import com.shterneregen.securelan.desktop.compose.tray.desktopCloseOutcome
+import com.shterneregen.securelan.filetransfer.quickshare.impl.DefaultQuickShareService
+import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
+import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
 import com.shterneregen.securelan.webrtc.event.RtcEvent
 import com.shterneregen.securelan.webrtc.service.RtcEventPublisher
 import com.shterneregen.securelan.webrtc.service.RtcSignalingGateway
 import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcMediaDeviceService
 import com.shterneregen.securelan.webrtc.service.impl.DefaultRtcSessionService
+import kotlinx.coroutines.channels.Channel
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import kotlinx.coroutines.channels.Channel
 import kotlin.math.roundToInt
 
+/** Creates the desktop service graph, restores preferences, and owns window/tray shutdown. */
 @Suppress("DEPRECATION")
 fun main() {
     val startupSettingsStore = PropertiesDesktopAppSettingsStore.default()

@@ -43,6 +43,27 @@ Use `test` for a fast repository verification and `build` when assembled outputs
 also matter. `:apps:desktop-client:runComposeShell` remains a compatibility
 alias for the primary desktop run task.
 
+### Desktop Kotlin checks and documentation
+
+```powershell
+.\gradlew.bat :apps:desktop-client:lintKotlin
+.\gradlew.bat :apps:desktop-client:formatKotlin
+.\gradlew.bat :apps:desktop-client:check
+```
+
+The desktop `check` task includes unit tests and ktlint source-hygiene checks.
+The module's `.editorconfig` explicitly enables import order, unused imports,
+KDoc placement, modifier order, string templates, and whitespace checks while
+preserving existing Compose naming and layout conventions. `formatKotlin`
+applies the corresponding automatic corrections. Checked-in upstream Material
+icons under `src/main/kotlin/androidx/` retain their generated formatting and
+are excluded; application sources and tests are checked.
+
+Desktop source documentation uses English KDoc because the module is written
+in Kotlin. Document service boundaries, threading, persistence, state ownership,
+and recovery contracts rather than restating function names. The Java `javadoc`
+task has no sources in this module and does not generate Kotlin documentation.
+
 ## Android client
 
 ```powershell
@@ -100,6 +121,11 @@ implicitly enables auto-save or approves the remaining files. A missing final
 acknowledgement has an uncertain outcome: the receiver may already have saved
 the file. Retrying is explicit and can create a duplicate. Disconnecting does not
 silently resume the batch in a new room or redirect it to another person.
+
+Leaving a remote room or losing its chat connection stops that room's file
+receiver. The next successful connection starts it with the new room password,
+receive port, and configured download directory. A locally hosted room retains
+its receiver until hosting stops, even if its local chat client disconnects.
 
 Focused validation:
 
@@ -162,6 +188,10 @@ network status, when that address is available among the link URLs.
 
 Quick Share intentionally uses unauthenticated local HTTP. Anyone on the LAN who
 knows or discovers an active link can access it, so use it only on a trusted LAN.
+
+Desktop Quick Share logs record lifecycle metadata rather than shared text,
+text-derived display names, share IDs, or share URLs. Names and links remain
+available in the sharing UI.
 
 ## Desktop packaging
 

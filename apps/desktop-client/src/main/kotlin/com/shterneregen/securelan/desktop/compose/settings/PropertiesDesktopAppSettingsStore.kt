@@ -7,10 +7,20 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.*
 
-/** Dependency-free, forward-compatible settings store backed by a properties file. */
+/**
+ * Stores non-secret preferences in a properties file, ignoring unknown keys while loading.
+ *
+ * Invalid or unreadable files fall back to defaults. Saves normalize values and replace the target
+ * through a temporary sibling file, using an atomic move when supported by the filesystem.
+ * Legacy default download paths migrate to the portable directory; explicit custom paths remain.
+ * Synchronization covers calls to this instance, so one store should own a given settings file.
+ *
+ * @param settingsPath File to read and replace; resolved to an absolute path at construction.
+ */
 class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettingsStore {
     private val settingsPath: Path = settingsPath.toAbsolutePath().normalize()
 
+    /** Reads known preferences and applies their normalization and schema migration rules. */
     @Synchronized
     override fun load(): DesktopAppSettings {
         if (!Files.isRegularFile(settingsPath)) return DesktopAppSettings()
@@ -92,6 +102,7 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
         }
     }
 
+    /** Replaces the settings file, returning `false` when filesystem access or replacement fails. */
     @Synchronized
     override fun save(settings: DesktopAppSettings): Boolean {
         val normalized = settings.normalized()
@@ -159,6 +170,7 @@ class PropertiesDesktopAppSettingsStore(settingsPath: Path) : DesktopAppSettings
     companion object {
         const val SETTINGS_PATH_PROPERTY: String = "securelan.settings.path"
 
+        /** Creates the store for the portable application's default config path. */
         fun default(): PropertiesDesktopAppSettingsStore {
             val configuredPath = System.getProperty(SETTINGS_PATH_PROPERTY)?.trim()?.takeIf(String::isNotEmpty)
             val path = configuredPath?.let(Path::of)

@@ -6,6 +6,10 @@ import com.shterneregen.securelan.desktop.ui.DesktopTransferFormatters
 import com.shterneregen.securelan.desktop.ui.TransferEntry
 import java.nio.file.Paths
 
+/**
+ * Derives transfer readiness, receive prompts, active rows, and recent history for the workspace.
+ * [entries] must contain detached event snapshots. [sessionPassword] is transient and must not be logged.
+ */
 public data class ComposeFileTransferState(
     val statusState: ComposeStatusConnectionState,
     val peerListState: ComposePeerListState,

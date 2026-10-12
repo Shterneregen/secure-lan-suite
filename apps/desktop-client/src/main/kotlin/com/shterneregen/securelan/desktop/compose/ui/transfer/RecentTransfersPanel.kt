@@ -12,8 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
-import com.shterneregen.securelan.desktop.compose.ui.components.TitleWithHelp
 import com.shterneregen.securelan.desktop.compose.ui.components.ComposeAdvancedPane
+import com.shterneregen.securelan.desktop.compose.ui.components.TitleWithHelp
 
 @Composable
 internal fun RecentTransfersPanel(transferState: ComposeFileTransferState) {

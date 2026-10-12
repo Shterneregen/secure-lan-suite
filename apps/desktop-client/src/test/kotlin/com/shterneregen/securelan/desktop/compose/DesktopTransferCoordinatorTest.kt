@@ -6,12 +6,16 @@ import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransfer
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferDraft
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferPhase
 import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferTarget
-import java.nio.file.Path
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class DesktopTransferCoordinatorTest {
     private val target = DesktopTransferTarget(generation = 1L, peerId = "peer", nickname = "Yvonne", host = "10.0.0.2", port = 5051)
@@ -117,6 +121,98 @@ class DesktopTransferCoordinatorTest {
 
         assertFalse(coordinator.add(target, listOf(Path.of("a.txt"))))
         assertFalse(coordinator.startDraft())
+    }
+
+    @Test
+    fun shouldRetainAnUnconfirmedAttemptWhenRetryingAndIgnoreItsLateProgress() {
+        val callbacks = mutableListOf<(DesktopTransferAttempt) -> Unit>()
+        var latest: DesktopTransferBatch? = null
+        val coordinator = DesktopTransferCoordinator(
+            execute = { it() },
+            validTarget = { true },
+            operation = { _, _, update ->
+                callbacks += update
+                val phase = if (callbacks.size == 1) DesktopTransferPhase.OUTCOME_UNKNOWN else DesktopTransferPhase.COMPLETED
+                object : DesktopTransferOperation {
+                    override fun execute() = DesktopTransferAttempt("", phase = phase)
+                    override fun close() = Unit
+                }
+            },
+            publish = { _, batch -> latest = batch },
+            inspect = { 1L },
+        )
+
+        coordinator.add(target, listOf(Path.of("a.txt")))
+        coordinator.startDraft()
+        assertEquals(DesktopBatchPhase.PAUSED, latest?.phase)
+        assertTrue(coordinator.retry())
+        val finished = latest
+        callbacks.first()(DesktopTransferAttempt("", phase = DesktopTransferPhase.SENDING))
+
+        assertEquals(finished, latest)
+        assertEquals(DesktopBatchPhase.FINISHED, latest?.phase)
+        assertEquals(
+            listOf(DesktopTransferPhase.OUTCOME_UNKNOWN, DesktopTransferPhase.COMPLETED),
+            latest?.items?.single()?.attempts?.map { it.phase },
+        )
+    }
+
+    @Test
+    fun shouldFinishTheCurrentFileAndSkipRemainingFilesWhenStopped() {
+        var release: (() -> Unit)? = null
+        var latest: DesktopTransferBatch? = null
+        val coordinator = DesktopTransferCoordinator(
+            execute = { release = it },
+            validTarget = { true },
+            operation = { _, _, _ -> completedOperation() },
+            publish = { _, batch -> latest = batch },
+            inspect = { 1L },
+        )
+
+        coordinator.add(target, listOf(Path.of("a.txt"), Path.of("b.txt")))
+        coordinator.startDraft()
+        coordinator.stopAfterCurrent()
+        release?.invoke()
+
+        assertEquals(DesktopBatchPhase.FINISHED, latest?.phase)
+        assertEquals(1, latest?.completed)
+        assertEquals(1, latest?.skipped)
+    }
+
+    @Test
+    fun sessionInvalidationShouldNotThrowWhenClosingTheActiveOperationFails() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        var worker: CompletableFuture<Void>? = null
+        var latest: DesktopTransferBatch? = null
+        val coordinator = DesktopTransferCoordinator(
+            execute = { work -> worker = CompletableFuture.runAsync { work() } },
+            validTarget = { true },
+            operation = { _, _, _ ->
+                object : DesktopTransferOperation {
+                    override fun execute(): DesktopTransferAttempt {
+                        entered.countDown()
+                        check(release.await(2, TimeUnit.SECONDS))
+                        return DesktopTransferAttempt("", phase = DesktopTransferPhase.COMPLETED)
+                    }
+                    override fun close() { error("Simulated close failure") }
+                }
+            },
+            publish = { _, batch -> latest = batch },
+            inspect = { 1L },
+        )
+
+        try {
+            coordinator.add(target, listOf(Path.of("a.txt"), Path.of("b.txt")))
+            coordinator.startDraft()
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            assertDoesNotThrow { coordinator.invalidateSession() }
+        } finally {
+            release.countDown()
+            worker?.get(2, TimeUnit.SECONDS)
+        }
+        assertEquals(DesktopBatchPhase.FINISHED, latest?.phase)
+        assertEquals(1, latest?.skipped)
     }
 
     private fun coordinator(

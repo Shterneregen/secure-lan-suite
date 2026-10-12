@@ -4,39 +4,155 @@ import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryService
+import com.shterneregen.securelan.chat.event.ChatDisconnectReasons
+import com.shterneregen.securelan.chat.event.ChatDisconnectedEvent
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
 import com.shterneregen.securelan.chat.service.ChatClientService
 import com.shterneregen.securelan.chat.service.ChatServerConfig
 import com.shterneregen.securelan.chat.service.ChatServerService
 import com.shterneregen.securelan.chat.service.RandomNicknameService
-import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import com.shterneregen.securelan.common.model.FileTransferProgress
 import com.shterneregen.securelan.common.model.TransferStatus
-import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
+import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
+import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
+import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
+import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateRequest
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
-import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
-import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareStatus
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareType
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.util.Optional
 import java.nio.file.Path
+import java.time.Instant
+import java.util.Optional
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.logging.Handler
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 import kotlin.system.measureTimeMillis
 
 class ComposeDesktopHostAdapterConnectTest {
+    @Test
+    fun reconnectShouldUseTheNewFilePortPasswordAndDownloadDirectory() {
+        val client = ConnectedChatClient()
+        val files = TrackingFileTransferServer()
+        val adapter = connectedAdapter(client, files)
+        try {
+            adapter.connect("127.0.0.1", "desktop-test", "first-password", 50_050, 50_051)
+            assertEquals(50_051, files.started.poll(2, TimeUnit.SECONDS)?.port())
+            adapter.disconnect()
+            assertFalse(files.isRunning(), "Leaving a remote room must release its file listener")
+
+            val newDirectory = Path.of("new-downloads").toAbsolutePath().normalize()
+            adapter.updateDownloadsDirectory(newDirectory)
+            adapter.connect("127.0.0.1", "desktop-test", "second-password", 50_060, 50_061)
+            val next = files.started.poll(2, TimeUnit.SECONDS)
+            assertEquals(50_061, next?.port())
+            assertEquals("second-password", next?.sessionPassword())
+            assertEquals(newDirectory, next?.storageDirectory())
+        } finally {
+            adapter.shutdown()
+        }
+    }
+
+    @Test
+    fun remoteDisconnectShouldReleaseTheFileListener() {
+        val client = ConnectedChatClient()
+        val files = TrackingFileTransferServer()
+        val adapter = connectedAdapter(client, files)
+        try {
+            adapter.connect("127.0.0.1", "desktop-test", "password", 50_050, 50_051)
+            assertEquals(50_051, files.started.poll(2, TimeUnit.SECONDS)?.port())
+            client.disconnect()
+            adapter.chatEventPublisher.publish(ChatDisconnectedEvent("desktop-test", ChatDisconnectReasons.CONNECTION_LOST))
+
+            assertFalse(files.isRunning())
+            assertFalse(adapter.statusState.clientConnected)
+        } finally {
+            adapter.shutdown()
+        }
+    }
+
+    @Test
+    fun disconnectShouldPreserveTheHostedRoomFileListener() {
+        val client = ConnectedChatClient()
+        val files = TrackingFileTransferServer()
+        val adapter = connectedAdapter(client, files, hosting = true)
+        try {
+            adapter.connect("127.0.0.1", "desktop-test", "password", 50_050, 50_051)
+            assertEquals(50_051, files.started.poll(2, TimeUnit.SECONDS)?.port())
+            adapter.disconnect()
+            adapter.chatEventPublisher.publish(ChatDisconnectedEvent("desktop-test", ChatDisconnectReasons.CLIENT_REQUEST))
+
+            assertTrue(files.isRunning(), "The listener belongs to the room while hosting remains active")
+        } finally {
+            adapter.shutdown()
+        }
+    }
+
+    @Test
+    fun textShareCreationEventsAndRevocationShouldKeepPayloadsOutOfLogs() {
+        val secret = "private-text-for-log-test"
+        val snapshot = QuickShareSnapshot(
+            secret, QuickShareType.TEXT, secret, "", secret.length.toLong(),
+            Instant.now(), null, null, 0, QuickShareStatus.ACTIVE,
+            listOf("http://127.0.0.1:5053/s/$secret"),
+        )
+        val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer(), quickShare = IdleQuickShareService(snapshot))
+        val records = mutableListOf<String>()
+        val handler = object : Handler() {
+            override fun publish(record: LogRecord) { records += record.message }
+            override fun flush() = Unit
+            override fun close() = Unit
+        }
+        val logger = Logger.getLogger("SecureLanSuite")
+        logger.addHandler(handler)
+        try {
+            adapter.createTextQuickShare(secret, null, null)
+            adapter.quickShareEventPublisher.publish(QuickShareEvent(secret, snapshot, "Quick-share created: $secret", ""))
+            adapter.stopQuickShareEntry(secret)
+
+            assertTrue(records.any { it.contains("Text quick-share created") })
+            assertTrue(records.any { it.contains("Quick-share stopped") })
+            assertFalse(records.any { it.contains(secret) }, "Shared text and text-derived names, IDs, and URLs must stay out of logs")
+        } finally {
+            logger.removeHandler(handler)
+            adapter.shutdown()
+        }
+    }
+
+    private fun connectedAdapter(
+        client: ChatClientService,
+        files: FileTransferServerService,
+        hosting: Boolean = false,
+        quickShare: QuickShareService = IdleQuickShareService(),
+    ) = ComposeDesktopHostAdapter(
+        chatServerService = IdleChatServer(hosting),
+        chatClientService = client,
+        fileTransferServerService = files,
+        quickShareService = quickShare,
+        discoveryService = IdlePeerDiscovery(),
+        randomNicknameService = object : RandomNicknameService {
+            override fun generate(): String = "desktop-test"
+        },
+        uiStateDispatcher = { action -> action() },
+    )
+
     @Test
     fun transferUpdatesShouldPublishIndependentStatesForProgressCompletionAndFailure() {
         val adapter = ComposeDesktopHostAdapter(
@@ -186,11 +302,36 @@ class ComposeDesktopHostAdapterConnectTest {
         override fun isConnected(): Boolean = false
     }
 
-    private class IdleChatServer : ChatServerService {
+    private class IdleChatServer(private val running: Boolean = false) : ChatServerService {
         override fun start(config: ChatServerConfig) = Unit
         override fun stop() = Unit
-        override fun isRunning(): Boolean = false
+        override fun isRunning(): Boolean = running
         override fun connectedUsers(): Int = 0
+    }
+
+    private class ConnectedChatClient : ChatClientService {
+        @Volatile private var connected = false
+
+        override fun connect(request: ChatClientConnectRequest): Boolean {
+            connected = true
+            return true
+        }
+        override fun disconnect() { connected = false }
+        override fun sendMessage(text: String?) = Unit
+        override fun sendSignal(signal: RtcSignalEnvelope?) = Unit
+        override fun isConnected(): Boolean = connected
+    }
+
+    private class TrackingFileTransferServer : FileTransferServerService {
+        val started = LinkedBlockingQueue<FileTransferServerConfig>()
+        @Volatile private var running = false
+
+        override fun start(config: FileTransferServerConfig) {
+            running = true
+            started.add(config)
+        }
+        override fun stop() { running = false }
+        override fun isRunning(): Boolean = running
     }
 
     private class IdleFileTransferServer : FileTransferServerService {
@@ -207,15 +348,15 @@ class ComposeDesktopHostAdapterConnectTest {
         override fun snapshot(): List<DiscoveredPeer> = emptyList()
     }
 
-    private class IdleQuickShareService : QuickShareService {
+    private class IdleQuickShareService(private val shared: QuickShareSnapshot? = null) : QuickShareService {
         override fun start(config: QuickShareServerConfig) = Unit
         override fun stop() = Unit
         override fun isRunning(): Boolean = false
         override fun port(): Int = -1
-        override fun share(request: QuickShareCreateRequest): QuickShareSnapshot = error("Not used")
+        override fun share(request: QuickShareCreateRequest): QuickShareSnapshot = shared ?: error("Not used")
         override fun findShare(id: String): Optional<QuickShareSnapshot> = Optional.empty()
         override fun shares(): List<QuickShareSnapshot> = emptyList()
-        override fun stopShare(id: String): Boolean = false
+        override fun stopShare(id: String): Boolean = shared?.id() == id
         override fun landingUrls(): List<String> = emptyList()
     }
 }

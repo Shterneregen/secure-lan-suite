@@ -2,13 +2,13 @@ package com.shterneregen.securelan.desktop.compose.state.transfer
 
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelState
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelCardKind
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.ui.TransferEntry
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 

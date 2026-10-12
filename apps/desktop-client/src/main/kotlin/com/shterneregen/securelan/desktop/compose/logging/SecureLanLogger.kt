@@ -10,9 +10,9 @@ import java.util.logging.*
 /**
  * File logger for SecureLanSuite desktop application events.
  *
- * Replaces the on-screen Diagnostics panel. Runtime events are written to
- * [application-directory]/logs/securelan-%g.log and rotated so the latest
- * files are always available for troubleshooting.
+ * Writes rotating runtime logs under the portable application's logs directory, unless overridden
+ * through [DesktopAppPaths.LOGS_DIRECTORY_PROPERTY]. Callers must exclude passwords, keys, raw
+ * message payloads, and text-derived Quick Share identifiers before passing diagnostics here.
  */
 object SecureLanLogger {
     private const val MAX_LOG_BYTES: Int = 2 * 1024 * 1024
@@ -39,11 +39,17 @@ object SecureLanLogger {
         return DesktopAppPaths.logsDirectory()
     }
 
+    /** Records a non-secret connection or discovery diagnostic. */
     fun logConnection(message: String) = log("CONNECTION", message)
+    /** Records transfer lifecycle metadata without file contents or credentials. */
     fun logTransfer(message: String) = log("TRANSFER", message)
+    /** Records HTTP share metadata without shared text or its content-derived name and ID. */
     fun logQuickShare(message: String) = log("QUICKSHARE", message)
+    /** Records realtime state diagnostics without raw media or sensitive signaling payloads. */
     fun logRealtime(message: String) = log("REALTIME", message)
+    /** Records recoverable operational warnings. */
     fun logWarning(message: String) = log("WARNING", message)
+    /** Records an error and an optional exception whose message and stack must be safe to log. */
     fun logError(message: String, throwable: Throwable? = null) = log("ERROR", message, throwable)
 
     private fun log(tag: String, message: String, throwable: Throwable? = null) {

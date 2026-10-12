@@ -11,6 +11,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
 
+/** Copies nonblank text, tolerating clipboard contention or an unavailable desktop environment. */
 internal fun copyToSystemClipboard(text: String) {
     if (text.isBlank()) return
     runCatching {
@@ -18,6 +19,10 @@ internal fun copyToSystemClipboard(text: String) {
     }
 }
 
+/**
+ * Returns the first supported clipboard file, or writes a clipboard image to a temporary PNG.
+ * Temporary images are deleted at JVM exit. Unsupported data or clipboard failures return `null`.
+ */
 internal fun pasteImageFromSystemClipboard(): Path? = runCatching {
     val contents = Toolkit.getDefaultToolkit().systemClipboard.getContents(null) ?: return@runCatching null
     if (contents.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
@@ -38,6 +43,7 @@ internal fun pasteImageFromSystemClipboard(): Path? = runCatching {
     output.toAbsolutePath().normalize()
 }.getOrNull()
 
+/** Opens a directory or a file's containing directory, returning whether the desktop accepted it. */
 internal fun openInFileManager(path: Path): Boolean = runCatching {
     val target = path.toAbsolutePath().normalize().let { if (Files.isDirectory(it)) it else it.parent ?: it }
     if (!Desktop.isDesktopSupported()) return@runCatching false
@@ -45,6 +51,7 @@ internal fun openInFileManager(path: Path): Boolean = runCatching {
     true
 }.getOrDefault(false)
 
+/** Requests the system browser for a URL, returning `false` for invalid input or desktop failures. */
 internal fun openInBrowser(url: String): Boolean = runCatching {
     if (url.isBlank() || !Desktop.isDesktopSupported()) return@runCatching false
     Desktop.getDesktop().browse(URI(url))

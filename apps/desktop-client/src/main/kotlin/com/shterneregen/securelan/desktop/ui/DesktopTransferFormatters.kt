@@ -2,6 +2,7 @@ package com.shterneregen.securelan.desktop.ui
 
 import java.util.Locale
 
+/** Locale-stable file-transfer labels and diagnostics; displayed MB values use binary byte units. */
 object DesktopTransferFormatters {
     private const val KIBIBYTE = 1024.0
     private const val MEBIBYTE = KIBIBYTE * KIBIBYTE

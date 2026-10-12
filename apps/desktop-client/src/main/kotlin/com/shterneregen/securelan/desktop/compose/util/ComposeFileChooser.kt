@@ -14,6 +14,10 @@ internal val ComposeImageFiles = ComposeFileChooserFilter("Image files", listOf(
 internal val ComposeBmpFiles = ComposeFileChooserFilter("BMP images", listOf("bmp"))
 internal val ComposeTextFiles = ComposeFileChooserFilter("Text files", listOf("txt"))
 
+/**
+ * Opens a modal Swing file picker anchored to the active window and returns a normalized selection.
+ * Call on the Swing event-dispatch thread; cancellation returns `null` and leaves the caller's draft intact.
+ */
 internal fun openComposeFileChooser(
     title: String,
     filter: ComposeFileChooserFilter? = null,
@@ -56,6 +60,7 @@ internal fun openComposeTransferFileChooser(title: String): List<Path> {
     return chooser.selectedFiles.map { it.toPath().toAbsolutePath().normalize() }
 }
 
+/** Opens a modal directory picker on the Swing event-dispatch thread; cancellation returns `null`. */
 internal fun openComposeDirectoryChooser(title: String, initialDirectory: Path? = null): Path? {
     val chooser = JFileChooser(initialDirectory?.toFile()).apply {
         dialogTitle = title

@@ -1,16 +1,31 @@
 package com.shterneregen.securelan.desktop.compose
 
-import com.shterneregen.securelan.desktop.compose.state.transfer.*
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopBatchPhase
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferAttempt
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferBatch
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferDraft
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferItem
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferPhase
+import com.shterneregen.securelan.desktop.compose.state.transfer.DesktopTransferTarget
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
+/** One blocking file attempt whose resources are released before its outcome is published. */
 internal interface DesktopTransferOperation : AutoCloseable {
+    /** Returns a terminal result; local byte progress alone must not indicate successful delivery. */
     fun execute(): DesktopTransferAttempt
 }
 
-/** Owns one unfinished batch, including pauses. Network work never runs on the UI dispatcher. */
+/**
+ * Owns one recipient-bound draft and one unfinished outgoing batch, including paused attempts.
+ *
+ * Public actions and progress callbacks serialize access through this instance's monitor.
+ * [publish] runs under that monitor, sometimes on a worker thread, and must not block on the UI.
+ * [execute] is supplied by the host adapter to schedule blocking network work away from the UI.
+ * A failed or unconfirmed file pauses the queue until the user retries, skips, or finishes it.
+ */
 internal class DesktopTransferCoordinator(
     private val execute: (() -> Unit) -> Unit,
     private val validTarget: (DesktopTransferTarget) -> Boolean,
@@ -26,10 +41,12 @@ internal class DesktopTransferCoordinator(
     private var completion: CompletableFuture<String?>? = null
     private var pausedItemId: String? = null
 
-    @Synchronized fun add(target: DesktopTransferTarget, paths: List<Path>): Boolean {
+    /** Adds normalized, distinct paths while preserving the draft's original recipient. */
+    @Synchronized
+    fun add(target: DesktopTransferTarget, paths: List<Path>): Boolean {
         if (paths.isEmpty()) return false
         if (batch?.unfinished == true || !validTarget(target)) return false
-        if (draft != null && draft!!.target != target) return false
+        if (draft?.target?.let { it != target } == true) return false
         val existing = draft?.items.orEmpty()
         val seen = existing.mapTo(HashSet()) { it.path }
         val added = paths.map { it.toAbsolutePath().normalize() }.filter { seen.add(it) }
@@ -39,19 +56,30 @@ internal class DesktopTransferCoordinator(
         return true
     }
 
-    @Synchronized fun removeDraft(id: String) {
-        draft = draft?.copy(items = draft!!.items.filterNot { it.id == id })
+    /** Removes a file from the review draft without affecting previously sent files. */
+    @Synchronized
+    fun removeDraft(id: String) {
+        draft = draft?.let { current -> current.copy(items = current.items.filterNot { it.id == id }) }
         emit()
     }
 
-    @Synchronized fun clearDraft() { draft = null; emit() }
+    /** Discards only the unsent review draft. */
+    @Synchronized
+    fun clearDraft() {
+        draft = null
+        emit()
+    }
 
-    @Synchronized fun startDraft(): Boolean {
+    /** Starts the reviewed files if their recipient still belongs to the current connection. */
+    @Synchronized
+    fun startDraft(): Boolean {
         val ready = draft ?: return false
         return start(ready.target, ready.items)
     }
 
-    @Synchronized fun startSingle(target: DesktopTransferTarget, path: Path): CompletableFuture<String?> {
+    /** Returns the confirmed wire transfer ID, or `null` when the attempt cannot succeed. */
+    @Synchronized
+    fun startSingle(target: DesktopTransferTarget, path: Path): CompletableFuture<String?> {
         val result = CompletableFuture<String?>()
         val item = DesktopTransferItem(UUID.randomUUID().toString(), path.toAbsolutePath().normalize())
         if (!start(target, listOf(item), result)) result.complete(null)
@@ -68,17 +96,21 @@ internal class DesktopTransferCoordinator(
         return true
     }
 
-    @Synchronized fun retry(): Boolean {
+    /** Explicitly retries the paused file; an unconfirmed earlier attempt may already be saved. */
+    @Synchronized
+    fun retry(): Boolean {
         val current = batch ?: return false
         if (worker || current.phase != DesktopBatchPhase.PAUSED || invalidated || !validTarget(current.target)) return false
         val failed = current.items.firstOrNull { it.id == pausedItemId && it.phase in failurePhases } ?: return false
         replace(failed.copy(phase = DesktopTransferPhase.QUEUED))
-        batch = batch!!.copy(phase = DesktopBatchPhase.RUNNING)
+        batch = batch?.copy(phase = DesktopBatchPhase.RUNNING)
         advance()
         return true
     }
 
-    @Synchronized fun skipAndContinue() {
+    /** Preserves the failed attempt and advances to the next queued file. */
+    @Synchronized
+    fun skipAndContinue() {
         val current = batch ?: return
         if (worker || current.phase != DesktopBatchPhase.PAUSED || invalidated || !validTarget(current.target)) return
         // Keep the failed attempt and its outcome; only its remaining work is skipped.
@@ -86,13 +118,18 @@ internal class DesktopTransferCoordinator(
         advance()
     }
 
-    @Synchronized fun stopAfterCurrent() {
-        if (batch?.unfinished != true) return
-        batch = batch!!.copy(phase = DesktopBatchPhase.STOP_REQUESTED)
+    /** Leaves an active attempt running and skips the queue once it returns. */
+    @Synchronized
+    fun stopAfterCurrent() {
+        val current = batch ?: return
+        if (!current.unfinished) return
+        batch = current.copy(phase = DesktopBatchPhase.STOP_REQUESTED)
         if (!worker) finish() else emit()
     }
 
-    @Synchronized fun removeQueued(id: String) {
+    /** Marks a queued file as skipped while retaining it in the batch summary. */
+    @Synchronized
+    fun removeQueued(id: String) {
         val current = batch ?: return
         if (!current.unfinished) return
         val item = current.items.firstOrNull { it.id == id && it.phase == DesktopTransferPhase.QUEUED } ?: return
@@ -100,11 +137,18 @@ internal class DesktopTransferCoordinator(
         emit()
     }
 
-    @Synchronized fun invalidateSession() {
+    /** Stops work for the old connection so a batch cannot follow the user into another room. */
+    @Synchronized
+    fun invalidateSession() {
         invalidated = true
-        if (batch?.unfinished == true) {
-            batch = batch!!.copy(phase = DesktopBatchPhase.STOP_REQUESTED)
-            active?.close()
+        val current = batch
+        if (current?.unfinished == true) {
+            batch = current.copy(phase = DesktopBatchPhase.STOP_REQUESTED)
+            try {
+                active?.close()
+            } catch (_: Exception) {
+                // Continue the host adapter's remaining shutdown steps after a close failure.
+            }
             if (!worker) finish() else emit()
         }
     }
@@ -112,10 +156,20 @@ internal class DesktopTransferCoordinator(
     private fun advance() {
         val current = batch ?: return
         if (worker) return
-        if (current.phase == DesktopBatchPhase.STOP_REQUESTED || invalidated) { finish(); return }
-        if (!validTarget(current.target)) { invalidated = true; finish(); return }
+        if (current.phase == DesktopBatchPhase.STOP_REQUESTED || invalidated) {
+            finish()
+            return
+        }
+        if (!validTarget(current.target)) {
+            invalidated = true
+            finish()
+            return
+        }
         val item = current.items.firstOrNull { it.phase == DesktopTransferPhase.QUEUED }
-        if (item == null) { finish(); return }
+        if (item == null) {
+            finish()
+            return
+        }
         val attemptId = UUID.randomUUID().toString()
         replace(item.copy(phase = DesktopTransferPhase.PREPARING, attempts = item.attempts + DesktopTransferAttempt(attemptId)))
         worker = true
@@ -141,14 +195,15 @@ internal class DesktopTransferCoordinator(
                 if (batch?.phase == DesktopBatchPhase.STOP_REQUESTED || invalidated) finish()
                 else if (outcome.phase in failurePhases) {
                     pausedItemId = item.id
-                    batch = batch!!.copy(phase = DesktopBatchPhase.PAUSED)
+                    batch = batch?.copy(phase = DesktopBatchPhase.PAUSED)
                     emit()
                 } else advance()
             }
         }
     }
 
-    @Synchronized private fun update(batchId: String, itemId: String, attemptId: String, update: DesktopTransferAttempt) {
+    @Synchronized
+    private fun update(batchId: String, itemId: String, attemptId: String, update: DesktopTransferAttempt) {
         val current = batch ?: return
         if (invalidated || current.id != batchId || !worker) return
         val item = current.items.firstOrNull { it.id == itemId } ?: return
@@ -159,14 +214,24 @@ internal class DesktopTransferCoordinator(
         emit()
     }
 
-    private fun replace(item: DesktopTransferItem) { batch = batch!!.copy(items = batch!!.items.map { if (it.id == item.id) item else it }) }
+    private fun replace(item: DesktopTransferItem) {
+        val current = checkNotNull(batch) { "An item update requires an active batch" }
+        batch = current.copy(items = current.items.map { if (it.id == item.id) item else it })
+    }
+
     private fun finish() {
-        batch = batch?.let { it.copy(phase = DesktopBatchPhase.FINISHED, items = it.items.map { item ->
-            if (item.phase == DesktopTransferPhase.QUEUED) item.copy(phase = DesktopTransferPhase.SKIPPED) else item
-        }) }
+        batch = batch?.let { current ->
+            current.copy(
+                phase = DesktopBatchPhase.FINISHED,
+                items = current.items.map { item ->
+                    if (item.phase == DesktopTransferPhase.QUEUED) item.copy(phase = DesktopTransferPhase.SKIPPED) else item
+                },
+            )
+        }
         completion?.complete(null)
         emit()
     }
+
     private fun emit() = publish(draft, batch)
 
     companion object {

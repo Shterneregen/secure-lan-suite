@@ -1,5 +1,6 @@
 package com.shterneregen.securelan.desktop.ui
 
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareStatus
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareType
@@ -124,13 +125,31 @@ class DesktopQuickShareFormattersTest {
     @Test
     fun shouldFormatQuickShareEventDiagnostics() {
         assertEquals(
-            "[quick-share] downloaded demo.txt from /192.168.1.10:54545",
-            DesktopQuickShareFormatters.formatEventDiagnostics("downloaded demo.txt", "/192.168.1.10:54545"),
+            "[quick-share] server started from /192.168.1.10:54545",
+            DesktopQuickShareFormatters.formatEventDiagnostics(QuickShareEvent("", null, "server started", "/192.168.1.10:54545")),
         )
         assertEquals(
-            "[quick-share] share expired",
-            DesktopQuickShareFormatters.formatEventDiagnostics("share expired", " "),
+            "[quick-share] server stopped",
+            DesktopQuickShareFormatters.formatEventDiagnostics(QuickShareEvent("", null, "server stopped", " ")),
         )
+    }
+
+    @Test
+    fun shouldOmitTextPayloadFromDiagnosticsForEveryShareStatus() {
+        val secret = "private text content"
+        QuickShareStatus.entries.forEach { status ->
+            val share = QuickShareSnapshot(
+                secret, QuickShareType.TEXT, secret, "", 42,
+                Instant.parse("2026-05-21T09:00:00Z"), null, null, 1, status,
+                listOf("http://127.0.0.1:8090/s/$secret"),
+            )
+            val event = QuickShareEvent(secret, share, "Text share opened: $secret", "/192.168.1.10:54545")
+            assertEquals(
+                "[quick-share] ${DesktopQuickShareFormatters.formatSnapshotMeta(share)} from /192.168.1.10:54545",
+                DesktopQuickShareFormatters.formatEventDiagnostics(event),
+            )
+            org.junit.jupiter.api.Assertions.assertFalse(DesktopQuickShareFormatters.formatEventDiagnostics(event).contains(secret))
+        }
     }
 
     @Test

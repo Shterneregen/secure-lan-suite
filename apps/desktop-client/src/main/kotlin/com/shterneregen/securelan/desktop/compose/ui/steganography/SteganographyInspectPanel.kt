@@ -21,12 +21,12 @@ import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
 import com.shterneregen.securelan.stego.StegoServices
 import com.shterneregen.securelan.stego.model.StegoInspectionPoint
 import com.shterneregen.securelan.stego.model.StegoInspectionResult
-import org.jetbrains.skia.Image as SkiaImage
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.file.Path
-import javax.imageio.ImageIO
 import java.util.Locale
+import javax.imageio.ImageIO
+import org.jetbrains.skia.Image as SkiaImage
 
 private const val MOVING_AVERAGE_HELP =
     "Each RGB pixel contributes a value from 0 to 7 formed by its three least-significant bits. " +

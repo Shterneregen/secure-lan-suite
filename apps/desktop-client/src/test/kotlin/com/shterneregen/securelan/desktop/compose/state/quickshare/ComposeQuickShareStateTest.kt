@@ -5,12 +5,12 @@ import com.shterneregen.securelan.desktop.ui.QuickShareEntry
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareStatus
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareType
-import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.Instant
 
 class ComposeQuickShareStateTest {
     @Test

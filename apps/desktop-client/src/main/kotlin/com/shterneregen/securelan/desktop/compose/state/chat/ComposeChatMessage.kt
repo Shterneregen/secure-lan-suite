@@ -1,8 +1,15 @@
 package com.shterneregen.securelan.desktop.compose.state.chat
 
-import java.time.Instant
 import java.nio.file.Path
+import java.time.Instant
 
+/**
+ * Immutable transcript row with a local receive time; it adds no fields to the chat protocol.
+ *
+ * @property eventKey Optional identity for replacing a transfer's progress row in place.
+ * @property actionPath Local received-file path exposed by a completed transfer's open action.
+ * @property transcriptLine Preformatted runtime line, taking precedence over sender/text formatting.
+ */
 public data class ComposeChatMessage(
     val sender: String,
     val text: String,

@@ -1,9 +1,11 @@
 package com.shterneregen.securelan.desktop.ui
 
+import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareSnapshot
 import java.net.URI
 import java.util.Locale
 
+/** Presentation and diagnostic formatting for temporary, unauthenticated LAN HTTP shares. */
 object DesktopQuickShareFormatters {
     @JvmStatic
     fun formatSnapshotMeta(snapshot: QuickShareSnapshot): String =
@@ -95,9 +97,16 @@ object DesktopQuickShareFormatters {
             originalUrl
         }
 
+    /**
+     * Formats lifecycle metadata without logging share names, IDs, or URLs derived from shared text.
+     * Server events without a snapshot retain the service's operational message.
+     */
     @JvmStatic
-    fun formatEventDiagnostics(message: String, remoteAddress: String): String =
-        "[quick-share] $message" + if (remoteAddress.isBlank()) "" else " from $remoteAddress"
+    fun formatEventDiagnostics(event: QuickShareEvent): String {
+        val detail = event.snapshot()?.let(::formatSnapshotMeta) ?: event.message()
+        val remoteAddress = event.remoteAddress()
+        return "[quick-share] $detail" + if (remoteAddress.isBlank()) "" else " from $remoteAddress"
+    }
 
     private fun enumLabel(value: Enum<*>): String = value.name.lowercase(Locale.ROOT).replace('_', ' ')
 

@@ -1,6 +1,5 @@
 package com.shterneregen.securelan.desktop.compose.state.shell
 
-
 data class ComposeOnboardingState(
     val headline: String = "Secure chat for people nearby",
     val body: String = "",

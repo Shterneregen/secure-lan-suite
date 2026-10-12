@@ -11,9 +11,9 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatWorkspaceState
+import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 
 @Composable
 internal fun ChatTranscriptEmptyState(chatState: ComposeChatWorkspaceState) {

@@ -31,7 +31,15 @@ application {
     ]
 }
 
+configurations {
+    kotlinLint {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+
 dependencies {
+    kotlinLint 'com.pinterest.ktlint:ktlint-cli:1.7.1'
     implementation project(':modules:common-model')
     implementation project(':modules:common-net')
     implementation project(':modules:crypto-core')
@@ -46,6 +54,36 @@ dependencies {
     implementation 'com.formdev:flatlaf:3.7.1'
     implementation compose.desktop.currentOs
     implementation 'org.jetbrains.compose.material:material-icons-core-desktop:1.7.3'
+}
+
+def kotlinLintSources = fileTree('src') {
+    include '**/*.kt'
+    // Checked-in upstream Material icons retain their original generated style.
+    exclude 'main/kotlin/androidx/**'
+}
+
+tasks.register('lintKotlin', JavaExec) {
+    group = 'verification'
+    description = 'Check desktop Kotlin source hygiene and KDoc placement with ktlint.'
+    classpath = configurations.kotlinLint
+    mainClass = 'com.pinterest.ktlint.Main'
+    inputs.files(kotlinLintSources)
+    inputs.file('.editorconfig')
+    workingDir = projectDir
+    args 'src/**/*.kt', '!src/main/kotlin/androidx/**'
+}
+
+tasks.register('formatKotlin', JavaExec) {
+    group = 'formatting'
+    description = 'Fix desktop Kotlin source hygiene with ktlint.'
+    classpath = configurations.kotlinLint
+    mainClass = 'com.pinterest.ktlint.Main'
+    workingDir = projectDir
+    args '--format', 'src/**/*.kt', '!src/main/kotlin/androidx/**'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('lintKotlin')
 }
 
 def appName = 'SecureLanSuite'

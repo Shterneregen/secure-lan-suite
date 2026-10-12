@@ -5,6 +5,7 @@ import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListStat
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeEmptyStateVisualWeight
 import java.time.Instant
 
+/** Derives shared-room composer readiness and transcript presentation from connection and peer state. */
 public data class ComposeChatWorkspaceState(
     val statusState: ComposeStatusConnectionState,
     val peerListState: ComposePeerListState,

@@ -4,6 +4,10 @@ import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import java.nio.charset.StandardCharsets
 
+/**
+ * In-memory tool draft and result with derived readiness hints; services perform actual BMP validation.
+ * Contains sensitive message and password drafts and must not be persisted or written to diagnostics.
+ */
 public data class ComposeSteganographyState(
     val coverPathText: String = "",
     val inputPathText: String = "",

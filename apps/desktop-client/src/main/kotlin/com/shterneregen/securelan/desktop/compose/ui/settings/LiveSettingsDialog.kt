@@ -30,12 +30,12 @@ import com.shterneregen.securelan.desktop.compose.settings.*
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.compose.ui.media.AudioVideoDevicesPreviewCard
 import com.shterneregen.securelan.desktop.compose.ui.media.LiveAudioVideoDevicesCard
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
-import com.shterneregen.securelan.desktop.compose.util.openComposeDirectoryChooser
 import com.shterneregen.securelan.desktop.compose.util.calmFocusRing
+import com.shterneregen.securelan.desktop.compose.util.openComposeDirectoryChooser
 import com.shterneregen.securelan.desktop.compose.util.rememberInteractiveSurfaceState
 import java.awt.Dimension
 import java.nio.file.Path

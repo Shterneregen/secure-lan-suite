@@ -1,9 +1,9 @@
 package com.shterneregen.securelan.desktop.compose
 
+import androidx.compose.runtime.SnapshotMutationPolicy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
-import androidx.compose.runtime.SnapshotMutationPolicy
 import androidx.compose.runtime.setValue
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
@@ -29,9 +29,9 @@ import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
+import com.shterneregen.securelan.desktop.compose.state.transfer.*
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPrompt
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPromptStatus
-import com.shterneregen.securelan.desktop.compose.state.transfer.*
 import com.shterneregen.securelan.desktop.compose.tray.DesktopChatTrayNotification
 import com.shterneregen.securelan.desktop.compose.tray.shouldPublishChatTrayNotification
 import com.shterneregen.securelan.desktop.ui.*
@@ -43,10 +43,10 @@ import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
 import com.shterneregen.securelan.filetransfer.service.FileTransferClientService
+import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
+import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
-import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
-import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
 import com.shterneregen.securelan.stego.StegoServices
 import com.shterneregen.securelan.stego.model.BmpCapacity
 import com.shterneregen.securelan.stego.service.SteganographyService
@@ -74,11 +74,16 @@ internal val transferEntriesMutationPolicy: SnapshotMutationPolicy<List<Transfer
     referentialEqualityPolicy()
 
 /**
- * Live desktop host adapter for status/connection, peer-list, and chat workspace wiring.
+ * Owns live Compose state and translates desktop actions into application-service calls.
  *
- * Wraps [ChatServerService], [ChatClientService], [PeerDiscoveryService], and optional [ChatEventPublisher]
- * to manage room hosting, manual connection, discovery visibility, peer snapshots, and shared-room chat.
- * Publishes [ComposeConnectionEvent] events consumed by the Compose shell.
+ * Hosts and joins rooms, combines peer presence, coordinates encrypted transfers, and exposes
+ * Quick Share, steganography, and optional realtime services without implementing their protocols.
+ * UI actions are called from the desktop event-dispatch thread; blocking connection and outgoing
+ * transfer attempts use a dedicated IO scope. Service event publishers feed the workspace state.
+ * [shutdown] is idempotent and releases the services owned by this adapter.
+ *
+ * @param uiStateDispatcher Optional test dispatcher; acceptance decisions require immediate execution.
+ * @param chatNotificationPublisher Receives notification data without writing message payloads to logs.
  */
 class ComposeDesktopHostAdapter(
     private val chatServerService: ChatServerService,
@@ -199,8 +204,10 @@ class ComposeDesktopHostAdapter(
     private val networkIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectionInProgress = AtomicBoolean(false)
     private val transferGeneration = AtomicLong()
+    /** Unsent file selection bound to a captured recipient and connection generation. */
     var transferDraft: DesktopTransferDraft? by mutableStateOf(null)
         private set
+    /** Latest outgoing queue snapshot, retaining attempts and a final summary. */
     var transferBatch: DesktopTransferBatch? by mutableStateOf(null)
         private set
 
@@ -225,6 +232,7 @@ class ComposeDesktopHostAdapter(
         },
     )
 
+    /** Captures a current connected recipient, or returns `null` for an unavailable endpoint. */
     fun captureTransferTarget(peer: DiscoveredPeer): DesktopTransferTarget? =
         DesktopTransferTarget(transferGeneration.get(), peer.peerId, peer.nickname, peer.host, peer.filePort)
             .takeIf(::isTransferTargetCurrent)
@@ -235,30 +243,41 @@ class ComposeDesktopHostAdapter(
                 it.peerId == target.peerId && it.host == target.host && it.filePort == target.port
             } == true
 
+    /** Adds distinct files to a recipient-bound draft and opens its review surface on success. */
     fun addTransferFiles(target: DesktopTransferTarget, paths: List<Path>): Boolean {
         val added = transferCoordinator.add(target, paths)
         if (added) transferReviewVisible = true
         return added
     }
+    /** Removes one unsent file from the draft. */
     fun removeTransferDraftItem(id: String) = transferCoordinator.removeDraft(id)
+
+    /** Discards the unsent selection and closes its review surface. */
     fun clearTransferDraft() {
         transferCoordinator.clearDraft()
         transferReviewVisible = false
     }
+    /** Hides the review surface while retaining its files and original recipient. */
     fun dismissTransferReview() {
         transferReviewVisible = false
     }
+    /** Restores an existing draft's review surface. */
     fun openTransferReview() {
         if (transferDraft != null) transferReviewVisible = true
     }
+    /** Starts a valid draft and closes review; invalid or busy queues keep the draft available. */
     fun startTransferDraft(): Boolean {
         val started = transferCoordinator.startDraft()
         if (started) transferReviewVisible = false
         return started
     }
+    /** Explicitly retries the paused file, including potentially duplicated unconfirmed delivery. */
     fun retryTransferBatch(): Boolean = transferCoordinator.retry()
+    /** Continues queued work while retaining the failed attempt in the summary. */
     fun skipFailedTransferAndContinue() = transferCoordinator.skipAndContinue()
+    /** Finishes after the active file and skips the remaining queue. */
     fun stopTransferBatch() = transferCoordinator.stopAfterCurrent()
+    /** Skips a queued file without interrupting the active operation. */
     fun removeQueuedTransferItem(id: String) = transferCoordinator.removeQueued(id)
 
     private fun createTransferOperation(target: DesktopTransferTarget, item: DesktopTransferItem, update: (DesktopTransferAttempt) -> Unit): DesktopTransferOperation {
@@ -379,6 +398,7 @@ class ComposeDesktopHostAdapter(
             }
             is ChatDisconnectedEvent -> {
                 invalidateTransferSession()
+                stopRemoteFileTransferListener()
                 appendChatTranscript(disconnectedTranscriptLine(event))
                 clearChatPeers()
                 statusState = statusState.withClientDisconnected()
@@ -590,7 +610,10 @@ class ComposeDesktopHostAdapter(
         refreshState()
     }
 
-    /** Connect to a remote room manually. */
+    /**
+     * Starts a remote connection on the IO scope without blocking the caller.
+     * Concurrent attempts are rejected; successful connections start the room's file receiver.
+     */
     fun connect(
         host: String,
         nickname: String,
@@ -673,6 +696,7 @@ class ComposeDesktopHostAdapter(
         invalidateTransferSession()
         try {
             chatClientService.disconnect()
+            stopRemoteFileTransferListener()
             clearChatPeers()
             if (!chatServerService.isRunning()) {
                 startPeerDiscoveryListenOnly(statusState.nickname)
@@ -760,7 +784,11 @@ class ComposeDesktopHostAdapter(
         }
     }
 
-    /** Record an incoming receive prompt and return the deterministic Compose acceptance decision. */
+    /**
+     * Validates an incoming peer and publishes its receive prompt before deciding acceptance.
+     * Known-peer automatic acceptance returns immediately; manual approval waits up to five minutes
+     * on the receiver thread. Calling from the UI thread cannot wait and therefore rejects the file.
+     */
     fun acceptIncomingFileTransfer(
         metadata: FileTransferMetadata,
         remoteAddress: String,
@@ -905,17 +933,20 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Persists the preferred entry workflow without changing the active connection. */
     fun updateLastConnectionMode(mode: DesktopConnectionMode) {
         settingsController.update { settings ->
             settings.copy(network = settings.network.copy(lastConnectionMode = mode))
         }
     }
 
+    /** Persists the output directory used the next time the file receiver starts. */
     fun updateDownloadsDirectory(path: Path) {
         downloadsPath = path.toAbsolutePath().normalize()
         settingsController.update { settings -> settings.copy(downloadsDirectory = downloadsPath.toString()) }
     }
 
+    /** Persists a preferred nickname and updates the form only while disconnected and not hosting. */
     fun updatePreferredNickname(nickname: String) {
         val trimmed = nickname.trim()
         settingsController.update { settings -> settings.copy(displayName = trimmed.takeIf(String::isNotEmpty)) }
@@ -925,6 +956,7 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Normalizes persisted network defaults without changing an active room's endpoints. */
     fun updateNetworkDefaults(network: DesktopNetworkSettings) {
         val normalized = network.normalized()
         settingsController.update { settings -> settings.copy(network = normalized) }
@@ -941,12 +973,17 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /**
+     * Sends one file through the batch coordinator when identity and credentials match the live room.
+     * The future returns a receiver-confirmed transfer ID, or `null` for rejection or failure.
+     */
     fun sendFileToPeer(filePath: Path, senderId: String, recipient: DiscoveredPeer, sessionPassword: String): CompletableFuture<String?> {
         if (fileTransferClientService == null || senderId.trim() != statusState.nickname.trim() || sessionPassword != currentRoomPassword) return CompletableFuture.completedFuture(null)
         val target = captureTransferTarget(recipient) ?: return CompletableFuture.completedFuture(null)
         return transferCoordinator.startSingle(target, filePath)
     }
 
+    /** Starts temporary, unauthenticated local HTTP sharing on a trusted LAN. */
     fun startQuickShare(port: Int) {
         if (shuttingDown.get()) return
         try {
@@ -962,6 +999,7 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Stops the local HTTP server and refreshes share availability in the workspace. */
     fun stopQuickShare() {
         if (shuttingDown.get()) return
         quickShareService.stop()
@@ -969,6 +1007,10 @@ class ComposeDesktopHostAdapter(
         SecureLanLogger.logQuickShare("Quick-share server stopped from Compose.")
     }
 
+    /**
+     * Publishes trimmed text through unauthenticated LAN HTTP, starting the server if needed.
+     * `null` limits mean until stopped or unlimited access; text-derived names must stay out of logs.
+     */
     fun createTextQuickShare(text: String, expirationMinutes: Long?, accessLimit: Int?) {
         if (shuttingDown.get()) return
         val normalizedText = text.trim()
@@ -995,7 +1037,7 @@ class ComposeDesktopHostAdapter(
             refreshQuickShareState()
             val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot, localNetworkAddresses.firstOrNull()?.address)
             appendChatTranscript(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(shareUrl))
-            SecureLanLogger.logQuickShare("Text quick-share created: ${snapshot.displayName()}.")
+            SecureLanLogger.logQuickShare("Text quick-share created: ${DesktopQuickShareFormatters.formatSnapshotMeta(snapshot)}.")
         } catch (e: Exception) {
             val message = "Text quick-share failed: ${e.message ?: "unknown error"}"
             publish(ComposeConnectionEventKind.ERROR, message)
@@ -1003,14 +1045,16 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Revokes one active share; its content-derived ID is never written to diagnostics. */
     fun stopQuickShareEntry(id: String) {
         if (shuttingDown.get()) return
         if (quickShareService.stopShare(id)) {
             refreshQuickShareState()
-            SecureLanLogger.logQuickShare("Quick-share stopped: $id.")
+            SecureLanLogger.logQuickShare("Quick-share stopped.")
         }
     }
 
+    /** Publishes a local file through unauthenticated LAN HTTP with optional expiry and access limits. */
     fun createFileQuickShare(filePath: Path, expirationMinutes: Long?, accessLimit: Int?) {
         if (shuttingDown.get()) return
         val normalizedFile = filePath.toAbsolutePath().normalize()
@@ -1041,6 +1085,7 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Inspects or converts a cover image and updates the draft; reports read/conversion failures in state. */
     fun inspectStegoCover(coverPath: Path): BmpCapacity? {
         if (shuttingDown.get()) return null
         return try {
@@ -1060,6 +1105,10 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /**
+     * Writes a BMP containing trimmed text, delegating optional encryption to the steganography service.
+     * Returns the written path or `null` on failure and clears the temporary password character array.
+     */
     fun hideStegoMessage(coverPath: Path, outputPath: Path, message: String, password: String? = null): Path? {
         if (shuttingDown.get()) return null
         val normalizedMessage = message.trim()
@@ -1100,6 +1149,7 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Extracts optional encrypted text into tool state, returning `null` with recovery feedback on failure. */
     fun extractStegoMessage(inputPath: Path, password: String? = null): String? {
         if (shuttingDown.get()) return null
         val passwordChars = password?.toCharArray()
@@ -1128,6 +1178,7 @@ class ComposeDesktopHostAdapter(
         }
     }
 
+    /** Clears the tool's paths, message, password draft, and extraction result. */
     fun clearSteganographyState() {
         stegoState = ComposeSteganographyState()
     }
@@ -1552,6 +1603,16 @@ class ComposeDesktopHostAdapter(
         SecureLanLogger.logTransfer("File transfer listener started on port $filePort.")
     }
 
+    /** Release a joined room's credentials and port while retaining a hosted room's receiver. */
+    private fun stopRemoteFileTransferListener() {
+        if (chatServerService.isRunning() || !fileTransferServerService.isRunning()) return
+        try {
+            fileTransferServerService.stop()
+        } catch (_: Exception) {
+            publish(ComposeConnectionEventKind.ERROR, "Could not stop the file receiver after disconnecting.")
+        }
+    }
+
     private fun handleFileTransferEvent(event: FileTransferEvent) {
         when (event) {
             is FileTransferStartedEvent -> {
@@ -1641,7 +1702,7 @@ class ComposeDesktopHostAdapter(
     private fun handleQuickShareEvent(event: QuickShareEvent) {
         if (event.message().isNotBlank()) {
             SecureLanLogger.logQuickShare(
-                DesktopQuickShareFormatters.formatEventDiagnostics(event.message(), event.remoteAddress()),
+                DesktopQuickShareFormatters.formatEventDiagnostics(event),
             )
         }
         refreshQuickShareState()
