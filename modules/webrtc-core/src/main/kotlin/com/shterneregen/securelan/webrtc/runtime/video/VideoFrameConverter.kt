@@ -5,7 +5,23 @@ import dev.onvoid.webrtc.media.video.VideoFrame
 import java.nio.ByteBuffer
 import java.util.Objects
 
+/**
+ * High-performance converter transforming native WebRTC [VideoFrame] instances
+ * (in I420 planar YUV format) into 32-bit uncompressed BGRA byte buffers suitable
+ * for rendering in desktop and mobile UI canvasses.
+ *
+ * Automatically validates buffer capacities and plane strides, and safely releases
+ * the intermediate [I420Buffer] in a `finally` block to prevent native memory leaks.
+ */
 class VideoFrameConverter {
+    /**
+     * Converts a WebRTC [VideoFrame] into a BGRA byte array.
+     *
+     * @param frame input WebRTC video frame.
+     * @return byte array containing 32-bit BGRA pixels of length `width * height * 4`.
+     * @throws IllegalStateException if the frame cannot be converted to an I420 buffer.
+     * @throws IllegalArgumentException if frame dimensions, strides, or buffer capacities are invalid.
+     */
     fun convertToBgra(frame: VideoFrame): ByteArray {
         Objects.requireNonNull(frame, "frame must not be null")
         val buffer = Objects.requireNonNull(frame.buffer, "frame buffer must not be null")

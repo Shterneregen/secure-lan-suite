@@ -19,6 +19,7 @@ import dev.onvoid.webrtc.media.audio.AudioDevice;
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability;
 import dev.onvoid.webrtc.media.video.VideoDevice;
 import dev.onvoid.webrtc.media.video.VideoDeviceSource;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +37,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+/**
+ * Standard implementation of {@link RtcMediaDeviceService} that executes native media device
+ * enumeration, hardware testing, and camera preview sessions on a dedicated single-threaded executor
+ * to avoid blocking UI threads and prevent race conditions with native WebRTC device drivers.
+ */
 public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService {
     private static final long CAMERA_PREVIEW_INTERVAL_NANOS = 66_000_000L;
 
@@ -51,7 +57,14 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     private final VideoFrameConverter videoFrameConverter = new VideoFrameConverter();
     private final VideoCapabilitySelector videoCapabilitySelector = new VideoCapabilitySelector();
 
+    /**
+     * Constructs a new media device service with a dedicated background worker thread.
+     */
+    public DefaultRtcMediaDeviceService() {
+    }
+
     @Override
+    @NotNull
     public List<RtcMediaDevice> audioCaptureDevices() {
         return callOnMediaDeviceThread(
                 () -> mapDevices(MediaDevices.getAudioCaptureDevices(), MediaDevices.getDefaultAudioCaptureDevice()),
@@ -61,6 +74,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
+    @NotNull
     public List<RtcMediaDevice> audioRenderDevices() {
         return callOnMediaDeviceThread(
                 () -> mapDevices(MediaDevices.getAudioRenderDevices(), MediaDevices.getDefaultAudioRenderDevice()),
@@ -70,6 +84,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
+    @NotNull
     public List<RtcMediaDevice> videoCaptureDevices() {
         return callOnMediaDeviceThread(
                 () -> mapDevices(MediaDevices.getVideoCaptureDevices(), null),
@@ -79,6 +94,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
+    @NotNull
     public String testAudioCaptureDevice(String deviceId) {
         return callOnMediaDeviceThread(() -> {
                     AudioDevice device = selectAudioCaptureDevice(deviceId);
@@ -93,6 +109,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
+    @NotNull
     public String testAudioRenderDevice(String deviceId) {
         return callOnMediaDeviceThread(() -> {
                     AudioDevice device = selectAudioRenderDevice(deviceId);
@@ -107,6 +124,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
+    @NotNull
     public String testVideoCaptureDevice(String deviceId) {
         return callOnMediaDeviceThread(
                 () -> testVideoCaptureDeviceOnMediaThread(deviceId),
@@ -116,7 +134,8 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     @Override
-    public CameraPreviewSession startVideoPreview(String deviceId, Consumer<RtcVideoFrameEvent> frameConsumer) {
+    @NotNull
+    public CameraPreviewSession startVideoPreview(String deviceId, @NotNull Consumer<RtcVideoFrameEvent> frameConsumer) {
         return callOnMediaDeviceThread(
                 () -> startVideoPreviewOnMediaThread(deviceId, frameConsumer),
                 "RTC camera preview failed",
@@ -217,7 +236,10 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
                     videoCapabilitySelector
             );
             if (captureSession == null) {
-                disposePreviewResources(captureSession, factory, sink);
+                try {
+                    factory.dispose();
+                } catch (Throwable ignored) {
+                }
                 return new FailedCameraPreviewSession("Camera preview failed: no video capture devices detected");
             }
             sink = new PreviewVideoSink(
@@ -491,6 +513,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
         }
 
         @Override
+        @NotNull
         public String statusMessage() {
             return statusMessage;
         }
@@ -509,6 +532,12 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     }
 
     private record FailedCameraPreviewSession(String statusMessage) implements CameraPreviewSession {
+        @Override
+        @NotNull
+        public String statusMessage() {
+            return statusMessage;
+        }
+
         @Override
         public void close() {
             // Nothing to close because preview startup failed before native resources were retained.

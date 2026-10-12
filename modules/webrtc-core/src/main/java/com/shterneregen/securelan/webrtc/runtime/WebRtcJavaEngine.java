@@ -45,9 +45,9 @@ import dev.onvoid.webrtc.media.audio.AudioOptions;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.AudioTrackSink;
 import dev.onvoid.webrtc.media.audio.AudioTrackSource;
-import dev.onvoid.webrtc.media.video.VideoFrame;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.onvoid.webrtc.media.video.VideoTrackSink;
+import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -62,6 +62,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
+/**
+ * Concrete {@link RtcEngine} implementation backed by native WebRTC through the
+ * {@code dev.onvoid.webrtc:webrtc-java} library.
+ * <p>
+ * Manages native {@link PeerConnectionFactory}, hardware {@link AudioDeviceModule},
+ * peer sessions, SDP offer/answer exchanges, ICE candidate handling, RTCDataChannel
+ * messaging, audio energy monitoring, and video preview capture pipelines.
+ */
 public final class WebRtcJavaEngine implements RtcEngine {
     private static final String PROVIDER_NAME = "webrtc-java";
     private static final String DEFAULT_DATA_CHANNEL = "securelan-data";
@@ -82,10 +90,19 @@ public final class WebRtcJavaEngine implements RtcEngine {
     private final VideoFrameConverter videoFrameConverter = new VideoFrameConverter();
     private final VideoCapabilitySelector videoCapabilitySelector = new VideoCapabilitySelector();
 
+    /**
+     * Initializes the WebRTC engine using default system audio and video capture devices.
+     */
     public WebRtcJavaEngine() {
         this("", "");
     }
 
+    /**
+     * Initializes the WebRTC engine using preferred audio and video hardware device identifiers.
+     *
+     * @param preferredAudioCaptureDeviceId descriptor of preferred microphone device, or empty for default
+     * @param preferredVideoCaptureDeviceId descriptor of preferred camera device, or empty for default
+     */
     public WebRtcJavaEngine(String preferredAudioCaptureDeviceId, String preferredVideoCaptureDeviceId) {
         this.preferredAudioCaptureDeviceId = normalizeDeviceId(preferredAudioCaptureDeviceId);
         this.preferredVideoCaptureDeviceId = normalizeDeviceId(preferredVideoCaptureDeviceId);
@@ -98,6 +115,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
     }
 
     @Override
+    @NotNull
     public RtcRuntimeStatus status() {
         return status;
     }
@@ -111,17 +129,21 @@ public final class WebRtcJavaEngine implements RtcEngine {
             String dataChannelLabel,
             String audioCaptureDeviceId,
             String videoCaptureDeviceId,
-            Consumer<RtcSignalEnvelope> outboundSignalConsumer,
-            Consumer<RtcEvent> eventConsumer
+            @NotNull Consumer<RtcSignalEnvelope> outboundSignalConsumer,
+            @NotNull Consumer<RtcEvent> eventConsumer
     ) {
         Objects.requireNonNull(outboundSignalConsumer, "outboundSignalConsumer must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
-        PeerSession session = createSession(sessionId, localPeer, remotePeer, mode, dataChannelLabel, audioCaptureDeviceId, videoCaptureDeviceId, true, outboundSignalConsumer, eventConsumer);
+        PeerSession session = createSession(sessionId, localPeer, remotePeer, mode, dataChannelLabel, audioCaptureDeviceId, videoCaptureDeviceId, outboundSignalConsumer, eventConsumer);
         session.createOffer();
     }
 
     @Override
-    public void handleRemoteSignal(RtcSignalEnvelope signal, Consumer<RtcSignalEnvelope> outboundSignalConsumer, Consumer<RtcEvent> eventConsumer) {
+    public void handleRemoteSignal(
+            @NotNull RtcSignalEnvelope signal,
+            @NotNull Consumer<RtcSignalEnvelope> outboundSignalConsumer,
+            @NotNull Consumer<RtcEvent> eventConsumer
+    ) {
         Objects.requireNonNull(signal, "signal must not be null");
         Objects.requireNonNull(outboundSignalConsumer, "outboundSignalConsumer must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
@@ -157,7 +179,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
     }
 
     @Override
-    public void sendData(String sessionId, String payload, Consumer<RtcEvent> eventConsumer) {
+    public void sendData(String sessionId, String payload, @NotNull Consumer<RtcEvent> eventConsumer) {
+        Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
         PeerSession session = sessions.get(sessionId);
         if (session == null) {
             warn(eventConsumer, "No active RTC session with id " + sessionId);
@@ -167,7 +190,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
     }
 
     @Override
-    public void closeSession(String sessionId, Consumer<RtcEvent> eventConsumer) {
+    public void closeSession(String sessionId, @NotNull Consumer<RtcEvent> eventConsumer) {
+        Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
         PeerSession session = sessions.remove(sessionId);
         if (session == null) {
             return;
@@ -197,7 +221,6 @@ public final class WebRtcJavaEngine implements RtcEngine {
             String dataChannelLabel,
             String audioCaptureDeviceId,
             String videoCaptureDeviceId,
-            boolean initiator,
             Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             Consumer<RtcEvent> eventConsumer
     ) {
@@ -213,7 +236,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 normalizeLabel(dataChannelLabel),
                 chooseDeviceId(audioCaptureDeviceId, preferredAudioCaptureDeviceId),
                 chooseDeviceId(videoCaptureDeviceId, preferredVideoCaptureDeviceId),
-                initiator,
+                true,
                 outboundSignalConsumer,
                 eventConsumer
         );
@@ -501,7 +524,6 @@ public final class WebRtcJavaEngine implements RtcEngine {
         private final String dataChannelLabel;
         private final String audioCaptureDeviceId;
         private final String videoCaptureDeviceId;
-        private final boolean initiator;
         private final Consumer<RtcSignalEnvelope> outboundSignalConsumer;
         private final Consumer<RtcEvent> eventConsumer;
         private final RTCPeerConnection peerConnection;
@@ -541,7 +563,6 @@ public final class WebRtcJavaEngine implements RtcEngine {
             this.dataChannelLabel = normalizeLabel(dataChannelLabel);
             this.audioCaptureDeviceId = normalizeDeviceId(audioCaptureDeviceId);
             this.videoCaptureDeviceId = normalizeDeviceId(videoCaptureDeviceId);
-            this.initiator = initiator;
             this.outboundSignalConsumer = outboundSignalConsumer;
             this.eventConsumer = eventConsumer;
             this.streamId = STREAM_PREFIX + sessionId;
@@ -574,7 +595,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void applyRemoteOffer(RtcSignalEnvelope signal) {
-            diag(eventConsumer, "applying remote offer sdpLength=" + (signal.sdp() == null ? 0 : signal.sdp().length()) + " from=" + signal.fromPeer());
+            diag(eventConsumer, "applying remote offer sdpLength=" + signal.sdp().length() + " from=" + signal.fromPeer());
             publishState(RtcSessionState.CONNECTING, "Applying remote offer");
             RTCSessionDescription description = new RTCSessionDescription(dev.onvoid.webrtc.RTCSdpType.OFFER, signal.sdp());
             peerConnection.setRemoteDescription(description, new SetSessionDescriptionObserver() {
@@ -609,7 +630,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void applyRemoteAnswer(RtcSignalEnvelope signal) {
-            diag(eventConsumer, "applying remote answer sdpLength=" + (signal.sdp() == null ? 0 : signal.sdp().length()) + " from=" + signal.fromPeer());
+            diag(eventConsumer, "applying remote answer sdpLength=" + signal.sdp().length() + " from=" + signal.fromPeer());
             publishState(RtcSessionState.CONNECTING, "Applying remote answer");
             RTCSessionDescription description = new RTCSessionDescription(dev.onvoid.webrtc.RTCSdpType.ANSWER, signal.sdp());
             peerConnection.setRemoteDescription(description, new SetSessionDescriptionObserver() {
@@ -646,7 +667,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         private void addRemoteIceCandidate(RtcSignalEnvelope signal) {
             try {
-                diag(eventConsumer, "adding remote ICE candidate mid=" + signal.sdpMid() + " index=" + signal.sdpMLineIndex() + " candidateLength=" + (signal.iceCandidate() == null ? 0 : signal.iceCandidate().length()));
+                diag(eventConsumer, "adding remote ICE candidate mid=" + signal.sdpMid() + " index=" + signal.sdpMLineIndex() + " candidateLength=" + signal.iceCandidate().length());
                 RTCIceCandidate candidate = new RTCIceCandidate(signal.sdpMid(), signal.sdpMLineIndex(), signal.iceCandidate());
                 peerConnection.addIceCandidate(candidate);
             } catch (Throwable error) {
@@ -689,8 +710,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             disposeAudio();
             try {
                 peerConnection.close();
-            } catch (Throwable ignored) {
-                consoleError("Failed to close peer connection for session " + sessionId, ignored);
+            } catch (Throwable cleanupError) {
+                consoleError("Failed to close peer connection for session " + sessionId, cleanupError);
             }
         }
 
@@ -881,8 +902,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             if (dataChannel != null) {
                 try {
                     dataChannel.close();
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
+                } catch (Throwable cleanupError) {
+                    consoleError("Failed while disposing RTC resource", cleanupError);
                 }
                 dataChannel = null;
             }
@@ -896,8 +917,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             if (videoCaptureSession != null) {
                 try {
                     videoCaptureSession.close();
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
+                } catch (Throwable cleanupError) {
+                    consoleError("Failed while disposing RTC resource", cleanupError);
                 }
                 videoCaptureSession = null;
             }
@@ -909,8 +930,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             if (track != null && sink != null) {
                 try {
                     track.removeSink(sink);
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
+                } catch (Throwable cleanupError) {
+                    consoleError("Failed while disposing RTC resource", cleanupError);
                 }
             }
             if (sink instanceof PreviewVideoSink previewVideoSink) {
@@ -960,15 +981,15 @@ public final class WebRtcJavaEngine implements RtcEngine {
             if (remoteAudioTrack != null && remoteAudioSink != null) {
                 try {
                     remoteAudioTrack.removeSink(remoteAudioSink);
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
+                } catch (Throwable cleanupError) {
+                    consoleError("Failed while disposing RTC resource", cleanupError);
                 }
             }
             if (audioTrack != null && localAudioSink != null) {
                 try {
                     audioTrack.removeSink(localAudioSink);
-                } catch (Throwable ignored) {
-                    consoleError("Failed while disposing RTC resource", ignored);
+                } catch (Throwable cleanupError) {
+                    consoleError("Failed while disposing RTC resource", cleanupError);
                 }
             }
             remoteAudioTrack = null;
@@ -984,15 +1005,17 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         @Override
         public void onIceCandidate(RTCIceCandidate candidate) {
-            diag(eventConsumer, "emitting local ICE candidate mid=" + candidate.sdpMid + " index=" + candidate.sdpMLineIndex + " candidateLength=" + (candidate.sdp == null ? 0 : candidate.sdp.length()));
+            String candidateSdp = candidate.sdp == null ? "" : candidate.sdp;
+            String sdpMid = candidate.sdpMid == null ? "" : candidate.sdpMid;
+            diag(eventConsumer, "emitting local ICE candidate mid=" + sdpMid + " index=" + candidate.sdpMLineIndex + " candidateLength=" + candidateSdp.length());
             safeSendSignal(RtcSignalEnvelope.iceCandidate(
                     sessionId,
                     localPeer,
                     remotePeer,
                     mode,
                     dataChannelLabel,
-                    candidate.sdp,
-                    candidate.sdpMid,
+                    candidateSdp,
+                    sdpMid,
                     candidate.sdpMLineIndex
             ));
         }

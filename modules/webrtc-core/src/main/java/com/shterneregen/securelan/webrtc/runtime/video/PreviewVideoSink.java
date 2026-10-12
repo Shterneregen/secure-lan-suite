@@ -16,6 +16,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
+/**
+ * A WebRTC {@link VideoTrackSink} that receives raw native video frames, applies rate
+ * throttling via {@link VideoPreviewPolicy}, and converts valid frames to BGRA byte arrays
+ * off the native WebRTC callback thread to prevent pipeline stalls or crashes.
+ */
 public final class PreviewVideoSink implements VideoTrackSink, AutoCloseable {
     private final String sessionId;
     private final String peer;
@@ -34,6 +39,18 @@ public final class PreviewVideoSink implements VideoTrackSink, AutoCloseable {
     private final AtomicLong frameCounter = new AtomicLong(0);
     private final AtomicLong lastFramePublishedAt = new AtomicLong(0);
 
+    /**
+     * Constructs a new preview video sink.
+     *
+     * @param sessionId identifier of the associated WebRTC session
+     * @param peer nickname or descriptor of the peer or device
+     * @param mode operating session mode
+     * @param local {@code true} for local camera preview; {@code false} for incoming remote video
+     * @param eventConsumer receiver for emitted video frame and state events
+     * @param policy frame rate throttling and enablement policy
+     * @param frameConverter converter from I420 buffers to BGRA byte arrays
+     * @param diagnostics diagnostics recorder for warnings and progress messages
+     */
     public PreviewVideoSink(
             String sessionId,
             String peer,
@@ -59,6 +76,11 @@ public final class PreviewVideoSink implements VideoTrackSink, AutoCloseable {
         });
     }
 
+    /**
+     * Native WebRTC frame callback invoked whenever a new frame arrives on the track.
+     *
+     * @param frame the native video frame
+     */
     @Override
     public void onVideoFrame(VideoFrame frame) {
         if (frame == null || disposed.get()) {
@@ -101,6 +123,9 @@ public final class PreviewVideoSink implements VideoTrackSink, AutoCloseable {
         }
     }
 
+    /**
+     * Closes the sink and shuts down the background preview conversion executor.
+     */
     @Override
     public void close() {
         if (!disposed.compareAndSet(false, true)) {

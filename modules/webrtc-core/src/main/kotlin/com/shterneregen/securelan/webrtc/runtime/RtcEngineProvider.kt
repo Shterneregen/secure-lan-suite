@@ -1,6 +1,18 @@
 package com.shterneregen.securelan.webrtc.runtime
 
+/**
+ * Factory provider responsible for instantiating the runtime [RtcEngine].
+ *
+ * Attempts to initialize the native [WebRtcJavaEngine]. If native library loading
+ * or device initialization fails, safely falls back to a [NoOpRtcEngine] with detailed
+ * root-cause diagnostics logged to [RtcFileLogger].
+ */
 object RtcEngineProvider {
+    /**
+     * Creates an [RtcEngine] instance with default system audio and video capture devices.
+     *
+     * @return initialized native engine or fallback [NoOpRtcEngine] if initialization fails.
+     */
     @JvmStatic
     fun createDefault(): RtcEngine = try {
         WebRtcJavaEngine()
@@ -10,7 +22,15 @@ object RtcEngineProvider {
         NoOpRtcEngine(buildFailureMessage(error))
     }
 
+    /**
+     * Creates an [RtcEngine] instance configured with specific preferred device descriptors.
+     *
+     * @param preferredAudioCaptureDeviceId descriptor of the preferred microphone device, or null for default.
+     * @param preferredVideoCaptureDeviceId descriptor of the preferred camera device, or null for default.
+     * @return initialized native engine or fallback [NoOpRtcEngine] if initialization fails.
+     */
     @JvmStatic
+    @Suppress("unused")
     fun createDefault(preferredAudioCaptureDeviceId: String?, preferredVideoCaptureDeviceId: String?): RtcEngine = try {
         WebRtcJavaEngine(preferredAudioCaptureDeviceId, preferredVideoCaptureDeviceId)
     } catch (error: Throwable) {

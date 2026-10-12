@@ -2,7 +2,25 @@ package com.shterneregen.securelan.webrtc.runtime.video
 
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability
 
+/**
+ * Selects an optimal [VideoCaptureCapability] from a list of hardware-supported camera modes.
+ *
+ * Prioritizes safe, low-overhead VGA resolution (640x480) at 15 or 30 fps over high-bandwidth HD modes
+ * to ensure responsive local-network streaming and lower CPU load during software encoding and preview conversion.
+ */
 class VideoCapabilitySelector {
+    /**
+     * Chooses the most suitable capability from the supplied [capabilities] list.
+     *
+     * Preference order:
+     * 1. VGA (<= 640x480) at <= 15 fps (lowest CPU overhead)
+     * 2. VGA (<= 640x480) at <= 30 fps
+     * 3. Smallest valid resolution with a positive frame rate
+     * 4. First non-null capability fallback
+     *
+     * @param capabilities list of camera capabilities reported by the native device, or null.
+     * @return selected [VideoCaptureCapability], or null if the list is null or empty.
+     */
     fun select(capabilities: List<VideoCaptureCapability?>?): VideoCaptureCapability? {
         if (capabilities.isNullOrEmpty()) {
             return null
@@ -46,6 +64,12 @@ class VideoCapabilitySelector {
         return bestVga15 ?: bestVga30 ?: safestFallback ?: firstNonNull(capabilities)
     }
 
+    /**
+     * Formats a capability into a concise human-readable string (e.g. `640x480@15fps`).
+     *
+     * @param capability the capability to describe.
+     * @return formatted string, or `"<null>"` if null.
+     */
     fun describe(capability: VideoCaptureCapability?): String {
         if (capability == null) {
             return "<null>"
@@ -53,6 +77,12 @@ class VideoCapabilitySelector {
         return "${capability.width}x${capability.height}@${capability.frameRate}fps"
     }
 
+    /**
+     * Formats a collection of capabilities into a summarized string list for diagnostics.
+     *
+     * @param capabilities list of capabilities to summarize.
+     * @return formatted summary string (e.g. `[640x480@15fps, 1280x720@30fps]`).
+     */
     fun summarize(capabilities: List<VideoCaptureCapability?>?): String {
         if (capabilities.isNullOrEmpty()) {
             return "[]"

@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Manages the lifecycle of a camera video capture session, including hardware device selection,
+ * capability negotiation, starting the native {@link VideoDeviceSource}, and wrapping it in a {@link VideoTrack}.
+ */
 public final class VideoCaptureSession implements AutoCloseable {
     private final VideoDeviceSource source;
     private final VideoTrack track;
@@ -23,6 +27,16 @@ public final class VideoCaptureSession implements AutoCloseable {
         this.diagnostics = diagnostics;
     }
 
+    /**
+     * Initializes and starts a new camera video capture session.
+     *
+     * @param factory the native WebRTC peer connection factory
+     * @param sessionId identifier of the session requesting video capture
+     * @param preferredCameraId device descriptor of the preferred camera, or null/blank for default
+     * @param diagnostics diagnostics recorder for lifecycle and error events
+     * @param capabilitySelector capability selector used to choose safe camera modes
+     * @return an active {@link VideoCaptureSession}, or {@code null} if no camera devices are available
+     */
     public static VideoCaptureSession start(
             PeerConnectionFactory factory,
             String sessionId,
@@ -77,23 +91,31 @@ public final class VideoCaptureSession implements AutoCloseable {
             if (started) {
                 try {
                     source.stop();
-                } catch (Throwable ignored) {
-                    diagnostics.error("Failed while stopping video source after startup failure", ignored);
+                } catch (Throwable cleanupError) {
+                    diagnostics.error("Failed while stopping video source after startup failure", cleanupError);
                 }
             }
             try {
                 source.dispose();
-            } catch (Throwable ignored) {
-                diagnostics.error("Failed while disposing video source after startup failure", ignored);
+            } catch (Throwable cleanupError) {
+                diagnostics.error("Failed while disposing video source after startup failure", cleanupError);
             }
             throw error;
         }
     }
 
+    /**
+     * Returns the native {@link VideoTrack} backed by this capture session.
+     *
+     * @return the active video track
+     */
     public VideoTrack track() {
         return track;
     }
 
+    /**
+     * Stops camera capture and releases all associated native tracks and device sources.
+     */
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) {

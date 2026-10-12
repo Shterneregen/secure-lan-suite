@@ -17,6 +17,7 @@ import com.shterneregen.securelan.webrtc.service.RtcSessionRequest
 import com.shterneregen.securelan.webrtc.service.RtcSessionService
 import com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot
 import com.shterneregen.securelan.webrtc.service.RtcSignalingGateway
+import java.util.Locale
 import java.util.Objects
 import java.util.Optional
 import java.util.UUID
@@ -25,8 +26,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Consumer
-import java.util.Locale
 
+/**
+ * Standard implementation of [RtcSessionService] managing WebRTC session lifecycle transitions,
+ * background thread execution, lazy engine initialization, signaling routing, and state publishing.
+ */
 open class DefaultRtcSessionService : RtcSessionService {
     private val eventPublisher: RtcEventPublisher
     private val signalingGateway: RtcSignalingGateway
@@ -35,12 +39,25 @@ open class DefaultRtcSessionService : RtcSessionService {
     private val rtcEngine = AtomicReference(UNINITIALIZED_ENGINE)
     private val currentSession = AtomicReference<RtcSessionSnapshot?>()
 
+    /**
+     * Constructs a session service with lazy default [RtcEngine] initialization.
+     *
+     * @param eventPublisher publisher for outgoing [RtcEvent] notifications.
+     * @param signalingGateway gateway for routing outbound signaling envelopes over chat.
+     */
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway) {
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher must not be null")
         this.signalingGateway = Objects.requireNonNull(signalingGateway, "signalingGateway must not be null")
         rtcExecutor = createRtcExecutor()
     }
 
+    /**
+     * Constructs a session service with an explicitly provided [RtcEngine] (primarily for testing).
+     *
+     * @param eventPublisher publisher for outgoing [RtcEvent] notifications.
+     * @param signalingGateway gateway for routing outbound signaling envelopes over chat.
+     * @param rtcEngine predefined RTC engine instance.
+     */
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, rtcEngine: RtcEngine) {
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher must not be null")
         this.signalingGateway = Objects.requireNonNull(signalingGateway, "signalingGateway must not be null")
@@ -98,7 +115,7 @@ open class DefaultRtcSessionService : RtcSessionService {
         if (signal == null) {
             return
         }
-        if (localPeer == null || localPeer.isBlank() || !signal.targets(localPeer)) {
+        if (localPeer.isNullOrBlank() || !signal.targets(localPeer)) {
             return
         }
 
@@ -123,7 +140,7 @@ open class DefaultRtcSessionService : RtcSessionService {
             val closedSnapshot = withState(
                 snapshot,
                 RtcSessionState.CLOSED,
-                if (signal.message().isBlank()) "Remote peer closed the realtime session" else signal.message(),
+                signal.message().ifBlank { "Remote peer closed the realtime session" },
             )
             currentSession.set(closedSnapshot)
             publishState(closedSnapshot)
