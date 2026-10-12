@@ -17,8 +17,22 @@ class SocketCloseTest {
     }
 
     @Test
+    fun shouldCloseQuietlyViaExtension() {
+        val closed = AtomicBoolean(false)
+        val closeable: AutoCloseable = AutoCloseable { closed.set(true) }
+
+        closeable.closeQuietly()
+
+        assertTrue(closed.get())
+    }
+
+    @Test
     fun shouldSuppressCloseExceptionsAndAcceptNull() {
         assertDoesNotThrow { SocketClose.closeQuietly(null) }
+        assertDoesNotThrow {
+            val nullCloseable: AutoCloseable? = null
+            nullCloseable.closeQuietly()
+        }
         assertDoesNotThrow {
             SocketClose.closeQuietly {
                 throw IOException("boom")
