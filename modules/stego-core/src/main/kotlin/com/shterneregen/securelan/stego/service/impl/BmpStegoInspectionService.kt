@@ -4,12 +4,23 @@ import com.shterneregen.securelan.stego.model.StegoInspectionPoint
 import com.shterneregen.securelan.stego.model.StegoInspectionResult
 import com.shterneregen.securelan.stego.service.StegoInspectionService
 import com.shterneregen.securelan.stego.service.impl.internal.BmpImage
-import kotlin.math.ln
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.ln
 
+/**
+ * Standard implementation of [StegoInspectionService] performing statistical analysis on BMP images.
+ *
+ * Computes moving averages of the lowest color bits (B, G, R), Shannon entropy per interval,
+ * and produces an ARGB pixel preview highlighting least significant bits.
+ */
 class BmpStegoInspectionService : StegoInspectionService {
-    override fun inspect(bmpBytes: ByteArray, intervalStart: Int, intervalEnd: Int?, interval: Int): StegoInspectionResult {
+    override fun inspect(
+        bmpBytes: ByteArray,
+        intervalStart: Int,
+        intervalEnd: Int?,
+        interval: Int,
+    ): StegoInspectionResult {
         val image = BmpImage.parse(bmpBytes)
         require(interval > 0) { "Interval must be greater than zero" }
         val pixelCount = Math.multiplyExact(image.width, image.height)

@@ -1,5 +1,15 @@
 package com.shterneregen.securelan.stego.model
 
+/**
+ * Represents the storage capacity and structural metrics of a BMP carrier image.
+ *
+ * @property width The width of the BMP image in pixels.
+ * @property height The height of the BMP image in pixels.
+ * @property bitsPerPixel The color depth of the image (must be 24 or 32 bits per pixel).
+ * @property carrierBytes The total number of color channel bytes available for LSB embedding (3 bytes per pixel).
+ * @property headerBytes The number of bytes reserved for the steganography protocol header.
+ * @property payloadCapacityBytes The maximum number of raw payload bytes that can be embedded into the image.
+ */
 @JvmRecord
 data class BmpCapacity(
     val width: Int,

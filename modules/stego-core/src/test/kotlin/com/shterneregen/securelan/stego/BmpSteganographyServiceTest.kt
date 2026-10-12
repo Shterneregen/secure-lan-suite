@@ -42,6 +42,17 @@ class BmpSteganographyServiceTest {
     }
 
     @Test
+    fun shouldSupportEmptyPayload() {
+        val bmp = createBmp(16, 16, 24)
+        val payload = ByteArray(0)
+
+        val stegoBmp = steganographyService.hidePayload(bmp, payload)
+        val extracted = steganographyService.extractPayload(stegoBmp)
+
+        assertEquals(0, extracted.size)
+    }
+
+    @Test
     fun shouldHideAndExtractTextPayloadFromBmp() {
         val bmp = createBmp(32, 32, 32)
         val message = "Привет, SecureLanSuite stego!"
@@ -92,11 +103,67 @@ class BmpSteganographyServiceTest {
     }
 
     @Test
+    fun shouldRejectPlainExtractionOfEncryptedPayload() {
+        val bmp = createBmp(96, 96, 24)
+        val stegoBmp = steganographyService.hideEncryptedPayload(
+            bmp,
+            "secret".toByteArray(StandardCharsets.UTF_8),
+            "correct".toCharArray(),
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            steganographyService.extractPayload(stegoBmp)
+        }
+        assertThrows(IllegalStateException::class.java) {
+            steganographyService.extractText(stegoBmp)
+        }
+    }
+
+    @Test
+    fun shouldRejectEmptyPassword() {
+        val bmp = createBmp(32, 32, 24)
+        val payload = byteArrayOf(1, 2, 3)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            steganographyService.hideEncryptedPayload(bmp, payload, charArrayOf())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            steganographyService.extractEncryptedPayload(bmp, charArrayOf())
+        }
+    }
+
+    @Test
     fun shouldRejectOversizedPayload() {
         val bmp = createBmp(4, 4, 24)
         val payload = ByteArray(64)
 
         assertThrows(IllegalArgumentException::class.java) { steganographyService.hidePayload(bmp, payload) }
+    }
+
+    @Test
+    fun shouldRejectInvalidBmpFiles() {
+        assertThrows(IllegalArgumentException::class.java) {
+            steganographyService.inspect(ByteArray(10))
+        }
+
+        val nonBmp = ByteArray(60)
+        nonBmp[0] = 'N'.code.toByte()
+        nonBmp[1] = 'O'.code.toByte()
+        assertThrows(IllegalArgumentException::class.java) {
+            steganographyService.inspect(nonBmp)
+        }
+
+        val bmp16 = createBmp(8, 8, 24)
+        ByteBuffer.wrap(bmp16).order(ByteOrder.LITTLE_ENDIAN).putShort(28, 16.toShort())
+        assertThrows(IllegalArgumentException::class.java) {
+            steganographyService.inspect(bmp16)
+        }
+
+        val bmpMinHeight = createBmp(8, 8, 24)
+        ByteBuffer.wrap(bmpMinHeight).order(ByteOrder.LITTLE_ENDIAN).putInt(22, Int.MIN_VALUE)
+        assertThrows(IllegalArgumentException::class.java) {
+            steganographyService.inspect(bmpMinHeight)
+        }
     }
 
     private fun createBmp(width: Int, height: Int, bitsPerPixel: Int): ByteArray {

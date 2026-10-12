@@ -5,6 +5,17 @@ import java.nio.ByteOrder
 import java.util.Objects
 import kotlin.math.absoluteValue
 
+/**
+ * Parsed representation of an uncompressed 24-bit or 32-bit BMP image used as a steganographic carrier.
+ *
+ * @property width Image width in pixels.
+ * @property height Image height in pixels (absolute value).
+ * @property bitsPerPixel Color depth (24 or 32 bits).
+ * @property pixelDataOffset Offset to the start of pixel array data from the beginning of the file.
+ * @property rowStride Byte size of a single row including 4-byte padding alignment.
+ * @property bytesPerPixel Number of bytes per pixel (3 for 24-bit, 4 for 32-bit).
+ * @property carrierByteCount Number of accessible color channel bytes usable for hiding bits (3 per pixel: B, G, R).
+ */
 @JvmRecord
 data class BmpImage(
     val width: Int,
@@ -15,11 +26,24 @@ data class BmpImage(
     val bytesPerPixel: Int,
     val carrierByteCount: Int,
 ) {
+    /**
+     * Calculates the maximum payload bytes that can be stored given a reserved header size.
+     *
+     * @param headerBytes Number of bytes reserved for protocol headers.
+     * @return Maximum payload bytes, or 0 if capacity is smaller than header size.
+     */
     fun maxPayloadBytes(headerBytes: Int): Int {
         val hiddenBytes = carrierByteCount / Byte.SIZE_BITS
         return maxOf(0, hiddenBytes - headerBytes)
     }
 
+    /**
+     * Writes bits of [hiddenBytes] into the least significant bit of each color channel (B, G, R) of the image.
+     *
+     * @param targetBmpBytes The target BMP image byte array to modify in-place.
+     * @param hiddenBytes The data bytes to embed.
+     * @throws IllegalArgumentException If the data exceeds carrier capacity.
+     */
     fun writeLeastSignificantBits(targetBmpBytes: ByteArray, hiddenBytes: ByteArray) {
         Objects.requireNonNull(targetBmpBytes, "targetBmpBytes")
         Objects.requireNonNull(hiddenBytes, "hiddenBytes")
@@ -48,6 +72,14 @@ data class BmpImage(
         }
     }
 
+    /**
+     * Reads the least significant bit of color channels to reconstruct [byteCount] embedded bytes.
+     *
+     * @param sourceBmpBytes The source BMP image byte array containing hidden data.
+     * @param byteCount The number of hidden bytes to reconstruct.
+     * @return A byte array containing the reconstructed hidden bytes.
+     * @throws IllegalArgumentException If [byteCount] is negative or exceeds carrier capacity.
+     */
     fun readLeastSignificantBits(sourceBmpBytes: ByteArray, byteCount: Int): ByteArray {
         Objects.requireNonNull(sourceBmpBytes, "sourceBmpBytes")
         if (byteCount < 0) {
@@ -84,6 +116,13 @@ data class BmpImage(
         private const val MIN_BMP_HEADER_BYTES = 54
         private const val BI_RGB = 0
 
+        /**
+         * Parses BMP metadata and dimensions from raw byte data.
+         *
+         * @param bmpBytes The raw bytes of the BMP image.
+         * @return A validated [BmpImage] structure.
+         * @throws IllegalArgumentException If the image is not a valid uncompressed 24-bit or 32-bit BMP file.
+         */
         @JvmStatic
         fun parse(bmpBytes: ByteArray): BmpImage {
             Objects.requireNonNull(bmpBytes, "bmpBytes")
@@ -108,7 +147,7 @@ data class BmpImage(
             if (planes != 1) {
                 throw IllegalArgumentException("Invalid BMP planes count")
             }
-            if (width <= 0 || rawHeight == 0) {
+            if (width <= 0 || rawHeight == 0 || rawHeight == Int.MIN_VALUE) {
                 throw IllegalArgumentException("BMP width and height must be non-zero positive dimensions")
             }
             val height = rawHeight.absoluteValue

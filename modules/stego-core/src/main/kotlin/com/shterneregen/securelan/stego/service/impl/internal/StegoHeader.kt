@@ -4,6 +4,21 @@ import com.shterneregen.securelan.stego.model.StegoContentType
 import java.nio.ByteBuffer
 import java.util.Objects
 
+/**
+ * Protocol header embedded before the payload in steganography carrier images.
+ *
+ * Header structure (12 bytes):
+ * - Magic (4 bytes): `0x534C5347` ('SLSG')
+ * - Version (1 byte): `0x01`
+ * - Flags (1 byte): bit 0 indicates encryption
+ * - Content Type (1 byte): [StegoContentType.code]
+ * - Reserved (1 byte): `0x00`
+ * - Payload Length (4 bytes): big-endian length of the following payload
+ *
+ * @property contentType The [StegoContentType] of the embedded payload.
+ * @property encrypted Whether the payload is encrypted.
+ * @property payloadLength Length of the embedded payload in bytes.
+ */
 @JvmRecord
 data class StegoHeader(
     val contentType: StegoContentType,
@@ -15,6 +30,11 @@ data class StegoHeader(
         require(payloadLength >= 0) { "payloadLength must not be negative" }
     }
 
+    /**
+     * Serializes this header into its 12-byte binary protocol representation.
+     *
+     * @return A 12-byte array containing the serialized header.
+     */
     fun write(): ByteArray = ByteBuffer.allocate(BYTE_LENGTH)
         .putInt(MAGIC)
         .put(VERSION)
@@ -25,12 +45,21 @@ data class StegoHeader(
         .array()
 
     companion object {
+        /** Size of the header in bytes. */
         const val BYTE_LENGTH: Int = 12
 
         private const val MAGIC = 0x534C5347
         private const val VERSION: Byte = 1
         private const val ENCRYPTED_FLAG: Byte = 0x01
 
+        /**
+         * Parses and validates a [StegoHeader] from a 12-byte array.
+         *
+         * @param bytes The raw header bytes to parse.
+         * @return The parsed [StegoHeader].
+         * @throws IllegalArgumentException If the byte length is invalid, magic number does not match,
+         *                                  or version/content type is unsupported.
+         */
         @JvmStatic
         fun read(bytes: ByteArray): StegoHeader {
             Objects.requireNonNull(bytes, "bytes")

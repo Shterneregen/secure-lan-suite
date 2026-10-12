@@ -12,6 +12,13 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.util.Objects
 
+/**
+ * Standard implementation of [SteganographyService] using LSB (Least Significant Bit) steganography on BMP images.
+ *
+ * Supports optional password-based encryption via [PasswordFileCryptoWorkflow].
+ *
+ * @param passwordFileCryptoWorkflow The workflow used for password-based encryption and decryption of payloads.
+ */
 class BmpSteganographyService(
     private val passwordFileCryptoWorkflow: PasswordFileCryptoWorkflow,
 ) : SteganographyService {
@@ -154,8 +161,8 @@ class BmpSteganographyService(
         val saltLength = readLength(buffer, "saltLength")
         val ivLength = readLength(buffer, "ivLength")
         val cipherTextLength = readLength(buffer, "cipherTextLength")
-        val expectedLength = Int.SIZE_BYTES * 3 + saltLength + ivLength + cipherTextLength
-        if (expectedLength != serialized.size) {
+        val totalPayloadLength = saltLength.toLong() + ivLength.toLong() + cipherTextLength.toLong()
+        if (totalPayloadLength != buffer.remaining().toLong()) {
             throw IllegalArgumentException("Invalid encrypted payload length")
         }
         val salt = ByteArray(saltLength)
