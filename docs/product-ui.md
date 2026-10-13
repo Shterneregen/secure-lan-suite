@@ -155,7 +155,7 @@ Reject or simplify UI that:
 - mixes disconnected Host or Join forms into an active workspace;
 - duplicates the same primary action across several regions;
 - loses communication context when a temporary surface opens;
-- copies the deprecated JavaFX fallback layout;
+- copies legacy form-heavy layouts;
 - adds a destination, shortcut, or capability that is not implemented.
 
 Multiple actions are valid when the workflow needs them. Establish hierarchy

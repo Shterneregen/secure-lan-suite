@@ -2,7 +2,7 @@
 
 Secure LAN Suite is a local-network communication suite for desktop and Android. Devices can discover each other, host or join password-protected rooms, exchange encrypted messages and files, and use experimental realtime media without relying on a cloud service.
 
-The repository is a Gradle multi-module monorepo. The primary client is built with Compose Multiplatform; an experimental Android client provides desktop-compatible LAN interoperability. A separately packaged JavaFX client is retained as a deprecated fallback.
+The repository is a Gradle multi-module monorepo. The primary desktop client is built with Compose Multiplatform; an experimental Android client provides desktop-compatible LAN interoperability.
 
 ## Main features
 
@@ -22,9 +22,8 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 
 - Java 25 for desktop, Java 17 for Android and its shared modules, and Kotlin
 - Gradle Wrapper
-- Compose Multiplatform for the primary desktop client
+- Compose Multiplatform for the desktop client
 - Jetpack Compose and Android Gradle Plugin for the Android client
-- JavaFX 25 for the deprecated desktop fallback
 - `webrtc-java` for realtime data, voice, and experimental video transport
 - `jpackage` and WiX for native application images and Windows EXE installers
 
@@ -32,9 +31,8 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 
 ### Applications
 
-- `apps/desktop-client` - primary Compose desktop client and packaging tasks
+- `apps/desktop-client` - Compose desktop client and packaging tasks
 - `apps/android-client` - experimental Android client with desktop interoperability
-- `apps/javafx-client` - deprecated JavaFX fallback kept for rollback and critical fixes
 
 ### Core modules
 
@@ -65,7 +63,6 @@ The repository is a Gradle multi-module monorepo. The primary client is built wi
 - Desktop product and UX guidance: [`docs/product-ui.md`](docs/product-ui.md)
 - UI quality checklists: [`docs/quality/`](docs/quality/)
 - Development, build, run, and smoke-test guide: [`docs/development.md`](docs/development.md)
-- Deprecated JavaFX fallback client: [`docs/javafx-client.md`](docs/javafx-client.md)
 - Android build, signing, and installation: [`apps/android-client/android-readme.md`](apps/android-client/android-readme.md)
 - Windows WiX installation: [`docs/wix-installation.md`](docs/wix-installation.md)
 - WebRTC architecture and video-preview properties: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)

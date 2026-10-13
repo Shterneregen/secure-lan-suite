@@ -42,15 +42,14 @@ protocol performs its own RSA/AES-GCM handshake and encryption.
 
 ## Desktop applications
 
-`apps/desktop-client` became the primary Compose Multiplatform client. The
+`apps/desktop-client` became the sole Compose Multiplatform client. The
 migration delivered the messenger workspace, discovery, secure chat, encrypted
 file transfer, voice, experimental video and preview, media-device settings,
 Quick Share, steganography tools, persisted settings, tray lifecycle, desktop
 notifications, portable packaging, and Windows installer tasks.
 
-`apps/javafx-client` was isolated as a deprecated, separately packaged fallback
-for rollback and critical fixes. New desktop product work belongs in the
-Compose client.
+The initial migration retained `apps/javafx-client` as an isolated fallback
+during Compose stabilization; that module has now been retired and removed.
 
 ## Android application
 

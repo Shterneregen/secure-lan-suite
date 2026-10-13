@@ -23,7 +23,7 @@ owning code and documentation.
 - Application and platform UI code belongs in `apps/*`; reusable behavior
   belongs in `modules/*`.
 - Reusable modules must not depend on application modules or UI frameworks such
-  as Compose, JavaFX, or Android UI.
+  as Compose or Android UI.
 - Application modules may depend on reusable modules. Do not introduce cyclic
   dependencies.
 - Keep cryptography out of UI code and keep network, transport, and runtime
@@ -46,13 +46,9 @@ owning code and documentation.
 
 ## Desktop UI
 
-- Compose Multiplatform in `apps/desktop-client` is the primary desktop UI.
-- The deprecated JavaFX fallback is isolated in `apps/javafx-client`. Change it
-  only when a task explicitly targets fallback behavior or a critical fix.
+- Compose Multiplatform in `apps/desktop-client` is the desktop UI.
 - Before desktop UI work, read `docs/product-ui.md` and inspect the
   affected implementation and state.
-- Use JavaFX only as a behavioral reference. Do not copy its deprecated visual
-  layout unless the user explicitly requests visual parity.
 - Keep business logic out of composables. Model UI state explicitly and route
   behavior through callbacks, adapters, services, or focused helpers.
 - Reuse existing semantic tokens, components, and `SecureLanIcons` before

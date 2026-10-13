@@ -489,8 +489,9 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
         }
     }
 
-    private static boolean isJavaFxApplicationThread() {
-        return Thread.currentThread().getName().startsWith("JavaFX");
+    private static boolean isUiThread() {
+        return java.awt.EventQueue.isDispatchThread()
+                || Thread.currentThread().getName().startsWith("AWT-EventQueue");
     }
 
     private final class ActiveCameraPreviewSession implements CameraPreviewSession {
@@ -520,7 +521,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
 
         @Override
         public void close() {
-            close(!isJavaFxApplicationThread());
+            close(!isUiThread());
         }
 
         private void close(boolean waitForCleanup) {

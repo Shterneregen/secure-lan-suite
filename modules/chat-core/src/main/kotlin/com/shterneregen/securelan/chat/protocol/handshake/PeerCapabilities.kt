@@ -26,7 +26,7 @@ import java.util.Objects
  * ### Factory methods
  * Use the companion-object factory functions instead of the constructor directly:
  * - [unknown] — a sentinel with no known capabilities.
- * - [desktop] — pre-filled for desktop (JVM/JavaFX/Compose) clients.
+ * - [desktop] — pre-filled for desktop (JVM/Compose) clients.
  * - [android] — pre-filled for Android clients.
  *
  * @property platform             Normalized platform identifier (one of [PLATFORM_DESKTOP],
@@ -238,7 +238,7 @@ class PeerCapabilities @JvmOverloads constructor(
      * Enum that classifies the [platform] field into broad platform categories.
      */
     enum class PlatformKind {
-        /** Desktop (JVM, JavaFX, Compose Desktop, etc.) */
+        /** Desktop (JVM, Compose Desktop, legacy JavaFX, etc.) */
         DESKTOP,
 
         /** Android. */
@@ -267,7 +267,7 @@ class PeerCapabilities @JvmOverloads constructor(
         /** The current protocol version advertised by this build. */
         const val CURRENT_PROTOCOL_VERSION: Int = 1
 
-        /** Platform token for desktop (JVM/JavaFX/Compose) clients. */
+        /** Platform token for desktop (JVM/Compose) clients. */
         const val PLATFORM_DESKTOP: String = "desktop"
 
         /** Platform token for Android clients. */

@@ -45,14 +45,8 @@ subprojects {
             }
 
             tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-                // The deprecated fallback retains its existing bytecode settings.
-                if (project.path == ':apps:javafx-client') {
-                    jvmTargetValidationMode = org.jetbrains.kotlin.gradle.dsl.jvm.JvmTargetValidationMode.IGNORE
-                }
-
                 compilerOptions {
-                    jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(
-                            project.path == ':apps:javafx-client' ? '24' : targetJavaVersion.toString())
+                    jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(targetJavaVersion.toString())
                 }
             }
         }

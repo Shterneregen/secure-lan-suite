@@ -182,7 +182,7 @@ guide for call permission/device checks and the unauthenticated HTTP trust bound
 - desktop browser Quick Share: `5053` TCP
 
 An Android client connected to a desktop room may receive on the peer file port
-plus `1000`, normally `6051`, to avoid a local conflict with `5051`.
+plus `1000`, normally `6051`, to avoid a local conflict with `5051`. 
 
 ## Browser Quick Share smoke test
 
@@ -206,7 +206,7 @@ available in the sharing UI.
 
 ## Desktop packaging
 
-Build the primary Compose portable image and ZIP:
+Build the Compose portable image and ZIP:
 
 ```powershell
 .\gradlew.bat :apps:desktop-client:buildPortable
@@ -227,8 +227,7 @@ Installer output is written under `apps/desktop-client/build/packaging/installer
 `:apps:desktop-client:createExe` task remains available as the direct packaging
 task. Follow the
 [Windows installer guide](wix-installation.md) for the verified WiX setup and
-troubleshooting. The deprecated fallback client has separate instructions in
-[the JavaFX guide](javafx-client.md).
+troubleshooting.
 
 App-image creation cleans only its own image; installer creation cleans only
 the installer directory. Both outputs survive `buildExe buildPortable` and the
