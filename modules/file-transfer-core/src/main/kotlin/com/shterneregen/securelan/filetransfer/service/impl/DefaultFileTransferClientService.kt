@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Standard implementation of [FileTransferClientService] supporting authenticated, encrypted file transfers.
  *
- * Transfers are encrypted over TLS-equivalent symmetric AES-GCM channels after an RSA/session key handshake.
+ * Transfers use mutually authenticated SRP and room-certified signatures, then ordered AES-GCM records.
  * Individual transfers can be executed synchronously via [sendFile] or managed through [createOperation].
  *
  * @param eventPublisher Publisher emitting file transfer lifecycle events.
@@ -133,6 +133,7 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
             lateinit var outcome: FileTransferOutcome
             try {
                 checkOpen()
+                if (request.authentication == null) throw IOException("Authenticated room file identity is required")
                 update()
                 size = Files.size(request.file)
                 val input = Files.newInputStream(request.file)
@@ -163,7 +164,7 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
                 failureKind = FileTransferFailureKind.PROTOCOL
                 FileTransferSession(connected).use { session ->
                     handshake.performClientHandshake(session, request.senderId, request.recipientId,
-                        request.sessionPassword, fileName, size!!, transferId) {
+                        request.sessionPassword, fileName, size!!, transferId, request.authentication) {
                         arm(timeouts.acceptanceMillis)
                         update(FileTransferPhase.WAITING_FOR_ACCEPTANCE)
                     }

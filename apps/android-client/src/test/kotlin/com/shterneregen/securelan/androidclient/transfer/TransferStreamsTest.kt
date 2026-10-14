@@ -33,12 +33,12 @@ class TransferStreamsTest {
     }
 
     @Test
-    fun `legacy zero expected length means unknown and is not enforced`() {
-        validateTransferLength(expected = 0, actual = 7, complete = true, legacyUnknown = true)
+    fun `an exact zero length accepts an empty file`() {
+        validateTransferLength(expected = 0, actual = 0, complete = true)
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun `zero expected length is enforced without the legacy flag`() {
+    fun `zero expected length rejects nonempty data`() {
         validateTransferLength(expected = 0, actual = 7, complete = true)
     }
 
@@ -59,5 +59,10 @@ class TransferStreamsTest {
         assertEquals("archive.tar-2.gz", numberedTransferFileName("archive.tar.gz", 2))
         assertEquals("README-3", numberedTransferFileName("README", 3))
         assertEquals(".nomedia-4", numberedTransferFileName(".nomedia", 4))
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `staging enforces its byte budget before writing the oversized chunk`() {
+        stageStream(ByteArrayInputStream(ByteArray(20)), ByteArrayOutputStream(), maxBytes = 10) { }
     }
 }

@@ -84,8 +84,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
     private final String preferredVideoCaptureDeviceId;
     private final AtomicBoolean audioCaptureAvailable;
     private final AtomicBoolean audioPlayoutAvailable;
-    private final AtomicBoolean audioRecordingStarted = new AtomicBoolean(false);
-    private final AtomicBoolean audioPlayoutStarted = new AtomicBoolean(false);
+    private final SharedMediaDevice recording;
+    private final SharedMediaDevice playout;
     private final VideoPreviewPolicy videoPreviewPolicy = VideoPreviewPolicy.fromSystemProperties();
     private final VideoFrameConverter videoFrameConverter = new VideoFrameConverter();
     private final VideoCapabilitySelector videoCapabilitySelector = new VideoCapabilitySelector();
@@ -108,6 +108,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
         this.preferredVideoCaptureDeviceId = normalizeDeviceId(preferredVideoCaptureDeviceId);
         AudioInitialization initialization = initializeAudioDeviceModule(this.preferredAudioCaptureDeviceId);
         audioDeviceModule = initialization.module();
+        recording = new SharedMediaDevice(() -> { audioDeviceModule.initRecording(); audioDeviceModule.startRecording(); }, audioDeviceModule::stopRecording);
+        playout = new SharedMediaDevice(() -> { audioDeviceModule.initPlayout(); audioDeviceModule.startPlayout(); }, audioDeviceModule::stopPlayout);
         audioCaptureAvailable = new AtomicBoolean(initialization.captureAvailable());
         audioPlayoutAvailable = new AtomicBoolean(initialization.playoutAvailable());
         factory = new PeerConnectionFactory(audioDeviceModule);
@@ -164,8 +166,9 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 }
             }
             case HANGUP -> {
-                PeerSession session = releaseSession(signal.sessionId());
+                PeerSession session = requireSession(signal.sessionId(), signal.fromPeer(), eventConsumer);
                 if (session != null) {
+                    releaseSession(signal.sessionId());
                     session.close("Remote peer closed the realtime session", true);
                 }
             }
@@ -209,7 +212,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
         try {
             factory.dispose();
         } finally {
-            audioDeviceModule.dispose();
+            try { recording.close(); } finally { try { playout.close(); } finally { audioDeviceModule.dispose(); } }
         }
     }
 
@@ -249,6 +252,11 @@ public final class WebRtcJavaEngine implements RtcEngine {
             Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             Consumer<RtcEvent> eventConsumer
     ) {
+        PeerSession existing = sessions.get(signal.sessionId());
+        if (existing != null && (!existing.remotePeer.equals(signal.fromPeer()) || !existing.localPeer.equals(signal.toPeer())
+                || existing.mode != signal.mode() || !existing.dataChannelLabel.equals(normalizeLabel(signal.dataChannelLabel())))) {
+            throw new IllegalArgumentException("RTC signal does not match the authenticated session");
+        }
         return sessions.computeIfAbsent(signal.sessionId(), ignored -> new PeerSession(
                 signal.sessionId(),
                 signal.toPeer(),
@@ -265,7 +273,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
     private PeerSession requireSession(String sessionId, String remotePeer, Consumer<RtcEvent> eventConsumer) {
         PeerSession session = sessions.get(sessionId);
-        if (session != null) {
+        if (session != null && session.remotePeer.equals(remotePeer)) {
             return session;
         }
         warn(eventConsumer, "Ignoring realtime signal for unknown session " + sessionId + " from " + remotePeer);
@@ -384,59 +392,13 @@ public final class WebRtcJavaEngine implements RtcEngine {
         return MediaDevices.getDefaultAudioCaptureDevice();
     }
 
-    private boolean ensureAudioRecordingStarted(Consumer<RtcEvent> eventConsumer) {
-        if (!audioCaptureAvailable.get()) {
-            diag(eventConsumer, "audio recording skipped because no initialized capture device is available");
-            return false;
-        }
-        if (audioRecordingStarted.get()) {
-            return true;
-        }
-
-        try {
-            diag(eventConsumer, "default audio capture device: " + safeToString(MediaDevices.getDefaultAudioCaptureDevice()));
-        } catch (Throwable error) {
-            diag(eventConsumer, "unable to query default audio capture device: " + error.getMessage());
-        }
-
-        try {
-            audioDeviceModule.startRecording();
-            audioRecordingStarted.set(true);
-            diag(eventConsumer, "audio recording started");
-            return true;
-        } catch (Throwable error) {
-            audioCaptureAvailable.set(false);
-            warn(eventConsumer, "Audio recording is unavailable; continuing without local microphone: " + error.getMessage());
-            consoleError("Failed to start audio recording", error);
-            return false;
-        }
-    }
-
-    private boolean ensureAudioPlayoutStarted(Consumer<RtcEvent> eventConsumer) {
-        if (!audioPlayoutAvailable.get()) {
-            diag(eventConsumer, "audio playout skipped because no initialized render device is available");
-            return false;
-        }
-        if (audioPlayoutStarted.get()) {
-            return true;
-        }
-
-        try {
-            diag(eventConsumer, "default audio render device: " + safeToString(MediaDevices.getDefaultAudioRenderDevice()));
-        } catch (Throwable error) {
-            diag(eventConsumer, "unable to query default audio render device: " + error.getMessage());
-        }
-
-        try {
-            audioDeviceModule.startPlayout();
-            audioPlayoutStarted.set(true);
-            diag(eventConsumer, "audio playout started");
-            return true;
-        } catch (Throwable error) {
-            audioPlayoutAvailable.set(false);
-            warn(eventConsumer, "Audio playout is unavailable; continuing without speaker output: " + error.getMessage());
-            consoleError("Failed to start audio playout", error);
-            return false;
+    private AutoCloseable acquireAudioDevice(SharedMediaDevice device, AtomicBoolean available, Consumer<RtcEvent> events) {
+        if (!available.get()) return null;
+        try { return device.acquire(); }
+        catch (Throwable error) {
+            available.set(false);
+            warn(events, "Audio device is unavailable");
+            return null;
         }
     }
 
@@ -529,9 +491,11 @@ public final class WebRtcJavaEngine implements RtcEngine {
         private final RTCPeerConnection peerConnection;
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private final AtomicBoolean remoteDescriptionReady = new AtomicBoolean(false);
-        private final Queue<RtcSignalEnvelope> pendingRemoteIceCandidates = new ConcurrentLinkedQueue<>();
+        private final Queue<RtcSignalEnvelope> pendingRemoteIceCandidates = new java.util.concurrent.ArrayBlockingQueue<>(256);
         private final String streamId;
 
+        private AutoCloseable captureLease;
+        private AutoCloseable playoutLease;
         private AudioTrackSource audioSource;
         private AudioTrack audioTrack;
         private VideoCaptureSession videoCaptureSession;
@@ -651,7 +615,10 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         private void applyRemoteIceCandidate(RtcSignalEnvelope signal) {
             if (!remoteDescriptionReady.get()) {
-                pendingRemoteIceCandidates.add(signal);
+                if (!pendingRemoteIceCandidates.offer(signal)) {
+                    fail("Too many pending ICE candidates", true);
+                    return;
+                }
                 diag(eventConsumer, "queued remote ICE candidate until remote description is ready session=" + sessionId + " queued=" + pendingRemoteIceCandidates.size());
                 return;
             }
@@ -736,7 +703,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void attachLocalAudio() {
-            if (!ensureAudioRecordingStarted(eventConsumer)) {
+            captureLease = acquireAudioDevice(recording, audioCaptureAvailable, eventConsumer);
+            if (captureLease == null) {
                 diag(eventConsumer, "local audio track was not added because microphone capture is unavailable for session=" + sessionId);
                 return;
             }
@@ -755,6 +723,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
                     diag(eventConsumer, "preferred audio capture device selected id=" + audioCaptureDeviceId);
                 }
             } catch (Throwable error) {
+                disposeAudio();
                 warn(eventConsumer, "Audio capture is unavailable; continuing without local microphone: " + error.getMessage());
                 consoleError("Audio capture is unavailable", error);
             }
@@ -977,7 +946,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
             publishState(RtcSessionState.CONNECTING, "Remote video track attached");
         }
 
-        private void disposeAudio() {
+        private synchronized void disposeAudio() {
             if (remoteAudioTrack != null && remoteAudioSink != null) {
                 try {
                     remoteAudioTrack.removeSink(remoteAudioSink);
@@ -1001,6 +970,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
             }
             localAudioSink = null;
             remoteAudioSink = null;
+            try { if (captureLease != null) captureLease.close(); } catch (Exception error) { warn(eventConsumer, "Unable to stop microphone capture"); } finally { captureLease = null; }
+            try { if (playoutLease != null) playoutLease.close(); } catch (Exception error) { warn(eventConsumer, "Unable to stop audio playout"); } finally { playoutLease = null; }
         }
 
         @Override
@@ -1030,7 +1001,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 case FAILED -> fail("Peer connection failed", true);
                 case CLOSED -> {
                     sessions.remove(sessionId, this);
-                    publishState(RtcSessionState.CLOSED, "Peer connection closed");
+                    close("Peer connection closed", true);
                 }
             }
         }
@@ -1065,6 +1036,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         @Override
         public void onDataChannel(RTCDataChannel channel) {
+            if (closed.get() || !dataChannelLabel.equals(channel.getLabel()) || dataChannel != null) { channel.close(); channel.dispose(); return; }
             registerDataChannel(channel);
         }
 
@@ -1092,7 +1064,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         @Override
-        public void onTrack(RTCRtpTransceiver transceiver) {
+        public synchronized void onTrack(RTCRtpTransceiver transceiver) {
+            if (closed.get()) return;
             MediaStreamTrack track = transceiver.getReceiver().getTrack();
             if (track == null) {
                 diag(eventConsumer, "received transceiver without track for session=" + sessionId);
@@ -1105,7 +1078,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 attachRemoteVideoTrack(remoteTrack);
             } else if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind()) && track instanceof AudioTrack remoteTrack) {
                 remoteAudioTrack = remoteTrack;
-                if (ensureAudioPlayoutStarted(eventConsumer)) {
+                if (playoutLease == null) playoutLease = acquireAudioDevice(playout, audioPlayoutAvailable, eventConsumer);
+                if (playoutLease != null) {
                     remoteAudioSink = new LevelAudioSink(sessionId, remotePeer, mode, false, eventConsumer);
                     remoteTrack.addSink(remoteAudioSink);
                     publishState(RtcSessionState.CONNECTING, "Remote audio track attached");

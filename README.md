@@ -18,6 +18,13 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 - Persist desktop profile, appearance, network, media, download, window, and diagnostics settings.
 - Build and use the experimental Android client for room hosting/joining, encrypted chat, and file transfer. Android supports adaptive layouts, light/dark themes, and English/Russian/system UI languages.
 
+## Security and compatibility
+
+Chat and encrypted files use the mutually authenticated V2 protocol on both
+clients. V1 clients must be updated; there is no insecure fallback. The room host
+can read chat and signaling. See [security guarantees and limits](docs/security-protocol.md)
+for peer identities, replay protection, receiver budgets and Quick Share boundaries.
+
 ## Tech stack
 
 - Java 25 for desktop, Java 17 for Android and its shared modules, and Kotlin
@@ -66,6 +73,7 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 - Android build, signing, and installation: [`apps/android-client/android-readme.md`](apps/android-client/android-readme.md)
 - Windows WiX installation: [`docs/wix-installation.md`](docs/wix-installation.md)
 - WebRTC architecture and video-preview properties: [`docs/webrtc-architecture.md`](docs/webrtc-architecture.md)
+- Security model and V2 chat/file protocol: [`docs/security-protocol.md`](docs/security-protocol.md)
 - Active outcomes and release work: [`docs/roadmap.md`](docs/roadmap.md)
 - Completed legacy consolidation: [`docs/migration-history.md`](docs/migration-history.md)
 

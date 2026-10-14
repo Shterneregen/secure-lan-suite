@@ -105,7 +105,7 @@ class DefaultRtcSessionServiceTest {
 
         assertTrue(waitUntil { engine.closedSessionIds.isNotEmpty() })
         assertEquals(RtcSessionState.CLOSED, service.currentSession().orElseThrow().state)
-        assertTrue(events.filterIsInstance<RtcStateChangedEvent>().any { it.state == RtcSessionState.CONNECTING && it.message == "Late fake engine state" })
+        assertFalse(events.filterIsInstance<RtcStateChangedEvent>().any { it.state == RtcSessionState.CONNECTING && it.message == "Late fake engine state" })
     }
 
     @Test
@@ -126,11 +126,81 @@ class DefaultRtcSessionServiceTest {
         assertTrue(events.filterIsInstance<RtcStateChangedEvent>().any { it.state == RtcSessionState.CLOSED && it.message == "Remote ended" })
     }
 
+    @Test fun incomingOfferNeverReachesEngineBeforeExplicitAcceptance() {
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        DefaultRtcSessionService({}, {}, engine).use { service ->
+            val offer = RtcSignalEnvelope.offer("remote", "local", RtcSessionMode.AUDIO_VIDEO, "data", "sdp")
+            service.acceptInboundSignal("local", offer)
+            assertEquals(RtcSessionState.INCOMING, service.currentSession().orElseThrow().state)
+            assertTrue(engine.received.isEmpty())
+            assertTrue(service.acceptIncomingSession(offer.sessionId()))
+            assertTrue(waitUntil { engine.received.size == 1 })
+            assertFalse(service.acceptIncomingSession(offer.sessionId()))
+        }
+    }
+
+    @Test fun unknownAndForeignSignalsCannotReplaceOrCloseCurrentSession() {
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        DefaultRtcSessionService({}, {}, engine).use { service ->
+            service.acceptInboundSignal("local", RtcSignalEnvelope.hangup("unknown", "mallory", "local", RtcSessionMode.AUDIO, "data", "stop"))
+            assertFalse(service.currentSession().isPresent)
+            val current = service.startSession(RtcSessionRequest("local", "remote", RtcSessionMode.AUDIO, "data"))
+            service.acceptInboundSignal("local", RtcSignalEnvelope.hangup(current.sessionId.orEmpty(), "mallory", "local", RtcSessionMode.AUDIO, "data", "stop"))
+            service.acceptInboundSignal("local", RtcSignalEnvelope.hangup("unrelated", "remote", "local", RtcSessionMode.AUDIO, "data", "stop"))
+            assertEquals(current.sessionId, service.currentSession().orElseThrow().sessionId)
+            assertFalse(service.currentSession().orElseThrow().state == RtcSessionState.CLOSED)
+            service.closeCurrentSession()
+            assertTrue(waitUntil { engine.closedSessionIds.contains(current.sessionId) })
+        }
+    }
+
+    @Test fun rejectedIncomingOfferCannotBeAcceptedOrRevived() {
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        DefaultRtcSessionService({}, {}, engine).use { service ->
+            val offer = RtcSignalEnvelope.offer("remote", "local", RtcSessionMode.AUDIO_VIDEO, "data", "sdp")
+            service.acceptInboundSignal("local", offer)
+            service.closeCurrentSession()
+            assertFalse(service.acceptIncomingSession(offer.sessionId()))
+            service.acceptInboundSignal("local", offer)
+            assertEquals(RtcSessionState.CLOSED, service.currentSession().orElseThrow().state)
+            assertTrue(engine.received.isEmpty())
+        }
+    }
+
+    @Test fun pendingIceIsBoundedAndAnotherOfferDoesNotReplaceTheCall() {
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        val signals = CopyOnWriteArrayList<RtcSignalEnvelope>()
+        DefaultRtcSessionService({}, signals::add, engine).use { service ->
+            val offer = RtcSignalEnvelope.offer("remote", "local", RtcSessionMode.AUDIO, "data", "sdp")
+            service.acceptInboundSignal("local", offer)
+            val other = RtcSignalEnvelope.offer("mallory", "local", RtcSessionMode.AUDIO, "data", "sdp")
+            service.acceptInboundSignal("local", other)
+            assertEquals(offer.sessionId(), service.currentSession().orElseThrow().sessionId)
+            assertTrue(signals.any { it.type() == RtcSignalType.HANGUP && it.sessionId() == other.sessionId() })
+            repeat(257) {
+                service.acceptInboundSignal("local", RtcSignalEnvelope.iceCandidate(offer.sessionId(), "remote", "local", RtcSessionMode.AUDIO, "data", "candidate", "0", 0))
+            }
+            assertEquals(RtcSessionState.CLOSED, service.currentSession().orElseThrow().state)
+            assertFalse(service.acceptIncomingSession(offer.sessionId()))
+            assertTrue(engine.received.isEmpty())
+        }
+    }
+
+    @Test fun unansweredIncomingCallTimesOutWithoutStartingMedia() {
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        DefaultRtcSessionService({}, {}, engine, 50).use { service ->
+            service.acceptInboundSignal("local", RtcSignalEnvelope.offer("remote", "local", RtcSessionMode.AUDIO_VIDEO, "data", "sdp"))
+            assertTrue(waitUntil { service.currentSession().orElseThrow().state == RtcSessionState.CLOSED })
+            assertTrue(engine.received.isEmpty())
+        }
+    }
+
     private class FakeRtcEngine(
         private val status: RtcRuntimeStatus,
         private val emitLateConnectingOnClose: Boolean = false,
     ) : RtcEngine {
         val closedSessionIds = CopyOnWriteArrayList<String?>()
+        val received = CopyOnWriteArrayList<RtcSignalEnvelope>()
 
         override fun status(): RtcRuntimeStatus = status
 
@@ -152,6 +222,7 @@ class DefaultRtcSessionServiceTest {
             outboundSignalConsumer: Consumer<RtcSignalEnvelope>,
             eventConsumer: Consumer<RtcEvent>,
         ) {
+            received.add(signal)
         }
 
         override fun sendData(sessionId: String?, payload: String?, eventConsumer: Consumer<RtcEvent>) {

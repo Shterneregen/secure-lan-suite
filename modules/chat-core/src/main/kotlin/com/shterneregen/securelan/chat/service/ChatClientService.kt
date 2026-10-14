@@ -16,6 +16,8 @@ import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
  * Implementations must be thread-safe.
  */
 interface ChatClientService {
+    /** Signing identity for file connections bound to authenticated room presence. */
+    fun fileIdentity(): com.shterneregen.securelan.crypto.protocol.PeerIdentity? = null
 
     /**
      * Connects to the chat server described by [request] and performs the secure handshake.

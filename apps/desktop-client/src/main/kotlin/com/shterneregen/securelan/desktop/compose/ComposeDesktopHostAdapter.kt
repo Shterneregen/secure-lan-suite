@@ -145,6 +145,11 @@ class ComposeDesktopHostAdapter(
     var chatPeers: List<PeerPresence> by mutableStateOf(emptyList())
         private set
 
+    private val authenticatedFilePeers = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val hostedPeerEndpoints = java.util.concurrent.ConcurrentHashMap<String, ChatUserJoinedEvent>()
+    private val fileRoomEpoch = AtomicLong()
+    private var hostedRoomChatPort: Int? = null
+
     /** Discovered peer list rendered by the Compose shell. */
     val visiblePeers: List<DiscoveredPeer>
         get() = discoveredPeers
@@ -283,7 +288,7 @@ class ComposeDesktopHostAdapter(
     private fun createTransferOperation(target: DesktopTransferTarget, item: DesktopTransferItem, update: (DesktopTransferAttempt) -> Unit): DesktopTransferOperation {
         val client = checkNotNull(fileTransferClientService)
         val operation = client.createOperation(
-            FileTransferClientRequest(target.host, target.port, statusState.nickname.trim(), target.nickname, currentRoomPassword, item.path),
+            FileTransferClientRequest(target.host, target.port, statusState.nickname.trim(), target.nickname, currentRoomPassword, item.path, filePeerAuthentication()),
         ) { event ->
             update(DesktopTransferAttempt("", event.transferId, DesktopTransferPhase.valueOf(event.phase.name), event.transferredBytes, event.totalBytes))
         }
@@ -392,11 +397,15 @@ class ComposeDesktopHostAdapter(
     private fun handleChatEvent(event: ChatCoreEvent) {
         when (event) {
             is ChatConnectedEvent -> {
+                authenticatedFilePeers.clear()
                 invalidateTransferSession()
                 // Do not render a local-client connection line in the chat transcript.
                 clearChatPeers()
             }
             is ChatDisconnectedEvent -> {
+                fileRoomEpoch.incrementAndGet()
+                closeRealtimeSession()
+                authenticatedFilePeers.clear()
                 invalidateTransferSession()
                 stopRemoteFileTransferListener()
                 appendChatTranscript(disconnectedTranscriptLine(event))
@@ -407,14 +416,14 @@ class ComposeDesktopHostAdapter(
             }
             is ChatMessageReceivedEvent -> {
                 val sender = event.senderNickname ?: "unknown"
-                val systemLikeMessage = isSystemSender(sender) || isSystemPrefixedChatText(event.text)
-                val text = normalizeChatText(event.text, sender)
+                val systemLikeMessage = event.system
+                val text = if (event.system) normalizeChatText(event.text, "system") else event.text.orEmpty()
                 if (systemLikeMessage) {
-                    updatePeerPresenceFromSystemMessage(text)
+                    appendChatTranscript(formatChatMessage("system", text))
                 } else {
-                    upsertChatPeer(sender, online = true)
+                    chatMessages = (chatMessages + ComposeChatMessage(sender, text)).takeLast(200)
+                    chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
                 }
-                appendChatTranscript(formatChatMessage(if (systemLikeMessage) "system" else sender, text))
                 val notifications = settingsController.settings.notifications
                 if (shouldPublishChatTrayNotification(
                         systemLikeMessage = systemLikeMessage,
@@ -436,19 +445,33 @@ class ComposeDesktopHostAdapter(
                 // The message is already shown through the normal chat receive flow; avoid duplicates.
             }
             is ChatUserJoinedEvent -> {
+                if (event.serverSide) {
+                    event.nickname?.let { name ->
+                        hostedPeerEndpoints[name] = event
+                        if (authenticatedFilePeers[name] == event.capabilities.identityKey()) upsertJoinedPeer(event)
+                    }
+                    return
+                }
+                event.nickname?.let { name ->
+                    event.capabilities.identityKey().takeIf { it.isNotBlank() }?.let { authenticatedFilePeers[name] = it }
+                }
                 // The server already broadcasts a "[system] <nickname> joined the chat" message,
                 // which is the single user-facing presence event. Do not add an extra transcript line
                 // here, otherwise hosts (which see both server-side and client-side events) show
                 // duplicate join entries.
-                upsertJoinedPeer(event)
+                val hosted = hostedPeerEndpoints[event.nickname]?.takeIf { it.capabilities.identityKey() == event.capabilities.identityKey() }
+                upsertJoinedPeer(hosted ?: event)
             }
             is ChatUserLeftEvent -> {
+                if (event.serverSide) { hostedPeerEndpoints.remove(event.nickname); return }
+                authenticatedFilePeers.remove(event.nickname)
+                if (rtcSessionService?.currentSession()?.orElse(null)?.remotePeer == event.nickname) closeRealtimeSession()
                 // Same as above: the "[system] <nickname> left the chat" message is the only
                 // rendered leave event. Mark the peer offline without appending a duplicate line.
                 markChatPeerOffline(event.nickname)
             }
             is ChatSignalReceivedEvent -> {
-                upsertChatPeer(event.signal.fromPeer(), online = true)
+                if (!chatClientService.isConnected() || !authenticatedFilePeers.containsKey(event.signal.fromPeer())) return
                 SecureLanLogger.logConnection("RTC signal preserved through chat-core: ${event.signal.type()} from ${event.signal.fromPeer()} to ${event.signal.toPeer()}.")
                 rtcSessionService?.acceptInboundSignal(statusState.nickname.trim(), event.signal)
             }
@@ -527,6 +550,9 @@ class ComposeDesktopHostAdapter(
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Preparing to open room.")
 
         try {
+            fileRoomEpoch.incrementAndGet()
+            hostedPeerEndpoints.clear()
+            closeRealtimeSession()
             currentRoomPassword = password
             statusState = statusState.copy(
                 nickname = trimmedNick,
@@ -546,6 +572,7 @@ class ComposeDesktopHostAdapter(
                 )
             }
             chatServerService.start(ChatServerConfig(chatPort, password))
+            hostedRoomChatPort = chatPort
             startFileTransferListener(filePort, password)
             publish(ComposeConnectionEventKind.SUCCESS, "Room opened. Chat on $chatPort, files on $filePort.")
             publishEventKind(ComposeAdapterEventKind.HOST_STARTED, "Host started: $trimmedNick")
@@ -577,6 +604,9 @@ class ComposeDesktopHostAdapter(
 
     /** Stop the room, discovery, and client if connected. */
     fun stopHosting() {
+        fileRoomEpoch.incrementAndGet()
+        hostedPeerEndpoints.clear()
+        closeRealtimeSession()
         if (shuttingDown.get()) return
         if (!chatServerService.isRunning()) {
             publish(ComposeConnectionEventKind.WARNING, "No room is currently running.")
@@ -628,6 +658,11 @@ class ComposeDesktopHostAdapter(
             publish(ComposeConnectionEventKind.WARNING, "Room address and nickname are required to connect.")
             return
         }
+        val localHost = trimmedHost in setOf("localhost", "127.0.0.1", "::1") || localNetworkAddresses.any { it.address == trimmedHost }
+        if (chatServerService.isRunning() && hostedRoomChatPort != null && (!localHost || chatPort != hostedRoomChatPort)) {
+            publish(ComposeConnectionEventKind.WARNING, "Stop your hosted room before joining another room.")
+            return
+        }
         if (chatClientService.isConnected()) {
             publish(ComposeConnectionEventKind.WARNING, "Already connected; disconnect first.")
             return
@@ -638,6 +673,8 @@ class ComposeDesktopHostAdapter(
         }
         publishEventKind(ComposeAdapterEventKind.CONNECT_STARTED, "Connecting to $trimmedHost")
 
+        fileRoomEpoch.incrementAndGet()
+        closeRealtimeSession()
         currentRoomPassword = password
         statusState = statusState.copy(
             nickname = trimmedNick,
@@ -687,6 +724,8 @@ class ComposeDesktopHostAdapter(
 
     /** Disconnect the chat client. */
     fun disconnect() {
+        fileRoomEpoch.incrementAndGet()
+        closeRealtimeSession()
         if (shuttingDown.get()) return
         if (!chatClientService.isConnected()) {
             publish(ComposeConnectionEventKind.WARNING, "Not currently connected.")
@@ -891,14 +930,9 @@ class ComposeDesktopHostAdapter(
     }
 
     private fun findPeerForIncomingFile(metadata: FileTransferMetadata, remoteAddress: String): PeerPresence? {
-        val remoteHost = remoteHostOnly(remoteAddress)
-        return visiblePeerItems.firstOrNull { peer ->
-            peer.online() &&
-                (
-                    peer.nickname().equals(metadata.senderId, ignoreCase = true) ||
-                        peer.peerId() == metadata.senderId ||
-                        (!peer.host().isNullOrBlank() && peer.host() == remoteHost)
-                    )
+        if (metadata.recipientId != statusState.nickname.trim()) return null
+        return chatPeers.firstOrNull { peer ->
+            peer.online() && peer.nickname() == metadata.senderId && peer.capabilities().identityKey().isNotBlank()
         }
     }
 
@@ -1309,6 +1343,12 @@ class ComposeDesktopHostAdapter(
         refreshRealtimeState()
     }
 
+    fun acceptIncomingRealtimeSession(sessionId: String) {
+        if (!chatClientService.isConnected()) { closeRealtimeSession(); return }
+        rtcSessionService?.acceptIncomingSession(sessionId)
+        refreshRealtimeState()
+    }
+
     fun startCameraPreview(deviceId: String? = experimentalVideoState.selectedCamera.deviceId) {
         if (shuttingDown.get()) return
         val mediaService = rtcMediaDeviceService
@@ -1589,7 +1629,7 @@ class ComposeDesktopHostAdapter(
 
     private fun startFileTransferListener(filePort: Int, password: String) {
         if (fileTransferServerService.isRunning()) {
-            return
+            fileTransferServerService.stop()
         }
         fileTransferServerService.start(
             FileTransferServerConfig(
@@ -1597,6 +1637,7 @@ class ComposeDesktopHostAdapter(
                 downloadsPath,
                 password,
                 this::acceptIncomingFileTransfer,
+                filePeerAuthentication(),
             ),
         )
         publish(ComposeConnectionEventKind.SUCCESS, "File transfer listener started on port $filePort.")
@@ -1887,6 +1928,15 @@ class ComposeDesktopHostAdapter(
     }
 
     private fun desktopCapabilities(filePort: Int): PeerCapabilities = PeerCapabilities.desktop(APP_VERSION, filePort)
+
+    private fun filePeerAuthentication(): com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? {
+        val identity = chatClientService.fileIdentity() ?: return null
+        val epoch = fileRoomEpoch.get()
+        val localId = statusState.nickname.trim()
+        return com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication(statusState.nickname.trim(), identity) { nickname ->
+            if (!chatClientService.isConnected() || fileRoomEpoch.get() != epoch || statusState.nickname.trim() != localId) null else authenticatedFilePeers[nickname]
+        }
+    }
 
     private fun filePortFromCapabilities(capabilities: PeerCapabilities, fallback: Int): Int =
         if (capabilities.supportsFileReceive() && capabilities.fileReceivePort() > 0) capabilities.fileReceivePort() else fallback

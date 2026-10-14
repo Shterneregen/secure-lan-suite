@@ -73,6 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val randomNicknameService = DefaultRandomNicknameService()
     private val discoveryRepository = PeerDiscoveryRepository()
     private val chatClient = SecureChatClient()
+    private val authenticatedFilePeers = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val fileSender = SecureFileSender(application.contentResolver, application.cacheDir)
     private val fileReceiver = SecureFileReceiver(application)
     private val localNetworkAddressResolver = AndroidLocalNetworkAddressResolver(application)
@@ -99,6 +100,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshQuickShares() { quickShareUrls = quickShareServer.urls; _quickShares.value = quickShareServer.items() }
 
     private var connectionGeneration = 0L
+    private val fileRoomEpoch = java.util.concurrent.atomic.AtomicLong()
     private val transferCoordinator = TransferCoordinator(
         scope = viewModelScope,
         isAvailable = { recipient -> isTransferRecipientAvailable(recipient) },
@@ -112,6 +114,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 sessionPassword = current.sessionPassword,
                 selectedFile = source,
                 onUpdate = onUpdate,
+                authentication = filePeerAuthentication(),
             )
         },
     )
@@ -384,6 +387,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 fileReceiver.serve(
                     port = listenPort,
                     sessionPassword = password,
+                    authentication = filePeerAuthentication(),
                     onStarted = { metadata ->
                         _uiState.update {
                             it.copy(
@@ -468,6 +472,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopFileReceiver() {
+        fileReceiver.close()
         fileReceiverJob?.cancel()
         fileReceiverJob = null
         _uiState.update { it.copy(fileReceiverRunning = false) }
@@ -531,6 +536,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopHosting() {
+        fileRoomEpoch.incrementAndGet()
+        authenticatedFilePeers.clear()
         calls.connectionLost()
         _uiState.update { it.copy(callPeers = emptyMap()) }
         if (!_uiState.value.hosting && !_uiState.value.hostingStarting) return
@@ -538,6 +545,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         disconnectRequested = true
         receiveJob?.cancel()
         receiveJob = null
+        fileReceiver.close()
         fileReceiverJob?.cancel()
         fileReceiverJob = null
         connectionGeneration++
@@ -563,6 +571,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value
         if (state.connecting) return
         if (state.connected) return setError("Disconnect from the current room before connecting")
+        authenticatedFilePeers.clear()
         _uiState.update { it.copy(connecting = true, callPeers = emptyMap(), error = null, status = "Connecting to ${peer.nickname}") }
         disconnectRequested = false
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
@@ -576,6 +585,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     androidCapabilities(localFilePort),
                 )
             }.onSuccess { acceptedNickname ->
+                fileRoomEpoch.incrementAndGet()
                 _uiState.update {
                     it.copy(
                         nickname = acceptedNickname,
@@ -600,6 +610,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disconnect() {
+        fileRoomEpoch.incrementAndGet()
+        authenticatedFilePeers.clear()
         calls.connectionLost()
         _uiState.update { it.copy(callPeers = emptyMap()) }
         if (_uiState.value.hosting || _uiState.value.hostingStarting) {
@@ -609,6 +621,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         disconnectRequested = true
         receiveJob?.cancel()
         receiveJob = null
+        fileReceiver.close()
         fileReceiverJob?.cancel()
         fileReceiverJob = null
         connectionGeneration++
@@ -629,7 +642,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update { state ->
                         state.copy(
                             inputMessage = "",
-                            messages = state.messages + ChatLine(state.nickname, text, outbound = true),
+                            messages = (state.messages + ChatLine(state.nickname, text, outbound = true)).takeLast(1000),
                             status = "Message sent",
                         )
                     }
@@ -675,14 +688,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startReceiving() {
         receiveJob?.cancel()
+        val receiveGeneration = fileRoomEpoch.get()
         receiveJob = viewModelScope.launch {
             while (_uiState.value.connected) {
                 runCatching { chatClient.readMessage() }
                     .onSuccess { message ->
+                        if (receiveGeneration != fileRoomEpoch.get()) return@launch
                         if (message == null) {
+                            fileRoomEpoch.incrementAndGet()
+                            connectionGeneration++
+                            fileSender.close()
+                            authenticatedFilePeers.clear()
                             calls.connectionLost()
                             _uiState.update { it.copy(callPeers = emptyMap()) }
                             val status = if (disconnectRequested) "Disconnected" else "Connection closed"
+                            fileReceiver.close()
                             fileReceiverJob?.cancel()
                             fileReceiverJob = null
                             _uiState.update { it.copy(connected = false, fileReceiverRunning = false, error = null, status = status) }
@@ -707,8 +727,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                     .onFailure { error ->
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        if (receiveGeneration != fileRoomEpoch.get()) return@launch
+                        fileRoomEpoch.incrementAndGet()
+                        connectionGeneration++
+                        fileSender.close()
+                        authenticatedFilePeers.clear()
                         calls.connectionLost()
                         _uiState.update { it.copy(callPeers = emptyMap()) }
+                        fileReceiver.close()
                         fileReceiverJob?.cancel()
                         fileReceiverJob = null
                         if (disconnectRequested || error.isExpectedDisconnect()) {
@@ -729,7 +756,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         _uiState.update { state ->
-            state.copy(messages = state.messages + ChatLine(sender, text, outbound = false))
+            state.copy(messages = (state.messages + ChatLine(sender, text, outbound = false)).takeLast(1000))
         }
     }
 
@@ -738,6 +765,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (peerNickname.isBlank() || peerNickname.equals(_uiState.value.nickname, ignoreCase = true)) {
             return
         }
+        PeerCapabilities.decode(encodedCapabilities).identityKey().takeIf { it.isNotBlank() }?.let { authenticatedFilePeers[peerNickname] = it }
         _uiState.update { state ->
             val serverPeer = state.selectedPeer
             val existingServerPeer = state.peers.firstOrNull { it.role == PeerRole.SERVER && it.nickname.equals(peerNickname, ignoreCase = true) }
@@ -771,6 +799,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleUserLeft(nickname: String) {
+        authenticatedFilePeers.remove(nickname)
         calls.peerLeft(nickname)
         _uiState.update { it.copy(callPeers = it.callPeers.filterKeys { name -> !name.equals(nickname, true) }) }
         val peerNickname = nickname.trim()
@@ -784,6 +813,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (recipient?.nickname.equals(peerNickname, ignoreCase = true)) connectionGeneration++
         addLog("Peer left chat: $peerNickname")
+    }
+
+    private fun filePeerAuthentication(): com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication {
+        val generation = fileRoomEpoch.get()
+        return com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication(_uiState.value.nickname, chatClient.fileIdentity) { name ->
+            if (_uiState.value.connected && fileRoomEpoch.get() == generation) authenticatedFilePeers[name] else null
+        }
     }
 
     private fun upsertPeer(peers: List<DiscoveredPeer>, peer: DiscoveredPeer): List<DiscoveredPeer> {
@@ -1039,6 +1075,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             stopLocalAddressWatch()
             receiveJob?.cancel()
             receiveJob = null
+            fileReceiver.close()
             fileReceiverJob?.cancel()
             fileReceiverJob = null
             disconnectRequested = true
@@ -1126,6 +1163,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         discoveryJob?.cancel()
         discoveryTimeoutJob?.cancel()
         receiveJob?.cancel()
+        fileReceiver.close()
         fileReceiverJob?.cancel()
         localAddressRefreshJob?.cancel()
         localAddressWatchJob?.cancel()

@@ -89,7 +89,7 @@ class ServerChatSessionHandler(
         broadcastService.removeClient(nickname)
         nicknameRegistry.unregister(nickname)
         broadcastService.publishUserLeft(nickname)
-        eventPublisher.publish(ChatUserLeftEvent(nickname))
+        eventPublisher.publish(ChatUserLeftEvent(nickname, serverSide = true))
         try {
             session.close()
         } catch (_: IOException) {

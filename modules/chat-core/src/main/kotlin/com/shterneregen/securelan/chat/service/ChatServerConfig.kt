@@ -18,4 +18,5 @@ data class ChatServerConfig(val port: Int, val sessionPassword: String) {
         Objects.requireNonNull(sessionPassword, "sessionPassword must not be null")
         require(port in 1..65_535) { "port must be between 1 and 65535" }
     }
+    override fun toString(): String = "ChatServerConfig[port=$port, sessionPassword=<redacted>]"
 }

@@ -2,7 +2,6 @@ package com.shterneregen.securelan.androidclient.network
 
 import android.content.ContentResolver
 import androidx.core.net.toUri
-import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.FileTransferMetadata
 import com.shterneregen.securelan.androidclient.protocol.FileTransferSession
 import com.shterneregen.securelan.androidclient.transfer.TransferAttempt
@@ -20,8 +19,6 @@ import java.io.File
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -49,6 +46,7 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
         sessionPassword: String,
         selectedFile: TransferSource,
         onUpdate: (TransferAttempt) -> Unit,
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? = null,
     ): String = withContext(Dispatchers.IO) {
         val context = currentCoroutineContext()
         val transferId = UUID.randomUUID().toString()
@@ -94,7 +92,9 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
             operation.touch(timeouts.acceptanceMillis)
             FileTransferSession(socket).use { session ->
                 publish(TransferPhase.WAITING_FOR_ACCEPTANCE, total = exactSize)
-                performHandshake(session, sessionPassword, metadata)
+                com.shterneregen.securelan.filetransfer.service.impl.SecureFileTransferHandshake().performClientHandshake(
+                    session, senderId, recipientId, sessionPassword, metadata.fileName, metadata.fileSize, transferId, authentication,
+                )
                 socket.soTimeout = timeouts.inactivityMillis
                 operation.touch(timeouts.inactivityMillis)
                 publish(TransferPhase.SENDING)
@@ -159,20 +159,6 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
         }
     }
 
-    private fun performHandshake(session: FileTransferSession, sessionPassword: String, metadata: FileTransferMetadata) {
-        session.writeUtf(PROTOCOL)
-        val serverPublicKey = CryptoCompat.decodePublicKey(Base64.getDecoder().decode(session.readUtf()))
-        val aesKey = CryptoCompat.generateAesKey()
-        val payload = sessionPassword + "\n" +
-            Base64.getEncoder().encodeToString(CryptoCompat.encodeSecretKey(aesKey))
-        val encrypted = CryptoCompat.rsaEncrypt(payload.toByteArray(StandardCharsets.UTF_8), serverPublicKey)
-        session.writeBytes(encrypted)
-        session.enableTransportEncryption(aesKey)
-        session.writeEncryptedText(metadata.compactSerialize())
-        val response = session.readEncryptedText()
-        require(response == ACCEPTED) { response }
-    }
-
     private fun safeTransferFileName(fileName: String): String {
         val baseName = fileName
             .substringAfterLast('/')
@@ -193,8 +179,6 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
     }
 
     companion object {
-        private const val PROTOCOL = "SECURE_FILE_TRANSFER_V1"
-        private const val ACCEPTED = "ACCEPTED"
         private const val CHUNK_SIZE = 16 * 1024
         private const val MAX_FILE_NAME_LENGTH = 160
         private val INVALID_FILE_NAME_CHARS = setOf('<', '>', ':', '"', '/', '\\', '|', '?', '*')

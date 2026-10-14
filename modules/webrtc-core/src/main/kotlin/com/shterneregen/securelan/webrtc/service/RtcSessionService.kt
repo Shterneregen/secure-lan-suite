@@ -40,6 +40,9 @@ interface RtcSessionService : AutoCloseable {
      */
     fun acceptInboundSignal(localPeer: String?, signal: RtcSignalEnvelope?)
 
+    /** Accepts the matching pending offer. Media must not be prepared before this decision. */
+    fun acceptIncomingSession(sessionId: String): Boolean = false
+
     /**
      * Transmits a string message across the active session's RTCDataChannel.
      *

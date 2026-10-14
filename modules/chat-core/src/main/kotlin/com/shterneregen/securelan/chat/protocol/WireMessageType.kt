@@ -9,8 +9,8 @@ package com.shterneregen.securelan.chat.protocol
  * | Type        | Direction     | Description |
  * |-------------|---------------|-------------|
  * | [HELLO]     | client → server | First frame sent by the client; carries the nickname and protocol version token. |
- * | [SERVER_KEY]| server → client | Server's RSA public key, Base64-encoded. |
- * | [CLIENT_KEY]| client → server | RSA-encrypted payload: nickname, password, AES session key, and capabilities. |
+ * | [SERVER_KEY]| server → client | V2 SRP challenge or server evidence proof. |
+ * | [CLIENT_KEY]| client → server | V2 SRP public value and client evidence proof. |
  * | [ACCEPTED]  | server → client | Handshake accepted; payload contains the server-assigned nickname. |
  * | [REJECTED]  | server → client | Handshake rejected; payload contains a human-readable reason. |
  *
@@ -28,10 +28,10 @@ enum class WireMessageType {
     /** First frame sent by the client during the handshake. */
     HELLO,
 
-    /** Server RSA public key frame (Base64-encoded DER). */
+    /** V2 SRP challenge or server evidence proof; never an unauthenticated RSA key. */
     SERVER_KEY,
 
-    /** Client RSA-encrypted payload frame (Base64-encoded ciphertext). */
+    /** V2 SRP public value and client evidence proof; contains no password/key envelope. */
     CLIENT_KEY,
 
     /** Server confirmation that the handshake was accepted. */

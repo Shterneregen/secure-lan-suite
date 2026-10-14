@@ -29,6 +29,8 @@ data class FileTransferMetadata(
         Objects.requireNonNull(recipientId, "recipientId must not be null")
         Objects.requireNonNull(fileName, "fileName must not be null")
         require(fileName.isNotBlank()) { "fileName must not be blank" }
+        require(transferId.length in 1..128 && senderId.length in 1..64 && recipientId.length in 1..64) { "Invalid transfer identity size" }
+        require(fileName.length <= 1024) { "File name too long" }
         require(fileSize >= 0) { "fileSize must not be negative" }
     }
 
@@ -42,7 +44,7 @@ data class FileTransferMetadata(
     /**
      * Serializes this metadata into a compact URL-safe Base64 pipe-delimited format.
      *
-     * This representation avoids exceeding RSA encryption block limits during initial handshake.
+     * V2 authenticates this canonical representation in both peers' channel-bound signatures.
      *
      * @return Compact serialized metadata string.
      */

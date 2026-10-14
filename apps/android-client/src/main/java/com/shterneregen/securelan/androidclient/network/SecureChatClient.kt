@@ -1,7 +1,6 @@
 package com.shterneregen.securelan.androidclient.network
 
 import com.shterneregen.securelan.androidclient.protocol.ChatSession
-import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.WireMessage
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
@@ -14,8 +13,6 @@ import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 
 /**
  * Owns one desktop-compatible encrypted chat connection and any pending handshake.
@@ -23,6 +20,7 @@ import java.util.Base64
  * unblock readers immediately; a failed or interrupted handshake never retains its socket.
  */
 class SecureChatClient : Closeable {
+    val fileIdentity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
     private val lock = Any()
     @Volatile private var connecting: Socket? = null
     @Volatile
@@ -69,25 +67,14 @@ class SecureChatClient : Closeable {
         sessionPassword: String,
         capabilities: PeerCapabilities,
     ): String {
-        createdSession.writeMessage(WireMessage(WireMessageType.HELLO, requestedNickname, SECURE_PROTOCOL))
-        val serverKeyMessage = requireNotNull(createdSession.readMessage()) { "No handshake response from server" }
-        if (serverKeyMessage.type == WireMessageType.REJECTED) {
-            error(serverKeyMessage.payload.ifBlank { "Handshake rejected" })
-        }
-        require(serverKeyMessage.type == WireMessageType.SERVER_KEY) { "Unexpected handshake response: ${serverKeyMessage.type}" }
-        val serverPublicKey = CryptoCompat.decodePublicKey(Base64.getDecoder().decode(serverKeyMessage.payload))
-        val aesKey = CryptoCompat.generateAesKey()
-        val payload = requestedNickname + "\n" + sessionPassword + "\n" +
-            Base64.getEncoder().encodeToString(CryptoCompat.encodeSecretKey(aesKey)) + "\n" +
-            capabilities.encode()
-        val encryptedPayload = CryptoCompat.rsaEncrypt(payload.toByteArray(StandardCharsets.UTF_8), serverPublicKey)
-        createdSession.writeMessage(WireMessage(WireMessageType.CLIENT_KEY, requestedNickname, Base64.getEncoder().encodeToString(encryptedPayload)))
-        createdSession.enableTransportEncryption(aesKey)
-        val response = requireNotNull(createdSession.readMessage()) { "No encrypted handshake response from server" }
-        if (response.type != WireMessageType.ACCEPTED) {
-            error(response.payload.ifBlank { "Handshake rejected" })
-        }
-        return response.payload
+        val response = com.shterneregen.securelan.chat.service.impl.SimpleHandshakeService().performClientHandshake(
+            createdSession,
+            com.shterneregen.securelan.chat.protocol.handshake.HandshakeRequest(
+                requestedNickname, sessionPassword, capabilities.withIdentity(fileIdentity.publicKey),
+            ),
+        )
+        check(response.accepted()) { response.reason().ifBlank { "Handshake rejected" } }
+        return response.nickname()
     }
 
     suspend fun sendMessage(text: String) = withContext(Dispatchers.IO) {
@@ -125,7 +112,6 @@ class SecureChatClient : Closeable {
     }
 
     companion object {
-        private const val SECURE_PROTOCOL = "SECURE_V1"
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val HANDSHAKE_TIMEOUT_MS = 15_000
     }

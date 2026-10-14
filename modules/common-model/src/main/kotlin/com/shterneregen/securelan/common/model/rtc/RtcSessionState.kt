@@ -4,6 +4,8 @@ package com.shterneregen.securelan.common.model.rtc
 enum class RtcSessionState {
     /** No session is active. */
     IDLE,
+    /** An inbound offer is awaiting explicit local consent; no media has started. */
+    INCOMING,
     /** Session parameters are being negotiated. */
     NEGOTIATING,
     /** A connection is being established. */

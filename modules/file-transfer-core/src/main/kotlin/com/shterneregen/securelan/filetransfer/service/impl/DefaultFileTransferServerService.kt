@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Standard implementation of [FileTransferServerService] listening for incoming file transfers.
  *
- * Incoming transfers undergo RSA/AES key exchange and room password verification before invoking the
+ * Incoming transfers undergo mutual SRP authentication and room-certified peer signatures before invoking the
  * configured [com.shterneregen.securelan.filetransfer.service.FileTransferAcceptanceHandler]. Files are initially written
  * to an isolated temporary `.part` file in the configured storage directory and atomically published upon
  * completion using hard links (with fallback to rename) to prevent overwriting existing files or corrupting
@@ -47,7 +47,8 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
     private val handshake = SecureFileTransferHandshake(Objects.requireNonNull(cryptoServices, "cryptoServices"))
     private val lifecycleLock = Any()
     private val running = AtomicBoolean(false)
-    private val tcpServer = TcpServer("file-transfer-server")
+    private val tcpServer = TcpServer("file-transfer-server", com.shterneregen.securelan.common.net.transport.ServerSocketFactory.systemDefault(), 4)
+    private val reservedBytes = AtomicLong()
     private val activeSockets = mutableSetOf<Socket>()
     private var generation = 0L
 
@@ -98,6 +99,8 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
         }
         var knownMetadata: FileTransferMetadata? = null
         var temporary: Path? = null
+        var reserved = 0L
+        var quota: com.shterneregen.securelan.filetransfer.protocol.FileReceiveBudget.Reservation? = null
         val deadline = AtomicLong(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeouts.inactivityMillis))
         fun arm(millis: Long) { deadline.set(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis)) }
         val watchdog = Executors.newSingleThreadScheduledExecutor { runnable ->
@@ -111,9 +114,9 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
         socket.use { activeSocket ->
             try {
                 FileTransferSession(activeSocket).use { session ->
-                    val metadata = handshake.performServerHandshake(session, activeConfig.sessionPassword())
+                    val metadata = handshake.performServerHandshake(session, activeConfig.sessionPassword(), activeConfig.authentication)
                     knownMetadata = metadata
-                    if (metadata.fileSize < 0) throw IOException("Invalid file size")
+                    if (metadata.fileSize !in 0..activeConfig.maxFileBytes) throw IOException("File size exceeds receiver budget")
                     arm(timeouts.acceptanceMillis)
                     if (!activeConfig.acceptanceHandler().accept(metadata, session.remoteAddress())) {
                         handshake.rejectTransfer(session, "File transfer rejected by receiver")
@@ -127,6 +130,15 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                             ),
                         )
                         return
+                    }
+                    while (true) {
+                        val current = reservedBytes.get()
+                        if (metadata.fileSize > activeConfig.maxFileBytes * 2 - current) throw IOException("Concurrent receive budget exceeded")
+                        if (reservedBytes.compareAndSet(current, current + metadata.fileSize)) { reserved = metadata.fileSize; break }
+                    }
+                    quota = activeConfig.receiveBudget.reserve(metadata.fileSize)
+                    if (Files.getFileStore(activeConfig.storageDirectory()).usableSpace < metadata.fileSize + 128L * 1024 * 1024) {
+                        throw IOException("Insufficient receiver storage")
                     }
                     arm(timeouts.inactivityMillis)
                     handshake.acceptTransfer(session)
@@ -147,7 +159,7 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                             if (chunk.isEmpty()) {
                                 break
                             }
-                            if (metadata.fileSize > 0 && chunk.size.toLong() > metadata.fileSize - transferred) {
+                            if (chunk.size.toLong() > metadata.fileSize - transferred) {
                                 throw IOException("Received file exceeds declared size")
                             }
                             outputStream.write(chunk)
@@ -156,12 +168,13 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                             progressPublisher.report(transferred)
                         }
                     }
-                    if (metadata.fileSize > 0 && transferred != metadata.fileSize) {
+                    if (transferred != metadata.fileSize) {
                         throw IOException("Received file length differs from declared size")
                     }
                     val target = publishUniqueTarget(staging, metadata.fileName, activeConfig)
                     Files.deleteIfExists(staging)
                     temporary = null
+                    quota.commit()
                     arm(timeouts.confirmationMillis)
                     session.writeEncryptedText("DONE")
                     eventPublisher.publish(FileTransferCompletedEvent(metadata.transferId, target.fileName.toString(), target, transferred, false))
@@ -169,6 +182,8 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
             } catch (e: Exception) {
                 eventPublisher.publish(FileTransferFailedEvent(knownMetadata?.transferId ?: "incoming", knownMetadata?.fileName ?: "", "Incoming file transfer failed", e, false))
             } finally {
+                reservedBytes.addAndGet(-reserved)
+                quota?.close()
                 watchdog.shutdownNow()
                 temporary?.let { path ->
                     try { Files.deleteIfExists(path) } catch (_: IOException) { }

@@ -73,6 +73,18 @@ class DefaultQuickShareService @JvmOverloads constructor(
 
     init {
         Objects.requireNonNull(clock, "clock must not be null")
+        // JDK 25 initializes these process-wide HTTP bounds when its provider first starts.
+        mapOf(
+            "jdk.httpserver.maxConnections" to 64,
+            "sun.net.httpserver.maxIdleConnections" to 8,
+            "sun.net.httpserver.maxReqHeaders" to 32,
+            "sun.net.httpserver.maxReqHeaderSize" to 16_384,
+            "sun.net.httpserver.maxReqTime" to 10,
+            "sun.net.httpserver.maxRspTime" to 60,
+        ).forEach { (name, limit) ->
+            val configured = System.getProperty(name)?.toIntOrNull()?.takeIf { it > 0 }
+            System.setProperty(name, minOf(configured ?: limit, limit).toString())
+        }
     }
 
     @Throws(IOException::class)
@@ -81,9 +93,10 @@ class DefaultQuickShareService @JvmOverloads constructor(
         synchronized(lifecycleLock) {
             if (running.get()) return
             val createdServer = createHttpServer(config.port())
-            val createdExecutor = Executors.newCachedThreadPool { runnable ->
-                Thread(runnable, "securelan-quick-share-http-${threadSequence.incrementAndGet()}").apply { isDaemon = true }
-            }
+            val createdExecutor = java.util.concurrent.ThreadPoolExecutor(
+                8, 8, 0, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(32),
+                { runnable -> Thread(runnable, "securelan-quick-share-http-${threadSequence.incrementAndGet()}").apply { isDaemon = true } },
+            )
             val createdExpiryExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
                 Thread(runnable, "securelan-quick-share-expiry").apply { isDaemon = true }
             }
@@ -123,6 +136,8 @@ class DefaultQuickShareService @JvmOverloads constructor(
     override fun stop() {
         synchronized(lifecycleLock) {
             running.set(false)
+            items.values.forEach { it.stop() }
+            items.clear()
             server?.stop(0)
             executor?.shutdownNow()
             expiryExecutor?.shutdownNow()
@@ -144,6 +159,9 @@ class DefaultQuickShareService @JvmOverloads constructor(
         Objects.requireNonNull(request, "request must not be null")
         check(running.get()) { "Quick-share server is not running" }
         synchronized(lifecycleLock) {
+            check(running.get()) { "Quick-share server is not running" }
+            items.entries.removeIf { !it.value.snapshotAfterExpiry(clock.instant()).active() }
+            check(items.size < 100) { "Quick-share publication limit reached" }
             val id = uniqueId(request.displayName())
             val item = createSharedItem(id, request, clock.instant(), urlsFor(id))
             items[id] = item
@@ -155,13 +173,8 @@ class DefaultQuickShareService @JvmOverloads constructor(
 
     private fun uniqueId(displayName: String): String {
         val base = sanitizeId(displayName)
-        var candidate = base
-        var index = 2
-        while (items.containsKey(candidate)) {
-            candidate = "$base-$index"
-            index++
-        }
-        return candidate
+        // Revocation must survive expiry/stop and publishing another item with the same name.
+        return "$base-${java.util.UUID.randomUUID()}"
     }
 
     private fun sanitizeId(value: String): String {
@@ -421,7 +434,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
         val file: Path?,
         val fileName: String,
         val fileSize: Long,
-        val text: String,
+        @Volatile var text: String,
         private val createdAt: Instant,
         private val expiresAt: Instant?,
         private val accessLimit: Int?,
@@ -453,6 +466,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
         fun expireIfNeeded(now: Instant): QuickShareSnapshot? {
             if (status == QuickShareStatus.ACTIVE && expiresAt != null && !now.isBefore(expiresAt)) {
                 status = QuickShareStatus.EXPIRED
+                text = ""
                 return snapshot()
             }
             return null
@@ -461,6 +475,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
         @Synchronized
         fun stop(): QuickShareSnapshot {
             status = QuickShareStatus.STOPPED
+            text = ""
             return snapshot()
         }
 

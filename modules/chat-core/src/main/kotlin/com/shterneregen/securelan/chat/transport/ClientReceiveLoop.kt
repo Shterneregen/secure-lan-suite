@@ -65,7 +65,7 @@ class ClientReceiveLoop(
                 when (message.type()) {
                     WireMessageType.CHAT,
                     WireMessageType.SYSTEM,
-                    -> eventPublisher.publish(ChatMessageReceivedEvent(message.sender(), message.payload()))
+                    -> eventPublisher.publish(ChatMessageReceivedEvent(message.sender(), message.payload(), message.type() == WireMessageType.SYSTEM))
 
                     WireMessageType.USER_JOINED ->
                         eventPublisher.publish(

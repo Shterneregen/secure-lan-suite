@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * ## Connection flow
  * 1. Opens a TCP connection using [ClientSocketFactory].
- * 2. Performs the secure RSA+AES handshake via [SimpleHandshakeService] (timeout controlled by
+ * 2. Performs the mutually authenticated V2 handshake via [SimpleHandshakeService] (timeout controlled by
  *    [handshakeTimeoutMillis]).
  * 3. On success, publishes [ChatConnectedEvent] and starts a background [ClientReceiveLoop] thread
  *    that forwards incoming [com.shterneregen.securelan.chat.protocol.WireMessage]s as events.
@@ -56,7 +56,9 @@ class DefaultChatClientService @JvmOverloads constructor(
     private val handshakeService: SecureHandshakeService = SimpleHandshakeService()
     private val clientSocketFactory: ClientSocketFactory =
         Objects.requireNonNull(clientSocketFactory, "clientSocketFactory")
-    private val connected = AtomicBoolean(false)
+    @Volatile private var connected = AtomicBoolean(false)
+    private val identity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
+    override fun fileIdentity(): com.shterneregen.securelan.crypto.protocol.PeerIdentity = identity
 
     private var session: ChatSocketSession? = null
     private var receiverThread: Thread? = null
@@ -78,6 +80,8 @@ class DefaultChatClientService @JvmOverloads constructor(
         if (connected.get()) {
             return true
         }
+        val connectionState = AtomicBoolean(false)
+        connected = connectionState
         try {
             val activeSession = ChatSocketSession(
                 clientSocketFactory.connect(TransportEndpoint.of(request.host, request.port)),
@@ -86,7 +90,7 @@ class DefaultChatClientService @JvmOverloads constructor(
             activeSession.setReadTimeout(handshakeTimeoutMillis)
             val response = handshakeService.performClientHandshake(
                 activeSession,
-                HandshakeRequest(request.nickname, request.sessionPassword, request.capabilities),
+                HandshakeRequest(request.nickname, request.sessionPassword, request.capabilities.withIdentity(identity.publicKey)),
             )
             if (!response.accepted()) {
                 eventPublisher.publish(ChatErrorEvent(response.reason(), null))
@@ -98,11 +102,13 @@ class DefaultChatClientService @JvmOverloads constructor(
             connected.set(true)
             eventPublisher.publish(ChatConnectedEvent(nickname, activeSession.remoteAddress(), request.capabilities))
             receiverThread = Thread(
-                ClientReceiveLoop(activeSession, nickname, connected, eventPublisher),
+                ClientReceiveLoop(activeSession, nickname, connectionState) { event ->
+                    if (session === activeSession) eventPublisher.publish(event)
+                },
                 "chat-client-receive-loop",
             ).also { it.start() }
             return true
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             eventPublisher.publish(ChatErrorEvent("Unable to connect to chat server", e))
             disconnect()
             return false

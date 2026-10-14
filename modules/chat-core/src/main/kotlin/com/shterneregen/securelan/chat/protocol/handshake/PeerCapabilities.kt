@@ -16,7 +16,7 @@ import java.util.Objects
  * [decode].  The format starts with the prefix `caps:v1:` and encodes fields as pipe-separated
  * tokens:
  * ```
- * caps:v1:<platform-token>|<appVersion-b64>|<fileReceivePort>|<flags>|<deviceName-b64>|<protocolVersion>
+ * caps:v1:<platform-token>|<appVersion-b64>|<fileReceivePort>|<flags>|<deviceName-b64>|<protocolVersion>|<identity-public-key>
  * ```
  * where `<flags>` is a bitmask of the `FLAG_*` constants.
  *
@@ -131,6 +131,15 @@ class PeerCapabilities @JvmOverloads constructor(
     /** Returns the immutable extension metadata map. */
     fun metadata(): Map<String, String> = metadata
 
+    /** Public signing identity certified by the current authenticated room presence. */
+    fun identityKey(): String = metadata["identity-key"].orEmpty()
+
+    fun withIdentity(publicKey: String): PeerCapabilities = PeerCapabilities(
+        platform, appVersion, supportsFileReceive, fileReceivePort, supportsVoice, supportsVideo,
+        deviceName, protocolVersion, supportsFileSend, supportsQuickShare, supportsSteganography,
+        supportsRtcDataChannel, clientId, operatingSystem, metadata + ("identity-key" to publicKey),
+    )
+
     /**
      * Returns a copy of this instance with the file-receiver settings updated.
      *
@@ -172,6 +181,7 @@ class PeerCapabilities @JvmOverloads constructor(
             flags.toString(),
             encodeText(deviceName),
             protocolVersion.toString(),
+            identityKey(),
         ).joinToString("|")
     }
 
@@ -265,7 +275,7 @@ class PeerCapabilities @JvmOverloads constructor(
 
     companion object {
         /** The current protocol version advertised by this build. */
-        const val CURRENT_PROTOCOL_VERSION: Int = 1
+        const val CURRENT_PROTOCOL_VERSION: Int = 2
 
         /** Platform token for desktop (JVM/Compose) clients. */
         const val PLATFORM_DESKTOP: String = "desktop"
@@ -420,6 +430,7 @@ class PeerCapabilities @JvmOverloads constructor(
                 flags and FLAG_QUICK_SHARE != 0,
                 flags and FLAG_STEGANOGRAPHY != 0,
                 flags and FLAG_RTC_DATA_CHANNEL != 0,
+                metadata = mapOf("identity-key" to fields.getOrNull(6).orEmpty()).filterValues { it.isNotEmpty() },
             )
         }
 

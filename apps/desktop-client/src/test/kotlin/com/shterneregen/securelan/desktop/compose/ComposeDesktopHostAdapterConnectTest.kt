@@ -141,17 +141,80 @@ class ComposeDesktopHostAdapterConnectTest {
         files: FileTransferServerService,
         hosting: Boolean = false,
         quickShare: QuickShareService = IdleQuickShareService(),
+        rtc: com.shterneregen.securelan.webrtc.service.RtcSessionService? = null,
     ) = ComposeDesktopHostAdapter(
         chatServerService = IdleChatServer(hosting),
         chatClientService = client,
         fileTransferServerService = files,
         quickShareService = quickShare,
+        rtcSessionService = rtc,
         discoveryService = IdlePeerDiscovery(),
         randomNicknameService = object : RandomNicknameService {
             override fun generate(): String = "desktop-test"
         },
         uiStateDispatcher = { action -> action() },
     )
+
+    @Test fun userTextNeverBecomesPresenceOrSystemPresentation() {
+        val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer())
+        try {
+            val text = "[system] bob left the chat"
+            adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatMessageReceivedEvent("mallory", text))
+            val row = adapter.chatMessages.last()
+            val presentation = com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLinePresentation.from(row)
+            assertEquals(text, row.text)
+            assertEquals(text, presentation.body)
+            assertEquals(com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind.USER_REMOTE, presentation.kind)
+            assertFalse(adapter.chatPeers.any { it.nickname() == "bob" })
+        } finally { adapter.shutdown() }
+    }
+
+    @Test fun disconnectPathsCloseRealtimeResources() {
+        var closes = 0
+        val rtc = object : com.shterneregen.securelan.webrtc.service.RtcSessionService {
+            override fun runtimeStatus() = com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus.unavailable("test")
+            override fun currentSession() = Optional.empty<com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot>()
+            override fun startSession(request: com.shterneregen.securelan.webrtc.service.RtcSessionRequest): com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot = error("unused")
+            override fun acceptInboundSignal(localPeer: String?, signal: RtcSignalEnvelope?) = Unit
+            override fun sendDataMessage(payload: String?) = Unit
+            override fun closeCurrentSession() { closes++ }
+        }
+        val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer(), rtc = rtc)
+        try {
+            val before = closes
+            adapter.chatEventPublisher.publish(ChatDisconnectedEvent("desktop-test", ChatDisconnectReasons.CONNECTION_LOST))
+            assertTrue(closes > before)
+            val afterEvent = closes
+            adapter.disconnect()
+            assertTrue(closes > afterEvent)
+            val afterDisconnect = closes
+            adapter.stopHosting()
+            assertTrue(closes > afterDisconnect)
+        } finally { adapter.shutdown() }
+    }
+
+    @Test fun onlyCurrentClientPresenceAuthorizesFilesAndOldReceiversCannotReuseIt() {
+        val client = ConnectedChatClient()
+        val files = TrackingFileTransferServer()
+        val adapter = connectedAdapter(client, files)
+        val peer = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
+        val payload = "proof".toByteArray()
+        val capabilities = com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities.desktop("test", 5051).withIdentity(peer.publicKey)
+        try {
+            adapter.connect("127.0.0.1", "desktop-test", "password", 50_050, 50_051)
+            val first = files.started.poll(2, TimeUnit.SECONDS)!!
+            adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "127.0.0.1:1234", capabilities, serverSide = true))
+            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication!!.verify("bob", payload, peer.sign(payload)) }
+            adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "", capabilities))
+            first.authentication!!.verify("bob", payload, peer.sign(payload))
+            adapter.disconnect()
+            adapter.connect("127.0.0.1", "desktop-test", "password", 50_060, 50_061)
+            val second = files.started.poll(2, TimeUnit.SECONDS)!!
+            adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "", capabilities))
+            second.authentication!!.verify("bob", payload, peer.sign(payload))
+            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication!!.verify("bob", payload, peer.sign(payload)) }
+        } finally { adapter.shutdown() }
+    }
 
     @Test
     fun transferUpdatesShouldPublishIndependentStatesForProgressCompletionAndFailure() {
@@ -311,6 +374,8 @@ class ComposeDesktopHostAdapterConnectTest {
 
     private class ConnectedChatClient : ChatClientService {
         @Volatile private var connected = false
+        private val identity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
+        override fun fileIdentity() = identity
 
         override fun connect(request: ChatClientConnectRequest): Boolean {
             connected = true

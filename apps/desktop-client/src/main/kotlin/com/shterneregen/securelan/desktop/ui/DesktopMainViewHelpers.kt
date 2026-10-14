@@ -307,6 +307,7 @@ object DesktopMainViewHelpers {
         RtcSessionState.FAILED,
         RtcSessionState.UNAVAILABLE,
         -> false
+        RtcSessionState.INCOMING,
         RtcSessionState.NEGOTIATING,
         RtcSessionState.CONNECTING,
         RtcSessionState.CONNECTED,

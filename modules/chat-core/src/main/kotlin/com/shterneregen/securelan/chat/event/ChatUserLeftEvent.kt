@@ -9,4 +9,4 @@ package com.shterneregen.securelan.chat.event
  * @property nickname The nickname of the peer who left, or `null` if unknown.
  */
 @JvmRecord
-data class ChatUserLeftEvent(val nickname: String?) : ChatCoreEvent
+data class ChatUserLeftEvent(val nickname: String?, val serverSide: Boolean = false) : ChatCoreEvent

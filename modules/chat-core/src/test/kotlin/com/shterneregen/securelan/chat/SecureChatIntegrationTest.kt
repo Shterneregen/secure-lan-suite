@@ -58,7 +58,8 @@ class SecureChatIntegrationTest {
 
         val client = track(DefaultChatClientService(eventPublisher = { events.add(it) }))
         assertFalse(client.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "wrong")))
-        assertTrue(await(events, { it is ChatErrorEvent && it.message?.contains("Wrong session password") == true }, 2_000))
+        assertTrue(await(events, { it is ChatErrorEvent }, 2_000))
+        assertFalse(events.any { it is ChatConnectedEvent })
     }
 
     @Test
@@ -84,6 +85,20 @@ class SecureChatIntegrationTest {
         assertTrue(await(carolEvents, { it is ChatMessageReceivedEvent && it.text == "alice-marker" }, 2_000))
         assertTrue(await(carolEvents, { it is ChatMessageReceivedEvent && it.text == "bob-marker" }, 2_000))
         assertFalse(carolEvents.any { it is ChatSignalReceivedEvent })
+    }
+
+    @Test fun obsoleteHandshakeIsRejectedWithoutDowngrade() {
+        val port = freePort()
+        track(DefaultChatServerService {}).start(ChatServerConfig(port, "password"))
+        java.net.Socket("127.0.0.1", port).use { socket ->
+            socket.soTimeout = 1000
+            com.shterneregen.securelan.chat.transport.ChatSocketSession(socket).use { session ->
+                session.writeMessage(com.shterneregen.securelan.chat.protocol.WireMessage(
+                    com.shterneregen.securelan.chat.protocol.WireMessageType.HELLO, "old-client", "SECURE_V1"))
+                assertTrue(session.readMessage()?.type() == com.shterneregen.securelan.chat.protocol.WireMessageType.REJECTED)
+                assertTrue(session.readMessage() == null)
+            }
+        }
     }
 
     @Test

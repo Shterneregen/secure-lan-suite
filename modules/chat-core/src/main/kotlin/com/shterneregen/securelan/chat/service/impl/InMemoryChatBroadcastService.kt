@@ -14,8 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
  * In-memory, thread-safe implementation of [ChatBroadcastService].
  *
  * Connected clients and their capabilities are stored in [ConcurrentHashMap]s keyed by nickname.
- * Broadcast operations iterate over the map and write to each session's socket; write failures
- * for individual sessions are swallowed to avoid one bad client from disrupting others.
+ * Broadcast operations enqueue independently to bounded per-session writers. Overflow or
+ * write failure closes that recipient, so a blocked peer cannot stall the fanout loop.
  *
  * Signal routing enforces two security constraints:
  * 1. The `fromPeer` field of every signal is **always overwritten** with [senderNickname] so
@@ -28,6 +28,7 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
 
     private val clients = ConcurrentHashMap<String, ChatSocketSession>()
     private val clientCapabilities = ConcurrentHashMap<String, PeerCapabilities>()
+    private val deliveries = ConcurrentHashMap<ChatSocketSession, java.util.concurrent.ThreadPoolExecutor>()
 
     /**
      * Registers [session] under [nickname] so it receives future broadcasts.
@@ -47,7 +48,7 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
      * @param nickname The nickname of the client to remove.
      */
     override fun removeClient(nickname: String) {
-        clients.remove(nickname)
+        clients.remove(nickname)?.let { deliveries.remove(it)?.shutdownNow() }
         clientCapabilities.remove(nickname)
     }
 
@@ -141,9 +142,23 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
      * propagate and disrupt the broadcast loop for other clients.
      */
     private fun writeQuietly(session: ChatSocketSession, message: WireMessage) {
+        val delivery = deliveries.computeIfAbsent(session) {
+            java.util.concurrent.ThreadPoolExecutor(1, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
+                java.util.concurrent.ArrayBlockingQueue(32),
+                { task -> Thread(task, "chat-peer-delivery").apply { isDaemon = true } }).apply { allowCoreThreadTimeOut(true) }
+        }
         try {
-            session.writeMessage(message)
-        } catch (_: IOException) {
+            delivery.execute {
+                try { session.writeMessage(message) } catch (_: IOException) {
+                    runCatching { session.close() }
+                    deliveries.remove(session, delivery)
+                    delivery.shutdownNow()
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            runCatching { session.close() }
+            deliveries.remove(session, delivery)
+            delivery.shutdownNow()
         }
     }
 }

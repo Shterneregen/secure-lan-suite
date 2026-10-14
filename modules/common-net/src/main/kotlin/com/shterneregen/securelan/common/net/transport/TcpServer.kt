@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Multi-threaded TCP server that binds to a port, accepts incoming connections on a background
- * accept thread, and dispatches each accepted socket to a cached thread pool.
+ * accept thread, and dispatches each accepted socket to a bounded worker pool without a backlog.
  *
  * Lifecycle:
  * - Call [start] to bind the server socket and begin accepting connections.
@@ -23,8 +23,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TcpServer(
     private val threadNamePrefix: String,
     private val serverSocketFactory: ServerSocketFactory,
+    private val maxClients: Int = 32,
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
+    private val activeSockets = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
+
+    init { require(maxClients in 1..256) { "Invalid client limit" } }
 
     @Volatile
     private var serverSocket: ServerSocket? = null
@@ -63,9 +67,11 @@ class TcpServer(
         var createdExecutor: ExecutorService? = null
         try {
             createdSocket = serverSocketFactory.open(port)
-            createdExecutor = Executors.newCachedThreadPool { runnable ->
-                Thread(runnable, "$threadNamePrefix-client").apply { isDaemon = true }
-            }
+            createdExecutor = java.util.concurrent.ThreadPoolExecutor(
+                0, maxClients, 30, java.util.concurrent.TimeUnit.SECONDS,
+                java.util.concurrent.SynchronousQueue(),
+                { runnable -> Thread(runnable, "$threadNamePrefix-client").apply { isDaemon = true } },
+            )
             serverSocket = createdSocket
             clientExecutor = createdExecutor
             val activeSocket = createdSocket
@@ -130,6 +136,12 @@ class TcpServer(
         while (isActive(activeSocket, activeExecutor)) {
             try {
                 val socket = activeSocket.accept()
+                activeSockets.add(socket)
+                if (!isActive(activeSocket, activeExecutor)) {
+                    activeSockets.remove(socket)
+                    SocketClose.closeQuietly(socket)
+                    continue
+                }
                 try {
                     activeExecutor.submit {
                         try {
@@ -138,9 +150,10 @@ class TcpServer(
                             if (isActive(activeSocket, activeExecutor)) {
                                 errorHandler.onError("Unhandled error in client socket handler", e)
                             }
-                        }
+                        } finally { activeSockets.remove(socket); SocketClose.closeQuietly(socket) }
                     }
                 } catch (e: RejectedExecutionException) {
+                    activeSockets.remove(socket)
                     SocketClose.closeQuietly(socket)
                     if (isActive(activeSocket, activeExecutor)) {
                         errorHandler.onError("Unable to schedule TCP client handler", e)
@@ -167,6 +180,8 @@ class TcpServer(
 
     private fun stop(socket: ServerSocket?, executor: ExecutorService?) {
         SocketClose.closeQuietly(socket)
+        activeSockets.forEach(SocketClose::closeQuietly)
+        activeSockets.clear()
         executor?.shutdownNow()
     }
 

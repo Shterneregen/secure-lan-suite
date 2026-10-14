@@ -18,7 +18,7 @@ import javax.crypto.spec.PSource
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Android crypto adapter for the existing desktop RSA-OAEP/AES-GCM wire format.
+ * Android primitive compatibility utilities. Network V2 uses the shared crypto-core protocol.
  * OAEP intentionally uses SHA-256 with MGF1-SHA1 for compatibility. AES payloads contain
  * a one-byte IV length, a fresh random IV, ciphertext and the 128-bit authentication tag.
  */

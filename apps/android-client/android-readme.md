@@ -9,7 +9,7 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 - The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths use labeled Devices, Chat, and Files bottom navigation; wider widths use a labeled navigation rail. At 840 dp the Devices screen becomes two-pane, and at 1200 dp chat/file screens gain a persistent device sidebar.
 - TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
 - Protocol code is minimally reimplemented inside `apps/android-client` to avoid introducing Android/UI dependencies into reusable Java core modules.
-- Supported flows include desktop-compatible UDP discovery, secure chat handshake, encrypted chat messages, AES-GCM/RSA file-transfer handshake, Android-to-desktop file sending, and desktop-to-Android file receiving.
+- Supported flows include desktop-compatible UDP discovery, mutually authenticated V2 chat, ordered encrypted messages/files, Android-to-desktop file sending, and desktop-to-Android file receiving. V1 endpoints must be updated; there is no protocol fallback.
 - The app starts UDP discovery automatically on launch, lets the user stop or restart it from the Devices screen, and requests `NEARBY_WIFI_DEVICES` on Android 13+.
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
 - Android-to-Android and Android-to-desktop voice/video calls use WebRTC in the LAN, with the existing encrypted TCP connection for signaling. WebRTC data channels, screen sharing and steganography tools are not implemented yet. Browser Quick Share supports temporary file/text links and QR codes.
@@ -23,7 +23,7 @@ Connect the clients to the same room, then open **Chat → Call** on Android and
 
 Microphone permission is required; camera permission is requested for video. Denying camera access falls back to audio. Incoming video calls can also be answered with audio only. The call screen offers microphone mute, camera on/off, front/back camera switching, speaker/headset routing, a movable local preview and a duration timer. Active video calls enter Picture-in-Picture on supported devices when leaving the app with Home. A foreground notification provides microphone and end-call actions.
 
-Media uses direct WebRTC DTLS-SRTP with host ICE candidates and no external STUN/TURN servers. Signaling uses the existing RSA/AES-GCM client-to-server transport: **the room server can read SDP/ICE; signaling is not end-to-end encrypted**. Wi-Fi client isolation can prevent calls. Incoming notifications require notification permission and a surviving TCP connection; this is not a push service that wakes a killed app. Desktop-to-Android video calling has been confirmed by a user; the full cross-platform device matrix still needs acceptance testing.
+Media uses direct WebRTC DTLS-SRTP with host ICE candidates and no external STUN/TURN servers. Signaling uses V2 authenticated chat: **the room server can read SDP/ICE; signaling is not end-to-end encrypted**. Wi-Fi client isolation can prevent calls. Incoming notifications require notification permission and a surviving TCP connection; this is not a push service that wakes a killed app. Desktop-to-Android video calling has been confirmed by a user; the full cross-platform device matrix still needs acceptance testing.
 
 Automated coordinator, codec and encrypted signaling tests pass, and the debug APK builds. Actual microphone/camera quality, Bluetooth routing, background/PiP behavior and OEM power management still require acceptance testing on physical Android devices.
 
@@ -304,6 +304,15 @@ Hosting runs in a foreground service so the room remains available while the act
 
 ## File transfer
 
+V2 authenticates both file endpoints with their current room-certified signing keys;
+knowing the room password or sharing an IP is insufficient to impersonate another
+participant. File framing and the handshake are shared with Desktop. Exact zero
+means an empty file. The default receiver budget is 1 GiB per file, 4 GiB and 256
+files per receiver lifetime, with a 128 MiB free-space floor. Failed partial receives
+release their budget; completed files retain it. Restarting the receiver starts a
+new budget. The receiver handles four bounded handshakes and one authorized stream.
+See [security guarantees and limits](../../docs/security-protocol.md).
+
 ### Android -> desktop
 
 1. Connect to a desktop peer.
@@ -366,6 +375,13 @@ and optional access limit, then copy its link or show the QR code. Links use
 **unauthenticated, unencrypted local HTTP**: anyone on the LAN who knows or
 discovers a link can access it. Use this only on trusted networks. The index
 page lists current shares, so link names are not access-control secrets.
+
+Publication IDs include a fresh UUID so revoked links are not reused. HTTP request
+headers and client workers are bounded. Cache files remain alive while an already
+admitted download is using them; expiry or individual revocation rejects new
+accesses, while an admitted stream may finish. Closing the server stops active
+clients and revokes all publications. Document staging is limited to 1 GiB and
+checks free cache space.
 
 The server prefers TCP port `5053`, tries `5054` through `5063` when occupied,
 then uses an available system-assigned port. It stages documents in private

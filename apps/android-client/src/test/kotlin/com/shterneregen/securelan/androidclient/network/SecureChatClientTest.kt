@@ -1,7 +1,6 @@
 package com.shterneregen.securelan.androidclient.network
 
 import com.shterneregen.securelan.androidclient.protocol.ChatSession
-import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.WireMessage
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
@@ -14,8 +13,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.ServerSocket
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 
 class SecureChatClientTest {
     @Test(timeout = 10_000)
@@ -70,15 +67,11 @@ class SecureChatClientTest {
                 server.accept().use { socket ->
                     socket.soTimeout = 3_000
                     ChatSession(socket).use { session ->
-                        val hello = session.readMessage()!!
-                        assertEquals("SECURE_V1", hello.payload)
-                        val keys = CryptoCompat.generateRsaKeyPair()
-                        session.writeMessage(WireMessage(WireMessageType.SERVER_KEY, "server", Base64.getEncoder().encodeToString(keys.public.encoded)))
-                        val clientKey = session.readMessage()!!
-                        val payload = String(CryptoCompat.rsaDecrypt(Base64.getDecoder().decode(clientKey.payload), keys.private), StandardCharsets.UTF_8).split('\n')
-                        assertEquals("password", payload[1])
-                        session.enableTransportEncryption(CryptoCompat.decodeSecretKey(Base64.getDecoder().decode(payload[2])))
-                        session.writeMessage(WireMessage(WireMessageType.ACCEPTED, "server", "assigned"))
+                        val response = com.shterneregen.securelan.chat.service.impl.SimpleHandshakeService().performServerHandshake(
+                            session, "password", com.shterneregen.securelan.chat.service.impl.InMemoryNicknameRegistryService(),
+                        )
+                        assertTrue(response.accepted())
+                        assertTrue(response.capabilities().identityKey().isNotBlank())
                         assertEquals("hello", session.readMessage()!!.payload)
                         assertEquals(WireMessageType.DISCONNECT, session.readMessage()!!.type)
                         assertEquals(null, session.readMessage())
@@ -86,7 +79,7 @@ class SecureChatClientTest {
                 }
             }
             SecureChatClient().use { client ->
-                assertEquals("assigned", connect(client, server.localPort))
+                assertEquals("alice", connect(client, server.localPort))
                 client.sendMessage("hello")
                 client.disconnect()
             }

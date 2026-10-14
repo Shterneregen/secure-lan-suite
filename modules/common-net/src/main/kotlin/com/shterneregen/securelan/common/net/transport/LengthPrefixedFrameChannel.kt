@@ -51,6 +51,7 @@ class LengthPrefixedFrameChannel @Throws(IOException::class) constructor(
      */
     @Throws(IOException::class)
     fun writeUtf(value: String) {
+        if (value.toByteArray(Charsets.UTF_8).size > 4096) throw IOException("Handshake field exceeds maximum size")
         synchronized(output) {
             output.writeUTF(value)
             output.flush()
@@ -64,7 +65,15 @@ class LengthPrefixedFrameChannel @Throws(IOException::class) constructor(
      * @throws IOException if an I/O error occurs or the stream reaches end-of-file.
      */
     @Throws(IOException::class)
-    fun readUtf(): String = synchronized(input) { input.readUTF() }
+    fun readUtf(): String = synchronized(input) {
+        val length = input.readUnsignedShort()
+        if (length > 4096) throw IOException("Handshake field exceeds maximum size")
+        val frame = ByteArray(length + 2)
+        frame[0] = (length ushr 8).toByte()
+        frame[1] = length.toByte()
+        input.readFully(frame, 2, length)
+        DataInputStream(frame.inputStream()).readUTF()
+    }
 
     /**
      * Writes a length-prefixed binary frame to the socket output stream.
@@ -124,8 +133,8 @@ class LengthPrefixedFrameChannel @Throws(IOException::class) constructor(
 
     companion object {
         /**
-         * Default maximum allowed frame size (128 MB).
+         * Default maximum allowed encrypted record size (64 KiB plus header/tag).
          */
-        const val DEFAULT_MAX_FRAME_SIZE_BYTES: Int = 128 * 1024 * 1024
+        const val DEFAULT_MAX_FRAME_SIZE_BYTES: Int = 64 * 1024 + 25
     }
 }

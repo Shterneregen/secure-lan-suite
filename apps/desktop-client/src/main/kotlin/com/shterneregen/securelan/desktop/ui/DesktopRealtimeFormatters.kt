@@ -59,6 +59,7 @@ object DesktopRealtimeFormatters {
     @JvmStatic
     fun videoStageBadge(state: RtcSessionState): String = when (state) {
         RtcSessionState.IDLE -> "Idle"
+        RtcSessionState.INCOMING -> "Incoming call"
         RtcSessionState.NEGOTIATING -> "Negotiating"
         RtcSessionState.CONNECTING -> "Connecting"
         RtcSessionState.CONNECTED -> "Live"
@@ -72,6 +73,7 @@ object DesktopRealtimeFormatters {
     @JvmStatic
     fun shouldShowVideoStageAfterState(state: RtcSessionState): Boolean = when (state) {
         RtcSessionState.IDLE,
+        RtcSessionState.INCOMING,
         RtcSessionState.CLOSED,
         RtcSessionState.FAILED,
         RtcSessionState.UNAVAILABLE,
@@ -86,6 +88,7 @@ object DesktopRealtimeFormatters {
     @JvmStatic
     fun voiceStatusText(state: RtcSessionState, peer: String?): String = when (state) {
         RtcSessionState.IDLE -> "Voice idle"
+        RtcSessionState.INCOMING -> "Incoming call from ${safePeerName(peer)}"
         RtcSessionState.CONNECTED -> "In call with ${safePeerName(peer)}"
         RtcSessionState.CONNECTING,
         RtcSessionState.NEGOTIATING,

@@ -20,6 +20,7 @@ data class ChatUserJoinedEvent(
     val nickname: String?,
     val remoteAddress: String?,
     val capabilities: PeerCapabilities,
+    val serverSide: Boolean = false,
 ) : ChatCoreEvent {
 
     /**

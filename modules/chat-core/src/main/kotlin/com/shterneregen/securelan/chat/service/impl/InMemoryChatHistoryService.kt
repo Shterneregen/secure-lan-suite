@@ -21,8 +21,9 @@ class InMemoryChatHistoryService : ChatHistoryService {
      *
      * @param line The text line to append; must not be `null`.
      */
-    override fun append(line: String) {
+    @Synchronized override fun append(line: String) {
         lines.add(line)
+        while (lines.size > 1000) lines.removeAt(0)
     }
 
     /**

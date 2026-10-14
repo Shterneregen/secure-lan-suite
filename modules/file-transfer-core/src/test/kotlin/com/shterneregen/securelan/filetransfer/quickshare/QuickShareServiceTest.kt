@@ -113,5 +113,39 @@ class QuickShareServiceTest {
         }
     }
 
+    @Test fun stopAndRestartNeverRestoreOldPublications() {
+        val service = DefaultQuickShareService(null)
+        val port = findAvailablePort()
+        service.start(QuickShareServerConfig(port, listOf("127.0.0.1")))
+        val old = service.share(QuickShareCreateRequest.text("private payload", "Old", Duration.ofMinutes(1), null))
+        service.stop()
+        assertTrue(service.shares().isEmpty())
+        service.start(QuickShareServerConfig(port, listOf("127.0.0.1")))
+        try {
+            val replacement = service.share(QuickShareCreateRequest.text("new payload", "Old", Duration.ofMinutes(1), null))
+            assertFalse(replacement.id() == old.id())
+            HttpClient.newHttpClient().let { client ->
+                val response = client.send(HttpRequest.newBuilder(URI.create(old.primaryUrl() + "/text")).build(), HttpResponse.BodyHandlers.ofString())
+                assertTrue(response.statusCode() in listOf(404, 410))
+                assertFalse(response.body().contains("private payload"))
+            }
+        } finally { service.stop() }
+    }
+
+    @Test fun concurrentContentRequestsRespectTheLimitAndRevocation() {
+        val service = DefaultQuickShareService(null)
+        service.start(QuickShareServerConfig(findAvailablePort(), listOf("127.0.0.1")))
+        try {
+            val share = service.share(QuickShareCreateRequest.text("payload", "Concurrent", Duration.ofMinutes(1), 3))
+            HttpClient.newHttpClient().let { client ->
+                val request = HttpRequest.newBuilder(URI.create(share.primaryUrl() + "/text")).build()
+                val results = List(12) { client.sendAsync(request, HttpResponse.BodyHandlers.ofString()) }
+                assertEquals(3, results.count { it.get(3, java.util.concurrent.TimeUnit.SECONDS).statusCode() == 200 })
+                service.stopShare(share.id())
+                assertEquals(410, client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode())
+            }
+        } finally { service.stop() }
+    }
+
     private fun findAvailablePort(): Int = ServerSocket(0).use { it.localPort }
 }

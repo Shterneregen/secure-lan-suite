@@ -16,7 +16,10 @@ import java.nio.charset.StandardCharsets
  *
  * @param socket the underlying TCP socket.
  */
-class LineTextChannel @Throws(IOException::class) constructor(private val socket: Socket) : Closeable {
+class LineTextChannel @JvmOverloads @Throws(IOException::class) constructor(
+    private val socket: Socket,
+    private val maxLineCharacters: Int = 90_000,
+) : Closeable {
     private val reader: BufferedReader = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
     private val writer: BufferedWriter = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))
 
@@ -27,7 +30,21 @@ class LineTextChannel @Throws(IOException::class) constructor(private val socket
      * @throws IOException if an I/O error occurs or the read timeout expires.
      */
     @Throws(IOException::class)
-    fun readLine(): String? = reader.readLine()
+    fun readLine(maxCharacters: Int = maxLineCharacters): String? {
+        val first = reader.read()
+        if (first < 0) return null
+        return SocketDeadlines.within(socket, 10_000) {
+            val line = StringBuilder()
+            var next = first
+            while (next >= 0 && next != '\n'.code) {
+                if (line.length >= minOf(maxCharacters, maxLineCharacters)) throw IOException("Line exceeds maximum size")
+                line.append(next.toChar())
+                next = reader.read()
+            }
+            if (next < 0) throw IOException("Incomplete line")
+            line.toString().removeSuffix("\r")
+        }
+    }
 
     /**
      * Sets the socket read timeout in milliseconds (`SO_TIMEOUT`).
@@ -50,10 +67,15 @@ class LineTextChannel @Throws(IOException::class) constructor(private val socket
      */
     @Throws(IOException::class)
     fun writeLine(line: String) {
+        if (line.length > maxLineCharacters || line.contains('\n') || line.contains('\r')) {
+            throw IOException("Invalid line size or delimiter")
+        }
         synchronized(writer) {
-            writer.write(line)
-            writer.newLine()
-            writer.flush()
+            SocketDeadlines.within(socket, 10_000) {
+                writer.write(line)
+                writer.newLine()
+                writer.flush()
+            }
         }
     }
 

@@ -21,6 +21,7 @@ data class FileTransferClientRequest(
     val recipientId: String,
     val sessionPassword: String,
     val file: Path,
+    val authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? = null,
 ) {
     init {
         Objects.requireNonNull(host, "host must not be null")
@@ -33,4 +34,5 @@ data class FileTransferClientRequest(
         require(senderId.isNotBlank()) { "senderId must not be blank" }
         require(recipientId.isNotBlank()) { "recipientId must not be blank" }
     }
+    override fun toString(): String = "FileTransferClientRequest[host=$host, port=$port, senderId=$senderId, recipientId=$recipientId, file=$file, sessionPassword=<redacted>]"
 }

@@ -1,400 +1,247 @@
 package com.shterneregen.securelan.webrtc.service.impl
 
-import com.shterneregen.securelan.common.model.rtc.RtcSessionMode
-import com.shterneregen.securelan.common.model.rtc.RtcSessionState
-import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
-import com.shterneregen.securelan.common.model.rtc.RtcSignalType
-import com.shterneregen.securelan.webrtc.event.RtcDataMessageEvent
-import com.shterneregen.securelan.webrtc.event.RtcEvent
-import com.shterneregen.securelan.webrtc.event.RtcRuntimeWarningEvent
-import com.shterneregen.securelan.webrtc.event.RtcStateChangedEvent
-import com.shterneregen.securelan.webrtc.runtime.NoOpRtcEngine
-import com.shterneregen.securelan.webrtc.runtime.RtcEngine
-import com.shterneregen.securelan.webrtc.runtime.RtcEngineProvider
-import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus
-import com.shterneregen.securelan.webrtc.service.RtcEventPublisher
-import com.shterneregen.securelan.webrtc.service.RtcSessionRequest
-import com.shterneregen.securelan.webrtc.service.RtcSessionService
-import com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot
-import com.shterneregen.securelan.webrtc.service.RtcSignalingGateway
-import java.util.Locale
-import java.util.Objects
+import com.shterneregen.securelan.common.model.rtc.*
+import com.shterneregen.securelan.webrtc.event.*
+import com.shterneregen.securelan.webrtc.runtime.*
+import com.shterneregen.securelan.webrtc.service.*
 import java.util.Optional
 import java.util.UUID
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Consumer
 
-/**
- * Standard implementation of [RtcSessionService] managing WebRTC session lifecycle transitions,
- * background thread execution, lazy engine initialization, signaling routing, and state publishing.
- */
+/** Single-call FSM with explicit inbound consent, peer binding and serialized bounded native IO. */
 open class DefaultRtcSessionService : RtcSessionService {
     private val eventPublisher: RtcEventPublisher
     private val signalingGateway: RtcSignalingGateway
-    private val rtcExecutor: ExecutorService
-    private val engineLock = Any()
-    private val rtcEngine = AtomicReference(UNINITIALIZED_ENGINE)
-    private val currentSession = AtomicReference<RtcSessionSnapshot?>()
+    private val rtcExecutor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(128),
+        { task -> Thread(task, "securelan-rtc").apply { isDaemon = true } })
+    private val timers = ScheduledThreadPoolExecutor(1) { task ->
+        Thread(task, "securelan-rtc-timeout").apply { isDaemon = true }
+    }.apply { removeOnCancelPolicy = true }
+    private val current = AtomicReference<RtcSessionSnapshot?>()
+    @Volatile private var engine: RtcEngine? = null
+    private val retiredSessions = linkedSetOf<String>()
+    private var pendingOffer: RtcSignalEnvelope? = null
+    private val pendingIce = mutableListOf<RtcSignalEnvelope>()
+    private var setupTimer: ScheduledFuture<*>? = null
+    private var outgoing = false
+    private var answerReceived = false
+    private var candidateCount = 0
+    private var closed = false
+    private var setupTimeoutMillis = 30_000L
 
-    /**
-     * Constructs a session service with lazy default [RtcEngine] initialization.
-     *
-     * @param eventPublisher publisher for outgoing [RtcEvent] notifications.
-     * @param signalingGateway gateway for routing outbound signaling envelopes over chat.
-     */
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway) {
-        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher must not be null")
-        this.signalingGateway = Objects.requireNonNull(signalingGateway, "signalingGateway must not be null")
-        rtcExecutor = createRtcExecutor()
+        this.eventPublisher = eventPublisher
+        this.signalingGateway = signalingGateway
     }
 
-    /**
-     * Constructs a session service with an explicitly provided [RtcEngine] (primarily for testing).
-     *
-     * @param eventPublisher publisher for outgoing [RtcEvent] notifications.
-     * @param signalingGateway gateway for routing outbound signaling envelopes over chat.
-     * @param rtcEngine predefined RTC engine instance.
-     */
-    constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, rtcEngine: RtcEngine) {
-        this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher must not be null")
-        this.signalingGateway = Objects.requireNonNull(signalingGateway, "signalingGateway must not be null")
-        rtcExecutor = createRtcExecutor()
-        this.rtcEngine.set(Objects.requireNonNull(rtcEngine, "rtcEngine must not be null"))
+    constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, rtcEngine: RtcEngine) :
+        this(eventPublisher, signalingGateway) { engine = rtcEngine }
+
+    constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, rtcEngine: RtcEngine, setupTimeoutMillis: Long) :
+        this(eventPublisher, signalingGateway, rtcEngine) {
+        require(setupTimeoutMillis in 1..300_000)
+        this.setupTimeoutMillis = setupTimeoutMillis
     }
 
-    override fun runtimeStatus(): RtcRuntimeStatus = rtcEngine.get().status()
+    override fun runtimeStatus(): RtcRuntimeStatus = engine?.status() ?: RtcRuntimeStatus.unavailable("RTC initializes after a call is accepted.")
+    override fun currentSession(): Optional<RtcSessionSnapshot> = Optional.ofNullable(current.get())
 
-    override fun currentSession(): Optional<RtcSessionSnapshot> = Optional.ofNullable(currentSession.get())
-
+    @Synchronized
     override fun startSession(request: RtcSessionRequest): RtcSessionSnapshot {
-        validateRequest(request)
-
-        closeExistingSessionBeforeStarting(request.remotePeer())
-
-        val sessionId = UUID.randomUUID().toString()
-        val snapshot = RtcSessionSnapshot(
-            sessionId,
-            request.localPeer(),
-            request.remotePeer(),
-            request.mode(),
-            request.dataChannelLabel(),
-            RtcSessionState.NEGOTIATING,
-            buildRequestMessage(request.mode()),
-        )
-        currentSession.set(snapshot)
-        publishState(snapshot)
-
-        executeOnRtcThread {
-            val engine = ensureRtcEngine()
-            val status = engine.status()
-            if (!status.available) {
-                markUnavailable(sessionId, status.message)
-                return@executeOnRtcThread
-            }
-
-            engine.startSession(
-                sessionId,
-                request.localPeer(),
-                request.remotePeer(),
-                request.mode(),
-                request.dataChannelLabel(),
-                request.audioCaptureDeviceId(),
-                request.videoCaptureDeviceId(),
-                Consumer(::sendSignal),
-                Consumer(::forwardEvent),
-            )
+        check(!closed) { "RTC service is closed" }
+        require(request.localPeer().isNotBlank() && request.remotePeer().isNotBlank()) { "Connect chat and select a peer first" }
+        if (active(current.get())) closeCurrentSession()
+        val snapshot = RtcSessionSnapshot(UUID.randomUUID().toString(), request.localPeer(), request.remotePeer(),
+            request.mode(), request.dataChannelLabel(), RtcSessionState.NEGOTIATING, "Preparing call")
+        outgoing = true
+        answerReceived = false
+        candidateCount = 0
+        publish(snapshot)
+        armSetupTimeout(snapshot.sessionId!!)
+        execute {
+            if (!matches(snapshot.sessionId)) return@execute
+            val runtime = ensureEngine()
+            if (!runtime.status().available) { failUnavailable(snapshot.sessionId, runtime.status().message); return@execute }
+            runtime.startSession(snapshot.sessionId, snapshot.localPeer, snapshot.remotePeer, snapshot.mode,
+                snapshot.dataChannelLabel, request.audioCaptureDeviceId(), request.videoCaptureDeviceId(),
+                Consumer(::sendSignal), Consumer(::forwardEvent))
         }
-
         return snapshot
     }
 
+    @Synchronized
     override fun acceptInboundSignal(localPeer: String?, signal: RtcSignalEnvelope?) {
-        if (signal == null) {
+        if (closed || localPeer.isNullOrBlank() || signal == null || signal.toPeer().isBlank() ||
+            !signal.toPeer().equals(localPeer, true) || signal.fromPeer().isBlank() ||
+            signal.sessionId().length !in 1..128 || signal.sdp().length > 48_000 ||
+            signal.iceCandidate().length > 4096 || signal.dataChannelLabel().length > 128) return
+        if (signal.sessionId() in retiredSessions) return
+        val existing = current.get()
+        if (signal.type() == RtcSignalType.OFFER) {
+            if (active(existing)) {
+                if (existing!!.sessionId != signal.sessionId()) sendControl(RtcSignalEnvelope.hangup(
+                    signal.sessionId(), localPeer, signal.fromPeer(), signal.mode(), signal.dataChannelLabel(), "Busy"))
+                return
+            }
+            outgoing = false
+            answerReceived = false
+            candidateCount = 0
+            pendingIce.clear()
+            pendingOffer = signal
+            publish(RtcSessionSnapshot(signal.sessionId(), localPeer, signal.fromPeer(), signal.mode(),
+                signal.dataChannelLabel(), RtcSessionState.INCOMING, "Incoming call from " + signal.fromPeer()))
+            armSetupTimeout(signal.sessionId())
             return
         }
-        if (localPeer.isNullOrBlank() || !signal.targets(localPeer)) {
-            return
-        }
-
-        val snapshot = currentSession.updateAndGet { existing ->
-            if (existing != null && existing.sessionId == signal.sessionId()) {
-                existing
-            } else {
-                RtcSessionSnapshot(
-                    signal.sessionId(),
-                    localPeer,
-                    signal.fromPeer(),
-                    signal.mode(),
-                    signal.dataChannelLabel(),
-                    RtcSessionState.CONNECTING,
-                    "Inbound ${signal.type().name.lowercase(Locale.getDefault()).replace('_', ' ')} from ${signal.fromPeer()}",
-                )
+        if (!active(existing) || existing!!.sessionId != signal.sessionId() ||
+            existing.remotePeer != signal.fromPeer() || existing.mode != signal.mode() ||
+            existing.dataChannelLabel != signal.dataChannelLabel()) return
+        when (signal.type()) {
+            RtcSignalType.HANGUP, RtcSignalType.ERROR -> finish(existing, signal.message().ifBlank { "Remote peer ended the call" }, false)
+            RtcSignalType.ANSWER -> {
+                if (!outgoing || answerReceived || existing.state !in setOf(RtcSessionState.NEGOTIATING, RtcSessionState.CONNECTING)) return
+                answerReceived = true
+                dispatch(signal)
             }
-        } ?: return
-        publishState(snapshot)
-
-        if (signal.type() == RtcSignalType.HANGUP) {
-            val closedSnapshot = withState(
-                snapshot,
-                RtcSessionState.CLOSED,
-                signal.message().ifBlank { "Remote peer closed the realtime session" },
-            )
-            currentSession.set(closedSnapshot)
-            publishState(closedSnapshot)
-
-            executeOnRtcThread {
-                val engine = rtcEngine.get()
-                if (engine !== UNINITIALIZED_ENGINE && engine.status().available) {
-                    engine.closeSession(signal.sessionId(), Consumer(::forwardEvent))
-                }
+            RtcSignalType.ICE_CANDIDATE -> {
+                if (++candidateCount > 256) { finish(existing, "Too many ICE candidates", true); return }
+                if (existing.state == RtcSessionState.INCOMING) pendingIce.add(signal) else dispatch(signal)
             }
-            return
-        }
-
-        executeOnRtcThread {
-            val engine = ensureRtcEngine()
-            val status = engine.status()
-            if (!status.available) {
-                eventPublisher.publish(RtcRuntimeWarningEvent(status.message))
-                return@executeOnRtcThread
-            }
-            engine.handleRemoteSignal(signal, Consumer(::sendSignal), Consumer(::forwardEvent))
+            else -> Unit
         }
     }
 
+    @Synchronized
+    override fun acceptIncomingSession(sessionId: String): Boolean {
+        val snapshot = current.get() ?: return false
+        val offer = pendingOffer ?: return false
+        if (closed || snapshot.sessionId != sessionId || snapshot.state != RtcSessionState.INCOMING) return false
+        pendingOffer = null
+        val candidates = pendingIce.toList()
+        pendingIce.clear()
+        publish(withState(snapshot, RtcSessionState.NEGOTIATING, "Accepted incoming call"))
+        execute {
+            if (!matches(sessionId)) return@execute
+            val runtime = ensureEngine()
+            if (!runtime.status().available) { failUnavailable(sessionId, runtime.status().message); return@execute }
+            runtime.handleRemoteSignal(offer, Consumer(::sendSignal), Consumer(::forwardEvent))
+            candidates.forEach { if (matches(sessionId)) runtime.handleRemoteSignal(it, Consumer(::sendSignal), Consumer(::forwardEvent)) }
+        }
+        return true
+    }
+
+    private fun dispatch(signal: RtcSignalEnvelope) = execute {
+        if (matches(signal.sessionId())) engine?.handleRemoteSignal(signal, Consumer(::sendSignal), Consumer(::forwardEvent))
+    }
+
+    @Synchronized
     override fun sendDataMessage(payload: String?) {
-        val snapshot = currentSession.get()
-        if (snapshot == null) {
-            eventPublisher.publish(RtcRuntimeWarningEvent("No active realtime session."))
-            return
-        }
-
-        eventPublisher.publish(RtcDataMessageEvent(snapshot.sessionId, snapshot.remotePeer, true, payload))
-
-        executeOnRtcThread {
-            val engine = ensureRtcEngine()
-            val status = engine.status()
-            if (!status.available) {
-                eventPublisher.publish(RtcRuntimeWarningEvent(status.message))
-                return@executeOnRtcThread
-            }
-            engine.sendData(snapshot.sessionId, payload, Consumer(::forwardEvent))
-        }
+        val snapshot = current.get() ?: return
+        if (snapshot.state != RtcSessionState.CONNECTED || payload == null || payload.toByteArray(Charsets.UTF_8).size > 64 * 1024) return
+        execute { if (matches(snapshot.sessionId)) engine?.sendData(snapshot.sessionId, payload, Consumer(::forwardEvent)) }
     }
 
+    @Synchronized
     override fun closeCurrentSession() {
-        val snapshot = currentSession.get() ?: return
-
-        val closingSnapshot = withState(snapshot, RtcSessionState.CLOSING, "Closing realtime session")
-        currentSession.set(closingSnapshot)
-        publishState(closingSnapshot)
-
-        sendSignal(
-            RtcSignalEnvelope.hangup(
-                snapshot.sessionId ?: "",
-                snapshot.localPeer ?: "",
-                snapshot.remotePeer ?: "",
-                snapshot.mode ?: RtcSessionMode.DATA,
-                snapshot.dataChannelLabel ?: "",
-                "Session closed by local peer",
-            ),
-        )
-
-        executeOnRtcThread {
-            val engine = rtcEngine.get()
-            if (engine !== UNINITIALIZED_ENGINE && engine.status().available) {
-                engine.closeSession(snapshot.sessionId, Consumer(::forwardEvent))
-            }
-        }
-
-        val closedSnapshot = withState(snapshot, RtcSessionState.CLOSED, "Realtime session closed")
-        currentSession.set(closedSnapshot)
-        publishState(closedSnapshot)
+        val snapshot = current.get() ?: return
+        if (active(snapshot)) finish(snapshot, "Session closed by local peer", true)
     }
 
+    @Synchronized
+    private fun finish(snapshot: RtcSessionSnapshot, reason: String, notify: Boolean) {
+        retire(snapshot.sessionId)
+        setupTimer?.cancel(false)
+        pendingOffer = null
+        pendingIce.clear()
+        publish(withState(snapshot, RtcSessionState.CLOSING, reason))
+        if (notify) sendControl(RtcSignalEnvelope.hangup(snapshot.sessionId.orEmpty(), snapshot.localPeer.orEmpty(), snapshot.remotePeer.orEmpty(),
+            snapshot.mode ?: RtcSessionMode.DATA, snapshot.dataChannelLabel.orEmpty(), reason))
+        publish(withState(snapshot, RtcSessionState.CLOSED, reason))
+        execute { engine?.closeSession(snapshot.sessionId, Consumer(::forwardEvent)) }
+    }
+
+    private fun armSetupTimeout(id: String) {
+        setupTimer?.cancel(false)
+        setupTimer = timers.schedule({
+            synchronized(this) {
+                val snapshot = current.get()
+                if (snapshot?.sessionId == id && snapshot.state != RtcSessionState.CONNECTED && active(snapshot)) finish(snapshot, "Call timed out", true)
+            }
+        }, setupTimeoutMillis, TimeUnit.MILLISECONDS)
+    }
+
+    @Synchronized
     override fun close() {
+        if (closed) return
         closeCurrentSession()
-
-        try {
-            rtcExecutor.submit {
-                val engine = rtcEngine.get()
-                if (engine !== UNINITIALIZED_ENGINE) {
-                    try {
-                        engine.close()
-                    } catch (error: Throwable) {
-                        eventPublisher.publish(RtcRuntimeWarningEvent("Failed to close RTC engine: ${rootMessage(error)}"))
-                    }
-                }
-            }
-        } catch (_: RejectedExecutionException) {
-            // already shutting down
-        } finally {
-            rtcExecutor.shutdown()
-        }
+        closed = true
+        timers.shutdownNow()
+        execute { engine?.close() }
+        rtcExecutor.shutdown()
     }
 
-    private fun closeExistingSessionBeforeStarting(nextRemotePeer: String) {
-        val existing = currentSession.get() ?: return
-        if (existing.state == RtcSessionState.CLOSED || existing.state == RtcSessionState.FAILED || existing.state == RtcSessionState.UNAVAILABLE) {
-            return
-        }
-
-        sendSignal(
-            RtcSignalEnvelope.hangup(
-                existing.sessionId ?: "",
-                existing.localPeer ?: "",
-                existing.remotePeer ?: "",
-                existing.mode ?: RtcSessionMode.DATA,
-                existing.dataChannelLabel ?: "",
-                "Starting a new realtime session with $nextRemotePeer",
-            ),
-        )
-
-        executeOnRtcThread {
-            val engine = rtcEngine.get()
-            if (engine !== UNINITIALIZED_ENGINE && engine.status().available) {
-                engine.closeSession(existing.sessionId, Consumer(::forwardEvent))
-            }
-        }
-    }
-
-    private fun validateRequest(request: RtcSessionRequest) {
-        Objects.requireNonNull(request, "request must not be null")
-        if (request.localPeer().isBlank()) {
-            throw IllegalArgumentException("Connect chat first so the local nickname is known")
-        }
-        if (request.remotePeer().isBlank()) {
-            throw IllegalArgumentException("Remote peer nickname is required for realtime sessions")
-        }
-    }
-
-    private fun sendSignal(signal: RtcSignalEnvelope) {
-        signalingGateway.send(signal)
-    }
-
+    @Synchronized
     private fun forwardEvent(event: RtcEvent) {
+        val snapshot = current.get()
         if (event is RtcStateChangedEvent) {
-            currentSession.updateAndGet { existing ->
-                if (existing == null || existing.sessionId != event.sessionId || isTerminalSnapshot(existing)) {
-                    existing
-                } else {
-                    RtcSessionSnapshot(
-                        existing.sessionId,
-                        existing.localPeer,
-                        existing.remotePeer,
-                        existing.mode,
-                        existing.dataChannelLabel,
-                        event.state,
-                        event.message,
-                    )
-                }
+            if (!active(snapshot) || snapshot!!.sessionId != event.sessionId || snapshot.remotePeer != event.remotePeer) return
+            if (event.state == RtcSessionState.CONNECTED) setupTimer?.cancel(false)
+            current.set(withState(snapshot, event.state, event.message))
+            if (!active(current.get())) { retire(snapshot.sessionId); execute { engine?.closeSession(snapshot.sessionId, Consumer(::forwardEvent)) } }
+        } else {
+            // Native callbacks from a previous/closed room must not restore stale media state.
+            val id = when (event) {
+                is RtcDataMessageEvent -> event.sessionId
+                is RtcAudioLevelEvent -> event.sessionId
+                is RtcVideoFrameEvent -> event.sessionId()
+                else -> null
             }
+            if (id != null && (!active(snapshot) || snapshot?.sessionId != id)) return
         }
         eventPublisher.publish(event)
     }
 
-    private fun isTerminalSnapshot(snapshot: RtcSessionSnapshot): Boolean = when (snapshot.state) {
-        RtcSessionState.CLOSED,
-        RtcSessionState.FAILED,
-        RtcSessionState.UNAVAILABLE,
-        -> true
-        else -> false
+    @Synchronized private fun sendSignal(signal: RtcSignalEnvelope) {
+        val snapshot = current.get() ?: return
+        if (!active(snapshot) || snapshot.sessionId != signal.sessionId() || snapshot.remotePeer != signal.toPeer() || snapshot.localPeer != signal.fromPeer()) return
+        sendControl(signal)
     }
-
-    private fun publishState(snapshot: RtcSessionSnapshot) {
-        eventPublisher.publish(
-            RtcStateChangedEvent(
-                snapshot.sessionId,
-                snapshot.remotePeer,
-                snapshot.mode,
-                snapshot.state,
-                snapshot.message,
-            ),
-        )
+    private fun sendControl(signal: RtcSignalEnvelope) { runCatching { signalingGateway.send(signal) } }
+    private fun retire(id: String?) {
+        if (id != null) retiredSessions.add(id)
+        while (retiredSessions.size > 256) retiredSessions.remove(retiredSessions.first())
     }
-
-    private fun withState(snapshot: RtcSessionSnapshot, state: RtcSessionState, message: String?): RtcSessionSnapshot =
-        RtcSessionSnapshot(
-            snapshot.sessionId,
-            snapshot.localPeer,
-            snapshot.remotePeer,
-            snapshot.mode,
-            snapshot.dataChannelLabel,
-            state,
-            message,
-        )
-
-    private fun buildRequestMessage(mode: RtcSessionMode): String = when (mode) {
-        RtcSessionMode.DATA -> "Preparing RTCDataChannel session"
-        RtcSessionMode.AUDIO -> "Preparing audio call"
-        RtcSessionMode.VIDEO -> "Preparing video stream"
-        RtcSessionMode.AUDIO_VIDEO -> "Preparing audio/video call"
+    private fun matches(id: String?): Boolean = current.get().let { it?.sessionId == id && active(it) }
+    private fun active(snapshot: RtcSessionSnapshot?): Boolean = snapshot != null && snapshot.state !in
+        setOf(RtcSessionState.IDLE, RtcSessionState.CLOSED, RtcSessionState.CLOSING, RtcSessionState.FAILED, RtcSessionState.UNAVAILABLE)
+    private fun ensureEngine(): RtcEngine = engine ?: RtcEngineProvider.createDefault().also { engine = it }
+    private fun publish(snapshot: RtcSessionSnapshot) {
+        current.set(snapshot)
+        eventPublisher.publish(RtcStateChangedEvent(snapshot.sessionId, snapshot.remotePeer, snapshot.mode, snapshot.state, snapshot.message))
     }
-
-    private fun createRtcExecutor(): ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "securelan-rtc").apply { isDaemon = true }
-    }
-
-    private fun executeOnRtcThread(action: Runnable) {
-        try {
-            rtcExecutor.submit {
-                try {
-                    action.run()
-                } catch (error: Throwable) {
-                    eventPublisher.publish(RtcRuntimeWarningEvent("RTC operation failed: ${rootMessage(error)}"))
-                }
-            }
-        } catch (error: RejectedExecutionException) {
-            eventPublisher.publish(RtcRuntimeWarningEvent("RTC executor is shutting down: ${rootMessage(error)}"))
-        }
-    }
-
-    private fun ensureRtcEngine(): RtcEngine {
-        var existing = rtcEngine.get()
-        if (existing !== UNINITIALIZED_ENGINE) {
-            return existing
-        }
-
-        synchronized(engineLock) {
-            existing = rtcEngine.get()
-            if (existing !== UNINITIALIZED_ENGINE) {
-                return existing
-            }
-
-            val created = RtcEngineProvider.createDefault()
-            rtcEngine.set(created)
-            return created
-        }
-    }
-
-    private fun markUnavailable(sessionId: String?, message: String?) {
-        currentSession.updateAndGet { existing ->
-            if (existing == null || existing.sessionId != sessionId) {
-                existing
-            } else {
-                withState(existing, RtcSessionState.UNAVAILABLE, message)
-            }
-        }
-
-        val snapshot = currentSession.get()
-        if (snapshot != null && snapshot.sessionId == sessionId) {
-            publishState(snapshot)
-        }
+    private fun withState(s: RtcSessionSnapshot, state: RtcSessionState?, message: String?) =
+        RtcSessionSnapshot(s.sessionId, s.localPeer, s.remotePeer, s.mode, s.dataChannelLabel, state, message)
+    @Synchronized private fun failUnavailable(id: String?, message: String?) {
+        val snapshot = current.get() ?: return
+        if (snapshot.sessionId == id && active(snapshot)) publish(withState(snapshot, RtcSessionState.UNAVAILABLE, message))
         eventPublisher.publish(RtcRuntimeWarningEvent(message))
     }
-
-    private fun rootMessage(error: Throwable): String {
-        var current = error
-        while (current.cause != null && current.cause !== current) {
-            current = current.cause!!
+    private fun execute(action: () -> Unit) {
+        try { rtcExecutor.execute { try { action() } catch (_: Exception) {
+            synchronized(this) { current.get()?.takeIf(::active)?.let { finish(it, "RTC operation failed", true) } }
+            eventPublisher.publish(RtcRuntimeWarningEvent("RTC operation failed"))
+        } } }
+        catch (_: RejectedExecutionException) {
+            if (!rtcExecutor.isShutdown) synchronized(this) {
+                current.get()?.let { retire(it.sessionId); publish(withState(it, RtcSessionState.FAILED, "RTC operation queue is full")) }
+                pendingOffer = null
+                pendingIce.clear()
+                setupTimer?.cancel(false)
+                rtcExecutor.queue.clear()
+                runCatching { rtcExecutor.execute { runCatching { engine?.close() }; engine = null } }
+            }
         }
-        return current::class.java.simpleName + (current.message?.let { ": $it" } ?: "")
-    }
-
-    private companion object {
-        private val UNINITIALIZED_ENGINE: RtcEngine = NoOpRtcEngine("RTC runtime will initialize on first realtime action.")
     }
 }

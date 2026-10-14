@@ -12,39 +12,30 @@ import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import com.shterneregen.securelan.androidclient.model.SecureLanPorts
-import com.shterneregen.securelan.androidclient.protocol.CryptoCompat
 import com.shterneregen.securelan.androidclient.protocol.FileTransferMetadata
 import com.shterneregen.securelan.androidclient.protocol.FileTransferSession
 import com.shterneregen.securelan.androidclient.transfer.numberedTransferFileName
 import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
-import java.net.ServerSocket
-import java.net.SocketTimeoutException
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 import java.util.Locale
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 /**
- * Receives files sequentially on the IO dispatcher using the desktop encrypted transfer protocol.
+ * Uses bounded concurrent V2 handshakes and one authorized receive slot for Downloads publication.
  * Publishes complete files to Downloads and removes unfinished targets on failure or the next start.
  * Callbacks run on the IO thread; [close] unblocks both the listener and current transfer.
  */
 class SecureFileReceiver(private val context: Context) {
-    @Volatile private var listener: ServerSocket? = null
-    @Volatile private var accepted: java.net.Socket? = null
+    @Volatile private var listener: com.shterneregen.securelan.common.net.transport.TcpServer? = null
+    private val activeSockets = java.util.concurrent.ConcurrentHashMap.newKeySet<java.net.Socket>()
+    private val receiveSlot = java.util.concurrent.Semaphore(1)
     private val pending = context.getSharedPreferences("pending_received_files", Context.MODE_PRIVATE)
 
     fun close() {
-        runCatching { listener?.close() }
-        runCatching { accepted?.close() }
+        listener?.close()
+        activeSockets.forEach { runCatching { it.close() } }
     }
 
     suspend fun serve(
@@ -54,119 +45,80 @@ class SecureFileReceiver(private val context: Context) {
         onProgress: (metadata: FileTransferMetadata, received: Long) -> Unit,
         onCompleted: (metadata: FileTransferMetadata, receivedFile: ReceivedFile) -> Unit,
         onError: (String, Throwable?) -> Unit,
-    ) = withContext(Dispatchers.IO) {
-        require(port in 1..65535) { "File receiver port out of range: $port" }
-        val coroutine = currentCoroutineContext()
-        val watchdog = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "file-receiver-watchdog").apply { isDaemon = true } }
-        watchdog.scheduleWithFixedDelay({ if (!coroutine.isActive) close() }, 100, 100, TimeUnit.MILLISECONDS)
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? = null,
+    ): Unit = withContext(Dispatchers.IO) {
+        require(port in 1..65535) { "File receiver port out of range" }
+        check(receiveSlot.tryAcquire()) { "Previous receive is still closing" }
+        try { cleanupPending() } finally { receiveSlot.release() }
+        val server = com.shterneregen.securelan.common.net.transport.TcpServer(
+            "android-file-receiver", com.shterneregen.securelan.common.net.transport.ServerSocketFactory.systemDefault(), 4,
+        )
+        listener = server
+        val budget = com.shterneregen.securelan.filetransfer.protocol.FileReceiveBudget()
         try {
-            cleanupPending()
-            ServerSocket(port).use { serverSocket ->
-                listener = serverSocket
-                serverSocket.soTimeout = ACCEPT_TIMEOUT_MS
-                while (isActive) {
-                    try {
-                        val socket = serverSocket.accept()
-                        accepted = socket
-                        socket.soTimeout = 60_000
-                        try {
-                            coroutine.ensureActive()
-                            socket.use { handleClient(it, sessionPassword, onStarted, onProgress, onCompleted) }
-                        } catch (error: Exception) {
-                            coroutine.ensureActive()
-                            onError("Incoming file transfer failed", error)
-                        } finally {
-                            accepted = null
-                            socket.close()
-                        }
-                    } catch (_: SocketTimeoutException) {
-                    }
-                }
-            }
+            server.start(port, { socket ->
+                activeSockets.add(socket)
+                try {
+                    socket.soTimeout = 60_000
+                    socket.use { handleClient(it, sessionPassword, authentication, budget, onStarted, onProgress, onCompleted) }
+                } catch (error: Exception) {
+                    onError("Incoming file transfer failed", error)
+                } finally { activeSockets.remove(socket) }
+            }, { _, error -> onError("File receiver unavailable", error) })
+            kotlinx.coroutines.awaitCancellation()
         } finally {
-            close()
-            listener = null
-            watchdog.shutdownNow()
+            server.close()
+            if (listener === server) { close(); listener = null }
         }
     }
 
     private fun handleClient(
         socket: java.net.Socket,
         sessionPassword: String,
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication?,
+        budget: com.shterneregen.securelan.filetransfer.protocol.FileReceiveBudget,
         onStarted: (FileTransferMetadata) -> Unit,
         onProgress: (metadata: FileTransferMetadata, received: Long) -> Unit,
         onCompleted: (metadata: FileTransferMetadata, receivedFile: ReceivedFile) -> Unit,
     ) {
         FileTransferSession(socket).use { session ->
-            val metadata = performServerHandshake(session, sessionPassword)
-            require(metadata.fileSize >= 0) { "Invalid file length" }
-            session.writeEncryptedText(ACCEPTED)
-            onStarted(metadata)
-
-            val target = createReceiveTarget(metadata.fileName)
-            var received = 0L
-            var published = false
-            try {
-                target.openOutputStream().use { output ->
-                    while (true) {
-                        val chunk = session.readEncryptedBytes()
-                        if (chunk.isEmpty()) break
-                        validateTransferLength(metadata.fileSize, Math.addExact(received, chunk.size.toLong()), false, legacyUnknown = true)
-                        output.write(chunk)
-                        received += chunk.size
-                        onProgress(metadata, received)
-                    }
-                }
-                validateTransferLength(metadata.fileSize, received, true, legacyUnknown = true)
-                val receivedFile = target.publish()
-                published = true
-                onCompleted(
-                    metadata.copy(fileName = receivedFile.savedPath.substringAfterLast('/'), fileSize = received),
-                    receivedFile,
-                )
-                session.writeEncryptedText(DONE)
-            } finally {
-                if (!published) target.discard()
+            val handshake = com.shterneregen.securelan.filetransfer.service.impl.SecureFileTransferHandshake()
+            val metadata = handshake.performServerHandshake(session, sessionPassword, authentication)
+            check(metadata.fileSize in 0..MAX_FILE_BYTES) { "File exceeds receive budget" }
+            check(Environment.getExternalStorageDirectory().usableSpace >= metadata.fileSize + 128L * 1024 * 1024) { "Insufficient receive storage" }
+            if (!receiveSlot.tryAcquire()) {
+                handshake.rejectTransfer(session, "Receiver busy")
+                return
             }
+            try {
+                budget.reserve(metadata.fileSize).use { quota ->
+                handshake.acceptTransfer(session)
+                onStarted(metadata)
+                val target = createReceiveTarget(metadata.fileName)
+                var received = 0L
+                var published = false
+                try {
+                    target.openOutputStream().use { output ->
+                        while (true) {
+                            val chunk = session.readEncryptedBytes()
+                            if (chunk.isEmpty()) break
+                            validateTransferLength(metadata.fileSize, Math.addExact(received, chunk.size.toLong()), false)
+                            output.write(chunk)
+                            received += chunk.size
+                            onProgress(metadata, received)
+                        }
+                    }
+                    validateTransferLength(metadata.fileSize, received, true)
+                    val receivedFile = target.publish()
+                    published = true
+                    quota.commit()
+                    session.writeEncryptedText(DONE)
+                    onCompleted(metadata.copy(fileName = receivedFile.savedPath.substringAfterLast('/'), fileSize = received), receivedFile)
+                } finally { if (!published) target.discard() }
+                }
+            } finally { receiveSlot.release() }
         }
     }
-
-    private fun performServerHandshake(session: FileTransferSession, expectedPassword: String): FileTransferMetadata {
-        val protocol = session.readUtf()
-        require(protocol == PROTOCOL) { "Unsupported file transfer protocol" }
-        val keyPair = CryptoCompat.generateRsaKeyPair()
-        session.writeUtf(Base64.getEncoder().encodeToString(CryptoCompat.encodePublicKey(keyPair.public)))
-        val encryptedPayload = session.readBytes()
-        val payload = String(CryptoCompat.rsaDecrypt(encryptedPayload, keyPair.private), StandardCharsets.UTF_8)
-        val parts = payload.split("\n", limit = 7)
-        require(parts.size == 2 || parts.size == 7) { "Malformed secure file transfer payload" }
-        require(parts[0] == expectedPassword) { "Wrong transfer password" }
-        val sessionKey = CryptoCompat.decodeSecretKey(Base64.getDecoder().decode(parts[1]))
-        session.enableTransportEncryption(sessionKey)
-        return if (parts.size == 2) decodeCompactMetadata(session.readEncryptedText()) else decodeMetadata(parts)
-    }
-
-    private fun decodeMetadata(parts: List<String>): FileTransferMetadata {
-        val compactParts = parts[2].split("|", limit = 5)
-        if (compactParts.size == 5) {
-            return decodeCompactMetadata(parts[2])
-        }
-        return FileTransferMetadata(parts[2], parts[3], parts[4], parts[5], parts[6].toLong())
-    }
-
-    private fun decodeCompactMetadata(value: String): FileTransferMetadata {
-        val compactParts = value.split("|", limit = 5)
-        require(compactParts.size == 5) { "Malformed compact metadata payload" }
-        return FileTransferMetadata(
-            decodeCompactText(compactParts[0]),
-            decodeCompactText(compactParts[1]),
-            decodeCompactText(compactParts[2]),
-            decodeCompactText(compactParts[3]),
-            compactParts[4].toLong(),
-        )
-    }
-
-    private fun decodeCompactText(value: String): String = String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
 
     // This recovery journal must reach disk before file IO; asynchronous apply() can lose it on process death.
     private fun createReceiveTarget(fileName: String): ReceiveTarget {
@@ -313,7 +265,7 @@ class SecureFileReceiver(private val context: Context) {
     }
 
     companion object {
-        private const val PROTOCOL = "SECURE_FILE_TRANSFER_V1"
+        private const val MAX_FILE_BYTES = 1024L * 1024 * 1024
         private const val ACCEPTED = "ACCEPTED"
         private const val DONE = "DONE"
         private const val ACCEPT_TIMEOUT_MS = 1000

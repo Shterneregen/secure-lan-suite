@@ -35,6 +35,36 @@ fun SecureLanComposeApp(
                         controller.update { it.copy(themeMode = it.themeMode.next()) }
                     },
                 )
+                val incoming = hostAdapter?.mediaVoiceState?.currentSession?.takeIf {
+                    it.state == com.shterneregen.securelan.common.model.rtc.RtcSessionState.INCOMING
+                }
+                if (incoming != null) {
+                    androidx.compose.material.AlertDialog(
+                        onDismissRequest = hostAdapter::closeRealtimeSession,
+                        title = { androidx.compose.material.Text("Incoming call from ${incoming.remotePeer}") },
+                        text = {
+                            androidx.compose.material.Text(
+                                when (incoming.mode) {
+                                    com.shterneregen.securelan.common.model.rtc.RtcSessionMode.AUDIO_VIDEO -> "Accept to share your camera and microphone."
+                                    com.shterneregen.securelan.common.model.rtc.RtcSessionMode.VIDEO -> "Accept to share your camera."
+                                    com.shterneregen.securelan.common.model.rtc.RtcSessionMode.AUDIO -> "Accept to share your microphone."
+                                    else -> "Accept to open a direct data connection."
+                                },
+                            )
+                        },
+                        confirmButton = {
+                            com.shterneregen.securelan.desktop.compose.ui.components.CompactButton(
+                                onClick = { hostAdapter.acceptIncomingRealtimeSession(incoming.sessionId.orEmpty()) },
+                            ) { androidx.compose.material.Text("Accept") }
+                        },
+                        dismissButton = {
+                            com.shterneregen.securelan.desktop.compose.ui.components.CompactButton(
+                                onClick = hostAdapter::closeRealtimeSession,
+                                tone = com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone.DESTRUCTIVE,
+                            ) { androidx.compose.material.Text("Decline") }
+                        },
+                    )
+                }
             }
         }
     }

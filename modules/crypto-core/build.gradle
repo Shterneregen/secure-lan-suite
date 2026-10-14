@@ -4,4 +4,5 @@ plugins {
 
 dependencies {
     api project(':modules:common-model')
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
 }

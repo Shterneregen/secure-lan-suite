@@ -86,6 +86,17 @@ or frame-conversion problems.
 
 ## Signaling flow
 
+Signaling travels over the V2 password-authenticated chat record channel. The room
+host can read SDP/ICE; this is not end-to-end encrypted signaling. See the
+[security protocol](security-protocol.md) for its trust boundaries.
+
+Desktop incoming offers wait for an explicit Accept/Decline decision before native
+session creation or microphone/camera capture. The incoming dialog identifies the
+requested media, and dismissal declines. Setup times out after 30 seconds; busy,
+foreign, unexpected and retired-session signals cannot replace the active call.
+Disconnect, host stop and peer departure close realtime resources. Native audio
+recording/playout stops after the last session releases its device lease.
+
 ```mermaid
 sequenceDiagram
     participant UI as Desktop UI

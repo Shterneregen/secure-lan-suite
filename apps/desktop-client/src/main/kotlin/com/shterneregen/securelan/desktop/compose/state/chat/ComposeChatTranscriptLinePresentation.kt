@@ -19,8 +19,17 @@ data class ComposeChatTranscriptLinePresentation(
     val displayTime: String = formatComposeChatTimestamp(timestamp)
 
     companion object {
-        fun from(message: ComposeChatMessage, localNickname: String = ""): ComposeChatTranscriptLinePresentation =
-            from(message.displayText, localNickname, message.timestamp).copy(actionPath = message.actionPath)
+        fun from(message: ComposeChatMessage, localNickname: String = ""): ComposeChatTranscriptLinePresentation {
+            if (message.transcriptLine == null && !message.system) {
+                val local = message.sender.equals(localNickname, ignoreCase = true)
+                return ComposeChatTranscriptLinePresentation(
+                    if (local) ComposeChatTranscriptLineKind.USER_LOCAL else ComposeChatTranscriptLineKind.USER_REMOTE,
+                    if (local) "You" else message.sender,
+                    message.text, message.timestamp,
+                )
+            }
+            return from(message.displayText, localNickname, message.timestamp).copy(actionPath = message.actionPath)
+        }
 
         fun from(line: String, localNickname: String = "", timestamp: Instant = Instant.now()): ComposeChatTranscriptLinePresentation {
             val trimmed = line.trim()

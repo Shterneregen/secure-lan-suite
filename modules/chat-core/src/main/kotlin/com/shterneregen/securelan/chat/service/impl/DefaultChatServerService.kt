@@ -47,6 +47,7 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
     private val activeSessions = ConcurrentHashMap.newKeySet<ChatSocketSession>()
     private val running = AtomicBoolean(false)
     private val tcpServer = TcpServer("chat-server")
+    private val membershipLock = Any()
 
     private lateinit var config: ChatServerConfig
 
@@ -115,10 +116,12 @@ class DefaultChatServerService(eventPublisher: ChatEventPublisher) : ChatServerS
             }
             session.setReadTimeout(0)
             val nickname = response.nickname()
-            broadcastService.syncPeers(session, nickname)
-            broadcastService.addClient(nickname, session, response.capabilities())
-            broadcastService.publishUserJoined(nickname, response.capabilities())
-            eventPublisher.publish(ChatUserJoinedEvent(nickname, session.remoteAddress(), response.capabilities()))
+            synchronized(membershipLock) {
+                broadcastService.syncPeers(session, nickname)
+                broadcastService.addClient(nickname, session, response.capabilities())
+                broadcastService.publishUserJoined(nickname, response.capabilities())
+            }
+            eventPublisher.publish(ChatUserJoinedEvent(nickname, session.remoteAddress(), response.capabilities(), serverSide = true))
             ServerChatSessionHandler(
                 session = session,
                 nickname = nickname,

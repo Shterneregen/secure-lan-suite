@@ -78,6 +78,42 @@ class AndroidQuickShareServerTest {
         }
     }
 
+    @Test(timeout = 15_000)
+    fun cleanupDoesNotDeleteTheFileUntilTheAdmittedDownloadCloses() {
+        server().use { server ->
+            val payload = ByteArray(4 * 1024 * 1024) { (it % 251).toByte() }
+            val item = server.createFile("payload.bin", 1, 1) { payload.inputStream() }
+            Socket().use { socket ->
+                socket.receiveBufferSize = 16 * 1024
+                socket.connect(java.net.InetSocketAddress("127.0.0.1", server.port))
+                socket.soTimeout = 5000
+                socket.getOutputStream().write("GET /s/${item.id}/download HTTP/1.1\r\nHost: localhost\r\n\r\n".toByteArray())
+                val input = socket.getInputStream()
+                val header = StringBuilder()
+                while (!header.endsWith("\r\n\r\n")) { val next = input.read(); check(next >= 0); header.append(next.toChar()) }
+                assertTrue(header.startsWith("HTTP/1.1 200 OK"))
+                assertTrue(server.items().isEmpty())
+                assertTrue(temporary.root.listFiles().orEmpty().any { it.name.startsWith("quick-share-") })
+                org.junit.Assert.assertArrayEquals(payload, input.readBytes())
+            }
+            val end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+            while (System.nanoTime() < end && temporary.root.listFiles().orEmpty().any { it.name.startsWith("quick-share-") }) Thread.sleep(10)
+            assertFalse(temporary.root.listFiles().orEmpty().any { it.name.startsWith("quick-share-") })
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun malformedAndRevokedPathsNeverReturnPayload() {
+        server().use { server ->
+            val share = server.createText("secret", 1, null)
+            assertTrue(request(server, "/s/${share.id}/text/extra").startsWith("HTTP/1.1 404"))
+            server.stopShare(share.id)
+            assertFalse(request(server, "/s/${share.id}/text").substringAfter("\r\n\r\n").contains("secret"))
+            val replacement = server.createText("new", 1, null)
+            assertFalse(share.id == replacement.id)
+        }
+    }
+
     private fun server() = AndroidQuickShareServer(temporary.root) { error("Text shares do not read documents") }
 
     private fun request(server: AndroidQuickShareServer, path: String): String = Socket("127.0.0.1", server.port).use { socket ->
