@@ -2,7 +2,8 @@ package com.shterneregen.securelan.filetransfer.service.impl
 
 import com.shterneregen.securelan.common.net.transport.ClientSocketFactory
 import com.shterneregen.securelan.common.net.transport.TransportEndpoint
-import com.shterneregen.securelan.crypto.CryptoServices
+import com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake
+import com.shterneregen.securelan.filetransfer.protocol.TransferRejectedException
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
@@ -17,6 +18,8 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferOperationUpda
 import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
 import com.shterneregen.securelan.filetransfer.service.FileTransferPhase
 import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferStreams
+import com.shterneregen.securelan.filetransfer.protocol.TransferSourceException
 import java.io.IOException
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -37,17 +40,15 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Individual transfers can be executed synchronously via [sendFile] or managed through [createOperation].
  *
  * @param eventPublisher Publisher emitting file transfer lifecycle events.
- * @param cryptoServices Crypto provider instance (defaults to [CryptoServices.createDefault]).
  * @param clientSocketFactory Optional socket factory for custom transport layers or proxies.
  * @param timeouts Configured timeouts for connect, acceptance, inactivity, and confirmation phases.
  */
 class DefaultFileTransferClientService @JvmOverloads constructor(
     private val eventPublisher: FileTransferEventPublisher,
-    cryptoServices: CryptoServices = CryptoServices.createDefault(),
     private val clientSocketFactory: ClientSocketFactory? = null,
     private val timeouts: FileTransferTimeouts = FileTransferTimeouts(),
 ) : FileTransferClientService {
-    private val handshake = SecureFileTransferHandshake(cryptoServices)
+    private val handshake = SecureFileTransferHandshake()
 
     /**
      * Sends a file synchronously to the recipient specified in [request].
@@ -133,7 +134,6 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
             lateinit var outcome: FileTransferOutcome
             try {
                 checkOpen()
-                if (request.authentication == null) throw IOException("Authenticated room file identity is required")
                 update()
                 size = Files.size(request.file)
                 val input = Files.newInputStream(request.file)
@@ -171,27 +171,19 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
                     arm(timeouts.inactivityMillis)
                     update(FileTransferPhase.SENDING)
                     val progress = ThrottledFileTransferProgressPublisher(eventPublisher, transferId, size!!, true)
-                    val buffer = ByteArray(16 * 1024)
-                    while (true) {
-                        checkOpen()
-                        failureKind = FileTransferFailureKind.SOURCE
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        if (read.toLong() > size!! - transferred) throw IOException("Source size changed")
+                    FileTransferStreams.send(input, size!!, { chunk ->
                         failureKind = FileTransferFailureKind.CONNECTION
-                        session.writeEncryptedBytes(buffer.copyOf(read))
-                        transferred += read
+                        session.writeEncryptedBytes(chunk)
+                    }, ::checkOpen) { sent ->
+                        transferred = sent
                         arm(timeouts.inactivityMillis)
                         progress.report(transferred)
                         update()
                     }
-                    if (transferred != size) throw IOException("Source size changed")
-                    // Even a failed EOF write can have reached the receiver; do not promise non-delivery.
-                    eofSubmitted = true
-                    session.writeEncryptedBytes(ByteArray(0))
-                    arm(timeouts.confirmationMillis)
-                    update(FileTransferPhase.WAITING_FOR_CONFIRMATION)
-                    if (session.readEncryptedText() != "DONE") throw IOException("Missing transfer confirmation")
+                    FileTransferStreams.finishSending(session, { eofSubmitted = true }, {
+                        arm(timeouts.confirmationMillis)
+                        update(FileTransferPhase.WAITING_FOR_CONFIRMATION)
+                    })
                 }
                 outcome = FileTransferOutcome.Completed(transferId)
             } catch (error: CancellationException) {
@@ -203,6 +195,7 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
                         timedOut || error is SocketTimeoutException -> FileTransferFailureKind.TIMEOUT
                         closed -> FileTransferFailureKind.ABORTED
                         error is TransferRejectedException -> FileTransferFailureKind.REJECTED
+                        error is TransferSourceException -> FileTransferFailureKind.SOURCE
                         else -> failureKind
                     }
                 }

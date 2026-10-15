@@ -1,6 +1,5 @@
-package com.shterneregen.securelan.filetransfer.service.impl
+package com.shterneregen.securelan.filetransfer.protocol
 
-import com.shterneregen.securelan.crypto.CryptoServices
 import com.shterneregen.securelan.crypto.protocol.PasswordAuthenticatedHandshake
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication
@@ -12,14 +11,14 @@ import java.io.IOException
  * and the channel binding. A password holder cannot impersonate another room participant.
  * Acceptance is outside the short cryptographic handshake deadline.
  */
-class SecureFileTransferHandshake(@Suppress("UNUSED_PARAMETER") cryptoServices: CryptoServices = CryptoServices.createDefault()) {
+class SecureFileTransferHandshake {
     fun performClientHandshake(
         session: FileTransferSession, senderId: String, recipientId: String, sessionPassword: String,
         fileName: String, fileSize: Long, transferId: String,
-        authentication: FileTransferPeerAuthentication? = null,
+        authentication: FileTransferPeerAuthentication,
         awaitingAcceptance: () -> Unit = {},
     ): FileTransferMetadata {
-        val auth = authentication ?: throw IOException("Authenticated room file identity is required")
+        val auth = authentication
         if (senderId != auth.localId) throw IOException("Invalid local file sender")
         val metadata = FileTransferMetadata(transferId, senderId, recipientId, fileName, fileSize)
         session.handshake {
@@ -41,9 +40,9 @@ class SecureFileTransferHandshake(@Suppress("UNUSED_PARAMETER") cryptoServices: 
     }
 
     fun performServerHandshake(
-        session: FileTransferSession, expectedPassword: String, authentication: FileTransferPeerAuthentication? = null,
+        session: FileTransferSession, expectedPassword: String, authentication: FileTransferPeerAuthentication,
     ): FileTransferMetadata = session.handshake {
-        val auth = authentication ?: throw IOException("Authenticated room file identity is required")
+        val auth = authentication
         if (session.readUtf() != PROTOCOL) throw IOException("Unsupported file transfer protocol; update both clients")
         val keys = PasswordAuthenticatedHandshake.server(expectedPassword, PROTOCOL, session::writeUtf, session::readUtf)
         session.enableTransportEncryption(keys, false)
@@ -70,4 +69,4 @@ class SecureFileTransferHandshake(@Suppress("UNUSED_PARAMETER") cryptoServices: 
     }
 }
 
-internal class TransferRejectedException(message: String = "File transfer rejected by receiver") : IOException(message)
+class TransferRejectedException(message: String = "File transfer rejected by receiver") : IOException(message)

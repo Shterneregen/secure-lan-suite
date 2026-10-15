@@ -18,6 +18,20 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 - Persist desktop profile, appearance, network, media, download, window, and diagnostics settings.
 - Build and use the experimental Android client for room hosting/joining, encrypted chat, and file transfer. Android supports adaptive layouts, light/dark themes, and English/Russian/system UI languages.
 
+## Implemented client capabilities
+
+| Capability | Desktop | Android |
+| --- | --- | --- |
+| Discovery, room host/join, V2 chat and encrypted files | Implemented | Implemented, experimental client |
+| LAN WebRTC voice / one-to-one video | Implemented / experimental video | Implemented, experimental voice/video |
+| Browser file/text Quick Share, TTL/count/revoke, QR | Implemented | Implemented, experimental |
+| RTC data channels | Implemented | Unavailable |
+| BMP steganography | Implemented | Unavailable |
+| Screen sharing | Unavailable | Unavailable |
+
+Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
+and [realtime architecture](docs/webrtc-architecture.md) for platform owners and remaining hardware checks.
+
 ## Security and compatibility
 
 Chat and encrypted files use the mutually authenticated V2 protocol on both
@@ -46,8 +60,9 @@ for peer identities, replay protection, receiver budgets and Quick Share boundar
 - `modules/common-model` and `modules/common-net` - shared models and networking utilities
 - `modules/crypto-core` - encryption, hashing, signatures, key and file-crypto workflows
 - `modules/chat-core` - secure rooms, handshake, messaging, signaling, and peer discovery
-- `modules/file-transfer-core` - encrypted file transfer and Quick Share services
-- `modules/webrtc-core`, `modules/audio-core`, and `modules/webcam-core` - realtime sessions and media profiles
+- `modules/file-transfer-core` - encrypted V2 file transfer, stream contracts, and shared Quick Share models/HTML; HTTP backends belong to the applications
+- `modules/webrtc-core` - desktop realtime services and private native runtime
+- `modules/audio-core` and `modules/webcam-core` - standalone profile DTOs; their default services are not used by capture
 - `modules/stego-core` - UI-independent BMP steganography services
 
 ## Screenshots
@@ -88,6 +103,6 @@ for peer identities, replay protection, receiver budgets and Quick Share boundar
   and Android background execution is not guaranteed.
 - Voice/video behavior and device selection still need broader cross-device validation; video calls and preview remain experimental.
 - Desktop steganography exposes text workflows for uncompressed 24-bit/32-bit BMP images. Binary payloads are supported by the core API but not by the UI.
-- Android remains an experimental interoperability client and does not yet support voice, WebRTC data channels, camera/video, steganography, screen sharing, or Quick Share.
+- Android implements experimental LAN voice/video calls and temporary browser Quick Share. Microphone/camera, Bluetooth, background/PiP and OEM behavior still require physical-device qualification. RTC data channels, steganography and screen sharing are unavailable on Android.
 - Large file transfer over `RTCDataChannel` and screen sharing are not implemented.
 - Windows EXE packaging is Windows-only because `jpackage` does not cross-build Windows installers.

@@ -10,8 +10,9 @@ and file-transfer stack.
 - `webrtc-core` owns session orchestration and state, signaling handlers,
   diagnostics, media-device discovery, camera preview, and native
   `webrtc-java` integration.
-- `audio-core` and `webcam-core` provide media defaults and profile hints; they
-  are not separate realtime transports.
+- `audio-core` and `webcam-core` contain standalone profile DTOs/default services,
+  with no runtime dependencies. Active capture does not call those services;
+  `VideoCapabilitySelector` selects supported camera modes inside `webrtc-core`.
 - `desktop-client` owns call controls, media settings, video presentation, and
   conversion of runtime events into UI state.
 
@@ -129,3 +130,31 @@ private keys, passwords, or raw sensitive payloads.
   presented as stable.
 - Preview and capture flags may move from JVM properties to explicit
   experimental settings when that flow is designed.
+
+## Application and native boundaries
+
+The supported desktop surface is `RtcSessionService`, `RtcMediaDeviceService`,
+`RtcEngine`, runtime status and events. `runtime.video` classes are implementation
+helpers, including Java-public helpers needed across runtime packages. The vendor
+SDK is an implementation dependency and remains on the desktop runtime classpath.
+Media preview and service `close()` initiate cleanup without detecting AWT or
+waiting for native disposal. Shutdown/tests may explicitly call
+`awaitClosed(timeoutMillis)` off the UI thread.
+
+Desktop `DesktopMediaController` owns preview handles/generations; frame delivery
+retains only the latest frame with one pending UI task per stream. Room, tool and
+media owners feed the existing adapter facade, whose state transitions run on EDT.
+
+Android `MainViewModelFactory` constructs an injected per-workspace graph.
+`AndroidCallSession` owns media, audio routing, incoming notifications and the
+foreground call request callbacks. UI observes `CallUiState` and actions. Rotation,
+Home and PiP retain the ViewModel owner; finishing its Activity clears the owner,
+ends its call and stops foreground call work. Background survival after Activity
+finish is not a supported policy. The room host service has its own lifecycle.
+Physical-device rotation/PiP/finish checks remain separate from JVM tests.
+
+Android signaling admits at most 64 queued signals and one in-flight write.
+Retiring a call cancels its pending/in-flight negotiation traffic. Busy/unsupported
+replies are rate limited separately; a final HANGUP is retained as terminal traffic
+with a one-second send budget and an observable failure message. OFFER remains
+ordered before that session's ICE. This local policy does not add a wire ACK.

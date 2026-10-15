@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
 @Composable
 fun CallHost(viewModel: MainViewModel, activity: MainActivity, content: @Composable ((String, Boolean) -> Unit) -> Unit) {
     val context = LocalContext.current
-    val call by viewModel.calls.state.collectAsState()
+    val call by viewModel.callState.collectAsState()
     var pendingPeer by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingVideo by rememberSaveable { mutableStateOf(false) }
@@ -52,7 +52,7 @@ fun CallHost(viewModel: MainViewModel, activity: MainActivity, content: @Composa
         if (mic) {
             if (pendingVideo && !camera) Toast.makeText(context, R.string.call_camera_denied, Toast.LENGTH_LONG).show()
             val id = pendingId
-            if (id != null) viewModel.calls.accept(id, pendingVideo && camera)
+            if (id != null) viewModel.acceptCall(id, pendingVideo && camera)
             else pendingPeer?.let { peer -> viewModel.startCall(peer, pendingVideo && camera) }
         } else microphoneExplanation = true
         pendingPeer = null; pendingId = null
@@ -112,15 +112,16 @@ fun CallButtons(peers: Map<String, Boolean>, connected: Boolean, onCall: (String
 @Composable
 private fun CallScreen(vm: MainViewModel, call: CallState, pip: Boolean, accept: (Boolean) -> Unit) {
     val context = LocalContext.current
-    val local by vm.callMedia.localVideo.collectAsState()
-    val remote by vm.callMedia.remoteVideo.collectAsState()
-    val muted by vm.callMedia.muted.collectAsState()
-    val camera by vm.callMedia.cameraEnabled.collectAsState()
-    val front by vm.callMedia.frontCamera.collectAsState()
-    val speaker by vm.callAudio.speaker.collectAsState()
+    val ui by vm.callUiState.collectAsState()
+    val local = ui.localVideo
+    val remote = ui.remoteVideo
+    val muted = ui.muted
+    val camera = ui.cameraEnabled
+    val front = ui.frontCamera
+    val speaker = ui.speaker
     var controls by remember(call.id) { mutableStateOf(true) }
     var seconds by remember(call.id) { mutableLongStateOf(0) }
-    BackHandler(enabled = !pip) { if (call.ongoing) vm.calls.end() else vm.calls.dismiss() }
+    BackHandler(enabled = !pip) { if (call.ongoing) vm.endCall() else vm.dismissCall() }
     DisposableEffect(call.id, call.phase) {
         val notificationsAllowed = androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
         val ringtone = if (call.phase == CallPhase.INCOMING && !notificationsAllowed) runCatching {
@@ -152,6 +153,7 @@ private fun CallScreen(vm: MainViewModel, call: CallState, pip: Boolean, accept:
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.8f)).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(call.peer, color = Color.White, style = MaterialTheme.typography.titleLarge)
+                ui.signalingError?.let { Text(it, color = Color.White) }
                 val status = when (call.phase) {
                     CallPhase.INCOMING -> R.string.call_incoming
                     CallPhase.OUTGOING -> R.string.call_outgoing
@@ -182,10 +184,10 @@ private fun CallScreen(vm: MainViewModel, call: CallState, pip: Boolean, accept:
                         CallControl(if (speaker) Icons.AutoMirrored.Filled.VolumeUp else Icons.Default.Hearing, R.string.call_speaker, vm::toggleCallSpeaker)
                     }
                 }
-                if (call.ongoing) Button(onClick = vm.calls::end, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                if (call.ongoing) Button(onClick = vm::endCall, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
                     Icon(Icons.Default.CallEnd, null); Spacer(Modifier.width(8.dp))
                     Text(stringResource(if (call.phase == CallPhase.INCOMING) R.string.call_reject else R.string.call_end))
-                } else Button(onClick = vm.calls::dismiss) { Text(stringResource(R.string.call_close)) }
+                } else Button(onClick = vm::dismissCall) { Text(stringResource(R.string.call_close)) }
             }
         }
     }

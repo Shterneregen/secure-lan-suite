@@ -10,6 +10,7 @@ package com.shterneregen.securelan.common.model
  * @throws IllegalArgumentException if [port] is outside the valid range.
  */
 @JvmRecord
+@Deprecated("Historical model; use current wire or platform presentation models")
 data class PeerInfo(
     val id: String,
     val username: String,

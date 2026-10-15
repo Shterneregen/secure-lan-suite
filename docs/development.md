@@ -120,7 +120,7 @@ transfer. The batch stays bound to its original recipient even if another peer
 is selected in the workspace.
 
 There is one unfinished outgoing batch per application. Files use independent
-`SECURE_FILE_TRANSFER_V1` connections in order; a batch does not add metadata or
+`SECURE_FILE_TRANSFER_V2` connections in order; a batch does not add metadata or
 messages to the chat protocol. The next file waits for the receiver's final
 `DONE`, not merely 100% local byte progress. A failure pauses the queue for an
 explicit retry, skip, or finish action. **Stop after current file** leaves the
@@ -241,3 +241,22 @@ pinned release. Windows ARM64 is not supported by that release. Native packaging
 does not cross-build. Windows uses ICO, Linux PNG, and macOS ICNS generated from
 the existing PNG icons; macOS ZIPs preserve the `.app` bundle. Linux/macOS device
 and packaged runtime behavior still require validation on those platforms.
+
+## Application state and error contracts
+
+Desktop room startup/join and chat socket writes run on IO workers. Startup rolls
+back only newly acquired resources on failure; repeat attempts do not need an app
+restart. A chat draft clears only after a successful local write of its captured
+revision. This does not acknowledge server or peer delivery. Steganography owns one
+worker; closing/clearing its tool invalidates late UI results. Already completed
+file writes are not undone by closing the tool.
+
+Desktop preferences still apply immediately. An ordered background writer preserves
+write order, and Settings displays an unsaved/retry state after persistence failure.
+The existing file schema and atomic replacement are unchanged. UI adapter history
+retains its latest 200 events, separately from file logs.
+
+Quick Share HTTP backends live in `apps/desktop-client` and `apps/android-client`;
+`file-transfer-core` contains only shared models/HTML and V2 transport. Desktop JDK
+provider limits are configured at application startup before creating HTTP servers.
+Quick Share remains temporary unauthenticated plain HTTP for trusted LANs.

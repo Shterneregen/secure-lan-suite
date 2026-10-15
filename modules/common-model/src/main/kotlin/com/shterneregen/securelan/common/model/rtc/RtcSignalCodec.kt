@@ -32,7 +32,7 @@ class RtcSignalCodec private constructor() {
         }
 
         /**
-         * Parses a signalling [payload]. Missing fields use the envelope's default values;
+         * Parses an explicit version-1 signalling [payload]. Other missing fields use defaults;
          * unknown fields and tokens without an equals sign are ignored.
          *
          * @throws IllegalArgumentException if a field has an invalid enum, number, or Base64 value.
@@ -46,8 +46,11 @@ class RtcSignalCodec private constructor() {
                 if (splitIndex <= 0) {
                     continue
                 }
-                fields[token.substring(0, splitIndex)] = token.substring(splitIndex + 1)
+                val key = token.substring(0, splitIndex)
+                require(key != "v" || !fields.containsKey(key)) { "Duplicate RTC signaling version" }
+                fields[key] = token.substring(splitIndex + 1)
             }
+            require(fields["v"] == "1") { "Unsupported or missing RTC signaling version" }
             return RtcSignalEnvelope(
                 decode(fields["sessionId"]),
                 decode(fields["fromPeer"]),

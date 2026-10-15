@@ -1,8 +1,6 @@
 package com.shterneregen.securelan.androidclient
 
 import android.annotation.SuppressLint
-import android.app.Application
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -14,7 +12,6 @@ import android.os.Build
 import android.os.LocaleList
 import android.provider.OpenableColumns
 import androidx.core.content.edit
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.shterneregen.securelan.androidclient.call.*
 import com.shterneregen.securelan.androidclient.model.AppLanguage
@@ -30,15 +27,8 @@ import com.shterneregen.securelan.androidclient.model.ThemeMode
 import com.shterneregen.securelan.androidclient.model.TransferDirection
 import com.shterneregen.securelan.androidclient.model.TransferRecord
 import com.shterneregen.securelan.androidclient.model.TransferResult
-import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
 import com.shterneregen.securelan.androidclient.network.AndroidHostServiceState
-import com.shterneregen.securelan.androidclient.network.AndroidLocalNetworkAddressResolver
 import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
-import com.shterneregen.securelan.androidclient.network.AndroidQuickShareServer
-import com.shterneregen.securelan.androidclient.network.PeerDiscoveryRepository
-import com.shterneregen.securelan.androidclient.network.SecureChatClient
-import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
-import com.shterneregen.securelan.androidclient.network.SecureFileSender
 import com.shterneregen.securelan.androidclient.protocol.WireMessageType
 import com.shterneregen.securelan.androidclient.transfer.BatchStatus
 import com.shterneregen.securelan.androidclient.transfer.TransferCoordinator
@@ -49,7 +39,6 @@ import com.shterneregen.securelan.androidclient.transfer.TransferSource
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
 import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,30 +57,31 @@ import kotlin.time.Duration.Companion.milliseconds
  * Configuration changes retain this state. Preferences persist settings, never the room password;
  * process death does not restore drafts or network operations. Hosting belongs to its service.
  */
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferences = application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+class MainViewModel(private val dependencies: MainDependencies) : androidx.lifecycle.ViewModel() {
+    private val preferences = dependencies.preferences
     private val randomNicknameService = DefaultRandomNicknameService()
-    private val discoveryRepository = PeerDiscoveryRepository()
-    private val chatClient = SecureChatClient()
+    private val chatClient = dependencies.chat
     private val authenticatedFilePeers = java.util.concurrent.ConcurrentHashMap<String, String>()
-    private val fileSender = SecureFileSender(application.contentResolver, application.cacheDir)
-    private val fileReceiver = SecureFileReceiver(application)
-    private val localNetworkAddressResolver = AndroidLocalNetworkAddressResolver(application)
-    private val quickShareServer = AndroidQuickShareServer(application.contentResolver, application.cacheDir)
+    private val senderResource = lazy(dependencies.createSender)
+    private val receiverResource = lazy(dependencies.createReceiver)
+    private val quickShareResource = lazy(dependencies.createQuickShare)
+    private val fileSender by senderResource
+    private val fileReceiver by receiverResource
+    private val quickShareServer by quickShareResource
     private val _quickShares = MutableStateFlow<List<AndroidQuickShareItem>>(emptyList())
     val quickShares: StateFlow<List<AndroidQuickShareItem>> = _quickShares.asStateFlow()
     @Volatile var quickShareUrls: List<String> = emptyList(); private set
 
     fun createQuickShareText(text: String, minutes: Long, limit: Int?) {
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { quickShareServer.createText(text, minutes, limit) } }
+            runCatching { withContext(dependencies.ioDispatcher) { quickShareServer.createText(text, minutes, limit) } }
                 .onSuccess { refreshQuickShares() }
                 .onFailure { if (it !is kotlinx.coroutines.CancellationException) setError("Unable to create Quick Share link") }
         }
     }
     fun createQuickShareFile(uri: Uri, name: String, minutes: Long, limit: Int?) {
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { quickShareServer.createFile(uri, name, minutes, limit) } }
+            runCatching { withContext(dependencies.ioDispatcher) { quickShareServer.createFile(uri, name, minutes, limit) } }
                 .onSuccess { refreshQuickShares() }
                 .onFailure { if (it !is kotlinx.coroutines.CancellationException) setError("Unable to create Quick Share link") }
         }
@@ -139,31 +129,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
-    val callMedia = WebRtcCallMedia(application, viewModelScope)
-    private val incomingCallNotification = IncomingCallNotification(application)
-    val callAudio = AudioRouteManager(application) { calls.end() }
-    val calls: CallCoordinator = CallCoordinator(
-        scope = viewModelScope,
-        nickname = { _uiState.value.nickname },
-        available = { _uiState.value.connected },
-        send = chatClient::sendSignal,
-        media = callMedia,
-        prepare = { id, video ->
-            CallForegroundService.start(application, id, calls.state.value.peer, video, { calls.end() }, { toggleCallMute() })
-            callAudio.start(video)
-        },
-        release = { try { callAudio.stop() } finally { CallForegroundService.stop(application) } },
-        now = android.os.SystemClock::elapsedRealtime,
-    )
+    private val calls = dependencies.createCalls(viewModelScope, { _uiState.value.nickname }, { _uiState.value.connected }, chatClient::sendSignal)
+    val callState = calls.state
+    val callUiState = calls.uiState
 
     fun startCall(peer: String, video: Boolean) {
         val supportedVideo = _uiState.value.callPeers[peer] ?: return
         calls.start(peer, video && supportedVideo)
     }
-    fun toggleCallMute() { runCatching { callMedia.toggleMute() }.onFailure { calls.end() } }
-    fun toggleCallCamera() { runCatching { callMedia.toggleCamera() }.onFailure { calls.end() } }
-    fun switchCallCamera() { runCatching { callMedia.switchCamera() }.onFailure { calls.end() } }
-    fun toggleCallSpeaker() { runCatching { callAudio.toggleSpeaker() }.onFailure { calls.end() } }
+    fun acceptCall(id: String, video: Boolean) = calls.accept(id, video)
+    fun endCall() = calls.end()
+    fun dismissCall() = calls.dismiss()
+    fun toggleCallMute() = calls.toggleMute()
+    fun toggleCallCamera() = calls.toggleCamera()
+    fun switchCallCamera() = calls.switchCamera()
+    fun toggleCallSpeaker() = calls.toggleSpeaker()
 
     private var discoveryJob: Job? = null
     private var discoveryTimeoutJob: Job? = null
@@ -180,7 +160,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     init {
-        viewModelScope.launch { calls.state.collect { incomingCallNotification.update(it) } }
         createNotificationChannel()
         observeHostService()
         observeTransferQueue()
@@ -269,7 +248,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         discoveryJob = viewModelScope.launch {
             runCatching {
-                discoveryRepository.discoverPeers().collect { peer ->
+                dependencies.discover().collect { peer ->
                     if (peer.peerId == hostPeerId) return@collect
                     _uiState.update { state ->
                         val serverPeer = peer.copy(role = PeerRole.SERVER)
@@ -364,7 +343,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshLocalRoomAddresses() {
         localAddressRefreshJob?.cancel()
         localAddressRefreshJob = viewModelScope.launch {
-            val addresses = withContext(Dispatchers.IO) { localNetworkAddressResolver.resolve() }
+            val addresses = withContext(dependencies.ioDispatcher) { dependencies.resolveAddresses() }
             _uiState.update { state ->
                 if (state.localRoomAddresses == addresses) state else state.copy(localRoomAddresses = addresses)
             }
@@ -521,8 +500,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         addLog("Starting Android-hosted room on chat port $chatPort and file port $filePort")
         runCatching {
-            AndroidChatHostService.start(
-                context = getApplication(),
+            dependencies.host.start(
                 peerId = hostPeerId,
                 nickname = state.nickname.trim(),
                 password = state.sessionPassword,
@@ -553,7 +531,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(hostingStarting = false, status = "Stopping hosted room") }
         viewModelScope.launch {
             chatClient.disconnect()
-            AndroidChatHostService.stop(getApplication())
+            dependencies.host.stop()
             _uiState.update {
                 it.copy(
                     connected = false,
@@ -669,7 +647,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (uris.isEmpty()) return
         val token = transferCoordinator.selectionToken() ?: return
         viewModelScope.launch {
-            val sources = withContext(Dispatchers.IO) { uris.map { resolveTransferSource(it) } }
+            val sources = withContext(dependencies.ioDispatcher) { uris.map { resolveTransferSource(it) } }
             transferCoordinator.addSelection(token, sources)
         }
     }
@@ -769,7 +747,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             val serverPeer = state.selectedPeer
             val existingServerPeer = state.peers.firstOrNull { it.role == PeerRole.SERVER && it.nickname.equals(peerNickname, ignoreCase = true) }
-            val hostedParticipant = AndroidChatHostService.state.value.participants
+            val hostedParticipant = dependencies.host.state.value.participants
                 .firstOrNull { it.nickname.equals(peerNickname, ignoreCase = true) }
             val capabilities = PeerCapabilities.decode(encodedCapabilities)
             val peer = DiscoveredPeer(
@@ -849,12 +827,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun androidCapabilities(fileReceivePort: Int): PeerCapabilities = PeerCapabilities(
         PeerCapabilities.PLATFORM_ANDROID, APP_VERSION, true, fileReceivePort,
         supportsVoice = true,
-        supportsVideo = getApplication<Application>().packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY),
+        supportsVideo = dependencies.hasCamera(),
         deviceName = Build.MODEL ?: "Android device",
     )
 
     private fun resolveTransferSource(uri: Uri): TransferSource {
-        val resolver = getApplication<Application>().contentResolver
+        val resolver = dependencies.application().contentResolver
         var name = uri.lastPathSegment?.takeIf { it.isNotBlank() } ?: "selected-file"
         var size: Long? = null
         val resolved = runCatching {
@@ -975,22 +953,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun createNotificationChannel() {
-        val application = getApplication<Application>()
-        val manager = application.getSystemService(NotificationManager::class.java)
-        val localizedContext = localizedApplicationContext()
-        manager.createNotificationChannel(
-            NotificationChannel(
-                FILE_NOTIFICATION_CHANNEL,
-                localizedContext.getString(R.string.notification_channel_files),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ),
-        )
-    }
+    private fun createNotificationChannel() { dependencies.configureFileNotifications(_uiState.value.appLanguage) }
 
     private fun observeHostService() {
         viewModelScope.launch {
-            AndroidChatHostService.state.collect { hostState -> handleHostServiceState(hostState) }
+            dependencies.host.state.collect { hostState -> handleHostServiceState(hostState) }
         }
     }
 
@@ -1024,7 +991,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     hostedPeers.firstOrNull { it.nickname.equals(selected.nickname, ignoreCase = true) }
                 }
                 state.copy(
-                    sessionPassword = AndroidChatHostService.currentSessionPassword(),
+                    sessionPassword = dependencies.host.password(),
                     hosting = true,
                     hostingStarting = false,
                     hostChatPort = hostState.chatPort.toString(),
@@ -1040,7 +1007,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             startLocalAddressWatch()
             if (!previous.connected && !previous.connecting && hostConnectionAttemptedForPeerId != hostState.peerId) {
                 hostConnectionAttemptedForPeerId = hostState.peerId
-                connectToPeer(localPeer, AndroidChatHostService.currentSessionPassword(), hostState.filePort)
+                connectToPeer(localPeer, dependencies.host.password(), hostState.filePort)
             }
             return
         }
@@ -1119,10 +1086,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun postFileReceivedNotification(fileName: String, savedPath: String) {
         if (!_uiState.value.notificationsEnabled) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            getApplication<Application>().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            dependencies.application().checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) return
-        val application = getApplication<Application>()
+        val application = dependencies.application()
         val localizedContext = localizedApplicationContext()
         val intent = Intent(application, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -1144,7 +1111,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     @SuppressLint("AppBundleLocaleChanges") // Language splitting is disabled in android.bundle.language.
     private fun localizedApplicationContext(): Context {
-        val application = getApplication<Application>()
+        val application = dependencies.application()
         val locale = when (_uiState.value.appLanguage) {
             AppLanguage.SYSTEM -> return application
             AppLanguage.ENGLISH -> Locale.ENGLISH
@@ -1157,24 +1124,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
-        quickShareServer.close()
+        if (quickShareResource.isInitialized()) quickShareServer.close()
         calls.close()
-        incomingCallNotification.clear()
         discoveryJob?.cancel()
         discoveryTimeoutJob?.cancel()
         receiveJob?.cancel()
-        fileReceiver.close()
+        if (receiverResource.isInitialized()) fileReceiver.close()
         fileReceiverJob?.cancel()
         localAddressRefreshJob?.cancel()
         localAddressWatchJob?.cancel()
-        fileSender.close()
+        if (senderResource.isInitialized()) fileSender.close()
         chatClient.close()
-        fileReceiver.close()
         super.onCleared()
     }
 
     private companion object {
-        private const val APP_VERSION = "0.5.0"
+        private const val APP_VERSION = BuildConfig.VERSION_NAME
         private const val CLIENT_FILE_PORT_OFFSET = 1000
         private const val MAX_LOG_ENTRIES = 300
         private const val MAX_RECENT_TRANSFERS = 20
@@ -1186,7 +1151,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             TransferPhase.OUTCOME_UNKNOWN,
             TransferPhase.SKIPPED,
         )
-        private const val PREFERENCES_NAME = "secure_lan_preferences"
         private const val KEY_NICKNAME = "nickname"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_APP_LANGUAGE = "app_language"

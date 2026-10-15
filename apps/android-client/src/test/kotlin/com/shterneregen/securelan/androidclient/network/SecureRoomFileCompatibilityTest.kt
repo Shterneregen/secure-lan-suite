@@ -8,10 +8,10 @@ import com.shterneregen.securelan.chat.service.ChatServerConfig
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication
+import com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake
 import com.shterneregen.securelan.filetransfer.service.FileTransferAcceptanceHandler
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
-import com.shterneregen.securelan.filetransfer.service.impl.SecureFileTransferHandshake
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

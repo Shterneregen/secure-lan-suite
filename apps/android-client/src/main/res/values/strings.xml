@@ -219,4 +219,11 @@
     <string name="call_switch_camera">Switch camera</string>
     <string name="call_speaker">Toggle speakerphone / headset</string>
     <string name="call_app_settings">App settings</string>
+    <string name="transfer_failure_rejected">The recipient declined this file.</string>
+    <string name="transfer_failure_source">Source unavailable or changed. Select the file again.</string>
+    <string name="transfer_failure_protocol">Could not verify the transfer. Check the room and update both clients.</string>
+    <string name="transfer_failure_connection">Connection failed. Reconnect before retrying.</string>
+    <string name="transfer_failure_timeout">Transfer timed out. Check the connection before retrying.</string>
+    <string name="transfer_failure_aborted">Transfer stopped.</string>
+    <string name="transfer_failure_unknown">Confirmation missing; retrying may create a duplicate.</string>
 </resources>

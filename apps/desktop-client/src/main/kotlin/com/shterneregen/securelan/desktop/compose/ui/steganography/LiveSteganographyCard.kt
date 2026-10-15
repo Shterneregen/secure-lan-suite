@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.ui.steganography
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,7 +17,6 @@ import com.shterneregen.securelan.desktop.compose.util.openComposeFileChooser
 import com.shterneregen.securelan.desktop.compose.util.openInFileManager
 import com.shterneregen.securelan.desktop.compose.util.pasteImageFromSystemClipboard
 import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
-import java.nio.file.Files
 import java.nio.file.Path
 
 @Composable
@@ -25,6 +25,7 @@ internal fun LiveSteganographyCard(
     initialMode: ComposeSteganographyMode,
     recipient: DiscoveredPeer?,
 ) {
+    DisposableEffect(hostAdapter) { onDispose { hostAdapter.dismissSteganography() } }
     var mode by remember(initialMode) { mutableStateOf(initialMode) }
     var coverPath by remember { mutableStateOf(hostAdapter.stegoState.coverPathText) }
     var inputPath by remember { mutableStateOf(hostAdapter.stegoState.inputPathText) }
@@ -49,6 +50,7 @@ internal fun LiveSteganographyCard(
     )
 
     fun selectCover(path: Path) {
+        hostAdapter.dismissSteganography()
         val normalized = path.toAbsolutePath().normalize()
         coverPath = normalized.toString()
         outputPath = DesktopMainViewHelpers.suggestedStegoOutputPath(normalized).toString()
@@ -58,6 +60,7 @@ internal fun LiveSteganographyCard(
     }
 
     fun selectInput(path: Path) {
+        hostAdapter.dismissSteganography()
         inputPath = path.toAbsolutePath().normalize().toString()
         localStatus = null
     }
@@ -75,6 +78,7 @@ internal fun LiveSteganographyCard(
         state = stegoState,
         mode = mode,
         onModeChange = {
+            hostAdapter.dismissSteganography()
             mode = it
             localStatus = null
         },
@@ -92,6 +96,7 @@ internal fun LiveSteganographyCard(
         onInputSelected = ::selectInput,
         outputPath = outputPath,
         onOutputPathChange = {
+            hostAdapter.dismissSteganography()
             outputPath = it
             savedOutput = null
         },
@@ -110,17 +115,18 @@ internal fun LiveSteganographyCard(
         },
         message = message,
         onMessageChange = {
+            hostAdapter.dismissSteganography()
             message = it
             savedOutput = null
         },
         hidePassword = hidePassword,
-        onHidePasswordChange = { hidePassword = it },
+        onHidePasswordChange = { hostAdapter.dismissSteganography(); hidePassword = it },
         extractPassword = extractPassword,
-        onExtractPasswordChange = { extractPassword = it },
+        onExtractPasswordChange = { hostAdapter.dismissSteganography(); extractPassword = it },
         encrypt = encrypt,
-        onEncryptChange = { encrypt = it },
+        onEncryptChange = { hostAdapter.dismissSteganography(); encrypt = it },
         encryptedExtract = encryptedExtract,
-        onEncryptedExtractChange = { encryptedExtract = it },
+        onEncryptedExtractChange = { hostAdapter.dismissSteganography(); encryptedExtract = it },
         onHide = {
             val output = outputPath.ifBlank {
                 coverPath.trim().takeIf(String::isNotEmpty)
@@ -131,15 +137,15 @@ internal fun LiveSteganographyCard(
             }
             if (coverPath.isNotBlank() && output.isNotBlank()) {
                 localStatus = null
-                savedOutput = hostAdapter.hideStegoMessage(
+                hostAdapter.hideStegoMessage(
                     Path.of(coverPath),
                     Path.of(output),
                     message,
                     hidePassword.takeIf { encrypt },
-                )
-                savedOutput?.let {
-                    outputPath = it.toString()
-                    inputPath = it.toString()
+                ) { output ->
+                    savedOutput = output
+                    outputPath = output.toString()
+                    inputPath = output.toString()
                 }
             }
         },
@@ -185,9 +191,8 @@ internal fun LiveSteganographyCard(
                 } else {
                     Path.of("$selected.txt")
                 }.toAbsolutePath().normalize()
-                runCatching { Files.writeString(output, hostAdapter.stegoState.extractedMessage) }
-                    .onSuccess { localStatus = "Extracted message saved to ${output.fileName}." }
-                    .onFailure { localStatus = "Could not save extracted text: ${it.message ?: "unknown error"}" }
+                localStatus = null
+                hostAdapter.saveExtractedMessage(output)
             }
         },
         onClear = {

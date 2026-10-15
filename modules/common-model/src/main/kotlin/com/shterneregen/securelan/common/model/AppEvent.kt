@@ -11,6 +11,7 @@ import java.time.Instant
  * @throws IllegalArgumentException if [message] is blank.
  */
 @JvmRecord
+@Deprecated("Historical model; use current wire or platform presentation models")
 data class AppEvent(
     val type: AppEventType,
     val message: String,

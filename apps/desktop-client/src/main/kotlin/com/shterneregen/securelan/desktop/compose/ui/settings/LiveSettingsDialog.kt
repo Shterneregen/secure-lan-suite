@@ -63,6 +63,10 @@ internal fun LiveSettingsDialog(
         pages = SettingsPage.entries,
         onClose = onClose,
     ) { page ->
+        settingsController.persistenceError?.let { message ->
+            Text(message, color = MaterialTheme.colors.error)
+            CompactButton(onClick = settingsController::retryPersistence, enabled = !settingsController.saving) { Text("Retry saving settings") }
+        }
         when (page) {
             SettingsPage.GENERAL -> GeneralSettingsContent(hostAdapter, settingsController)
             SettingsPage.AUDIO_VIDEO -> LiveAudioVideoDevicesCard(hostAdapter = hostAdapter, peerState = peerState)

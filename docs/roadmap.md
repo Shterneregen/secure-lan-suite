@@ -26,17 +26,20 @@ and owning build files take precedence over this plan.
 
 Audio output enumeration, selection, persistence, and speaker testing are
 already implemented in desktop Audio & Video settings and are not roadmap work.
-Desktop steganography text workflows are also implemented.
+Desktop steganography text workflows are also implemented. Android voice/video
+and browser file/text Quick Share are implemented and experimental. Remaining
+acceptance includes physical-device media quality, permissions, Bluetooth,
+background/PiP and OEM lifecycle behavior; those are qualification work.
 
 ## Candidate work
 
 These items require a separate product decision before implementation:
 
-- Android voice, video, or RTC data-channel support;
+- Android RTC data-channel support;
 - chunked large-file transfer over `RTCDataChannel` with backpressure;
 - screen sharing through desktop capture;
 - video recording or standalone camera tooling;
-- Android steganography or browser Quick Share workflows;
+- Android steganography workflows;
 - a separate TLS transport for encrypted file transfer;
 - revival of standalone non-WebRTC audio transport.
 

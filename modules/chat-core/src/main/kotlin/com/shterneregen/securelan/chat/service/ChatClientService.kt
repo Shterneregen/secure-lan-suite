@@ -45,12 +45,13 @@ interface ChatClientService {
     /**
      * Sends a chat message to the server (which then broadcasts it to all connected peers).
      *
-     * Silently ignored if the client is not connected, [text] is `null`, or [text] is blank.
+     * Returns a typed rejection if disconnected or empty. WRITTEN means local socket write only;
+     * there is no recipient delivery acknowledgement.
      * On success, a [com.shterneregen.securelan.chat.event.ChatMessageSentEvent] is published.
      *
      * @param text The message text to send.
      */
-    fun sendMessage(text: String?)
+    fun sendMessage(text: String?): ChatSendOutcome
 
     /**
      * Sends a WebRTC signalling envelope to the server for routing to the addressed peer.

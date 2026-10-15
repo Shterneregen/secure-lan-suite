@@ -16,6 +16,18 @@ class TransferCoordinatorTest {
 
     private fun source(reference: String, size: Long? = 1L) = TransferSource(reference = reference, name = reference, size = size)
 
+    @Test fun `shared failure categories survive the Android batch boundary`() = runTest {
+        for (kind in com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind.entries) {
+            val coordinator = TransferCoordinator(this, { true }, { _, _, _ ->
+                throw com.shterneregen.securelan.filetransfer.service.FileTransferAttemptException(kind)
+            })
+            coordinator.beginSelection(recipient)
+            coordinator.addSelection(requireNotNull(coordinator.selectionToken()), listOf(source("a")))
+            coordinator.start(); advanceUntilIdle()
+            assertEquals(kind, coordinator.state.value.items.single().attempts.single().failureKind)
+        }
+    }
+
     @Test
     fun `draft deduplicates by source reference and preserves order`() = runTest {
         val coordinator = TransferCoordinator(this, { true }, { _, _, _ -> })

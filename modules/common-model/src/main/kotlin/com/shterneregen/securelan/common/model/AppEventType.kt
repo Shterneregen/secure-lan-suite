@@ -5,6 +5,7 @@ package com.shterneregen.securelan.common.model
  *
  * Events are emitted by various modules and consumed by the UI or logging layer.
  */
+@Deprecated("Historical model; use current wire or platform presentation models")
 enum class AppEventType {
     /** A general informational notification. */
     INFO,

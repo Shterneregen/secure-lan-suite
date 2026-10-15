@@ -4,6 +4,7 @@ import com.shterneregen.securelan.crypto.protocol.PeerIdentity
 import com.shterneregen.securelan.filetransfer.protocol.*
 import com.shterneregen.securelan.filetransfer.service.*
 import com.shterneregen.securelan.filetransfer.service.impl.*
+import com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -87,9 +88,11 @@ class FileTransferSecurityTest {
     @Test fun fileAuthorizationFailsClosedWithoutRoomIdentity() {
         val port = ServerSocket(0).use { it.localPort }
         val source = Files.writeString(directory.resolve("source.txt"), "payload")
-        assertThrows(IllegalStateException::class.java) {
-            DefaultFileTransferClientService({}).sendFile(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "password", source))
+        val constructor = FileTransferClientRequest::class.java.declaredConstructors.single { it.parameterCount == 7 }
+        val failure = assertThrows(java.lang.reflect.InvocationTargetException::class.java) {
+            constructor.newInstance("127.0.0.1", port, "alice", "bob", "password", source, null)
         }
+        assertTrue(failure.cause is NullPointerException)
     }
 
     @Test fun replayedFileChunkCannotProduceDoneAndPartialFileIsRemoved() = withServer { port, inbox, finished ->

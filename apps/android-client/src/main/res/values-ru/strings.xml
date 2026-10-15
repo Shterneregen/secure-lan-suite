@@ -228,4 +228,11 @@
     <string name="call_switch_camera">Переключить камеру</string>
     <string name="call_speaker">Громкая связь / гарнитура</string>
     <string name="call_app_settings">Настройки приложения</string>
+    <string name="transfer_failure_rejected">Получатель отклонил файл.</string>
+    <string name="transfer_failure_source">Исходный файл недоступен или изменился. Выберите его снова.</string>
+    <string name="transfer_failure_protocol">Не удалось проверить передачу. Проверьте комнату и обновите оба клиента.</string>
+    <string name="transfer_failure_connection">Соединение потеряно. Подключитесь снова перед повтором.</string>
+    <string name="transfer_failure_timeout">Время ожидания истекло. Проверьте соединение перед повтором.</string>
+    <string name="transfer_failure_aborted">Передача остановлена.</string>
+    <string name="transfer_failure_unknown">Нет подтверждения; повтор может создать копию файла.</string>
 </resources>

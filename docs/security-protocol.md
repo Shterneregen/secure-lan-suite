@@ -180,3 +180,17 @@ Desktop/Android device matrix. Those require device acceptance testing.
 Protocol references: [Bouncy Castle SRP-6a API](https://downloads.bouncycastle.org/java/docs/bcprov-jdk18on-javadoc/org/bouncycastle/crypto/agreement/srp/SRP6Client.html),
 [RFC 5054](https://www.rfc-editor.org/rfc/rfc5054.html),
 [JDK HTTP provider limits](https://docs.oracle.com/en/java/javase/25/docs/api/jdk.httpserver/module-summary.html).
+
+## Shared API and signaling versions
+
+`SecureFileTransferHandshake` is in `filetransfer.protocol`. V2 request, receiver
+configuration and handshake entry points require `FileTransferPeerAuthentication`;
+there is no unauthenticated constructor or unused CryptoServices parameter.
+`FileTransferStreams` centralizes exact-size chunk/EOF and publish-before-DONE rules;
+applications still own sources, deadlines, storage, quota commit and cancellation.
+These source API changes do not alter signed fields or encrypted V2 bytes.
+
+RTC envelopes require explicit `v=1`; absent, malformed and unknown versions are
+rejected. Hosts discard invalid signals before routing/serialization and keep text
+chat available. Application version metadata comes from the same Gradle
+`secureLanVersion` used by packaging; protocol version remains a separate field.

@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -19,8 +18,8 @@ import java.net.Socket
  * Blocking IO runs on [Dispatchers.IO]. [close] may be called from lifecycle cleanup to
  * unblock readers immediately; a failed or interrupted handshake never retains its socket.
  */
-class SecureChatClient : Closeable {
-    val fileIdentity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
+class SecureChatClient : RoomClient {
+    override val fileIdentity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
     private val lock = Any()
     @Volatile private var connecting: Socket? = null
     @Volatile
@@ -28,7 +27,7 @@ class SecureChatClient : Closeable {
     private var nickname: String = ""
 
     /** Returns the server-assigned nickname after completing the password/key handshake. */
-    suspend fun connect(
+    override suspend fun connect(
         host: String,
         port: Int,
         requestedNickname: String,
@@ -77,26 +76,27 @@ class SecureChatClient : Closeable {
         return response.nickname()
     }
 
-    suspend fun sendMessage(text: String) = withContext(Dispatchers.IO) {
+    override suspend fun sendMessage(text: String) = withContext(Dispatchers.IO) {
         checkNotNull(session) { "Chat disconnected" }.writeMessage(WireMessage(WireMessageType.CHAT, nickname, text))
     }
 
-    suspend fun readMessage(): WireMessage? = withContext(Dispatchers.IO) {
+    override suspend fun readMessage(): WireMessage? = withContext(Dispatchers.IO) {
         session?.readMessage()
     }
 
-    suspend fun sendSignal(signal: RtcSignalEnvelope) = withContext(Dispatchers.IO) {
+    override suspend fun sendSignal(signal: RtcSignalEnvelope) = withContext(Dispatchers.IO) {
         val active = checkNotNull(session) { "Chat disconnected" }
         active.writeMessage(WireMessage(WireMessageType.SIGNAL, nickname, RtcSignalCodec.serialize(signal.withSender(nickname))))
     }
 
-    suspend fun disconnect() = withContext(Dispatchers.IO) {
+    override suspend fun disconnect(): Unit = withContext(Dispatchers.IO) {
         val active = session
         try {
             runCatching { active?.writeMessage(WireMessage(WireMessageType.DISCONNECT, nickname, "")) }
         } finally {
             close()
         }
+        Unit
     }
 
     /** Closes active and pending sockets synchronously, including after the ViewModel scope is canceled. */

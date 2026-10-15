@@ -15,7 +15,7 @@ import com.shterneregen.securelan.androidclient.model.SecureLanPorts
 import com.shterneregen.securelan.androidclient.protocol.FileTransferMetadata
 import com.shterneregen.securelan.androidclient.protocol.FileTransferSession
 import com.shterneregen.securelan.androidclient.transfer.numberedTransferFileName
-import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferStreams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -45,7 +45,7 @@ class SecureFileReceiver(private val context: Context) {
         onProgress: (metadata: FileTransferMetadata, received: Long) -> Unit,
         onCompleted: (metadata: FileTransferMetadata, receivedFile: ReceivedFile) -> Unit,
         onError: (String, Throwable?) -> Unit,
-        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? = null,
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication,
     ): Unit = withContext(Dispatchers.IO) {
         require(port in 1..65535) { "File receiver port out of range" }
         check(receiveSlot.tryAcquire()) { "Previous receive is still closing" }
@@ -75,14 +75,14 @@ class SecureFileReceiver(private val context: Context) {
     private fun handleClient(
         socket: java.net.Socket,
         sessionPassword: String,
-        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication?,
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication,
         budget: com.shterneregen.securelan.filetransfer.protocol.FileReceiveBudget,
         onStarted: (FileTransferMetadata) -> Unit,
         onProgress: (metadata: FileTransferMetadata, received: Long) -> Unit,
         onCompleted: (metadata: FileTransferMetadata, receivedFile: ReceivedFile) -> Unit,
     ) {
         FileTransferSession(socket).use { session ->
-            val handshake = com.shterneregen.securelan.filetransfer.service.impl.SecureFileTransferHandshake()
+            val handshake = com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake()
             val metadata = handshake.performServerHandshake(session, sessionPassword, authentication)
             check(metadata.fileSize in 0..MAX_FILE_BYTES) { "File exceeds receive budget" }
             check(Environment.getExternalStorageDirectory().usableSpace >= metadata.fileSize + 128L * 1024 * 1024) { "Insufficient receive storage" }
@@ -99,20 +99,11 @@ class SecureFileReceiver(private val context: Context) {
                 var published = false
                 try {
                     target.openOutputStream().use { output ->
-                        while (true) {
-                            val chunk = session.readEncryptedBytes()
-                            if (chunk.isEmpty()) break
-                            validateTransferLength(metadata.fileSize, Math.addExact(received, chunk.size.toLong()), false)
-                            output.write(chunk)
-                            received += chunk.size
-                            onProgress(metadata, received)
-                        }
+                        received = FileTransferStreams.receive(output, metadata.fileSize, { session.readEncryptedBytes() }) { bytes -> onProgress(metadata, bytes) }
                     }
-                    validateTransferLength(metadata.fileSize, received, true)
-                    val receivedFile = target.publish()
-                    published = true
-                    quota.commit()
-                    session.writeEncryptedText(DONE)
+                    val receivedFile = FileTransferStreams.publishAndConfirm(session, {
+                        target.publish().also { published = true }
+                    }, { quota.commit() })
                     onCompleted(metadata.copy(fileName = receivedFile.savedPath.substringAfterLast('/'), fileSize = received), receivedFile)
                 } finally { if (!published) target.discard() }
                 }

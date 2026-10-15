@@ -11,6 +11,7 @@ import java.time.Instant
  * @property createdAt time at which the event was created.
  */
 @JvmRecord
+@Deprecated("Historical model; use current wire or platform presentation models")
 data class ModuleEvent(
     val module: ModuleType,
     val type: AppEventType,

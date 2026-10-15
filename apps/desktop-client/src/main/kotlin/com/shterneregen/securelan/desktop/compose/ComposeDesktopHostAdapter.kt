@@ -17,7 +17,7 @@ import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.compose.logging.SecureLanLogger
 import com.shterneregen.securelan.desktop.compose.settings.*
-import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
+import com.shterneregen.securelan.desktop.compose.state.chat.*
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventKind
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEvent
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEventKind
@@ -48,7 +48,6 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import com.shterneregen.securelan.stego.StegoServices
-import com.shterneregen.securelan.stego.model.BmpCapacity
 import com.shterneregen.securelan.stego.service.SteganographyService
 import com.shterneregen.securelan.webrtc.event.*
 import com.shterneregen.securelan.webrtc.runtime.RtcRuntimeStatus
@@ -208,6 +207,17 @@ class ComposeDesktopHostAdapter(
     /** Dedicated scope for blocking desktop network-client work. */
     private val networkIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectionInProgress = AtomicBoolean(false)
+    private val roomCommandGeneration = AtomicLong()
+    private val toolOperations = ToolOperations(::dispatchUiStateUpdate)
+    private val mediaController = DesktopMediaController(rtcMediaDeviceService, ::dispatchUiStateUpdate) { update ->
+        experimentalVideoState = experimentalVideoState.copy(previewRunning = update.running,
+            latestPreviewFrame = if (update.running) update.frame ?: experimentalVideoState.latestPreviewFrame else null,
+            latestLocalVideoFrame = if (update.running) update.frame ?: experimentalVideoState.latestLocalVideoFrame else null,
+            cameraTestStatus = update.status ?: experimentalVideoState.cameraTestStatus)
+    }
+    var sendingMessage: Boolean by mutableStateOf(false)
+        private set
+    private val roomSession = RoomSessionController(chatServerService, chatClientService, fileTransferServerService, discoveryService)
     private val transferGeneration = AtomicLong()
     /** Unsent file selection bound to a captured recipient and connection generation. */
     var transferDraft: DesktopTransferDraft? by mutableStateOf(null)
@@ -230,7 +240,7 @@ class ComposeDesktopHostAdapter(
                 transferBatch = batch
                 if (batch?.phase == DesktopBatchPhase.FINISHED && publishedTransferBatchResultId != batch.id) {
                     publishedTransferBatchResultId = batch.id
-                    appendChatTranscript("[transfer] ${batch.summary}")
+                    appendChatTranscript(batch.summary, ComposeChatTranscriptLineKind.TRANSFER)
                     SecureLanLogger.logTransfer(batch.summary)
                 }
             }
@@ -388,7 +398,6 @@ class ComposeDesktopHostAdapter(
     private val localPeerId = UUID.randomUUID().toString()
     private var currentConfig: PeerDiscoveryConfig? = null
     private val transferEntryMap = LinkedHashMap<String, TransferEntry>()
-    private var cameraPreviewSession: RtcMediaDeviceService.CameraPreviewSession? = null
 
     val chatEventPublisher: ChatEventPublisher = ChatEventPublisher { event ->
         dispatchUiStateUpdate { handleChatEvent(event) }
@@ -419,7 +428,7 @@ class ComposeDesktopHostAdapter(
                 val systemLikeMessage = event.system
                 val text = if (event.system) normalizeChatText(event.text, "system") else event.text.orEmpty()
                 if (systemLikeMessage) {
-                    appendChatTranscript(formatChatMessage("system", text))
+                    appendWireTranscript(formatChatMessage("system", text))
                 } else {
                     chatMessages = (chatMessages + ComposeChatMessage(sender, text)).takeLast(200)
                     chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
@@ -477,7 +486,7 @@ class ComposeDesktopHostAdapter(
             }
             is ChatErrorEvent -> {
                 val detail = "[error] ${event.message ?: "Chat error"}${event.cause?.message?.let { " -> $it" } ?: ""}"
-                appendChatTranscript(detail)
+                appendChatTranscript(detail, ComposeChatTranscriptLineKind.SECURITY, LocalTranscriptSeverity.ERROR)
                 publish(ComposeConnectionEventKind.ERROR, event.message ?: "Chat error")
             }
         }
@@ -488,30 +497,41 @@ class ComposeDesktopHostAdapter(
     }
 
     val quickShareEventPublisher = com.shterneregen.securelan.filetransfer.quickshare.QuickShareEventPublisher { event ->
-        handleQuickShareEvent(event)
+        dispatchUiStateUpdate { handleQuickShareEvent(event) }
     }
 
+    private val localRtcFrames = LatestUiValue<RtcVideoFrameEvent>(::dispatchUiStateUpdate, ::applyRtcFrame)
+    private val remoteRtcFrames = LatestUiValue<RtcVideoFrameEvent>(::dispatchUiStateUpdate, ::applyRtcFrame)
+    private fun applyRtcFrame(event: RtcVideoFrameEvent) {
+        if (experimentalVideoState.currentSession?.sessionId == event.sessionId()) handleRtcEvent(event)
+    }
     val rtcEventPublisher = com.shterneregen.securelan.webrtc.service.RtcEventPublisher { event ->
-        handleRtcEvent(event)
+        if (event is RtcVideoFrameEvent) {
+            if (event.local()) localRtcFrames.offer(event) else remoteRtcFrames.offer(event)
+        } else dispatchUiStateUpdate { handleRtcEvent(event) }
     }
 
     private val discoveryListener = object : PeerDiscoveryListener {
         override fun onPeerDiscovered(peer: DiscoveredPeer) {
-            discoveredPeers = discoveryService.snapshot()
-            SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+            dispatchUiStateUpdate {
+                discoveredPeers = discoveryService.snapshot()
+                SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+            }
         }
 
         override fun onPeerExpired(peer: DiscoveredPeer) {
-            discoveredPeers = discoveryService.snapshot()
-            SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+            dispatchUiStateUpdate {
+                discoveredPeers = discoveryService.snapshot()
+                SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+            }
         }
 
         override fun onDiscoveryError(message: String, cause: Throwable) {
             SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryErrorDiagnostics(message, cause))
-            if (!discoveryService.isRunning()) {
-                publish(ComposeConnectionEventKind.ERROR, DesktopMainViewHelpers.discoveryChatMessage(message))
+            dispatchUiStateUpdate {
+                if (!discoveryService.isRunning()) publish(ComposeConnectionEventKind.ERROR, DesktopMainViewHelpers.discoveryChatMessage(message))
+                refreshState()
             }
-            refreshState()
         }
     }
 
@@ -539,6 +559,10 @@ class ComposeDesktopHostAdapter(
     ) {
         if (shuttingDown.get()) return
         val trimmedNick = nickname.trim()
+        if (password.isBlank() || chatPort !in 1..65535 || filePort !in 1..65535 || chatPort == filePort) {
+            publish(ComposeConnectionEventKind.WARNING, "Enter a room password and distinct valid chat/file ports.")
+            return
+        }
         if (trimmedNick.isEmpty()) {
             publish(ComposeConnectionEventKind.WARNING, "Nickname is required to open a room.")
             return
@@ -547,63 +571,54 @@ class ComposeDesktopHostAdapter(
             publish(ComposeConnectionEventKind.WARNING, "Room is already running; stop it first.")
             return
         }
-        publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Preparing to open room.")
-
-        try {
-            fileRoomEpoch.incrementAndGet()
-            hostedPeerEndpoints.clear()
-            closeRealtimeSession()
-            currentRoomPassword = password
-            statusState = statusState.copy(
-                nickname = trimmedNick,
-                serverChatPortText = chatPort.toString(),
-                serverFilePortText = filePort.toString(),
-                discoverable = discoverable,
-            )
-            settingsController.update { settings ->
-                settings.copy(
-                    displayName = trimmedNick,
-                    network = settings.network.copy(
-                        discoverable = discoverable,
-                        serverChatPort = chatPort,
-                        serverFilePort = filePort,
-                        lastConnectionMode = DesktopConnectionMode.HOST,
-                    ),
-                )
-            }
-            chatServerService.start(ChatServerConfig(chatPort, password))
-            hostedRoomChatPort = chatPort
-            startFileTransferListener(filePort, password)
-            publish(ComposeConnectionEventKind.SUCCESS, "Room opened. Chat on $chatPort, files on $filePort.")
-            publishEventKind(ComposeAdapterEventKind.HOST_STARTED, "Host started: $trimmedNick")
-
-            connectLocalHostedChat(chatPort, trimmedNick, password)
-
-            val discoveryConfig = PeerDiscoveryConfig.defaults(localPeerId, trimmedNick, chatPort, filePort, discoverable)
-            currentConfig = discoveryConfig
-            discoveryService.start(discoveryConfig, discoveryListener)
-            discoveredPeers = discoveryService.snapshot()
-            SecureLanLogger.logConnection(
-                "Discovery started on port ${discoveryConfig.discoveryPort}; announce=${discoveryConfig.announceEnabled}; snapshot=${discoveredPeers.size}.",
-            )
-
-            if (discoverable) {
-                publish(ComposeConnectionEventKind.SUCCESS, "Room is visible to nearby peers.")
-                publishEventKind(ComposeAdapterEventKind.DISCOVERY_VISIBILITY_CHANGED, "Discoverable: true")
-            } else {
-                publish(ComposeConnectionEventKind.INFO, "Room is hidden from nearby peers.")
-                publishEventKind(ComposeAdapterEventKind.DISCOVERY_VISIBILITY_CHANGED, "Discoverable: false")
-            }
-        } catch (e: Exception) {
-            publish(ComposeConnectionEventKind.ERROR, "Failed to open room: ${e.message}")
-            publishEventKind(ComposeAdapterEventKind.RUNTIME_ERROR, e.message ?: "Unknown room hosting error")
+        if (chatClientService.isConnected() || fileTransferServerService.isRunning()) {
+            publish(ComposeConnectionEventKind.WARNING, "Leave the current room before hosting another room.")
+            return
         }
-
-        refreshState()
+        if (!connectionInProgress.compareAndSet(false, true)) return
+        fileRoomEpoch.incrementAndGet()
+        val epoch = roomCommandGeneration.incrementAndGet()
+        hostedPeerEndpoints.clear()
+        closeRealtimeSession()
+        currentRoomPassword = password
+        statusState = statusState.copy(nickname = trimmedNick, serverChatPortText = chatPort.toString(),
+            serverFilePortText = filePort.toString(), discoverable = discoverable, serverStatus = "Opening room...", operationInProgress = true)
+        val announcement = PeerDiscoveryConfig.defaults(localPeerId, trimmedNick, chatPort, filePort, discoverable)
+        val previousDiscovery = currentConfig
+        val roomToken = roomSession.operationGeneration()
+        val files = FileTransferServerConfig(filePort, downloadsPath, password, this::acceptIncomingFileTransfer,
+            filePeerAuthentication())
+        val join = ChatClientConnectRequest("127.0.0.1", chatPort, trimmedNick, password, desktopCapabilities(filePort))
+        networkIoScope.launch {
+            val result = runCatching { roomSession.start(ChatServerConfig(chatPort, password), files, join,
+                announcement, previousDiscovery, discoveryListener, roomToken) }
+            dispatchUiStateUpdate {
+                connectionInProgress.set(false)
+                statusState = statusState.copy(operationInProgress = false)
+                if (roomCommandGeneration.get() != epoch) return@dispatchUiStateUpdate
+                result.onSuccess {
+                    hostedRoomChatPort = chatPort
+                    currentConfig = announcement
+                    discoveredPeers = discoveryService.snapshot()
+                    settingsController.update { settings -> settings.copy(displayName = trimmedNick,
+                        network = settings.network.copy(discoverable = discoverable, serverChatPort = chatPort,
+                            serverFilePort = filePort, lastConnectionMode = DesktopConnectionMode.HOST)) }
+                    publish(ComposeConnectionEventKind.SUCCESS, "Room opened. Chat on $chatPort, files on $filePort.")
+                    publishEventKind(ComposeAdapterEventKind.HOST_STARTED, "Host started: $trimmedNick")
+                }.onFailure {
+                    hostedRoomChatPort = null
+                    publish(ComposeConnectionEventKind.ERROR, "Failed to open room: ${it.message}")
+                    publishEventKind(ComposeAdapterEventKind.RUNTIME_ERROR, "Room startup failed; resources released.")
+                }
+                refreshState()
+            }
+        }
     }
 
     /** Stop the room, discovery, and client if connected. */
     fun stopHosting() {
+        roomCommandGeneration.incrementAndGet()
+        roomSession.invalidate()
         fileRoomEpoch.incrementAndGet()
         hostedPeerEndpoints.clear()
         closeRealtimeSession()
@@ -654,6 +669,10 @@ class ComposeDesktopHostAdapter(
         if (shuttingDown.get()) return
         val trimmedHost = host.trim()
         val trimmedNick = nickname.trim()
+        if (password.isBlank() || chatPort !in 1..65535 || filePort !in 1..65535 || chatPort == filePort) {
+            publish(ComposeConnectionEventKind.WARNING, "Enter a room password and distinct valid chat/file ports.")
+            return
+        }
         if (trimmedHost.isEmpty() || trimmedNick.isEmpty()) {
             publish(ComposeConnectionEventKind.WARNING, "Room address and nickname are required to connect.")
             return
@@ -674,6 +693,7 @@ class ComposeDesktopHostAdapter(
         publishEventKind(ComposeAdapterEventKind.CONNECT_STARTED, "Connecting to $trimmedHost")
 
         fileRoomEpoch.incrementAndGet()
+        val connectionToken = roomCommandGeneration.incrementAndGet()
         closeRealtimeSession()
         currentRoomPassword = password
         statusState = statusState.copy(
@@ -682,6 +702,7 @@ class ComposeDesktopHostAdapter(
             clientChatPortText = chatPort.toString(),
             clientFilePortText = filePort.toString(),
             connectionStatus = "Connecting",
+            operationInProgress = true,
         )
         settingsController.update { settings ->
             settings.copy(
@@ -694,10 +715,16 @@ class ComposeDesktopHostAdapter(
             )
         }
         val request = ChatClientConnectRequest(trimmedHost, chatPort, trimmedNick, password, desktopCapabilities(filePort))
+        val fileConfig = FileTransferServerConfig(filePort, downloadsPath, password, this::acceptIncomingFileTransfer, filePeerAuthentication())
+        val listenConfig = PeerDiscoveryConfig.listenOnly(localPeerId, trimmedNick)
+        val previousDiscovery = currentConfig
+        val roomToken = roomSession.operationGeneration()
         networkIoScope.launch {
-            val result = runCatching { chatClientService.connect(request) }
+            val result = runCatching { roomSession.join(request, fileConfig, listenConfig, previousDiscovery, discoveryListener, roomToken) }
             dispatchUiStateUpdate {
                 connectionInProgress.set(false)
+                statusState = statusState.copy(operationInProgress = false)
+                if (roomCommandGeneration.get() != connectionToken) return@dispatchUiStateUpdate
                 result.onSuccess { connected ->
                     if (connected) {
                         settingsController.update { settings ->
@@ -705,8 +732,8 @@ class ComposeDesktopHostAdapter(
                                 network = settings.network.withRecentRoom(DesktopRecentRoom(trimmedHost, chatPort, filePort)),
                             )
                         }
-                        startFileTransferListener(filePort, password)
-                        startPeerDiscoveryListenOnly(trimmedNick)
+                        if (!chatServerService.isRunning()) currentConfig = listenConfig
+                        discoveredPeers = discoveryService.snapshot()
                         publish(ComposeConnectionEventKind.SUCCESS, "Connected to $trimmedHost as $trimmedNick.")
                         publishEventKind(ComposeAdapterEventKind.CONNECTED, "Connected: $trimmedNick")
                     } else {
@@ -724,6 +751,8 @@ class ComposeDesktopHostAdapter(
 
     /** Disconnect the chat client. */
     fun disconnect() {
+        roomCommandGeneration.incrementAndGet()
+        roomSession.invalidate()
         fileRoomEpoch.incrementAndGet()
         closeRealtimeSession()
         if (shuttingDown.get()) return
@@ -801,25 +830,23 @@ class ComposeDesktopHostAdapter(
     /** Generate a default random nickname. */
     fun generateNickname(): String = randomNicknameService.generate()
 
-    /** Send a chat message through the connected client. */
-    fun sendMessage(text: String) {
-        if (shuttingDown.get()) return
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) {
-            publish(ComposeConnectionEventKind.WARNING, "Message is empty; nothing sent.")
-            return
-        }
-        if (!chatClientService.isConnected()) {
-            publish(ComposeConnectionEventKind.WARNING, "Connect to a room before sending a chat message.")
-            return
-        }
-
-        try {
-            chatClientService.sendMessage(trimmed)
-        } catch (e: Exception) {
-            val message = "Chat send failed: ${e.message ?: "unknown error"}"
-            appendChatTranscript("[error] $message")
-            publish(ComposeConnectionEventKind.ERROR, message)
+    /** Writes on IO and correlates the local result with this request; completion runs on UI. */
+    fun sendMessage(text: String, complete: (String, ChatSendOutcome) -> Unit = { _, _ -> }) {
+        if (shuttingDown.get() || sendingMessage) return
+        val requestId = UUID.randomUUID().toString()
+        val epoch = fileRoomEpoch.get()
+        sendingMessage = true
+        networkIoScope.launch {
+            val outcome = if (fileRoomEpoch.get() != epoch) ChatSendOutcome.DISCONNECTED
+                else runCatching { chatClientService.sendMessage(text.trim()) }.getOrDefault(ChatSendOutcome.FAILED)
+            dispatchUiStateUpdate {
+                sendingMessage = false
+                val currentOutcome = if (fileRoomEpoch.get() == epoch) outcome else ChatSendOutcome.DISCONNECTED
+                if (currentOutcome != ChatSendOutcome.WRITTEN) {
+                    publish(ComposeConnectionEventKind.ERROR, "Message was not sent. Your draft is retained; check the connection and retry.")
+                }
+                complete(requestId, currentOutcome)
+            }
         }
     }
 
@@ -842,7 +869,7 @@ class ComposeDesktopHostAdapter(
             if (!chatClientService.isConnected()) {
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
-                appendChatTranscript(DesktopTransferFormatters.fileRejectedDisconnectedMessage(metadata.fileName, metadata.senderId))
+                appendChatTranscript(DesktopTransferFormatters.fileRejectedDisconnectedMessage(metadata.fileName, metadata.senderId), ComposeChatTranscriptLineKind.TRANSFER)
                 SecureLanLogger.logTransfer("Incoming file rejected because chat is not connected: ${metadata.fileName}.")
                 immediateDecision = false
                 return@runUiStateUpdateAndWait
@@ -851,7 +878,7 @@ class ComposeDesktopHostAdapter(
             if (!knownPeer) {
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
-                appendChatTranscript(DesktopTransferFormatters.fileRejectedUnknownPeerMessage(metadata.fileName, metadata.senderId))
+                appendChatTranscript(DesktopTransferFormatters.fileRejectedUnknownPeerMessage(metadata.fileName, metadata.senderId), ComposeChatTranscriptLineKind.TRANSFER)
                 SecureLanLogger.logTransfer("Incoming file rejected from unknown/offline peer ${metadata.senderId}.")
                 immediateDecision = false
                 return@runUiStateUpdateAndWait
@@ -918,7 +945,7 @@ class ComposeDesktopHostAdapter(
             }
         }
         if (!accepted) {
-            appendChatTranscript(DesktopTransferFormatters.fileConfirmationResultMessage(false, prompt.fileName, prompt.senderId))
+            appendChatTranscript(DesktopTransferFormatters.fileConfirmationResultMessage(false, prompt.fileName, prompt.senderId), ComposeChatTranscriptLineKind.TRANSFER)
         }
         SecureLanLogger.logTransfer("Incoming file ${if (accepted) "accepted" else "rejected"}: ${prompt.fileName} from ${prompt.senderId}.")
     }
@@ -1070,7 +1097,7 @@ class ComposeDesktopHostAdapter(
             )
             refreshQuickShareState()
             val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot, localNetworkAddresses.firstOrNull()?.address)
-            appendChatTranscript(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(shareUrl))
+            appendChatTranscript(DesktopQuickShareFormatters.formatTextLinkCopiedMessage(shareUrl), ComposeChatTranscriptLineKind.QUICK_SHARE, actionUrl = shareUrl, showsQrCode = true)
             SecureLanLogger.logQuickShare("Text quick-share created: ${DesktopQuickShareFormatters.formatSnapshotMeta(snapshot)}.")
         } catch (e: Exception) {
             val message = "Text quick-share failed: ${e.message ?: "unknown error"}"
@@ -1110,7 +1137,7 @@ class ComposeDesktopHostAdapter(
             )
             refreshQuickShareState()
             val shareUrl = DesktopQuickShareFormatters.preferQuickShareUrl(snapshot, localNetworkAddresses.firstOrNull()?.address)
-            appendChatTranscript(DesktopQuickShareFormatters.formatFileLinkCopiedMessage(shareUrl))
+            appendChatTranscript(DesktopQuickShareFormatters.formatFileLinkCopiedMessage(shareUrl), ComposeChatTranscriptLineKind.QUICK_SHARE, actionUrl = shareUrl, showsQrCode = true)
             SecureLanLogger.logQuickShare("File quick-share created: ${snapshot.displayName()}.")
         } catch (e: Exception) {
             val message = "File quick-share failed: ${e.message ?: "unknown error"}"
@@ -1119,101 +1146,77 @@ class ComposeDesktopHostAdapter(
         }
     }
 
-    /** Inspects or converts a cover image and updates the draft; reports read/conversion failures in state. */
-    fun inspectStegoCover(coverPath: Path): BmpCapacity? {
-        if (shuttingDown.get()) return null
-        return try {
+    /** Runs image IO, conversion and cryptography on the single tool worker. */
+    fun inspectStegoCover(coverPath: Path) {
+        runTool("Inspecting cover...", {
             val normalized = coverPath.toAbsolutePath().normalize()
-            val capacity = steganographyService.inspect(DesktopMainViewHelpers.readImageAsBmpBytes(normalized))
-            stegoState = stegoState.copy(
-                coverPathText = normalized.toString(),
-                outputPathText = DesktopMainViewHelpers.suggestedStegoOutputPath(normalized).toString(),
-                capacity = capacity,
-                statusText = "Cover BMP ready: ${normalized.fileName}",
-            )
-            capacity
-        } catch (e: Exception) {
-            val message = "Steganography inspect failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
-            stegoState = stegoState.copy(statusText = message)
-            null
+            normalized to steganographyService.inspect(DesktopMainViewHelpers.readImageAsBmpBytes(normalized))
+        }) { (path, capacity) ->
+            stegoState = stegoState.copy(coverPathText = path.toString(), capacity = capacity,
+                outputPathText = DesktopMainViewHelpers.suggestedStegoOutputPath(path).toString(), statusText = "Cover ready: ${path.fileName}")
         }
     }
 
-    /**
-     * Writes a BMP containing trimmed text, delegating optional encryption to the steganography service.
-     * Returns the written path or `null` on failure and clears the temporary password character array.
-     */
-    fun hideStegoMessage(coverPath: Path, outputPath: Path, message: String, password: String? = null): Path? {
-        if (shuttingDown.get()) return null
-        val normalizedMessage = message.trim()
-        if (normalizedMessage.isBlank()) {
-            val status = "Steganography hide rejected: message is empty."
-            stegoState = stegoState.copy(statusText = status)
-            return null
+    fun hideStegoMessage(coverPath: Path, outputPath: Path, message: String, password: String? = null, complete: (Path) -> Unit = {}) {
+        if (message.isBlank()) { stegoState = stegoState.copy(statusText = "Enter a message before hiding it."); return }
+        runTool("Hiding message...", {
+            val chars = password?.toCharArray()
+            try {
+                val bmp = DesktopMainViewHelpers.readImageAsBmpBytes(coverPath)
+                val bytes = if (chars != null && chars.isNotEmpty()) steganographyService.hideEncryptedText(bmp, message.trim(), chars)
+                    else steganographyService.hideText(bmp, message.trim())
+                val output = DesktopMainViewHelpers.ensureBmpExtension(outputPath.toAbsolutePath().normalize())
+                Files.write(output, bytes)
+                output to steganographyService.inspect(bytes)
+            } finally { chars?.fill('\u0000') }
+        }) { (output, capacity) ->
+            stegoState = stegoState.copy(coverPathText = coverPath.toAbsolutePath().normalize().toString(),
+                inputPathText = output.toString(), outputPathText = output.toString(), messageDraft = message.trim(),
+                passwordDraft = password.orEmpty(), encryptPayload = !password.isNullOrEmpty(),
+                capacity = capacity, statusText = "Hidden message saved to ${output.fileName}")
+            complete(output)
         }
-        val passwordChars = password?.toCharArray()
-        return try {
-            val cover = coverPath.toAbsolutePath().normalize()
-            val output = DesktopMainViewHelpers.ensureBmpExtension(outputPath.toAbsolutePath().normalize())
-            val bmpBytes = DesktopMainViewHelpers.readImageAsBmpBytes(cover)
-            val hiddenBytes = if (passwordChars != null && passwordChars.isNotEmpty()) {
-                steganographyService.hideEncryptedText(bmpBytes, normalizedMessage, passwordChars)
-            } else {
-                steganographyService.hideText(bmpBytes, normalizedMessage)
+    }
+
+    fun extractStegoMessage(inputPath: Path, password: String? = null) {
+        runTool("Extracting message...", {
+            val chars = password?.toCharArray()
+            try {
+                val bmp = DesktopMainViewHelpers.readImageAsBmpBytes(inputPath)
+                if (chars != null && chars.isNotEmpty()) steganographyService.extractEncryptedText(bmp, chars) else steganographyService.extractText(bmp)
+            } finally { chars?.fill('\u0000') }
+        }) { text -> stegoState = stegoState.copy(inputPathText = inputPath.toAbsolutePath().normalize().toString(),
+            passwordDraft = password.orEmpty(), encryptedExtract = !password.isNullOrEmpty(),
+            extractedMessage = text, statusText = "Extracted message from ${inputPath.fileName}") }
+    }
+
+    fun saveExtractedMessage(path: Path) {
+        val text = stegoState.extractedMessage
+        runTool("Saving extracted text...", { Files.writeString(path, text) }) {
+            stegoState = stegoState.copy(statusText = "Extracted message saved to ${path.fileName}")
+        }
+    }
+
+    private fun <T> runTool(status: String, work: () -> T, complete: (T) -> Unit) {
+        if (shuttingDown.get()) return
+        val started = toolOperations.execute(work) { result ->
+            stegoState = stegoState.copy(busy = false)
+            result.onSuccess(complete).onFailure {
+                stegoState = stegoState.copy(statusText = "Tool operation failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(it)}")
             }
-            Files.write(output, hiddenBytes)
-            val capacity = steganographyService.inspect(hiddenBytes)
-            stegoState = stegoState.copy(
-                coverPathText = cover.toString(),
-                inputPathText = output.toString(),
-                outputPathText = output.toString(),
-                messageDraft = normalizedMessage,
-                passwordDraft = password.orEmpty(),
-                encryptPayload = !password.isNullOrEmpty(),
-                capacity = capacity,
-                statusText = "Hidden message saved to ${output.fileName}",
-            )
-            output
-        } catch (e: Exception) {
-            val status = "Steganography hide failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
-            stegoState = stegoState.copy(statusText = status)
-            null
-        } finally {
-            passwordChars?.fill('\u0000')
         }
+        if (started) stegoState = stegoState.copy(busy = true, statusText = status)
+        else stegoState = stegoState.copy(statusText = "The previous tool operation is finishing. Retry shortly.")
     }
 
-    /** Extracts optional encrypted text into tool state, returning `null` with recovery feedback on failure. */
-    fun extractStegoMessage(inputPath: Path, password: String? = null): String? {
-        if (shuttingDown.get()) return null
-        val passwordChars = password?.toCharArray()
-        return try {
-            val input = inputPath.toAbsolutePath().normalize()
-            val bmpBytes = DesktopMainViewHelpers.readImageAsBmpBytes(input)
-            val extracted = if (passwordChars != null && passwordChars.isNotEmpty()) {
-                steganographyService.extractEncryptedText(bmpBytes, passwordChars)
-            } else {
-                steganographyService.extractText(bmpBytes)
-            }
-            stegoState = stegoState.copy(
-                inputPathText = input.toString(),
-                passwordDraft = password.orEmpty(),
-                encryptedExtract = !password.isNullOrEmpty(),
-                extractedMessage = extracted,
-                statusText = "Extracted message from ${input.fileName}",
-            )
-            extracted
-        } catch (e: Exception) {
-            val status = "Steganography extract failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(e)}"
-            stegoState = stegoState.copy(statusText = status)
-            null
-        } finally {
-            passwordChars?.fill('\u0000')
-        }
+    /** Invalidates results when the temporary tool closes, without discarding its draft. */
+    fun dismissSteganography() {
+        toolOperations.invalidate()
+        stegoState = stegoState.copy(busy = false)
     }
 
-    /** Clears the tool's paths, message, password draft, and extraction result. */
     fun clearSteganographyState() {
+        toolOperations.invalidate()
         stegoState = ComposeSteganographyState()
     }
 
@@ -1283,6 +1286,7 @@ class ComposeDesktopHostAdapter(
     }
 
     fun selectCamera(deviceId: String?) {
+        closeCameraPreview()
         experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty())
         settingsController.update { settings ->
             settings.copy(media = settings.media.copy(cameraDeviceId = deviceId.orEmpty()))
@@ -1351,100 +1355,28 @@ class ComposeDesktopHostAdapter(
 
     fun startCameraPreview(deviceId: String? = experimentalVideoState.selectedCamera.deviceId) {
         if (shuttingDown.get()) return
-        val mediaService = rtcMediaDeviceService
-        if (mediaService == null) {
-            val message = "Camera preview unavailable: RTC media device service is not configured."
-            experimentalVideoState = experimentalVideoState.copy(
-                previewRunning = false,
-                latestPreviewFrame = null,
-                cameraTestStatus = message,
-            )
-            SecureLanLogger.logRealtime(message)
-            return
-        }
-        closeCameraPreview()
-        experimentalVideoState = experimentalVideoState.copy(
-            selectedCameraId = deviceId.orEmpty(),
-            previewRunning = true,
-            latestPreviewFrame = null,
-            latestLocalVideoFrame = null,
-            cameraTestStatus = "Starting camera preview…",
-        )
-        val session = try {
-            mediaService.startVideoPreview(deviceId) { event ->
-                experimentalVideoState = experimentalVideoState.copy(
-                    latestPreviewFrame = event,
-                    latestLocalVideoFrame = event.takeIf { it.local() } ?: experimentalVideoState.latestLocalVideoFrame,
-                    previewRunning = true,
-                )
-                SecureLanLogger.logRealtime(DesktopRealtimeFormatters.cameraPreviewLiveStatus(event.width(), event.height()))
-            }
-        } catch (error: Throwable) {
-            val message = "Camera preview failed: ${error::class.java.simpleName}: ${error.message.orEmpty()}"
-            experimentalVideoState = experimentalVideoState.copy(
-                previewRunning = false,
-                latestPreviewFrame = null,
-                cameraTestStatus = message,
-            )
-            SecureLanLogger.logRealtime(message)
-            return
-        }
-        val status = session.statusMessage()
-        if (status.startsWith("Camera preview failed", ignoreCase = true)) {
-            runCatching { session.close() }
-            experimentalVideoState = experimentalVideoState.copy(
-                previewRunning = false,
-                latestPreviewFrame = null,
-                cameraTestStatus = status,
-            )
-            SecureLanLogger.logRealtime(status)
-            return
-        }
-        cameraPreviewSession = session
-        experimentalVideoState = experimentalVideoState.copy(
-            selectedCameraId = deviceId.orEmpty(),
-            previewRunning = true,
-            cameraTestStatus = status,
-        )
-        SecureLanLogger.logRealtime(status)
+        experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty())
+        mediaController.start(deviceId)
     }
 
-    fun closeCameraPreview() {
-        val session = cameraPreviewSession
-        cameraPreviewSession = null
-        try {
-            session?.close()
-        } catch (_: Exception) { /* best-effort */ }
-        experimentalVideoState = experimentalVideoState.copy(
-            previewRunning = false,
-            latestPreviewFrame = if (experimentalVideoState.latestPreviewFrame?.local() == true) null else experimentalVideoState.latestPreviewFrame,
-            latestLocalVideoFrame = null,
-            cameraTestStatus = "Camera preview stopped.",
-        )
-    }
+    fun closeCameraPreview() { mediaController.stop() }
 
     // ---- lifecycle ----
 
     /** Shut down the adapter and all underlying services. */
     fun shutdown() {
         if (!shuttingDown.compareAndSet(false, true)) return
+        roomCommandGeneration.incrementAndGet()
+        roomSession.invalidate()
         invalidateTransferSession()
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Adapter shutdown initiated.")
         pendingIncomingTransferDecisions.values.forEach { it.complete(false) }
         pendingIncomingTransferDecisions.clear()
+        toolOperations.close()
+        settingsController.close()
         networkIoScope.cancel()
 
-        try {
-            if (chatClientService.isConnected()) {
-                chatClientService.disconnect()
-            }
-        } catch (_: Exception) { /* best-effort */ }
-
-        try {
-            if (fileTransferServerService.isRunning()) {
-                fileTransferServerService.stop()
-            }
-        } catch (_: Exception) { /* best-effort */ }
+        roomSession.close()
 
         try {
             quickShareService.stop()
@@ -1460,21 +1392,11 @@ class ComposeDesktopHostAdapter(
         } catch (_: Exception) { /* best-effort */ }
 
         try {
-            rtcMediaDeviceService?.close()
+            mediaController.close()
         } catch (_: Exception) { /* best-effort */ }
 
-        try {
-            discoveryService.stop()
-            currentConfig = null
-            discoveredPeers = emptyList()
-            SecureLanLogger.logConnection("Discovery stopped during adapter shutdown; peer snapshot cleared.")
-        } catch (_: Exception) { /* best-effort */ }
-
-        try {
-            if (chatServerService.isRunning()) {
-                chatServerService.stop()
-            }
-        } catch (_: Exception) { /* best-effort */ }
+        currentConfig = null
+        discoveredPeers = emptyList()
 
         publishEventKind(ComposeAdapterEventKind.CLEANUP_COMPLETED, "Adapter shutdown complete.")
     }
@@ -1493,6 +1415,7 @@ class ComposeDesktopHostAdapter(
 
         statusState = statusState.copy(
             localServerRunning = serverRunning,
+            operationInProgress = connectionInProgress.get(),
             clientConnected = clientConnected,
             serverStatus = if (serverRunning) "Room running" else "Room closed",
             connectionStatus = if (clientConnected) "Connected" else "Connection idle",
@@ -1507,7 +1430,7 @@ class ComposeDesktopHostAdapter(
     }
 
     private fun publish(kind: ComposeConnectionEventKind, message: String) {
-        adapterEvents = adapterEvents + ComposeConnectionEvent(kind, message)
+        adapterEvents = (adapterEvents + ComposeConnectionEvent(kind, message)).takeLast(200)
         when (kind) {
             ComposeConnectionEventKind.ERROR -> SecureLanLogger.logError(message)
             ComposeConnectionEventKind.WARNING -> SecureLanLogger.logWarning(message)
@@ -1554,32 +1477,34 @@ class ComposeDesktopHostAdapter(
         }
     }
 
-    private fun appendChatTranscript(line: String) {
-        upsertChatTranscript(line)
+    private fun appendChatTranscript(line: String, kind: ComposeChatTranscriptLineKind = ComposeChatTranscriptLineKind.SYSTEM,
+        severity: LocalTranscriptSeverity = LocalTranscriptSeverity.INFO, actionUrl: String? = null, showsQrCode: Boolean = false) {
+        upsertChatTranscript(line, kind = kind, severity = severity, actionUrl = actionUrl, showsQrCode = showsQrCode)
     }
 
-    private fun upsertChatTranscript(line: String, eventKey: String? = null, actionPath: Path? = null) {
-        val normalized = normalizeTranscriptLine(line)
-        if (normalized.isBlank()) {
-            return
-        }
+    private fun appendWireTranscript(line: String) {
+        publishTranscript(ComposeChatMessage.fromTranscriptLine(normalizeTranscriptLine(line)))
+    }
+
+    private fun upsertChatTranscript(line: String, eventKey: String? = null, actionPath: Path? = null,
+        kind: ComposeChatTranscriptLineKind = ComposeChatTranscriptLineKind.TRANSFER,
+        severity: LocalTranscriptSeverity = LocalTranscriptSeverity.INFO, actionUrl: String? = null, showsQrCode: Boolean = false) {
         val timestamp = Instant.now()
-        val message = ComposeChatMessage.fromTranscriptLine(normalized, timestamp, eventKey, actionPath)
-        val existingIndex = eventKey?.let { key -> chatMessages.indexOfFirst { it.eventKey == key } } ?: -1
-        chatMessages = if (existingIndex >= 0) {
-            chatMessages.toMutableList().apply { set(existingIndex, message) }
-        } else {
-            chatMessages + message
-        }.takeLast(200)
-        chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
-        when {
-            normalized.startsWith("[disconnected]", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.INFO, "Connection ended")
-            normalized.contains("completed", ignoreCase = true) && (normalized.startsWith("[file-send]", ignoreCase = true) || normalized.startsWith("[file-recv]", ignoreCase = true)) -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed")
-            normalized.startsWith("[transfer]", ignoreCase = true) &&
-                (normalized.contains("received", ignoreCase = true) || normalized.contains("sent", ignoreCase = true)) ->
-                publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, "Transfer completed")
-            normalized.startsWith("[error]", ignoreCase = true) || normalized.contains("failed", ignoreCase = true) -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, normalized.removePrefix("[error]").trim())
+        val event = LocalTranscriptEvent(kind, line, severity, actionUrl, actionPath, showsQrCode)
+        publishTranscript(ComposeChatMessage("runtime", line, timestamp = timestamp, transcriptLine = line,
+            eventKey = eventKey, actionPath = actionPath, localEvent = event))
+        when (severity) {
+            LocalTranscriptSeverity.ERROR -> publishMicrointeraction(ComposeConnectionEventKind.ERROR, line)
+            LocalTranscriptSeverity.SUCCESS -> publishMicrointeraction(ComposeConnectionEventKind.SUCCESS, line)
+            else -> Unit
         }
+    }
+
+    private fun publishTranscript(message: ComposeChatMessage) {
+        val index = message.eventKey?.let { key -> chatMessages.indexOfFirst { it.eventKey == key } } ?: -1
+        chatMessages = if (index >= 0) chatMessages.toMutableList().apply { set(index, message) }
+            else (chatMessages + message).takeLast(200)
+        chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
     }
 
     private fun formatChatMessage(sender: String, text: String): String {
@@ -1627,23 +1552,6 @@ class ComposeDesktopHostAdapter(
         SecureLanLogger.logConnection(localNetworkInfo)
     }
 
-    private fun startFileTransferListener(filePort: Int, password: String) {
-        if (fileTransferServerService.isRunning()) {
-            fileTransferServerService.stop()
-        }
-        fileTransferServerService.start(
-            FileTransferServerConfig(
-                filePort,
-                downloadsPath,
-                password,
-                this::acceptIncomingFileTransfer,
-                filePeerAuthentication(),
-            ),
-        )
-        publish(ComposeConnectionEventKind.SUCCESS, "File transfer listener started on port $filePort.")
-        SecureLanLogger.logTransfer("File transfer listener started on port $filePort.")
-    }
-
     /** Release a joined room's credentials and port while retaining a hosted room's receiver. */
     private fun stopRemoteFileTransferListener() {
         if (chatServerService.isRunning() || !fileTransferServerService.isRunning()) return
@@ -1667,7 +1575,7 @@ class ComposeDesktopHostAdapter(
                 )
                 transferEntryMap[entry.transferId] = entry
                 upsertChatTranscript(
-                    line = "[transfer] ${if (event.outgoing) "Sending" else "Receiving"} ${entry.fileName}…",
+                    line = "${if (event.outgoing) "Sending" else "Receiving"} ${entry.fileName}…",
                     eventKey = "transfer:${entry.transferId}",
                 )
                 SecureLanLogger.logTransfer("Transfer started: ${entry.fileName}.")
@@ -1694,7 +1602,7 @@ class ComposeDesktopHostAdapter(
                 entry.totalBytes = event.totalBytes
                 entry.stopSpeedTracking()
                 upsertChatTranscript(
-                    line = "[transfer] ${if (event.outgoing) "Sent" else "Received"} ${entry.fileName}",
+                    line = "${if (event.outgoing) "Sent" else "Received"} ${entry.fileName}",
                     eventKey = "transfer:${entry.transferId}",
                     actionPath = event.path?.takeUnless { event.outgoing },
                 )
@@ -1714,7 +1622,8 @@ class ComposeDesktopHostAdapter(
                 entry.stopSpeedTracking()
                 val message = event.message?.takeIf { it.isNotBlank() } ?: "unknown error"
                 upsertChatTranscript(
-                    line = "[transfer] Failed to ${if (event.outgoing) "send" else "receive"} ${entry.fileName}: $message",
+                    severity = LocalTranscriptSeverity.ERROR,
+                    line = "Failed to ${if (event.outgoing) "send" else "receive"} ${entry.fileName}: $message",
                     eventKey = "transfer:${entry.transferId}",
                 )
                 SecureLanLogger.logTransfer("Transfer failed: ${entry.fileName}: $message.")
@@ -1771,6 +1680,8 @@ class ComposeDesktopHostAdapter(
     }
 
     private fun clearRealtimeMediaState() {
+        localRtcFrames.clear()
+        remoteRtcFrames.clear()
         closeCameraPreview()
         mediaVoiceState = mediaVoiceState.copy(localAudioLevel = 0.0, remoteAudioLevel = 0.0, currentSession = null)
         experimentalVideoState = experimentalVideoState.copy(
@@ -1845,28 +1756,6 @@ class ComposeDesktopHostAdapter(
             devices.mapTo(this, MediaDeviceChoice::of)
         }
 
-    private fun connectLocalHostedChat(chatPort: Int, nickname: String, password: String) {
-        if (chatClientService.isConnected()) {
-            return
-        }
-        val connected = chatClientService.connect(
-            ChatClientConnectRequest(
-                "127.0.0.1",
-                chatPort,
-                nickname,
-                password,
-                desktopCapabilities(statusState.serverFilePort ?: NetworkConstants.DEFAULT_FILE_TRANSFER_PORT),
-            ),
-        )
-        if (connected) {
-            publish(ComposeConnectionEventKind.SUCCESS, "Joined local hosted room as $nickname.")
-            publishEventKind(ComposeAdapterEventKind.CONNECTED, "Connected locally: $nickname")
-        } else {
-            publish(ComposeConnectionEventKind.ERROR, "Local hosting connection failed.")
-            publishEventKind(ComposeAdapterEventKind.CONNECT_FAILED, "Local hosting connection failed.")
-        }
-    }
-
     private fun startPeerDiscoveryListener() {
         if (chatServerService.isRunning()) {
             val chatPort = statusState.serverChatPort ?: NetworkConstants.DEFAULT_CHAT_PORT
@@ -1927,10 +1816,10 @@ class ComposeDesktopHostAdapter(
         return upsertChatPeer(nickname, online = true, filePort = filePortFromCapabilities(event.capabilities, 0), capabilities = event.capabilities)
     }
 
-    private fun desktopCapabilities(filePort: Int): PeerCapabilities = PeerCapabilities.desktop(APP_VERSION, filePort)
+    private fun desktopCapabilities(filePort: Int): PeerCapabilities = PeerCapabilities.desktop(ComposeShellMetadata.APP_VERSION, filePort)
 
-    private fun filePeerAuthentication(): com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? {
-        val identity = chatClientService.fileIdentity() ?: return null
+    private fun filePeerAuthentication(): com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication {
+        val identity = checkNotNull(chatClientService.fileIdentity()) { "Authenticated room file identity is required" }
         val epoch = fileRoomEpoch.get()
         val localId = statusState.nickname.trim()
         return com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication(statusState.nickname.trim(), identity) { nickname ->
@@ -1940,16 +1829,6 @@ class ComposeDesktopHostAdapter(
 
     private fun filePortFromCapabilities(capabilities: PeerCapabilities, fallback: Int): Int =
         if (capabilities.supportsFileReceive() && capabilities.fileReceivePort() > 0) capabilities.fileReceivePort() else fallback
-
-    private fun updatePeerPresenceFromSystemMessage(text: String): Boolean {
-        val match = PRESENCE_MESSAGE_REGEX.matchEntire(text.trim()) ?: return false
-        val nickname = match.groupValues[1].trim()
-        when (match.groupValues[2].lowercase()) {
-            "joined" -> upsertChatPeer(nickname, online = true)
-            "left" -> markChatPeerOffline(nickname)
-        }
-        return true
-    }
 
     private fun upsertChatPeer(
         nickname: String?,
@@ -2056,12 +1935,6 @@ class ComposeDesktopHostAdapter(
 
     private fun isSystemSender(nickname: String?): Boolean = nickname != null && nickname.equals("system", ignoreCase = true)
 
-    private fun isSystemPrefixedChatText(text: String?): Boolean {
-        val trimmed = text?.trim().orEmpty()
-        return trimmed.startsWith("[system]", ignoreCase = true) ||
-            trimmed.startsWith("system:", ignoreCase = true)
-    }
-
     private fun peerKey(peer: PeerPresence): String = peer.peerId()?.takeIf { it.isNotBlank() } ?: peerKeyForNickname(peer.nickname())
 
     private fun peerKeyForDiscovered(peer: DiscoveredPeer): String = peer.peerId.takeIf { it.isNotBlank() } ?: peerKeyForNickname(peer.nickname)
@@ -2077,11 +1950,7 @@ class ComposeDesktopHostAdapter(
     }
 
     private companion object {
-        private const val APP_VERSION = "0.5.0"
         const val COMPOSE_CLIENT_FILE_PORT_OFFSET: Int = 1000
-        private val PRESENCE_MESSAGE_REGEX = Regex(
-            "^(?:\\[system]\\s*)?(?:system:\\s*)?(?:\\[(?:join|left)]\\s*)?(.+?)\\s+(joined|left)\\s+the\\s+chat[\\s.!?]*$",
-            RegexOption.IGNORE_CASE,
-        )
+
     }
 }

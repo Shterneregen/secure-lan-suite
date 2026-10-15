@@ -78,11 +78,17 @@ interface RtcMediaDeviceService : AutoCloseable {
          * Stops the preview stream and disposes of all underlying native resources.
          */
         override fun close()
+
+        /** Explicit bounded wait for shutdown/tests; never called implicitly by close. */
+        fun awaitClosed(timeoutMillis: Long): Boolean = true
     }
 
     /**
      * Closes the service, terminating all active preview sessions and background worker threads.
      */
+    /** Explicit bounded wait after nonblocking close. */
+    fun awaitClosed(timeoutMillis: Long): Boolean = true
+
     override fun close() {
     }
 }

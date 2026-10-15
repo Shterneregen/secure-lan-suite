@@ -24,7 +24,7 @@ import com.shterneregen.securelan.desktop.compose.tray.DesktopCloseOutcome
 import com.shterneregen.securelan.desktop.compose.tray.DesktopTrayMenuState
 import com.shterneregen.securelan.desktop.compose.tray.SecureLanTray
 import com.shterneregen.securelan.desktop.compose.tray.desktopCloseOutcome
-import com.shterneregen.securelan.filetransfer.quickshare.impl.DefaultQuickShareService
+import com.shterneregen.securelan.desktop.quickshare.DefaultQuickShareService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
 import com.shterneregen.securelan.webrtc.event.RtcEvent
@@ -40,6 +40,7 @@ import kotlin.math.roundToInt
 /** Creates the desktop service graph, restores preferences, and owns window/tray shutdown. */
 @Suppress("DEPRECATION")
 fun main() {
+    com.shterneregen.securelan.desktop.quickshare.configureDesktopHttpProvider()
     val startupSettingsStore = PropertiesDesktopAppSettingsStore.default()
     val startupSettings = startupSettingsStore.load()
     DesktopLookAndFeel.install(startupSettings.themeMode)

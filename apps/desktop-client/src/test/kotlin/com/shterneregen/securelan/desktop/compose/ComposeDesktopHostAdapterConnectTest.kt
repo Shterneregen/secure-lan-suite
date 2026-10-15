@@ -55,6 +55,7 @@ class ComposeDesktopHostAdapterConnectTest {
         try {
             adapter.connect("127.0.0.1", "desktop-test", "first-password", 50_050, 50_051)
             assertEquals(50_051, files.started.poll(2, TimeUnit.SECONDS)?.port())
+            awaitConnected(adapter)
             adapter.disconnect()
             assertFalse(files.isRunning(), "Leaving a remote room must release its file listener")
 
@@ -78,6 +79,7 @@ class ComposeDesktopHostAdapterConnectTest {
         try {
             adapter.connect("127.0.0.1", "desktop-test", "password", 50_050, 50_051)
             assertEquals(50_051, files.started.poll(2, TimeUnit.SECONDS)?.port())
+            awaitConnected(adapter)
             client.disconnect()
             adapter.chatEventPublisher.publish(ChatDisconnectedEvent("desktop-test", ChatDisconnectReasons.CONNECTION_LOST))
 
@@ -96,6 +98,7 @@ class ComposeDesktopHostAdapterConnectTest {
         try {
             adapter.connect("127.0.0.1", "desktop-test", "password", 50_050, 50_051)
             assertEquals(50_051, files.started.poll(2, TimeUnit.SECONDS)?.port())
+            awaitConnected(adapter)
             adapter.disconnect()
             adapter.chatEventPublisher.publish(ChatDisconnectedEvent("desktop-test", ChatDisconnectReasons.CLIENT_REQUEST))
 
@@ -142,8 +145,9 @@ class ComposeDesktopHostAdapterConnectTest {
         hosting: Boolean = false,
         quickShare: QuickShareService = IdleQuickShareService(),
         rtc: com.shterneregen.securelan.webrtc.service.RtcSessionService? = null,
+        server: ChatServerService = IdleChatServer(hosting),
     ) = ComposeDesktopHostAdapter(
-        chatServerService = IdleChatServer(hosting),
+        chatServerService = server,
         chatClientService = client,
         fileTransferServerService = files,
         quickShareService = quickShare,
@@ -203,16 +207,18 @@ class ComposeDesktopHostAdapterConnectTest {
         try {
             adapter.connect("127.0.0.1", "desktop-test", "password", 50_050, 50_051)
             val first = files.started.poll(2, TimeUnit.SECONDS)!!
+            awaitConnected(adapter)
             adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "127.0.0.1:1234", capabilities, serverSide = true))
-            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication!!.verify("bob", payload, peer.sign(payload)) }
+            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication.verify("bob", payload, peer.sign(payload)) }
             adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "", capabilities))
-            first.authentication!!.verify("bob", payload, peer.sign(payload))
+            first.authentication.verify("bob", payload, peer.sign(payload))
             adapter.disconnect()
             adapter.connect("127.0.0.1", "desktop-test", "password", 50_060, 50_061)
             val second = files.started.poll(2, TimeUnit.SECONDS)!!
+            awaitConnected(adapter)
             adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "", capabilities))
-            second.authentication!!.verify("bob", payload, peer.sign(payload))
-            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication!!.verify("bob", payload, peer.sign(payload)) }
+            second.authentication.verify("bob", payload, peer.sign(payload))
+            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication.verify("bob", payload, peer.sign(payload)) }
         } finally { adapter.shutdown() }
     }
 
@@ -299,9 +305,9 @@ class ComposeDesktopHostAdapterConnectTest {
             adapter.fileTransferEventPublisher.publish(FileTransferCompletedEvent("send-1", "archive.zip", downloadedFile, 200, true))
 
             assertEquals(2, adapter.chatMessages.size)
-            assertEquals("[transfer] Received report.pdf", adapter.chatMessages[0].displayText)
+            assertEquals("Received report.pdf", adapter.chatMessages[0].displayText)
             assertEquals(downloadedFile, adapter.chatMessages[0].actionPath)
-            assertEquals("[transfer] Sent archive.zip", adapter.chatMessages[1].displayText)
+            assertEquals("Sent archive.zip", adapter.chatMessages[1].displayText)
             assertEquals(null, adapter.chatMessages[1].actionPath)
             assertEquals(adapter.chatMessages.map { it.displayText }, adapter.chatTranscript)
         } finally {
@@ -340,6 +346,85 @@ class ComposeDesktopHostAdapterConnectTest {
         }
     }
 
+    @Test fun blockedLocalJoinDoesNotBlockHostActionAndShutdownRollsItBack() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        val client = BlockingChatClient(entered, release)
+        var running = false
+        val server = object : ChatServerService {
+            override fun start(config: ChatServerConfig) { running = true }
+            override fun stop() { running = false; closed.countDown() }
+            override fun isRunning() = running
+            override fun connectedUsers() = 0
+        }
+        val adapter = connectedAdapter(client, TrackingFileTransferServer(), server = server)
+        try {
+            assertTrue(measureTimeMillis { adapter.openRoom("alice", "password", 5050, 5051, true) } < 500)
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            assertTrue(adapter.statusState.operationInProgress)
+            assertFalse(adapter.statusState.canOpenRoom)
+            adapter.shutdown()
+            release.countDown()
+            assertTrue(closed.await(2, TimeUnit.SECONDS))
+            assertFalse(running)
+        } finally { release.countDown(); adapter.shutdown() }
+    }
+
+    @Test fun blockedMessageWriteDoesNotBlockUiAndReturnsCorrelatedFailure() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val results = LinkedBlockingQueue<Pair<String, com.shterneregen.securelan.chat.service.ChatSendOutcome>>()
+        val client = ConnectedChatClient {
+            entered.countDown(); release.await()
+            com.shterneregen.securelan.chat.service.ChatSendOutcome.FAILED
+        }
+        val files = TrackingFileTransferServer()
+        val adapter = connectedAdapter(client, files)
+        try {
+            adapter.connect("127.0.0.1", "alice", "password", 5050, 5051)
+            assertNotEquals(null, files.started.poll(2, TimeUnit.SECONDS))
+            awaitConnected(adapter)
+            assertTrue(measureTimeMillis { adapter.sendMessage("keep this draft") { id, outcome -> results.add(id to outcome) } } < 500)
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            assertTrue(adapter.sendingMessage)
+            release.countDown()
+            val result = results.poll(2, TimeUnit.SECONDS)!!
+            assertTrue(result.first.isNotBlank())
+            assertEquals(com.shterneregen.securelan.chat.service.ChatSendOutcome.FAILED, result.second)
+            assertFalse(adapter.sendingMessage)
+        } finally { release.countDown(); adapter.shutdown() }
+    }
+
+    @Test fun asyncStegoCompletionPreservesTheToolDraft(@org.junit.jupiter.api.io.TempDir directory: Path) {
+        val image = java.awt.image.BufferedImage(32, 32, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val cover = directory.resolve("cover.bmp")
+        assertTrue(javax.imageio.ImageIO.write(image, "bmp", cover.toFile()))
+        val output = directory.resolve("hidden.bmp")
+        val completed = LinkedBlockingQueue<Path>()
+        val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer())
+        try {
+            adapter.hideStegoMessage(cover, output, "keep this draft") { completed.add(it) }
+            assertEquals(output, completed.poll(2, TimeUnit.SECONDS))
+            assertEquals("keep this draft", adapter.stegoState.messageDraft)
+            assertEquals(cover.toString(), adapter.stegoState.coverPathText)
+            assertFalse(adapter.stegoState.busy)
+            adapter.extractStegoMessage(output)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+            while (adapter.stegoState.extractedMessage.isEmpty() && System.nanoTime() < deadline) Thread.sleep(10)
+            assertEquals("keep this draft", adapter.stegoState.extractedMessage)
+        } finally { adapter.shutdown() }
+    }
+
+    private fun awaitConnected(adapter: ComposeDesktopHostAdapter) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (System.nanoTime() < deadline) {
+            if (adapter.statusState.clientConnected && !adapter.statusState.operationInProgress) return
+            Thread.sleep(10)
+        }
+        assertTrue(adapter.statusState.clientConnected && !adapter.statusState.operationInProgress, "Room startup did not complete")
+    }
+
     private fun awaitConnectFailure(adapter: ComposeDesktopHostAdapter): Boolean {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         while (System.nanoTime() < deadline) {
@@ -353,6 +438,7 @@ class ComposeDesktopHostAdapterConnectTest {
         private val entered: CountDownLatch,
         private val release: CountDownLatch,
     ) : ChatClientService {
+        override fun fileIdentity() = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
         override fun connect(request: ChatClientConnectRequest): Boolean {
             entered.countDown()
             release.await(2, TimeUnit.SECONDS)
@@ -360,7 +446,7 @@ class ComposeDesktopHostAdapterConnectTest {
         }
 
         override fun disconnect() = Unit
-        override fun sendMessage(text: String?) = Unit
+        override fun sendMessage(text: String?) = com.shterneregen.securelan.chat.service.ChatSendOutcome.WRITTEN
         override fun sendSignal(signal: RtcSignalEnvelope?) = Unit
         override fun isConnected(): Boolean = false
     }
@@ -372,7 +458,7 @@ class ComposeDesktopHostAdapterConnectTest {
         override fun connectedUsers(): Int = 0
     }
 
-    private class ConnectedChatClient : ChatClientService {
+    private class ConnectedChatClient(private val write: () -> com.shterneregen.securelan.chat.service.ChatSendOutcome = { com.shterneregen.securelan.chat.service.ChatSendOutcome.WRITTEN }) : ChatClientService {
         @Volatile private var connected = false
         private val identity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
         override fun fileIdentity() = identity
@@ -382,7 +468,7 @@ class ComposeDesktopHostAdapterConnectTest {
             return true
         }
         override fun disconnect() { connected = false }
-        override fun sendMessage(text: String?) = Unit
+        override fun sendMessage(text: String?) = write()
         override fun sendSignal(signal: RtcSignalEnvelope?) = Unit
         override fun isConnected(): Boolean = connected
     }

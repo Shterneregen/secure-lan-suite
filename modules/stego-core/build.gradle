@@ -3,6 +3,5 @@ plugins {
 }
 
 dependencies {
-    implementation project(':modules:common-model')
     api project(':modules:crypto-core')
 }

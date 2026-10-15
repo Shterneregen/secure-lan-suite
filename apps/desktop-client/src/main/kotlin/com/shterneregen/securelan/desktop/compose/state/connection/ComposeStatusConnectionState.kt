@@ -21,6 +21,7 @@ data class ComposeStatusConnectionState(
     val discoveryStatus: String = "Room discovery not started",
     val localServerRunning: Boolean = false,
     val clientConnected: Boolean = false,
+    val operationInProgress: Boolean = false,
 ) {
     fun withClientDisconnected(): ComposeStatusConnectionState = copy(
         clientConnected = false,
@@ -33,9 +34,9 @@ data class ComposeStatusConnectionState(
     val clientFilePort: Int? = parsePort(clientFilePortText)
     val nicknameValid: Boolean = nickname.trim().isNotEmpty()
     val manualHostValid: Boolean = manualHost.trim().isNotEmpty()
-    val canOpenRoom: Boolean = !localServerRunning && nicknameValid && serverChatPort != null && serverFilePort != null
+    val canOpenRoom: Boolean = !operationInProgress && !localServerRunning && nicknameValid && serverChatPort != null && serverFilePort != null
     val canConnect: Boolean =
-        !clientConnected && nicknameValid && manualHostValid && clientChatPort != null && clientFilePort != null
+        !operationInProgress && !clientConnected && nicknameValid && manualHostValid && clientChatPort != null && clientFilePort != null
     val resolvedLocalFilePort: Int? = if (serverFilePort != null && clientFilePort != null) {
         DesktopMainViewHelpers.resolveLocalFilePort(
             serverRunning = localServerRunning,

@@ -6,7 +6,7 @@ def nativeClassifier = rootProject.ext.desktopPlatform.classifier
 
 dependencies {
     api project(':modules:common-model')
-    api('dev.onvoid.webrtc:webrtc-java:0.14.0') {
+    implementation('dev.onvoid.webrtc:webrtc-java:0.14.0') {
         // The POM's self-dependency must not select a second native platform.
         exclude group: 'dev.onvoid.webrtc', module: 'webrtc-java'
     }

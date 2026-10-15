@@ -53,7 +53,8 @@ internal fun LiveChatWorkspaceCard(
     peerState: ComposePeerListState,
     videoStageContent: @Composable (Modifier) -> Unit,
 ) {
-    var draftMessage by remember { mutableStateOf("") }
+    val draft = remember { com.shterneregen.securelan.desktop.compose.state.chat.DesktopChatDraft() }
+    val draftMessage = draft.text
     val transcript = hostAdapter.chatMessages.filterIndexed { index, message ->
         index == 0 || message.displayText != hostAdapter.chatMessages[index - 1].displayText
     }
@@ -89,9 +90,9 @@ internal fun LiveChatWorkspaceCard(
     }
 
     fun sendDraftMessage() {
-        if (draftMessage.isNotBlank() && hostAdapter.chatConnected) {
-            hostAdapter.sendMessage(draftMessage.trim())
-            draftMessage = ""
+        if (draftMessage.isNotBlank() && hostAdapter.chatConnected && !hostAdapter.sendingMessage) {
+            val revision = draft.capture()
+            hostAdapter.sendMessage(revision.text.trim()) { _, outcome -> draft.complete(revision, outcome) }
             chatInputFocusRequester.requestFocus()
         }
     }
@@ -192,7 +193,7 @@ internal fun LiveChatWorkspaceCard(
                 )
                 CompactTextField(
                     draftMessage,
-                    { draftMessage = it },
+                    draft::update,
                     label = "",
                     modifier = Modifier.weight(1f).then(Modifier.focusRequester(chatInputFocusRequester)),
                     onSubmit = ::sendDraftMessage,
@@ -200,7 +201,7 @@ internal fun LiveChatWorkspaceCard(
                 )
                 CompactButton(
                     onClick = ::sendDraftMessage,
-                    enabled = draftMessage.isNotBlank() && hostAdapter.chatConnected,
+                    enabled = draftMessage.isNotBlank() && hostAdapter.chatConnected && !hostAdapter.sendingMessage,
                 ) {
                     Text("Send")
                 }

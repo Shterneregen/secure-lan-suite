@@ -8,7 +8,7 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 - The UI is implemented with native Android + Jetpack Compose Material 3 inside `apps/android-client`.
 - The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths use labeled Devices, Chat, and Files bottom navigation; wider widths use a labeled navigation rail. At 840 dp the Devices screen becomes two-pane, and at 1200 dp chat/file screens gain a persistent device sidebar.
 - TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
-- Protocol code is minimally reimplemented inside `apps/android-client` to avoid introducing Android/UI dependencies into reusable Java core modules.
+- Android reuses shared V2 handshakes, record ciphers, wire models and stream rules. `ChatSession`, `WireMessage` and `FileTransferSession` are aliases to the core implementation. Android adapters own URI access, staging, MediaStore, permissions and lifecycle; its WebRTC engine and HTTP server remain platform-specific.
 - Supported flows include desktop-compatible UDP discovery, mutually authenticated V2 chat, ordered encrypted messages/files, Android-to-desktop file sending, and desktop-to-Android file receiving. V1 endpoints must be updated; there is no protocol fallback.
 - The app starts UDP discovery automatically on launch, lets the user stop or restart it from the Devices screen, and requests `NEARBY_WIFI_DEVICES` on Android 13+.
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
@@ -25,9 +25,9 @@ Microphone permission is required; camera permission is requested for video. Den
 
 Media uses direct WebRTC DTLS-SRTP with host ICE candidates and no external STUN/TURN servers. Signaling uses V2 authenticated chat: **the room server can read SDP/ICE; signaling is not end-to-end encrypted**. Wi-Fi client isolation can prevent calls. Incoming notifications require notification permission and a surviving TCP connection; this is not a push service that wakes a killed app. Desktop-to-Android video calling has been confirmed by a user; the full cross-platform device matrix still needs acceptance testing.
 
-Automated coordinator, codec and encrypted signaling tests pass, and the debug APK builds. Actual microphone/camera quality, Bluetooth routing, background/PiP behavior and OEM power management still require acceptance testing on physical Android devices.
+Coordinator, codec and encrypted signaling have JVM tests; current build results belong to CI or change reports. Microphone/camera quality, Bluetooth routing, background/PiP behavior and OEM power management require acceptance testing on physical Android devices.
 
-The [reviewed implementation and device acceptance checklist](../../docs/android-av-calls.md) describe the architecture, protocol and remaining verification.
+The [realtime architecture](../../docs/webrtc-architecture.md) and this guide describe the signaling boundary and remaining device verification.
 
 ### Minimum requirements
 

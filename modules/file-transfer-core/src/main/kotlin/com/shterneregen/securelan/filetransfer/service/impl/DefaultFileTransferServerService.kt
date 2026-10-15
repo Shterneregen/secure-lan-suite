@@ -1,7 +1,8 @@
 package com.shterneregen.securelan.filetransfer.service.impl
 
 import com.shterneregen.securelan.common.net.transport.TcpServer
-import com.shterneregen.securelan.crypto.CryptoServices
+import com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake
+import com.shterneregen.securelan.filetransfer.protocol.TransferRejectedException
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
@@ -11,6 +12,7 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferEventPublishe
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferStreams
 import java.io.IOException
 import java.net.Socket
 import java.nio.file.FileAlreadyExistsException
@@ -35,16 +37,14 @@ import java.util.concurrent.atomic.AtomicLong
  * partial downloads.
  *
  * @param eventPublisher Publisher emitting file transfer lifecycle events.
- * @param cryptoServices Cryptographic services provider (defaults to [CryptoServices.createDefault]).
  * @param timeouts Configured timeouts for inactivity, acceptance, and confirmation.
  */
 class DefaultFileTransferServerService @JvmOverloads constructor(
     eventPublisher: FileTransferEventPublisher,
-    cryptoServices: CryptoServices = CryptoServices.createDefault(),
     private val timeouts: FileTransferTimeouts = FileTransferTimeouts(),
 ) : FileTransferServerService {
     private val eventPublisher: FileTransferEventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher")
-    private val handshake = SecureFileTransferHandshake(Objects.requireNonNull(cryptoServices, "cryptoServices"))
+    private val handshake = SecureFileTransferHandshake()
     private val lifecycleLock = Any()
     private val running = AtomicBoolean(false)
     private val tcpServer = TcpServer("file-transfer-server", com.shterneregen.securelan.common.net.transport.ServerSocketFactory.systemDefault(), 4)
@@ -154,29 +154,20 @@ class DefaultFileTransferServerService @JvmOverloads constructor(
                         false,
                     )
                     Files.newOutputStream(staging, StandardOpenOption.WRITE).use { outputStream ->
-                        while (true) {
-                            val chunk = session.readEncryptedBytes()
-                            if (chunk.isEmpty()) {
-                                break
-                            }
-                            if (chunk.size.toLong() > metadata.fileSize - transferred) {
-                                throw IOException("Received file exceeds declared size")
-                            }
-                            outputStream.write(chunk)
-                            transferred = Math.addExact(transferred, chunk.size.toLong())
+                        transferred = FileTransferStreams.receive(outputStream, metadata.fileSize, { session.readEncryptedBytes() }) { bytes ->
                             arm(timeouts.inactivityMillis)
-                            progressPublisher.report(transferred)
+                            progressPublisher.report(bytes)
                         }
                     }
-                    if (transferred != metadata.fileSize) {
-                        throw IOException("Received file length differs from declared size")
-                    }
-                    val target = publishUniqueTarget(staging, metadata.fileName, activeConfig)
-                    Files.deleteIfExists(staging)
-                    temporary = null
-                    quota.commit()
-                    arm(timeouts.confirmationMillis)
-                    session.writeEncryptedText("DONE")
+                    val target = FileTransferStreams.publishAndConfirm(session, {
+                        publishUniqueTarget(staging, metadata.fileName, activeConfig).also {
+                            Files.deleteIfExists(staging)
+                            temporary = null
+                        }
+                    }, {
+                        quota.commit()
+                        arm(timeouts.confirmationMillis)
+                    })
                     eventPublisher.publish(FileTransferCompletedEvent(metadata.transferId, target.fileName.toString(), target, transferred, false))
                 }
             } catch (e: Exception) {

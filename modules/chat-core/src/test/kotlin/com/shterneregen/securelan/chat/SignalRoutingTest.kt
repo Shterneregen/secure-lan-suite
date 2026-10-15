@@ -34,10 +34,15 @@ class SignalRoutingTest {
                             assertEquals("alice", RtcSignalCodec.deserialize(received.payload()).fromPeer())
                             assertThrows(SocketTimeoutException::class.java) { carol.readMessage() }
                             router.publishSignal("alice", "garbage")
+                            router.publishSignal("alice", RtcSignalCodec.serialize(spoofed).replaceFirst("v=1", "v=999"))
+                            assertThrows(SocketTimeoutException::class.java) { bob.readMessage() }
+                            // An unsupported signal must not poison the room's text path.
+                            router.publishMessage("alice", "still connected")
+                            assertEquals("still connected", bob.readMessage()!!.payload())
                             router.publishSignal("alice", RtcSignalCodec.serialize(RtcSignalEnvelope.offer("alice", "", RtcSessionMode.AUDIO, "data", "sdp")))
                             router.publishSignal("alice", RtcSignalCodec.serialize(RtcSignalEnvelope.offer("alice", "missing", RtcSessionMode.AUDIO, "data", "sdp")))
                             assertThrows(SocketTimeoutException::class.java) { bob.readMessage() }
-                            assertTrue(history.getAll().isEmpty())
+                            assertEquals(1, history.getAll().size)
                         }
                     }
                 }

@@ -3,6 +3,4 @@ plugins {
 }
 
 dependencies {
-    implementation project(':modules:common-model')
-    implementation project(':modules:webrtc-core')
 }

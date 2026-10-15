@@ -41,6 +41,34 @@ class CallCoordinatorTest {
         fun incoming() = calls.receive("bob", signal(RtcSignalType.OFFER, "incoming"))
     }
 
+    @Test fun `bounded outbox cancels retired sends and a new call does not wait for stale work`() = runTest {
+        val media = Media()
+        val sent = mutableListOf<RtcSignalEnvelope>()
+        val blocked = CompletableDeferred<Unit>()
+        var block = true
+        val calls = CallCoordinator(backgroundScope, { "alice" }, { true }, {
+            if (block) blocked.await()
+            sent += it
+        }, media, { _, _ -> }, {}, { testScheduler.currentTime })
+        calls.start("bob", false); runCurrent()
+        val retired = calls.state.value.id
+        repeat(1000) { index ->
+            calls.receive("mallory", RtcSignalEnvelope("foreign-$index", "mallory", "alice", RtcSignalType.OFFER,
+                RtcSessionMode.AUDIO, "data", true, false, "sdp", "", "", -1, ""))
+        }
+        assertTrue(calls.pendingSignalCount <= 64)
+        repeat(1000) { media.listener!!.ice("candidate-$it", "0", 0) }
+        assertEquals(CallPhase.ENDED, calls.state.value.phase)
+        assertTrue(calls.pendingSignalCount <= 64)
+        // The blocked old offer is cancelled; its pending ICE cannot delay a new offer.
+        block = false
+        calls.start("carol", false); runCurrent()
+        assertTrue(sent.any { it.toPeer() == "carol" && it.type() == RtcSignalType.OFFER })
+        assertFalse(sent.any { it.sessionId() == retired && it.type() in listOf(RtcSignalType.OFFER, RtcSignalType.ICE_CANDIDATE) })
+        assertTrue(sent.any { it.sessionId() == retired && it.type() == RtcSignalType.HANGUP })
+        calls.close()
+    }
+
     @Test fun `offer precedes locally generated ice and media waits for foreground readiness`() = runTest {
         val f = Fixture(this)
         f.prepareGate = CompletableDeferred()

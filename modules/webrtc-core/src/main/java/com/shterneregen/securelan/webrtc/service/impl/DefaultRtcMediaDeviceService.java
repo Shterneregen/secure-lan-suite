@@ -48,12 +48,7 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     private final AtomicReference<Thread> mediaDeviceThread = new AtomicReference<>();
     private final AtomicBoolean serviceClosed = new AtomicBoolean(false);
     private final Set<ActiveCameraPreviewSession> activePreviewSessions = ConcurrentHashMap.newKeySet();
-    private final ExecutorService mediaDeviceExecutor = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "securelan-rtc-media-devices");
-        thread.setDaemon(true);
-        mediaDeviceThread.set(thread);
-        return thread;
-    });
+    private final ExecutorService mediaDeviceExecutor;
     private final VideoFrameConverter videoFrameConverter = new VideoFrameConverter();
     private final VideoCapabilitySelector videoCapabilitySelector = new VideoCapabilitySelector();
 
@@ -61,6 +56,16 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
      * Constructs a new media device service with a dedicated background worker thread.
      */
     public DefaultRtcMediaDeviceService() {
+        mediaDeviceExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "securelan-rtc-media-devices");
+        thread.setDaemon(true);
+        mediaDeviceThread.set(thread);
+        return thread;
+    });
+    }
+
+    DefaultRtcMediaDeviceService(ExecutorService executor) {
+        mediaDeviceExecutor = executor;
     }
 
     @Override
@@ -149,22 +154,22 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
             return;
         }
 
-        for (ActiveCameraPreviewSession previewSession : List.copyOf(activePreviewSessions)) {
-            previewSession.close(true);
-        }
-
-        mediaDeviceExecutor.shutdown();
-        if (Thread.currentThread() == mediaDeviceThread.get()) {
-            return;
-        }
-
-        try {
-            if (!mediaDeviceExecutor.awaitTermination(3, TimeUnit.SECONDS)) {
-                RtcFileLogger.warn("RTC media device executor did not terminate within timeout");
+        mediaDeviceExecutor.execute(() -> {
+            for (ActiveCameraPreviewSession previewSession : List.copyOf(activePreviewSessions)) {
+                previewSession.close(true);
             }
+        });
+        mediaDeviceExecutor.shutdown();
+    }
+
+    @Override
+    public boolean awaitClosed(long timeoutMillis) {
+        if (Thread.currentThread() == mediaDeviceThread.get()) return mediaDeviceExecutor.isTerminated();
+        try {
+            return mediaDeviceExecutor.awaitTermination(Math.max(0, timeoutMillis), TimeUnit.MILLISECONDS);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            RtcFileLogger.warn("RTC media device executor shutdown interrupted");
+            return false;
         }
     }
 
@@ -458,7 +463,9 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
     private void closePreviewSession(ActiveCameraPreviewSession previewSession, boolean waitForCleanup) {
         Runnable cleanup = () -> {
             activePreviewSessions.remove(previewSession);
-            disposePreviewResources(previewSession.captureSession, previewSession.factory, previewSession.sink);
+            try {
+                disposePreviewResources(previewSession.captureSession, previewSession.factory, previewSession.sink);
+            } finally { previewSession.cleanupDone.complete(null); }
         };
 
         if (Thread.currentThread() == mediaDeviceThread.get() || mediaDeviceExecutor.isShutdown()) {
@@ -489,17 +496,13 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
         }
     }
 
-    private static boolean isUiThread() {
-        return java.awt.EventQueue.isDispatchThread()
-                || Thread.currentThread().getName().startsWith("AWT-EventQueue");
-    }
-
     private final class ActiveCameraPreviewSession implements CameraPreviewSession {
         private final VideoCaptureSession captureSession;
         private final PeerConnectionFactory factory;
         private final PreviewVideoSink sink;
         private final String statusMessage;
         private final AtomicBoolean closed = new AtomicBoolean(false);
+        private final java.util.concurrent.CompletableFuture<Void> cleanupDone = new java.util.concurrent.CompletableFuture<>();
 
         private ActiveCameraPreviewSession(
                 VideoCaptureSession captureSession,
@@ -521,10 +524,24 @@ public final class DefaultRtcMediaDeviceService implements RtcMediaDeviceService
 
         @Override
         public void close() {
-            close(!isUiThread());
+            close(false);
+        }
+
+        @Override
+        public boolean awaitClosed(long timeoutMillis) {
+            try {
+                cleanupDone.get(Math.max(0, timeoutMillis), TimeUnit.MILLISECONDS);
+                return true;
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                return false;
+            } catch (ExecutionException | java.util.concurrent.TimeoutException error) {
+                return false;
+            }
         }
 
         private void close(boolean waitForCleanup) {
+            if (!waitForCleanup && serviceClosed.get()) return;
             if (!closed.compareAndSet(false, true)) {
                 return;
             }

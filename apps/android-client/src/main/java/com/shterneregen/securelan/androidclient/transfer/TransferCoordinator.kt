@@ -14,7 +14,7 @@ data class TransferRecipient(val id: String, val name: String, val host: String,
 /** Document-provider source; a null [size] requires staging, while zero denotes a known empty file. */
 data class TransferSource(val reference: String, val name: String, val size: Long?, val unavailable: Boolean = false)
 /** One send attempt; [id] correlates local callbacks and [wireId] identifies its protocol transfer. */
-data class TransferAttempt(val id: String = UUID.randomUUID().toString(), val wireId: String? = null, val phase: TransferPhase = TransferPhase.PREPARING, val bytes: Long = 0, val total: Long? = null)
+data class TransferAttempt(val id: String = UUID.randomUUID().toString(), val wireId: String? = null, val phase: TransferPhase = TransferPhase.PREPARING, val bytes: Long = 0, val total: Long? = null, val failureKind: com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind? = null)
 data class TransferItem(val id: String = UUID.randomUUID().toString(), val source: TransferSource, val phase: TransferPhase = TransferPhase.QUEUED, val attempts: List<TransferAttempt> = emptyList())
 /** In-memory batch snapshot; confirmed files received `DONE`, and failed outcomes may be uncertain. */
 data class TransferQueueState(
@@ -150,17 +150,23 @@ class TransferCoordinator(
                     val (recipient, item, attempt) = work
                     var outcome = TransferPhase.COMPLETED
                     var cancellation: CancellationException? = null
+                    var failureKind: com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind? = null
                     try {
                         check(isAvailable(recipient))
                         send(recipient, item.source) { update -> updateAttempt(item.id, attempt.id, update.copy(id = attempt.id)) }
                     } catch (error: Exception) {
                         val phase = mutableState.value.items.first { it.id == item.id }.attempts.last().phase
                         outcome = if (phase == TransferPhase.WAITING_FOR_CONFIRMATION) TransferPhase.OUTCOME_UNKNOWN else TransferPhase.FAILED
+                        failureKind = (error as? com.shterneregen.securelan.filetransfer.service.FileTransferAttemptException)?.kind
+                            ?: if (phase == TransferPhase.WAITING_FOR_CONFIRMATION) com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind.OUTCOME_UNKNOWN
+                            else if (error is CancellationException) com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind.ABORTED
+                            else com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind.CONNECTION
+                        if (failureKind == com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind.OUTCOME_UNKNOWN) outcome = TransferPhase.OUTCOME_UNKNOWN
                         if (error is CancellationException) cancellation = error
                     }
                     synchronized(this@TransferCoordinator) {
                         val current = mutableState.value.items.first { it.id == item.id }.attempts.last()
-                        updateAttempt(item.id, attempt.id, current.copy(phase = outcome))
+                        updateAttempt(item.id, attempt.id, current.copy(phase = outcome, failureKind = failureKind))
                         if (mutableState.value.status == BatchStatus.STOP_REQUESTED) finish()
                         else if (outcome != TransferPhase.COMPLETED) mutableState.value = mutableState.value.copy(status = BatchStatus.PAUSED)
                     }

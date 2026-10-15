@@ -9,6 +9,7 @@ import com.shterneregen.securelan.chat.protocol.WireMessage
 import com.shterneregen.securelan.chat.protocol.WireMessageType
 import com.shterneregen.securelan.chat.protocol.handshake.HandshakeRequest
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
+import com.shterneregen.securelan.chat.service.ChatSendOutcome
 import com.shterneregen.securelan.chat.service.ChatClientService
 import com.shterneregen.securelan.chat.service.ChatEventPublisher
 import com.shterneregen.securelan.chat.service.SecureHandshakeService
@@ -60,9 +61,9 @@ class DefaultChatClientService @JvmOverloads constructor(
     private val identity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
     override fun fileIdentity(): com.shterneregen.securelan.crypto.protocol.PeerIdentity = identity
 
-    private var session: ChatSocketSession? = null
+    @Volatile private var session: ChatSocketSession? = null
     private var receiverThread: Thread? = null
-    private var nickname: String? = null
+    @Volatile private var nickname: String? = null
 
     init {
         require(handshakeTimeoutMillis > 0) { "Handshake timeout must be positive" }
@@ -141,20 +142,21 @@ class DefaultChatClientService @JvmOverloads constructor(
     /**
      * Sends a chat message to the server.
      *
-     * Silently ignored if not connected, [text] is `null`, or [text] is blank.
+     * Returns the local write result or an explicit empty/disconnected/failed outcome.
      *
      * @param text The message text to send.
      */
-    override fun sendMessage(text: String?) {
+    override fun sendMessage(text: String?): ChatSendOutcome {
         val activeSession = session
-        if (!connected.get() || text.isNullOrBlank() || activeSession == null) {
-            return
-        }
-        try {
+        if (text.isNullOrBlank()) return ChatSendOutcome.EMPTY
+        if (!connected.get() || activeSession == null) return ChatSendOutcome.DISCONNECTED
+        return try {
             activeSession.writeMessage(WireMessage(WireMessageType.CHAT, nickname, text))
             eventPublisher.publish(ChatMessageSentEvent(nickname, text))
+            ChatSendOutcome.WRITTEN
         } catch (e: IOException) {
             eventPublisher.publish(ChatErrorEvent("Unable to send message", e))
+            ChatSendOutcome.FAILED
         }
     }
 

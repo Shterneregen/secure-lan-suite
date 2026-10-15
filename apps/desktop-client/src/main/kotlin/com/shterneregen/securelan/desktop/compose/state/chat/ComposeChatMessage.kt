@@ -18,6 +18,7 @@ public data class ComposeChatMessage(
     val transcriptLine: String? = null,
     val eventKey: String? = null,
     val actionPath: Path? = null,
+    val localEvent: LocalTranscriptEvent? = null,
 ) {
     val displayText: String = transcriptLine ?: if (system) "[$sender] $text" else "$sender: $text"
     val displayTime: String = formatComposeChatTimestamp(timestamp)

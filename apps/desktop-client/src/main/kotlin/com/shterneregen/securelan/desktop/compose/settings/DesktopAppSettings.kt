@@ -159,7 +159,19 @@ interface DesktopAppSettingsStore {
 class DesktopAppSettingsController(
     initialSettings: DesktopAppSettings = DesktopAppSettings(),
     private val store: DesktopAppSettingsStore? = null,
-) {
+    private val dispatch: (() -> Unit) -> Unit = { action ->
+        if (javax.swing.SwingUtilities.isEventDispatchThread()) action() else javax.swing.SwingUtilities.invokeLater(action)
+    },
+) : AutoCloseable {
+    private val writer = java.util.concurrent.Executors.newSingleThreadExecutor { work ->
+        Thread(work, "desktop-settings-writer")
+    }
+    private var revision = 0L
+    private var closed = false
+    var persistenceError: String? by mutableStateOf(null)
+        private set
+    var saving: Boolean by mutableStateOf(false)
+        private set
     var settings: DesktopAppSettings by mutableStateOf(initialSettings.normalized())
         private set
 
@@ -172,10 +184,34 @@ class DesktopAppSettingsController(
         val updated = transform(settings).normalized()
         if (updated != settings) {
             settings = updated
-            store?.save(updated)
+            persist(updated)
         }
         return settings
     }
+    /** Retries the latest in-memory preferences; successful persistence clears the recovery state. */
+    @Synchronized
+    fun retryPersistence() { persist(settings) }
+
+    private fun persist(snapshot: DesktopAppSettings) {
+        val target = store ?: return
+        if (closed) return
+        val captured = ++revision
+        saving = true
+        writer.execute {
+            val saved = runCatching { target.save(snapshot) }.getOrDefault(false)
+            dispatch {
+                if (captured == revision) {
+                    saving = false
+                    persistenceError = if (saved) null else "Settings apply for this session but could not be saved. Check storage access and retry."
+                }
+            }
+        }
+    }
+
+    /** Drains queued writes in order without blocking the UI thread. */
+    @Synchronized
+    override fun close() { closed = true; writer.shutdown() }
+
 }
 
 private fun Int.validPortOr(fallback: Int): Int = takeIf { it in 1..65_535 } ?: fallback

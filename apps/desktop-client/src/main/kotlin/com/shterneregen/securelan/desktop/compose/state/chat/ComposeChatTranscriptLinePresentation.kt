@@ -20,6 +20,10 @@ data class ComposeChatTranscriptLinePresentation(
 
     companion object {
         fun from(message: ComposeChatMessage, localNickname: String = ""): ComposeChatTranscriptLinePresentation {
+            message.localEvent?.let { event ->
+                return ComposeChatTranscriptLinePresentation(event.kind, event.label, event.body, message.timestamp,
+                    event.actionUrl, event.showsQrCode, event.actionPath)
+            }
             if (message.transcriptLine == null && !message.system) {
                 val local = message.sender.equals(localNickname, ignoreCase = true)
                 return ComposeChatTranscriptLinePresentation(

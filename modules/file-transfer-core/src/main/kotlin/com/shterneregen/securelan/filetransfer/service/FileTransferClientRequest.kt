@@ -21,7 +21,7 @@ data class FileTransferClientRequest(
     val recipientId: String,
     val sessionPassword: String,
     val file: Path,
-    val authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? = null,
+    val authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication,
 ) {
     init {
         Objects.requireNonNull(host, "host must not be null")

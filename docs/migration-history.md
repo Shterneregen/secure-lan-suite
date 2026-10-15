@@ -33,12 +33,14 @@ integration.
 | `file-transfer-core` | Encrypted send/receive, progress events, and integration tests |
 | `stego-core` | BMP text/binary hide and extract plus password encryption workflows and tests |
 | `webrtc-core` | RTC sessions, signaling, data channels, native voice, experimental video, media devices, and diagnostics |
-| `audio-core` / `webcam-core` | Profile and configuration hints used by the active WebRTC path |
+| `audio-core` / `webcam-core` | Standalone profile/configuration DTOs; default services are not used by active capture |
 
 The standalone TCP/UDP audio transport and OpenCV-style standalone camera path
 were intentionally not migrated. The active product direction uses WebRTC.
-TLS-specific file transport was also left out because the current transfer
-protocol performs its own RSA/AES-GCM handshake and encryption.
+TLS-specific file transport was also left out. The earlier migration used an
+RSA/AES-GCM key-transport handshake; this is historical behavior. Current chat
+and files use mutually authenticated SRP V2, room-certified peer signatures and
+ordered AES-GCM records, described in [security-protocol.md](security-protocol.md).
 
 ## Desktop applications
 

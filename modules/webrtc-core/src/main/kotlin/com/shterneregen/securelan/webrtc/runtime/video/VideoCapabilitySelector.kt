@@ -8,7 +8,7 @@ import dev.onvoid.webrtc.media.video.VideoCaptureCapability
  * Prioritizes safe, low-overhead VGA resolution (640x480) at 15 or 30 fps over high-bandwidth HD modes
  * to ensure responsive local-network streaming and lower CPU load during software encoding and preview conversion.
  */
-class VideoCapabilitySelector {
+internal class VideoCapabilitySelector {
     /**
      * Chooses the most suitable capability from the supplied [capabilities] list.
      *

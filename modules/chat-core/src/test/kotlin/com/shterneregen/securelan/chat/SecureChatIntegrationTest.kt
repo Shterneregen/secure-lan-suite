@@ -50,6 +50,31 @@ class SecureChatIntegrationTest {
     }
 
     @Test
+    fun localWriteFailureIsReportedAsFailure() {
+        val port = freePort()
+        val server = track(DefaultChatServerService {})
+        server.start(ChatServerConfig(port, "chatpass"))
+        val failWrites = java.util.concurrent.atomic.AtomicBoolean()
+        val factory = ClientSocketFactory { endpoint ->
+            object : java.net.Socket(endpoint.host(), endpoint.port()) {
+                override fun getOutputStream(): java.io.OutputStream {
+                    val output = super.getOutputStream()
+                    return object : java.io.OutputStream() {
+                        override fun write(value: Int) { if (failWrites.get()) throw java.io.IOException("Injected failure"); output.write(value) }
+                        override fun write(bytes: ByteArray, offset: Int, length: Int) { if (failWrites.get()) throw java.io.IOException("Injected failure"); output.write(bytes, offset, length) }
+                        override fun flush() = output.flush()
+                    }
+                }
+            }
+        }
+        val client = track(DefaultChatClientService({}, factory))
+        org.junit.jupiter.api.Assertions.assertEquals(com.shterneregen.securelan.chat.service.ChatSendOutcome.DISCONNECTED, client.sendMessage("draft"))
+        assertTrue(client.connect(ChatClientConnectRequest("127.0.0.1", port, "alice", "chatpass")))
+        failWrites.set(true)
+        org.junit.jupiter.api.Assertions.assertEquals(com.shterneregen.securelan.chat.service.ChatSendOutcome.FAILED, client.sendMessage("draft"))
+    }
+
+    @Test
     fun wrongPasswordShouldBeRejected() {
         val events = CopyOnWriteArrayList<ChatCoreEvent>()
         val port = freePort()

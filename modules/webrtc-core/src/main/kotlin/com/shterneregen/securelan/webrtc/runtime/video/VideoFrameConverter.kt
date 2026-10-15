@@ -13,7 +13,7 @@ import java.util.Objects
  * Automatically validates buffer capacities and plane strides, and safely releases
  * the intermediate [I420Buffer] in a `finally` block to prevent native memory leaks.
  */
-class VideoFrameConverter {
+internal class VideoFrameConverter {
     /**
      * Converts a WebRTC [VideoFrame] into a BGRA byte array.
      *

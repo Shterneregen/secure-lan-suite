@@ -63,12 +63,53 @@ class CallCoordinator(
     private var localReady = false
     private val remoteIce = mutableListOf<RtcSignalEnvelope>()
     private val localIce = mutableListOf<RtcSignalEnvelope>()
-    private val outbox = Channel<RtcSignalEnvelope>(Channel.UNLIMITED)
+    private data class PendingSignal(val signal: RtcSignalEnvelope, val generation: Long, val terminal: Boolean = false, val reply: Boolean = false)
+    private val outbox = ArrayDeque<PendingSignal>()
+    private val wakeSender = Channel<Unit>(Channel.CONFLATED)
+    private var generation = 0L
+    private var lastReplyAt: Long? = null
+    private var inFlight: Pair<PendingSignal, Job>? = null
+    private val mutableSignalingError = MutableStateFlow<String?>(null)
+    val signalingError = mutableSignalingError.asStateFlow()
+    internal val pendingSignalCount: Int get() = outbox.size
     private val sender = scope.launch {
-        for (signal in outbox) {
-            try { withTimeout(10_000) { send(signal) } }
-            catch (e: CancellationException) { if (e !is TimeoutCancellationException) throw e; transportFailed(signal) }
-            catch (_: Exception) { transportFailed(signal) }
+        for (wake in wakeSender) {
+            while (outbox.isNotEmpty()) {
+                val work = outbox.removeFirst()
+                if (!work.terminal && (work.generation != generation || (!work.reply &&
+                    (!state.value.ongoing || state.value.id != work.signal.sessionId())))) continue
+                val task = scope.launch(start = CoroutineStart.LAZY) {
+                    try { withTimeout(if (work.terminal || work.reply) 1_000 else 10_000) { send(work.signal) } }
+                    catch (_: TimeoutCancellationException) { sendFailed(work) }
+                    catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { sendFailed(work) }
+                }
+                inFlight = work to task
+                task.start()
+                task.join()
+                inFlight = null
+            }
+        }
+    }
+
+    private fun sendFailed(work: PendingSignal) {
+        if (work.terminal) mutableSignalingError.value = "The peer could not be notified that the call ended."
+        else if (!work.reply && work.generation == generation) transportFailed(work.signal)
+    }
+
+    private fun retirePending() {
+        generation++
+        outbox.removeAll { !it.terminal }
+        inFlight?.takeUnless { it.first.terminal }?.second?.cancel()
+    }
+
+    private fun reply(signal: RtcSignalEnvelope) {
+        val timestamp = now()
+        if (lastReplyAt?.let { timestamp - it < 1_000 } == true) return
+        lastReplyAt = timestamp
+        if (outbox.size < 64 && outbox.none { it.reply }) {
+            outbox.addLast(PendingSignal(signal, generation, reply = true))
+            wakeSender.trySend(Unit)
         }
     }
 
@@ -110,12 +151,12 @@ class CallCoordinator(
         if (signal.type() == RtcSignalType.OFFER) {
             if (current.ongoing && current.id == signal.sessionId() && current.peer.equals(sender, true)) return
             if (current.ongoing) {
-                emit(RtcSignalEnvelope.hangup(signal.sessionId(), nickname(), sender, signal.mode(), "securelan-data", "busy"))
+                reply(RtcSignalEnvelope.hangup(signal.sessionId(), nickname(), sender, signal.mode(), "securelan-data", "busy"))
             } else if (signal.sdp().isNotBlank() && signal.mode() in setOf(RtcSessionMode.AUDIO, RtcSessionMode.AUDIO_VIDEO)) {
                 begin(CallState(CallPhase.INCOMING, signal.sessionId(), sender, signal.mode().videoEnabled()))
                 incoming = signal
             } else {
-                emit(RtcSignalEnvelope.error(signal.sessionId(), nickname(), sender, signal.mode(), "securelan-data", "unsupported"))
+                reply(RtcSignalEnvelope.error(signal.sessionId(), nickname(), sender, signal.mode(), "securelan-data", "unsupported"))
             }
             return
         }
@@ -152,9 +193,11 @@ class CallCoordinator(
     fun connectionLost() = finish(CallEndReason.CONNECTION_LOST, notify = false)
     fun peerLeft(peer: String) { if (state.value.peer.equals(peer, true)) connectionLost() }
     fun dismiss() { if (!state.value.ongoing) mutableState.value = CallState() }
-    fun close() { connectionLost(); outbox.close(); sender.cancel() }
+    fun close() { connectionLost(); outbox.clear(); wakeSender.close(); inFlight?.second?.cancel(); sender.cancel() }
 
     private fun begin(value: CallState) {
+        retirePending()
+        mutableSignalingError.value = null
         remoteReady = false; localReady = false
         remoteIce.clear(); localIce.clear(); incoming = null
         mutableState.value = value
@@ -189,7 +232,7 @@ class CallCoordinator(
         override fun failed() { if (matches(call)) finish(CallEndReason.CONNECTION_LOST) }
     }
 
-    private fun flushLocal() { localReady = true; localIce.forEach(::emit); localIce.clear() }
+    private fun flushLocal() { localReady = true; val pending = localIce.toList(); localIce.clear(); pending.forEach(::emit) }
     private fun flushRemote() { remoteReady = true; remoteIce.forEach(media::addIce); remoteIce.clear() }
     private fun matches(call: CallState) = state.value.ongoing && state.value.id == call.id
     private fun armTimeout(id: String) {
@@ -203,17 +246,31 @@ class CallCoordinator(
         val current = state.value
         if (!current.ongoing) return
         mutableState.value = current.copy(phase = CallPhase.ENDED, reason = reason)
+        retirePending()
         operations.toList().forEach { it.cancel() }; operations.clear(); negotiation = null
         timeout?.cancel(); timeout = null
         incoming = null; remoteIce.clear(); localIce.clear()
-        if (notify) emit(envelope(current, RtcSignalType.HANGUP, message = when (reason) {
+        if (notify) emitTerminal(envelope(current, RtcSignalType.HANGUP, message = when (reason) {
             CallEndReason.DECLINED -> "declined"
             CallEndReason.TIMEOUT -> "timeout"
             else -> reason.name.lowercase()
         }))
         try { media.close() } finally { release() }
     }
-    private fun emit(signal: RtcSignalEnvelope) { outbox.trySend(signal) }
+    private fun emit(signal: RtcSignalEnvelope) {
+        if (!state.value.ongoing || state.value.id != signal.sessionId()) return
+        if (outbox.size >= 64) { finish(CallEndReason.ERROR); return }
+        outbox.addLast(PendingSignal(signal, generation))
+        wakeSender.trySend(Unit)
+    }
+    private fun emitTerminal(signal: RtcSignalEnvelope) {
+        if (outbox.size >= 64) {
+            mutableSignalingError.value = "The peer could not be notified that the call ended."
+            return
+        }
+        outbox.addLast(PendingSignal(signal, generation, terminal = true))
+        wakeSender.trySend(Unit)
+    }
     private fun mode(call: CallState) = if (call.video) RtcSessionMode.AUDIO_VIDEO else RtcSessionMode.AUDIO
     private fun envelope(call: CallState, type: RtcSignalType, sdp: String = "", message: String = "") =
         RtcSignalEnvelope(call.id, nickname(), call.peer, type, mode(call), "securelan-data", true, call.video, sdp, "", "", -1, message)

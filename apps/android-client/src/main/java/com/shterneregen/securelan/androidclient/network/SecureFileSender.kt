@@ -8,7 +8,11 @@ import com.shterneregen.securelan.androidclient.transfer.TransferAttempt
 import com.shterneregen.securelan.androidclient.transfer.TransferPhase
 import com.shterneregen.securelan.androidclient.transfer.TransferSource
 import com.shterneregen.securelan.androidclient.transfer.stageStream
-import com.shterneregen.securelan.androidclient.transfer.validateTransferLength
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferStreams
+import com.shterneregen.securelan.filetransfer.protocol.TransferRejectedException
+import com.shterneregen.securelan.filetransfer.protocol.TransferSourceException
+import com.shterneregen.securelan.filetransfer.service.FileTransferAttemptException
+import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -46,7 +50,7 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
         sessionPassword: String,
         selectedFile: TransferSource,
         onUpdate: (TransferAttempt) -> Unit,
-        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication? = null,
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication,
     ): String = withContext(Dispatchers.IO) {
         val context = currentCoroutineContext()
         val transferId = UUID.randomUUID().toString()
@@ -60,9 +64,10 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
         }
         val watchdog = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "file-transfer-watchdog").apply { isDaemon = true } }
         watchdog.scheduleWithFixedDelay({
-            if (!context.isActive || System.nanoTime() >= operation.deadline) operation.close()
+            if (!context.isActive) operation.close() else if (System.nanoTime() >= operation.deadline) operation.expire()
         }, 100, 100, TimeUnit.MILLISECONDS)
         var staged: File? = null
+        var failureKind = FileTransferFailureKind.SOURCE
         try {
             publish(TransferPhase.PREPARING)
             operation.touch(timeouts.inactivityMillis)
@@ -86,30 +91,26 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
             val metadata = FileTransferMetadata(transferId, senderId, recipientId, safeTransferFileName(selectedFile.name), exactSize)
             operation.checkOpen()
             val socket = operation.socket
+            failureKind = FileTransferFailureKind.CONNECTION
             operation.touch(timeouts.connectMillis)
             socket.connect(InetSocketAddress(host, port), timeouts.connectMillis)
             socket.soTimeout = timeouts.acceptanceMillis
             operation.touch(timeouts.acceptanceMillis)
             FileTransferSession(socket).use { session ->
                 publish(TransferPhase.WAITING_FOR_ACCEPTANCE, total = exactSize)
-                com.shterneregen.securelan.filetransfer.service.impl.SecureFileTransferHandshake().performClientHandshake(
+                failureKind = FileTransferFailureKind.PROTOCOL
+                com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake().performClientHandshake(
                     session, senderId, recipientId, sessionPassword, metadata.fileName, metadata.fileSize, transferId, authentication,
                 )
                 socket.soTimeout = timeouts.inactivityMillis
                 operation.touch(timeouts.inactivityMillis)
                 publish(TransferPhase.SENDING)
                 requireNotNull(operation.input).use { input ->
-                    val buffer = ByteArray(CHUNK_SIZE)
-                    var sent = 0L
                     var lastUpdate = 0L
-                    while (true) {
-                        context.ensureActive()
-                        operation.checkOpen()
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        validateTransferLength(exactSize, Math.addExact(sent, read.toLong()), false)
-                        session.writeEncryptedBytes(buffer.copyOf(read))
-                        sent += read
+                    FileTransferStreams.send(input, exactSize, { chunk ->
+                        failureKind = FileTransferFailureKind.CONNECTION
+                        session.writeEncryptedBytes(chunk)
+                    }, { context.ensureActive(); operation.checkOpen() }) { sent ->
                         operation.touch(timeouts.inactivityMillis)
                         val now = System.nanoTime()
                         if (now - lastUpdate >= 100_000_000 || sent == exactSize) {
@@ -117,22 +118,27 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
                             lastUpdate = now
                         }
                     }
-                    validateTransferLength(exactSize, sent, true)
                 }
                 context.ensureActive()
                 operation.checkOpen()
-                // Once EOF submission begins, a lost response cannot prove non-delivery.
-                socket.soTimeout = timeouts.confirmationMillis
-                operation.touch(timeouts.confirmationMillis)
-                publish(TransferPhase.WAITING_FOR_CONFIRMATION, exactSize)
-                session.writeEncryptedBytes(ByteArray(0))
-                val result = session.readEncryptedText()
-                require(result == "DONE") { "Confirmation unavailable" }
+                FileTransferStreams.finishSending(session, {
+                    failureKind = FileTransferFailureKind.OUTCOME_UNKNOWN
+                    publish(TransferPhase.WAITING_FOR_CONFIRMATION, exactSize)
+                    socket.soTimeout = timeouts.confirmationMillis
+                    operation.touch(timeouts.confirmationMillis)
+                }, {})
             }
             transferId
         } catch (error: Exception) {
             context.ensureActive()
-            throw error
+            throw FileTransferAttemptException(when {
+                failureKind == FileTransferFailureKind.OUTCOME_UNKNOWN -> failureKind
+                operation.timedOut || error is java.net.SocketTimeoutException -> FileTransferFailureKind.TIMEOUT
+                operation.stopped -> FileTransferFailureKind.ABORTED
+                error is TransferRejectedException -> FileTransferFailureKind.REJECTED
+                error is TransferSourceException -> FileTransferFailureKind.SOURCE
+                else -> failureKind
+            }, error)
         } finally {
             operation.close()
             watchdog.shutdownNow()
@@ -146,6 +152,9 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
         @Volatile var input: InputStream? = null
         @Volatile var deadline: Long = Long.MAX_VALUE
         @Volatile private var closed = false
+        val stopped: Boolean get() = closed
+        @Volatile var timedOut = false; private set
+        fun expire() { timedOut = true; close() }
         fun touch(millis: Int) { deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis.toLong()) }
         @Synchronized fun own(stream: InputStream) {
             if (closed) { stream.close(); error("Transfer stopped") }

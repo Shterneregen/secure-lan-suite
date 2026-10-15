@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
  * Contains sensitive message and password drafts and must not be persisted or written to diagnostics.
  */
 public data class ComposeSteganographyState(
+    val busy: Boolean = false,
     val coverPathText: String = "",
     val inputPathText: String = "",
     val outputPathText: String = "",
@@ -37,10 +38,10 @@ public data class ComposeSteganographyState(
     val passwordRequiredForExtract: Boolean = encryptedExtract
     val passwordReady: Boolean = passwordDraft.isNotEmpty()
     val capacityText: String = capacity?.let(DesktopMainViewHelpers::formatStegoCapacity) ?: "Capacity unavailable until a BMP is inspected."
-    val canInspectCover: Boolean = hasCover
-    val canHideMessage: Boolean = hasCover && hasOutput && hasMessage && messageFitsCapacity &&
+    val canInspectCover: Boolean = !busy && hasCover
+    val canHideMessage: Boolean = !busy && hasCover && hasOutput && hasMessage && messageFitsCapacity &&
         (!passwordRequiredForHide || passwordReady)
-    val canExtractMessage: Boolean = hasInput && (!passwordRequiredForExtract || passwordReady)
+    val canExtractMessage: Boolean = !busy && hasInput && (!passwordRequiredForExtract || passwordReady)
     val hideLabel: String = if (canHideMessage) "Hide message ready" else "Hide message blocked"
     val extractLabel: String = if (canExtractMessage) "Extract ready" else "Extract blocked"
     val extractedSummary: String = if (extractedMessage.isBlank()) "No extracted message yet." else "Extracted ${extractedMessage.length} characters."
