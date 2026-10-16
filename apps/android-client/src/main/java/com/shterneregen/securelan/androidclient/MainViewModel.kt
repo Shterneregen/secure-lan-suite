@@ -89,6 +89,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     fun stopQuickShare(id: String) { quickShareServer.stopShare(id); refreshQuickShares() }
     fun refreshQuickShares() { quickShareUrls = quickShareServer.urls; _quickShares.value = quickShareServer.items() }
 
+    private var draftRevision = 0L
+    private var textSending = false
+    private val receiverGeneration = java.util.concurrent.atomic.AtomicLong()
+    private val discoverySeen = mutableMapOf<String, Long>()
     private var connectionGeneration = 0L
     private val fileRoomEpoch = java.util.concurrent.atomic.AtomicLong()
     private val transferCoordinator = TransferCoordinator(
@@ -218,7 +222,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         }
     }
 
-    fun updateInputMessage(value: String) = _uiState.update { it.copy(inputMessage = value) }
+    fun updateInputMessage(value: String) {
+        draftRevision++
+        _uiState.update { it.copy(inputMessage = value) }
+    }
 
     fun selectPeer(peer: DiscoveredPeer) {
         val previousRecipient = _uiState.value.fileRecipient
@@ -247,11 +254,22 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
             }
         }
         discoveryJob = viewModelScope.launch {
-            runCatching {
+            val expiry = launch {
+                while (isActive) {
+                    delay(1000)
+                    val cutoff = dependencies.monotonicMillis() - 45_000
+                    val expired = discoverySeen.filterValues { it <= cutoff }.keys.toSet()
+                    expired.forEach(discoverySeen::remove)
+                    removeDiscoveredPeers(expired)
+                }
+            }
+            try { runCatching {
                 dependencies.discover().collect { peer ->
                     if (peer.peerId == hostPeerId) return@collect
+                    discoverySeen[peer.peerId] = dependencies.monotonicMillis()
                     _uiState.update { state ->
-                        val serverPeer = peer.copy(role = PeerRole.SERVER)
+                        val manual = state.peers.firstOrNull { it.peerId.startsWith("manual:") && samePeer(it, peer) }
+                        val serverPeer = peer.copy(role = PeerRole.SERVER, peerId = manual?.peerId ?: peer.peerId)
                         val peers = upsertPeer(state.peers, serverPeer)
                             .sortedBy { it.nickname.lowercase() }
                         val selectedPeer = state.selectedPeer?.let { selected ->
@@ -280,6 +298,21 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                     addLog(error.message ?: "Device search stopped unexpectedly", level = "ERROR")
                 }
             }
+            } finally { expiry.cancel() }
+        }
+    }
+
+    private fun removeDiscoveredPeers(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        _uiState.update { state ->
+            fun absent(peer: DiscoveredPeer?) = peer != null && peer.peerId in ids && !peer.peerId.startsWith("manual:")
+            fun expired(peer: DiscoveredPeer?) = absent(peer) &&
+                !(state.connected && peer != null && state.connectionPeer?.let { samePeer(peer, it) } == true)
+            state.copy(
+                peers = state.peers.filterNot { absent(it) },
+                selectedPeer = state.selectedPeer.takeUnless { expired(it) },
+                connectionPeer = state.connectionPeer.takeUnless { expired(it) },
+            )
         }
     }
 
@@ -361,16 +394,20 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         val listenPort = localFileReceiverPort(state)
         _uiState.update { it.copy(fileReceiverRunning = true, status = "File receiver listening on port $listenPort") }
         addLog("File receiver listening on port $listenPort")
-        fileReceiverJob = viewModelScope.launch {
+        val generation = receiverGeneration.incrementAndGet()
+        val receiverJob = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             runCatching {
                 fileReceiver.serve(
                     port = listenPort,
                     sessionPassword = password,
                     authentication = filePeerAuthentication(),
-                    onStarted = { metadata ->
+                    onStarted = started@{ metadata ->
+                        if (generation != receiverGeneration.get()) return@started
                         _uiState.update {
+                            if (generation != receiverGeneration.get()) return@update it
                             it.copy(
                                 incomingFileProgress = IncomingFileProgress(
+                                    transferId = metadata.transferId,
                                     fileName = metadata.fileName,
                                     totalBytes = metadata.fileSize,
                                     active = true,
@@ -380,8 +417,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                         }
                         addLog("Receiving file ${metadata.fileName} (${metadata.fileSize} bytes) from ${metadata.senderId}")
                     },
-                    onProgress = { metadata, received ->
+                    onProgress = progress@{ metadata, received ->
+                        if (generation != receiverGeneration.get()) return@progress
                         _uiState.update {
+                            if (generation != receiverGeneration.get() || it.incomingFileProgress.transferId != metadata.transferId) return@update it
                             it.copy(
                                 incomingFileProgress = it.incomingFileProgress.copy(
                                     fileName = metadata.fileName,
@@ -392,8 +431,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                             )
                         }
                     },
-                    onCompleted = { metadata, receivedFile ->
+                    onCompleted = completed@{ metadata, receivedFile ->
+                        if (generation != receiverGeneration.get()) return@completed
                         _uiState.update {
+                            if (generation != receiverGeneration.get()) return@update it
                             it.copy(
                                 incomingFileProgress = it.incomingFileProgress.copy(
                                     fileName = metadata.fileName,
@@ -421,13 +462,19 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                         postFileReceivedNotification(metadata.fileName, receivedFile.savedPath)
                     },
                     onError = { message, _ ->
+                        if (generation == receiverGeneration.get()) addLog(message, level = "ERROR")
+                    },
+                    onTransferError = failed@{ metadata, message, _ ->
+                        if (generation != receiverGeneration.get()) return@failed
                         _uiState.update {
+                            if (generation != receiverGeneration.get()) return@update it
                             it.copy(
-                                incomingFileProgress = it.incomingFileProgress.copy(active = false, error = message),
+                                incomingFileProgress = if (it.incomingFileProgress.transferId == metadata.transferId)
+                                    it.incomingFileProgress.copy(active = false, error = message) else it.incomingFileProgress,
                                 recentTransfers = listOf(
                                     TransferRecord(
-                                        fileName = it.incomingFileProgress.fileName.ifBlank { "Incoming file" },
-                                        bytes = it.incomingFileProgress.totalBytes,
+                                        fileName = metadata.fileName,
+                                        bytes = metadata.fileSize,
                                         direction = TransferDirection.RECEIVED,
                                         result = TransferResult.FAILED,
                                     ),
@@ -439,18 +486,23 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                     },
                 )
             }.onFailure { error ->
+                if (generation != receiverGeneration.get()) return@onFailure
                 fileReceiverJob = null
                 if (error !is kotlinx.coroutines.CancellationException) {
                     _uiState.update {
+                        if (generation != receiverGeneration.get()) return@update it
                         it.copy(fileReceiverRunning = false, error = error.message, status = "File receiver stopped")
                     }
                     addLog(error.message ?: "File receiver stopped unexpectedly", level = "ERROR")
                 }
             }
         }
+        fileReceiverJob = receiverJob
+        receiverJob.start()
     }
 
     fun stopFileReceiver() {
+        receiverGeneration.incrementAndGet()
         fileReceiver.close()
         fileReceiverJob?.cancel()
         fileReceiverJob = null
@@ -459,6 +511,8 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     }
 
     fun stopDiscovery() {
+        removeDiscoveredPeers(discoverySeen.keys.toSet())
+        discoverySeen.clear()
         discoveryJob?.cancel()
         discoveryJob = null
         discoveryTimeoutJob?.cancel()
@@ -523,6 +577,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         disconnectRequested = true
         receiveJob?.cancel()
         receiveJob = null
+        receiverGeneration.incrementAndGet()
         fileReceiver.close()
         fileReceiverJob?.cancel()
         fileReceiverJob = null
@@ -599,6 +654,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         disconnectRequested = true
         receiveJob?.cancel()
         receiveJob = null
+        receiverGeneration.incrementAndGet()
         fileReceiver.close()
         fileReceiverJob?.cancel()
         fileReceiverJob = null
@@ -613,13 +669,15 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
 
     fun sendTextMessage() {
         val text = _uiState.value.inputMessage.trim()
-        if (text.isBlank()) return
+        if (text.isBlank() || textSending || !_uiState.value.connected) return
+        val revision = draftRevision
+        textSending = true
         viewModelScope.launch {
-            runCatching { chatClient.sendMessage(text) }
+            try { runCatching { chatClient.sendMessage(text) }
                 .onSuccess {
                     _uiState.update { state ->
                         state.copy(
-                            inputMessage = "",
+                            inputMessage = if (draftRevision == revision) "" else state.inputMessage,
                             messages = (state.messages + ChatLine(state.nickname, text, outbound = true)).takeLast(1000),
                             status = "Message sent",
                         )
@@ -627,6 +685,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                     addLog("Sent message (${text.length} chars)")
                 }
                 .onFailure { setError(it.message ?: "Unable to send message") }
+            } finally { textSending = false }
         }
     }
 
@@ -680,6 +739,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                             calls.connectionLost()
                             _uiState.update { it.copy(callPeers = emptyMap()) }
                             val status = if (disconnectRequested) "Disconnected" else "Connection closed"
+                            receiverGeneration.incrementAndGet()
                             fileReceiver.close()
                             fileReceiverJob?.cancel()
                             fileReceiverJob = null
@@ -713,6 +773,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                         authenticatedFilePeers.clear()
                         calls.connectionLost()
                         _uiState.update { it.copy(callPeers = emptyMap()) }
+                        receiverGeneration.incrementAndGet()
                         fileReceiver.close()
                         fileReceiverJob?.cancel()
                         fileReceiverJob = null
@@ -1042,6 +1103,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
             stopLocalAddressWatch()
             receiveJob?.cancel()
             receiveJob = null
+            receiverGeneration.incrementAndGet()
             fileReceiver.close()
             fileReceiverJob?.cancel()
             fileReceiverJob = null
@@ -1129,6 +1191,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         discoveryJob?.cancel()
         discoveryTimeoutJob?.cancel()
         receiveJob?.cancel()
+        receiverGeneration.incrementAndGet()
         if (receiverResource.isInitialized()) fileReceiver.close()
         fileReceiverJob?.cancel()
         localAddressRefreshJob?.cancel()

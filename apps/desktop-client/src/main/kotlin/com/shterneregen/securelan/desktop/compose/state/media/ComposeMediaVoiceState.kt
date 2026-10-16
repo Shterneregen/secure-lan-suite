@@ -27,11 +27,11 @@ data class ComposeMediaVoiceState(
     val selectedPeer = peerListState.selectedPeer
     val selectedPeerName: String = selectedPeer?.nickname ?: "No peer selected"
     val selectedMicrophone: MediaDeviceChoice = microphones.firstOrNull { it.matches(selectedMicrophoneId) }
-        ?: microphones.firstOrNull()
-        ?: MediaDeviceChoice.systemDefault("System default microphone")
+        ?: if (selectedMicrophoneId.isNotBlank()) MediaDeviceChoice(selectedMicrophoneId, "Selected microphone unavailable", false, false)
+        else MediaDeviceChoice.systemDefault("System default microphone")
     val selectedOutputDevice: MediaDeviceChoice = outputDevices.firstOrNull { it.matches(selectedOutputDeviceId) }
-        ?: outputDevices.firstOrNull()
-        ?: MediaDeviceChoice.systemDefault("System default speaker")
+        ?: if (selectedOutputDeviceId.isNotBlank()) MediaDeviceChoice(selectedOutputDeviceId, "Selected speaker unavailable", false, false)
+        else MediaDeviceChoice.systemDefault("System default speaker")
     val physicalMicrophoneCount: Int = microphones.count { !it.systemDefault }
     val physicalOutputDeviceCount: Int = outputDevices.count { !it.systemDefault }
     val runtimeLabel: String = DesktopRealtimeFormatters.formatRuntimeStatus(runtimeStatus)
@@ -46,7 +46,7 @@ data class ComposeMediaVoiceState(
         "$physicalMicrophoneCount microphone option${if (physicalMicrophoneCount == 1) "" else "s"} available."
     }
     val outputEmptyState: String = if (physicalOutputDeviceCount == 0) {
-        "No speaker list available. Calls use the system default."
+        "No speakers found. Refresh devices or choose system default."
     } else {
         "$physicalOutputDeviceCount speaker option${if (physicalOutputDeviceCount == 1) "" else "s"} available."
     }

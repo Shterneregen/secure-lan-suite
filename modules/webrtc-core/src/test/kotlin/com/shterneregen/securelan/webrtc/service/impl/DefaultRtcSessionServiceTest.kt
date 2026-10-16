@@ -67,7 +67,7 @@ class DefaultRtcSessionServiceTest {
 
         service.closeCurrentSession()
 
-        assertEquals(1, signals.size)
+        assertTrue(waitUntil { signals.size == 1 })
         assertEquals("local", signals.single().fromPeer())
         assertEquals("remote", signals.single().toPeer())
         assertEquals("Session closed by local peer", signals.single().message())
@@ -88,7 +88,7 @@ class DefaultRtcSessionServiceTest {
         val second = service.startSession(RtcSessionRequest("local", "remote-b", RtcSessionMode.AUDIO_VIDEO, "securelan-data"))
 
         assertEquals("remote-b", second.remotePeer)
-        assertTrue(signals.any { it.type() == RtcSignalType.HANGUP && it.sessionId() == first.sessionId })
+        assertTrue(waitUntil { signals.any { it.type() == RtcSignalType.HANGUP && it.sessionId() == first.sessionId } })
         assertTrue(waitUntil { engine.closedSessionIds.contains(first.sessionId) })
         assertEquals(second.sessionId, service.currentSession().orElseThrow().sessionId)
     }
@@ -176,7 +176,7 @@ class DefaultRtcSessionServiceTest {
             val other = RtcSignalEnvelope.offer("mallory", "local", RtcSessionMode.AUDIO, "data", "sdp")
             service.acceptInboundSignal("local", other)
             assertEquals(offer.sessionId(), service.currentSession().orElseThrow().sessionId)
-            assertTrue(signals.any { it.type() == RtcSignalType.HANGUP && it.sessionId() == other.sessionId() })
+            assertTrue(waitUntil { signals.any { it.type() == RtcSignalType.HANGUP && it.sessionId() == other.sessionId() } })
             repeat(257) {
                 service.acceptInboundSignal("local", RtcSignalEnvelope.iceCandidate(offer.sessionId(), "remote", "local", RtcSessionMode.AUDIO, "data", "candidate", "0", 0))
             }
@@ -192,6 +192,51 @@ class DefaultRtcSessionServiceTest {
             service.acceptInboundSignal("local", RtcSignalEnvelope.offer("remote", "local", RtcSessionMode.AUDIO_VIDEO, "data", "sdp"))
             assertTrue(waitUntil { service.currentSession().orElseThrow().state == RtcSessionState.CLOSED })
             assertTrue(engine.received.isEmpty())
+        }
+    }
+
+    @Test fun blockedHangupWriteDoesNotBlockLocalCloseOrNativeCleanup() {
+        val writing = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val returned = java.util.concurrent.CountDownLatch(1)
+        val engine = FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        val service = DefaultRtcSessionService({}, {
+            writing.countDown()
+            check(release.await(3, java.util.concurrent.TimeUnit.SECONDS))
+        }, engine)
+        val snapshot = service.startSession(RtcSessionRequest("local", "remote", RtcSessionMode.AUDIO, "data"))
+        val caller = Thread { service.closeCurrentSession(); returned.countDown() }
+        try {
+            caller.start()
+            assertTrue(returned.await(1, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(writing.await(1, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(RtcSessionState.CLOSED, service.currentSession().orElseThrow().state)
+            assertTrue(waitUntil { engine.closedSessionIds.contains(snapshot.sessionId) })
+        } finally { release.countDown(); service.close(); caller.join(2000) }
+    }
+
+    @Test fun selectedDevicesApplyToOutgoingAndAcceptedIncomingCallsWithoutRestartingActiveMedia() {
+        val applied = CopyOnWriteArrayList<com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration>()
+        val first = com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration("mic-a", "speaker-a", "camera-a")
+        val second = first.copy(microphoneId = "mic-b", speakerId = "speaker-b", cameraId = "camera-b")
+        val factory: (com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration) -> RtcEngine = { configuration ->
+            applied += configuration
+            FakeRtcEngine(RtcRuntimeStatus("fake", true, "ok"))
+        }
+        DefaultRtcSessionService({}, {}, factory).use { service ->
+            service.configureMediaDevices(first)
+            service.startSession(RtcSessionRequest("local", "remote", RtcSessionMode.AUDIO_VIDEO, "data"))
+            assertTrue(waitUntil { applied.size == 1 })
+            assertEquals(first, applied.single())
+            service.configureMediaDevices(second)
+            assertEquals(1, applied.size)
+            service.closeCurrentSession()
+            val offer = RtcSignalEnvelope.offer("remote", "local", RtcSessionMode.AUDIO_VIDEO, "data", "sdp")
+            service.acceptInboundSignal("local", offer)
+            assertEquals(1, applied.size, "incoming offer cannot acquire devices before acceptance")
+            assertTrue(service.acceptIncomingSession(offer.sessionId()))
+            assertTrue(waitUntil { applied.size == 2 })
+            assertEquals(second, applied.last())
         }
     }
 

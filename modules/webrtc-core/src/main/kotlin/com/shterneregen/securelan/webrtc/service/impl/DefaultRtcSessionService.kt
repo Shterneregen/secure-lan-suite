@@ -28,7 +28,13 @@ open class DefaultRtcSessionService : RtcSessionService {
     private var outgoing = false
     private var answerReceived = false
     private var candidateCount = 0
-    private var closed = false
+    @Volatile private var closed = false
+    @Volatile private var mediaConfiguration = RtcMediaConfiguration()
+    private var appliedConfiguration: RtcMediaConfiguration? = null
+    private var ownsEngine = true
+    private var engineFactory: (RtcMediaConfiguration) -> RtcEngine = RtcEngineProvider::createDefault
+    private val signalExecutor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(128),
+        { task -> Thread(task, "securelan-rtc-signaling").apply { isDaemon = true } })
     private var setupTimeoutMillis = 30_000L
 
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway) {
@@ -36,14 +42,19 @@ open class DefaultRtcSessionService : RtcSessionService {
         this.signalingGateway = signalingGateway
     }
 
+    constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, engineFactory: (RtcMediaConfiguration) -> RtcEngine) :
+        this(eventPublisher, signalingGateway) { this.engineFactory = engineFactory }
+
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, rtcEngine: RtcEngine) :
-        this(eventPublisher, signalingGateway) { engine = rtcEngine }
+        this(eventPublisher, signalingGateway) { engine = rtcEngine; ownsEngine = false }
 
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway, rtcEngine: RtcEngine, setupTimeoutMillis: Long) :
         this(eventPublisher, signalingGateway, rtcEngine) {
         require(setupTimeoutMillis in 1..300_000)
         this.setupTimeoutMillis = setupTimeoutMillis
     }
+
+    override fun configureMediaDevices(configuration: RtcMediaConfiguration) { mediaConfiguration = configuration }
 
     override fun runtimeStatus(): RtcRuntimeStatus = engine?.status() ?: RtcRuntimeStatus.unavailable("RTC initializes after a call is accepted.")
     override fun currentSession(): Optional<RtcSessionSnapshot> = Optional.ofNullable(current.get())
@@ -53,6 +64,9 @@ open class DefaultRtcSessionService : RtcSessionService {
         check(!closed) { "RTC service is closed" }
         require(request.localPeer().isNotBlank() && request.remotePeer().isNotBlank()) { "Connect chat and select a peer first" }
         if (active(current.get())) closeCurrentSession()
+        val configured = mediaConfiguration
+        val devices = configured.copy(microphoneId = request.audioCaptureDeviceId().ifBlank { configured.microphoneId },
+            cameraId = request.videoCaptureDeviceId().ifBlank { configured.cameraId })
         val snapshot = RtcSessionSnapshot(UUID.randomUUID().toString(), request.localPeer(), request.remotePeer(),
             request.mode(), request.dataChannelLabel(), RtcSessionState.NEGOTIATING, "Preparing call")
         outgoing = true
@@ -62,7 +76,7 @@ open class DefaultRtcSessionService : RtcSessionService {
         armSetupTimeout(snapshot.sessionId!!)
         execute {
             if (!matches(snapshot.sessionId)) return@execute
-            val runtime = ensureEngine()
+            val runtime = ensureEngine(devices)
             if (!runtime.status().available) { failUnavailable(snapshot.sessionId, runtime.status().message); return@execute }
             runtime.startSession(snapshot.sessionId, snapshot.localPeer, snapshot.remotePeer, snapshot.mode,
                 snapshot.dataChannelLabel, request.audioCaptureDeviceId(), request.videoCaptureDeviceId(),
@@ -119,12 +133,13 @@ open class DefaultRtcSessionService : RtcSessionService {
         val offer = pendingOffer ?: return false
         if (closed || snapshot.sessionId != sessionId || snapshot.state != RtcSessionState.INCOMING) return false
         pendingOffer = null
+        val devices = mediaConfiguration
         val candidates = pendingIce.toList()
         pendingIce.clear()
         publish(withState(snapshot, RtcSessionState.NEGOTIATING, "Accepted incoming call"))
         execute {
             if (!matches(sessionId)) return@execute
-            val runtime = ensureEngine()
+            val runtime = ensureEngine(devices)
             if (!runtime.status().available) { failUnavailable(sessionId, runtime.status().message); return@execute }
             runtime.handleRemoteSignal(offer, Consumer(::sendSignal), Consumer(::forwardEvent))
             candidates.forEach { if (matches(sessionId)) runtime.handleRemoteSignal(it, Consumer(::sendSignal), Consumer(::forwardEvent)) }
@@ -180,6 +195,7 @@ open class DefaultRtcSessionService : RtcSessionService {
         timers.shutdownNow()
         execute { engine?.close() }
         rtcExecutor.shutdown()
+        signalExecutor.shutdown()
     }
 
     @Synchronized
@@ -208,7 +224,17 @@ open class DefaultRtcSessionService : RtcSessionService {
         if (!active(snapshot) || snapshot.sessionId != signal.sessionId() || snapshot.remotePeer != signal.toPeer() || snapshot.localPeer != signal.fromPeer()) return
         sendControl(signal)
     }
-    private fun sendControl(signal: RtcSignalEnvelope) { runCatching { signalingGateway.send(signal) } }
+    private fun sendControl(signal: RtcSignalEnvelope) {
+        val queuedAt = System.nanoTime()
+        val terminal = signal.type() in setOf(RtcSignalType.HANGUP, RtcSignalType.ERROR)
+        try {
+            signalExecutor.execute {
+                if (System.nanoTime() - queuedAt > (if (terminal) 1_000_000_000L else 10_000_000_000L)) return@execute
+                if (!terminal && !matches(signal.sessionId())) return@execute
+                runCatching { signalingGateway.send(signal) }
+            }
+        } catch (_: RejectedExecutionException) { eventPublisher.publish(RtcRuntimeWarningEvent("Realtime signaling queue unavailable")) }
+    }
     private fun retire(id: String?) {
         if (id != null) retiredSessions.add(id)
         while (retiredSessions.size > 256) retiredSessions.remove(retiredSessions.first())
@@ -216,7 +242,13 @@ open class DefaultRtcSessionService : RtcSessionService {
     private fun matches(id: String?): Boolean = current.get().let { it?.sessionId == id && active(it) }
     private fun active(snapshot: RtcSessionSnapshot?): Boolean = snapshot != null && snapshot.state !in
         setOf(RtcSessionState.IDLE, RtcSessionState.CLOSED, RtcSessionState.CLOSING, RtcSessionState.FAILED, RtcSessionState.UNAVAILABLE)
-    private fun ensureEngine(): RtcEngine = engine ?: RtcEngineProvider.createDefault().also { engine = it }
+    private fun ensureEngine(configuration: RtcMediaConfiguration): RtcEngine {
+        if (ownsEngine && (appliedConfiguration != configuration || engine?.status()?.available == false)) {
+            engine?.close()
+            engine = null
+        }
+        return engine ?: engineFactory(configuration).also { engine = it; appliedConfiguration = configuration }
+    }
     private fun publish(snapshot: RtcSessionSnapshot) {
         current.set(snapshot)
         eventPublisher.publish(RtcStateChangedEvent(snapshot.sessionId, snapshot.remotePeer, snapshot.mode, snapshot.state, snapshot.message))

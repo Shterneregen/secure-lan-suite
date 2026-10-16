@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -16,7 +15,7 @@ import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceS
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.ui.components.*
-import com.shterneregen.securelan.desktop.compose.util.toPreviewImageBitmap
+import com.shterneregen.securelan.desktop.compose.util.rememberPreviewImage
 
 @Composable
 internal fun LiveAudioVideoDevicesCard(hostAdapter: ComposeDesktopHostAdapter, peerState: ComposePeerListState) {
@@ -324,7 +323,7 @@ internal fun CameraPreviewStatus(state: ComposeExperimentalVideoState) {
         shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.small)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            val previewImage = remember(state.latestPreviewFrame) { state.latestPreviewFrame?.toPreviewImageBitmap() }
+            val previewImage = rememberPreviewImage(state.latestPreviewFrame)
             if (previewImage != null) {
                 Image(
                     bitmap = previewImage,

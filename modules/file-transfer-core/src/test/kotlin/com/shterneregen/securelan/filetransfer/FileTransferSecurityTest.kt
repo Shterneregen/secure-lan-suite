@@ -39,6 +39,21 @@ class FileTransferSecurityTest {
         return FileTransferClientRequest("127.0.0.1", port, sender, recipient, "password", source, identity)
     }
 
+    @Test fun chunkBurstUsesSameThrottleForOperationUpdatesAndPreservesFinalPhase() = withServer(maxBytes = 2_000_000) { port, inbox, _ ->
+        val source = directory.resolve("burst.bin")
+        Files.write(source, ByteArray(1024 * 1024) { it.toByte() })
+        val events = mutableListOf<com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent>()
+        val updates = mutableListOf<FileTransferOperationUpdate>()
+        val client = DefaultFileTransferClientService({ if (it is com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent) events += it })
+        val operation = client.createOperation(FileTransferClientRequest("127.0.0.1", port, "alice", "bob", "password", source, auth("alice")), updates::add)
+        assertTrue(operation.execute() is FileTransferOutcome.Completed)
+        val sending = updates.filter { it.phase == FileTransferPhase.SENDING }
+        assertEquals(events.size + 1, sending.size, "only the phase transition may bypass the shared throttle")
+        assertEquals(1024L * 1024, sending.last().transferredBytes)
+        assertTrue(updates.any { it.phase == FileTransferPhase.WAITING_FOR_CONFIRMATION })
+        assertEquals(1024L * 1024, Files.size(inbox.resolve("burst.bin")))
+    }
+
     @Test fun validRoomPeerCompletesTransfer() = withServer { port, inbox, _ ->
         DefaultFileTransferClientService({}).sendFile(request(port))
         assertEquals("test-payload", Files.readString(inbox.resolve("source.txt")))

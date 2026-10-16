@@ -117,22 +117,16 @@ class DefaultChatClientService @JvmOverloads constructor(
     }
 
     /**
-     * Sends a graceful `DISCONNECT` frame, closes the session, and publishes
+     * Closes the local session immediately and publishes
      * [ChatDisconnectedEvent] if the client was connected or had a nickname.
      */
     override fun disconnect() {
         val wasConnected = connected.getAndSet(false)
         val activeSession = session
+        session = null
         if (activeSession != null) {
-            try {
-                activeSession.writeMessage(WireMessage(WireMessageType.DISCONNECT, nickname ?: "", ""))
-            } catch (_: IOException) {
-            }
-            try {
-                activeSession.close()
-            } catch (_: IOException) {
-            }
-            session = null
+            // Local close never waits for a writer or remote notification.
+            runCatching { activeSession.close() }
         }
         if (wasConnected || nickname != null) {
             eventPublisher.publish(ChatDisconnectedEvent(nickname ?: "", ChatDisconnectReasons.CLIENT_REQUEST))

@@ -518,3 +518,29 @@ adb install apps/android-client/build/distributions/apk/release/secure-lan-<vers
 ### `apksigner` shows `v1: false`, `v2: true`, `v3: false`, `v4: false`
 
 This is acceptable for the current app. The important part is that the command prints `Verifies` and `v2: true`. The module targets Android API 35 and has `minSdk 26`, so APK Signature Scheme v2 is enough for supported devices.
+
+## Connection and transfer recovery
+
+Updated desktop/Android endpoints negotiate encrypted idle health checks. Silent
+network loss closes the session after roughly 30?40 seconds; EOF/read failures
+release the session immediately so Connect can reuse the same client. Reconnect
+is manual. Older V2 peers remain compatible but do not provide bounded idle loss
+detection. Canceling a blocked RTC signaling write closes that chat transport to
+avoid continuing a partially written encrypted frame.
+
+Nearby-room discovery expires missing announcements after 45 seconds using a
+monotonic clock. Explicit discovery stop removes discovered rows; manual entries
+and the authenticated active room are preserved. Sending captures a draft revision
+and permits one pending text send; its completion clears only that revision.
+
+File receiver callbacks and job completion belong to a receiver generation.
+Handshake/listener diagnostics do not fail an unrelated active file; authorized
+transfer failures carry metadata for their own history record. Intermediate receive
+progress publishes at most every 100 ms, with final byte counts and outcomes retained.
+
+Quick Share removes orphaned staging files when its server is next constructed.
+Download headers have a 10-second deadline and payload streaming renews a 60-second
+inactivity budget after each successful chunk; there is no 60-second total limit
+for progressing downloads. An admitted failed download still consumes one access;
+a one-access share must be republished for retry. Links remain temporary,
+unauthenticated local HTTP for trusted LANs.

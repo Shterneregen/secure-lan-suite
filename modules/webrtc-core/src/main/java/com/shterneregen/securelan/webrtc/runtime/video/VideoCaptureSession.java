@@ -155,9 +155,10 @@ public final class VideoCaptureSession implements AutoCloseable {
                         return camera;
                     }
                 } catch (Throwable ignored) {
-                    // Fall back to the first camera when native metadata access fails.
+                    // Try the remaining descriptors; an explicit missing selection is reported below.
                 }
             }
+            throw new IllegalStateException("Selected camera is unavailable");
         }
         return cameras.getFirst();
     }

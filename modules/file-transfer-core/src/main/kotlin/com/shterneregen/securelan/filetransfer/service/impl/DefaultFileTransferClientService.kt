@@ -177,8 +177,7 @@ class DefaultFileTransferClientService @JvmOverloads constructor(
                     }, ::checkOpen) { sent ->
                         transferred = sent
                         arm(timeouts.inactivityMillis)
-                        progress.report(transferred)
-                        update()
+                        if (progress.report(transferred)) update()
                     }
                     FileTransferStreams.finishSending(session, { eofSubmitted = true }, {
                         arm(timeouts.confirmationMillis)

@@ -9,16 +9,19 @@ import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.Socket
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Owns one desktop-compatible encrypted chat connection and any pending handshake.
  * Blocking IO runs on [Dispatchers.IO]. [close] may be called from lifecycle cleanup to
  * unblock readers immediately; a failed or interrupted handshake never retains its socket.
  */
-class SecureChatClient : RoomClient {
+class SecureChatClient(private val socketFactory: () -> Socket = { Socket() }) : RoomClient {
     override val fileIdentity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
     private val lock = Any()
     @Volatile private var connecting: Socket? = null
@@ -36,7 +39,7 @@ class SecureChatClient : RoomClient {
     ): String = withContext(Dispatchers.IO) {
         val socket = synchronized(lock) {
             check(session == null && connecting == null) { "Chat already connected or connecting" }
-            Socket().also { connecting = it }
+            socketFactory().also { connecting = it }
         }
         var accepted = false
         try {
@@ -81,12 +84,31 @@ class SecureChatClient : RoomClient {
     }
 
     override suspend fun readMessage(): WireMessage? = withContext(Dispatchers.IO) {
-        session?.readMessage()
+        val active = session ?: return@withContext null
+        try {
+            active.readMessage().also { if (it == null) release(active) }
+        } catch (error: Exception) { release(active); throw error }
     }
 
-    override suspend fun sendSignal(signal: RtcSignalEnvelope) = withContext(Dispatchers.IO) {
+    override suspend fun sendSignal(signal: RtcSignalEnvelope) {
         val active = checkNotNull(session) { "Chat disconnected" }
-        active.writeMessage(WireMessage(WireMessageType.SIGNAL, nickname, RtcSignalCodec.serialize(signal.withSender(nickname))))
+        val sender = nickname
+        suspendCancellableCoroutine<Unit> { continuation ->
+            // A partial encrypted frame cannot be abandoned while keeping the stream usable.
+            continuation.invokeOnCancellation { release(active) }
+            Dispatchers.IO.dispatch(continuation.context, Runnable {
+                try {
+                    if (!continuation.isActive) return@Runnable
+                    active.writeMessage(WireMessage(WireMessageType.SIGNAL, sender, RtcSignalCodec.serialize(signal.withSender(sender))))
+                    continuation.resume(Unit)
+                } catch (error: Exception) { release(active); continuation.resumeWithException(error) }
+            })
+        }
+    }
+
+    private fun release(active: ChatSession) {
+        synchronized(lock) { if (session === active) session = null }
+        runCatching { active.close() }
     }
 
     override suspend fun disconnect(): Unit = withContext(Dispatchers.IO) {
@@ -94,9 +116,8 @@ class SecureChatClient : RoomClient {
         try {
             runCatching { active?.writeMessage(WireMessage(WireMessageType.DISCONNECT, nickname, "")) }
         } finally {
-            close()
+            if (active != null) release(active)
         }
-        Unit
     }
 
     /** Closes active and pending sockets synchronously, including after the ViewModel scope is canceled. */

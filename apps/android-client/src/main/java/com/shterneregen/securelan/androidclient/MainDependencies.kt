@@ -40,11 +40,12 @@ class MainDependencies(
     val createCalls: (CoroutineScope, () -> String, () -> Boolean, suspend (RtcSignalEnvelope) -> Unit) -> CallSession,
     val application: () -> Application = { error("Android platform is unavailable") },
     val createSender: () -> SecureFileSender = { error("File sender is unavailable") },
-    val createReceiver: () -> SecureFileReceiver = { error("File receiver is unavailable") },
+    val createReceiver: () -> IncomingFileReceiver = { error("File receiver is unavailable") },
     val createQuickShare: () -> AndroidQuickShareServer = { error("Quick Share is unavailable") },
     val configureFileNotifications: (AppLanguage) -> Unit = {},
     val hasCamera: () -> Boolean = { false },
     val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
 )
 
 /** The single production composition root; never retained across an unrelated workspace lifetime. */

@@ -57,4 +57,8 @@ enum class WireMessageType {
 
     /** Graceful disconnect notification from a client. */
     DISCONNECT,
+
+    /** Negotiated encrypted session health probe and reply. */
+    PING,
+    PONG,
 }

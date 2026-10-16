@@ -30,8 +30,8 @@ data class ComposeExperimentalVideoState(
     val selectedPeer = peerListState.selectedPeer
     val selectedPeerName: String = selectedPeer?.nickname ?: "No peer selected"
     val selectedCamera: MediaDeviceChoice = cameras.firstOrNull { it.matches(selectedCameraId) }
-        ?: cameras.firstOrNull()
-        ?: MediaDeviceChoice.systemDefault("System default camera")
+        ?: if (selectedCameraId.isNotBlank()) MediaDeviceChoice(selectedCameraId, "Selected camera unavailable", false, false)
+        else MediaDeviceChoice.systemDefault("System default camera")
     val physicalCameraCount: Int = cameras.count { !it.systemDefault }
     val runtimeLabel: String = DesktopRealtimeFormatters.formatRuntimeStatus(runtimeStatus)
     val permissionStatusLabel: String = when {

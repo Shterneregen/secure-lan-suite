@@ -128,6 +128,29 @@ are process-wide and initialized by the JDK. The owning runtime is JDK 25; durat
 values follow its implementation's seconds conversion. A host embedding this service
 after starting another JDK HTTP server must configure provider limits at JVM startup.
 
+## Idle chat health and local shutdown
+
+Updated clients append the optional eighth compact-capabilities token `health:v1`
+to HELLO. The full HELLO remains bound into the existing SRP transcript. An updated
+server confirms health support with the sender `server-health-v1` on the encrypted
+ACCEPTED frame; the payload remains the assigned nickname. Older V2 decoders ignore
+the extra capabilities token. Without this agreement neither side sends health frames.
+
+Negotiated sessions exchange encrypted PING/PONG frames every 10 seconds. They are
+consumed by `ChatSocketSession`, never broadcast as chat. Any valid received frame
+renews a monotonic 30-second liveness budget, checked every 10 seconds. Loss of both
+data and FIN/RST therefore closes an idle session within about 30?40 seconds, subject
+to OS scheduling. Both clients release membership/file/call ownership and permit a
+manual reconnect. There is no automatic reconnect or durable message retry. Older V2
+peers retain the previous idle behavior; update both ends for bounded detection.
+
+Chat write deadlines include waiting for the serialization lock. Local desktop
+Disconnect closes the socket immediately without waiting to write DISCONNECT.
+RTC notifications use a bounded background outbox; native cleanup does not wait
+for that outbox. Android signaling cancellation closes the specific chat session
+when a blocking encrypted write must be aborted: a partially written frame cannot
+be safely skipped while continuing the same encrypted byte stream.
+
 ## Quick Share lifecycle
 
 Anyone who can reach the listener can discover the index and access active shares.
@@ -141,6 +164,12 @@ until the last admitted stream closes, then deletes it. Stopping the server clos
 its listeners/connections and revokes all shares; starting again does not restore
 previous publications. Android stages at most 1 GiB per file and checks cache space.
 Desktop publishes the chosen source path, so it still does not promise a file snapshot.
+Android download headers have a 10-second deadline; payload read/write chunks renew
+a 60-second inactivity budget. A progressing large download has no 60-second total
+limit. Admission consumes an access even if the connection subsequently fails;
+retrying a one-access publication requires its owner to publish a new link.
+On construction, Android Quick Share removes orphaned `quick-share-*.tmp` cache
+files left by a prior process, while preserving files owned by live server instances.
 
 Listeners bind available interfaces. Public/VPN exposure depends on routing and
 firewall; the application does not prove that an interface belongs to a trusted LAN.

@@ -16,9 +16,10 @@ import java.io.IOException
 /** SRP-6a V2 handshake. Version, nickname and capabilities bind mutual authentication. No V1 fallback. */
 class SimpleHandshakeService @JvmOverloads constructor(
     @Suppress("UNUSED_PARAMETER") cryptoServices: CryptoServices = CryptoServices.createDefault(),
+    private val healthEnabled: Boolean = true,
 ) : SecureHandshakeService {
     override fun performClientHandshake(session: ChatSocketSession, request: HandshakeRequest): HandshakeResponse = session.handshake {
-        val hello = "$PROTOCOL\n${request.capabilities.encode()}"
+        val hello = "$PROTOCOL\n${request.capabilities.encode()}" + if (healthEnabled) "|health:v1" else ""
         session.writeMessage(WireMessage(WireMessageType.HELLO, request.nickname, hello))
         val keys = PasswordAuthenticatedHandshake.client(request.sessionPassword, context(request.nickname, hello),
             { session.writeMessage(WireMessage(WireMessageType.CLIENT_KEY, request.nickname, it)) },
@@ -26,7 +27,10 @@ class SimpleHandshakeService @JvmOverloads constructor(
         session.enableTransportEncryption(keys, true)
         val response = session.readMessage() ?: throw IOException("No authenticated handshake response")
         when (response.type()) {
-            WireMessageType.ACCEPTED -> HandshakeResponse(HandshakeStatus.ACCEPTED, response.payload(), "")
+            WireMessageType.ACCEPTED -> {
+                if (response.sender() == "server-health-v1") session.startHealth()
+                HandshakeResponse(HandshakeStatus.ACCEPTED, response.payload(), "")
+            }
             WireMessageType.REJECTED -> HandshakeResponse(HandshakeStatus.REJECTED, request.nickname, response.payload())
             else -> throw IOException("Invalid authenticated handshake response")
         }
@@ -40,7 +44,8 @@ class SimpleHandshakeService @JvmOverloads constructor(
         }
         val nickname = hello.sender().trim()
         if (nickname.isBlank() || nickname.length > 64 || nickname.any { it.isISOControl() } || nickname.equals("system", true)) throw IOException("Invalid nickname")
-        val capabilities = PeerCapabilities.decode(hello.payload().substringAfter('\n'))
+        val capabilities = PeerCapabilities.decode(hello.payload().substringAfter('\n').substringBefore('\n'))
+        val health = healthEnabled && hello.payload().substringAfter('\n').split('|').drop(7).any { it == "health:v1" }
         val keys = PasswordAuthenticatedHandshake.server(expectedPassword, context(hello.sender(), hello.payload()),
             { session.writeMessage(WireMessage(WireMessageType.SERVER_KEY, "server", it)) },
             { receive(session, WireMessageType.CLIENT_KEY) })
@@ -50,11 +55,12 @@ class SimpleHandshakeService @JvmOverloads constructor(
             return@handshake HandshakeResponse(HandshakeStatus.REJECTED, nickname, "Nickname already in use")
         }
         try {
-            session.writeMessage(WireMessage(WireMessageType.ACCEPTED, "server", nickname))
+            session.writeMessage(WireMessage(WireMessageType.ACCEPTED, if (health) "server-health-v1" else "server", nickname))
         } catch (error: Exception) {
             registry.unregister(nickname)
             throw error
         }
+        if (health) session.startHealth()
         HandshakeResponse(HandshakeStatus.ACCEPTED, nickname, "", capabilities)
     }
 

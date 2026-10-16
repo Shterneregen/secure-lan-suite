@@ -22,30 +22,44 @@ import java.io.File
 import java.io.OutputStream
 import java.util.Locale
 
+/** Platform-independent receiver boundary for workspace lifecycle ownership and correlated events. */
+interface IncomingFileReceiver {
+    fun close()
+    suspend fun serve(
+        port: Int = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT,
+        sessionPassword: String,
+        onStarted: (FileTransferMetadata) -> Unit,
+        onProgress: (FileTransferMetadata, Long) -> Unit,
+        onCompleted: (FileTransferMetadata, SecureFileReceiver.ReceivedFile) -> Unit,
+        onError: (String, Throwable?) -> Unit,
+        authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication,
+        onTransferError: (FileTransferMetadata, String, Throwable?) -> Unit = { _, message, error -> onError(message, error) },
+    )
+}
+
 /**
  * Uses bounded concurrent V2 handshakes and one authorized receive slot for Downloads publication.
  * Publishes complete files to Downloads and removes unfinished targets on failure or the next start.
  * Callbacks run on the IO thread; [close] unblocks both the listener and current transfer.
  */
-class SecureFileReceiver(private val context: Context) {
-    @Volatile private var listener: com.shterneregen.securelan.common.net.transport.TcpServer? = null
-    private val activeSockets = java.util.concurrent.ConcurrentHashMap.newKeySet<java.net.Socket>()
+class SecureFileReceiver(private val context: Context) : IncomingFileReceiver {
+    private val listener = java.util.concurrent.atomic.AtomicReference<com.shterneregen.securelan.common.net.transport.TcpServer?>()
     private val receiveSlot = java.util.concurrent.Semaphore(1)
     private val pending = context.getSharedPreferences("pending_received_files", Context.MODE_PRIVATE)
 
-    fun close() {
-        listener?.close()
-        activeSockets.forEach { runCatching { it.close() } }
+    override fun close() {
+        listener.getAndSet(null)?.close()
     }
 
-    suspend fun serve(
-        port: Int = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT,
+    override suspend fun serve(
+        port: Int,
         sessionPassword: String,
         onStarted: (FileTransferMetadata) -> Unit,
         onProgress: (metadata: FileTransferMetadata, received: Long) -> Unit,
         onCompleted: (metadata: FileTransferMetadata, receivedFile: ReceivedFile) -> Unit,
         onError: (String, Throwable?) -> Unit,
         authentication: com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication,
+        onTransferError: (FileTransferMetadata, String, Throwable?) -> Unit,
     ): Unit = withContext(Dispatchers.IO) {
         require(port in 1..65535) { "File receiver port out of range" }
         check(receiveSlot.tryAcquire()) { "Previous receive is still closing" }
@@ -53,22 +67,21 @@ class SecureFileReceiver(private val context: Context) {
         val server = com.shterneregen.securelan.common.net.transport.TcpServer(
             "android-file-receiver", com.shterneregen.securelan.common.net.transport.ServerSocketFactory.systemDefault(), 4,
         )
-        listener = server
+        check(listener.compareAndSet(null, server)) { "File receiver already running" }
         val budget = com.shterneregen.securelan.filetransfer.protocol.FileReceiveBudget()
         try {
             server.start(port, { socket ->
-                activeSockets.add(socket)
                 try {
                     socket.soTimeout = 60_000
-                    socket.use { handleClient(it, sessionPassword, authentication, budget, onStarted, onProgress, onCompleted) }
+                    socket.use { handleClient(it, sessionPassword, authentication, budget, onStarted, onProgress, onCompleted, onTransferError) }
                 } catch (error: Exception) {
                     onError("Incoming file transfer failed", error)
-                } finally { activeSockets.remove(socket) }
+                }
             }, { _, error -> onError("File receiver unavailable", error) })
             kotlinx.coroutines.awaitCancellation()
         } finally {
             server.close()
-            if (listener === server) { close(); listener = null }
+            listener.compareAndSet(server, null)
         }
     }
 
@@ -80,6 +93,7 @@ class SecureFileReceiver(private val context: Context) {
         onStarted: (FileTransferMetadata) -> Unit,
         onProgress: (metadata: FileTransferMetadata, received: Long) -> Unit,
         onCompleted: (metadata: FileTransferMetadata, receivedFile: ReceivedFile) -> Unit,
+        onTransferError: (FileTransferMetadata, String, Throwable?) -> Unit,
     ) {
         FileTransferSession(socket).use { session ->
             val handshake = com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake()
@@ -99,7 +113,14 @@ class SecureFileReceiver(private val context: Context) {
                 var published = false
                 try {
                     target.openOutputStream().use { output ->
-                        received = FileTransferStreams.receive(output, metadata.fileSize, { session.readEncryptedBytes() }) { bytes -> onProgress(metadata, bytes) }
+                        var lastProgressAt: Long? = null
+                        received = FileTransferStreams.receive(output, metadata.fileSize, { session.readEncryptedBytes() }) { bytes ->
+                            val now = System.nanoTime()
+                            if (lastProgressAt == null || bytes == metadata.fileSize || now - lastProgressAt!! >= 100_000_000L) {
+                                lastProgressAt = now
+                                onProgress(metadata, bytes)
+                            }
+                        }
                     }
                     val receivedFile = FileTransferStreams.publishAndConfirm(session, {
                         target.publish().also { published = true }
@@ -107,6 +128,8 @@ class SecureFileReceiver(private val context: Context) {
                     onCompleted(metadata.copy(fileName = receivedFile.savedPath.substringAfterLast('/'), fileSize = received), receivedFile)
                 } finally { if (!published) target.discard() }
                 }
+            } catch (error: Exception) {
+                onTransferError(metadata, "Incoming file transfer failed", error)
             } finally { receiveSlot.release() }
         }
     }

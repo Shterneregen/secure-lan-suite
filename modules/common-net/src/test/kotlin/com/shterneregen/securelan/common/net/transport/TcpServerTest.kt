@@ -11,6 +11,38 @@ import java.util.concurrent.TimeUnit
 
 class TcpServerTest {
     @Test
+    fun closeDuringAcquisitionRollsBackOnlyTheCancelledRun() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val oldSocket = java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val server = TcpServer("acquisition-race", ServerSocketFactory { port ->
+            if (calls.getAndIncrement() == 0) {
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+                oldSocket
+            } else java.net.ServerSocket(port)
+        })
+        val thread = Thread { server.start(0, { it.close() }, { _, _ -> }) }
+        try {
+            thread.start()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            server.close()
+            assertFalse(server.isRunning())
+            assertEquals(-1, server.port())
+            server.start(0, { it.close() }, { _, _ -> })
+            val newPort = server.port()
+            release.countDown()
+            thread.join(5_000)
+            assertFalse(thread.isAlive)
+            assertTrue(oldSocket.isClosed)
+            assertTrue(server.isRunning())
+            assertEquals(newPort, server.port())
+            Socket("127.0.0.1", newPort).use { assertTrue(it.isConnected) }
+        } finally { release.countDown(); server.close(); oldSocket.close(); thread.join(5_000) }
+    }
+
+    @Test
     fun shouldStartAcceptAndDispatchClientConnection() {
         val server = TcpServer("test-tcp-server")
         val handled = CountDownLatch(1)

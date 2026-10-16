@@ -38,14 +38,14 @@ internal class ThrottledFileTransferProgressPublisher(
      *
      * @param transferredBytes Total bytes transferred so far.
      */
-    fun report(transferredBytes: Long) {
-        if (transferredBytes == lastPublishedBytes) return
+    fun report(transferredBytes: Long): Boolean {
+        if (transferredBytes == lastPublishedBytes) return false
 
         val now = nanoTime()
         val firstUpdate = lastPublishedBytes < 0
         val completed = totalBytes in 1..transferredBytes
         val intervalElapsed = now - lastPublishedAt >= minimumIntervalNanos
-        if (!firstUpdate && !completed && !intervalElapsed) return
+        if (!firstUpdate && !completed && !intervalElapsed) return false
 
         eventPublisher.publish(
             FileTransferProgressEvent(
@@ -56,6 +56,7 @@ internal class ThrottledFileTransferProgressPublisher(
         )
         lastPublishedAt = now
         lastPublishedBytes = transferredBytes
+        return true
     }
 
     private companion object {

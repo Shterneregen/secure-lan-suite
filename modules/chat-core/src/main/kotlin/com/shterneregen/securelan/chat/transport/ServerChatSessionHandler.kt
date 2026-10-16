@@ -49,6 +49,7 @@ class ServerChatSessionHandler(
     private val nicknameRegistry: NicknameRegistryService,
     private val eventPublisher: ChatEventPublisher,
     private val reportSessionErrors: () -> Boolean = { true },
+    private val releaseRegistration: (() -> Unit)? = null,
 ) : Runnable {
 
     /**
@@ -76,7 +77,7 @@ class ServerChatSessionHandler(
                 eventPublisher.publish(ChatErrorEvent("Server session error for $nickname", e))
             }
         } finally {
-            cleanup()
+            if (releaseRegistration != null) releaseRegistration.invoke() else cleanup()
         }
     }
 

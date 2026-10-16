@@ -158,3 +158,31 @@ Retiring a call cancels its pending/in-flight negotiation traffic. Busy/unsuppor
 replies are rate limited separately; a final HANGUP is retained as terminal traffic
 with a one-second send budget and an observable failure message. OFFER remains
 ordered before that session's ICE. This local policy does not add a wire ACK.
+
+## Media configuration and lifecycle
+
+The desktop adapter supplies one `RtcMediaConfiguration` (microphone, speaker,
+camera) before an outgoing call or explicit incoming acceptance. The RTC worker
+creates/recreates its engine with that configuration between calls. Changes during
+an active call apply to the next call; they do not restart capture. An explicit
+unavailable device produces a warning and disables the corresponding local media
+instead of silently selecting a different device. Empty selections use OS defaults.
+A fallback engine is retried on the next accepted/outgoing call.
+
+Device enumeration/tests run through bounded desktop background work with a
+10-second result deadline and generation checks. Driver calls can outlive that
+deadline; late results are discarded and shutdown does not wait on JNI. Preview
+rotation/raster conversion runs outside composition and uses raw BGRA raster copies
+instead of PNG compression/decompression.
+
+Peer close invalidates the same acquisition gate used by remote track/channel
+callbacks. Observers and sinks detach before PeerConnection.close; owned local audio
+tracks and data channels release their JNI references afterwards. Remote tracks are
+borrowed and are not disposed by the application. Failed factory/peer construction
+rolls back already acquired resources. SDP-ready publication and pending ICE enqueue/
+drain share one monitor, including the existing 256-candidate limit.
+
+Local HANGUP publishes closing/closed state and schedules native cleanup immediately;
+signaling uses a separate bounded serial outbox and never holds the service monitor
+while writing to chat. Hardware timing and native memory behavior still require the
+physical-device checks described above.

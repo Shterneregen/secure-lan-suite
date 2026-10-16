@@ -95,6 +95,7 @@ data class IncomingFileProgress(
     val active: Boolean = false,
     val completedPath: String? = null,
     val error: String? = null,
+    val transferId: String = "",
 ) {
     val percent: Float
         get() = if (totalBytes <= 0) 0f else (bytesReceived.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)

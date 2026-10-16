@@ -34,7 +34,7 @@ import com.shterneregen.securelan.desktop.compose.state.media.ComposeVideoPrevie
 import com.shterneregen.securelan.desktop.compose.state.media.settleVideoPreviewCorner
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
-import com.shterneregen.securelan.desktop.compose.util.toPreviewImageBitmap
+import com.shterneregen.securelan.desktop.compose.util.rememberPreviewImage
 import com.shterneregen.securelan.webrtc.event.RtcVideoFrameEvent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -337,7 +337,7 @@ private fun VideoFrameSurface(
     labelAlignment: Alignment = Alignment.TopStart,
     modifier: Modifier,
 ) {
-    val image: ImageBitmap? = remember(frame) { frame?.toPreviewImageBitmap() }
+    val image: ImageBitmap? = rememberPreviewImage(frame)
     if (image != null) {
         Surface(
             modifier = modifier,

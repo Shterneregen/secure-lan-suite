@@ -5,7 +5,6 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -26,6 +25,8 @@ class TcpServer(
     private val maxClients: Int = 32,
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
+    private val lifecycleLock = Any()
+    private var generation = 0L
     private val activeSockets = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
 
     init { require(maxClients in 1..256) { "Invalid client limit" } }
@@ -60,8 +61,9 @@ class TcpServer(
     @Throws(IOException::class)
     fun start(port: Int, socketHandler: SocketHandler, errorHandler: ErrorHandler) {
         require(port in 0..65_535) { "port must be between 0 and 65535" }
-        if (!running.compareAndSet(false, true)) {
-            return
+        val token = synchronized(lifecycleLock) {
+            if (!running.compareAndSet(false, true)) return
+            ++generation
         }
         var createdSocket: ServerSocket? = null
         var createdExecutor: ExecutorService? = null
@@ -72,31 +74,27 @@ class TcpServer(
                 java.util.concurrent.SynchronousQueue(),
                 { runnable -> Thread(runnable, "$threadNamePrefix-client").apply { isDaemon = true } },
             )
-            serverSocket = createdSocket
-            clientExecutor = createdExecutor
-            val activeSocket = createdSocket
-            val activeExecutor = createdExecutor
-            acceptThread = Thread(
-                { acceptLoop(activeSocket, activeExecutor, socketHandler, errorHandler) },
-                "$threadNamePrefix-accept",
-            ).apply {
-                isDaemon = true
-                start()
+            synchronized(lifecycleLock) {
+                if (generation != token || !running.get()) {
+                    SocketClose.closeQuietly(createdSocket)
+                    createdExecutor.shutdownNow()
+                    return
+                }
+                serverSocket = createdSocket
+                clientExecutor = createdExecutor
+                val activeSocket = createdSocket
+                val activeExecutor = createdExecutor
+                acceptThread = Thread(
+                    { acceptLoop(activeSocket, activeExecutor, socketHandler, errorHandler) },
+                    "$threadNamePrefix-accept",
+                ).apply {
+                    isDaemon = true
+                    start()
+                }
             }
-        } catch (e: IOException) {
-            running.set(false)
-            stop(createdSocket, createdExecutor)
-            serverSocket = null
-            clientExecutor = null
-            acceptThread = null
-            throw e
-        } catch (e: RuntimeException) {
-            running.set(false)
-            stop(createdSocket, createdExecutor)
-            serverSocket = null
-            clientExecutor = null
-            acceptThread = null
-            throw e
+        } catch (error: Throwable) {
+            rollback(token, createdSocket, createdExecutor)
+            throw error
         }
     }
 
@@ -120,11 +118,27 @@ class TcpServer(
      * Stops the server, closes the listening server socket, and shuts down the client worker thread pool.
      */
     override fun close() {
-        running.set(false)
-        stop(serverSocket, clientExecutor)
-        serverSocket = null
-        clientExecutor = null
-        acceptThread = null
+        synchronized(lifecycleLock) {
+            generation++
+            running.set(false)
+            stop(serverSocket, clientExecutor)
+            serverSocket = null
+            clientExecutor = null
+            acceptThread = null
+        }
+    }
+
+    private fun rollback(token: Long, socket: ServerSocket?, executor: ExecutorService?) {
+        synchronized(lifecycleLock) {
+            SocketClose.closeQuietly(socket)
+            executor?.shutdownNow()
+            if (generation == token) {
+                running.set(false)
+                serverSocket = null
+                clientExecutor = null
+                acceptThread = null
+            }
+        }
     }
 
     private fun acceptLoop(

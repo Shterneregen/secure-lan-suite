@@ -38,6 +38,19 @@ class AndroidQuickShareServer internal constructor(
 ) : Closeable {
     constructor(resolver: ContentResolver, cacheDir: File) : this(cacheDir, resolver::openInputStream)
 
+    init {
+        synchronized(stagingLock) {
+            cacheDir.listFiles()?.filter { it.isFile && it.name.startsWith("quick-share-") && it.name.endsWith(".tmp") && it !in ownedStaging }
+                ?.forEach { it.delete() }
+        }
+    }
+
+    private fun deleteStaging(file: File) = synchronized(stagingLock) {
+        file.delete()
+        ownedStaging.remove(file)
+        Unit
+    }
+
     private data class Share(val id: String, val name: String, val text: String?, val file: File?, val expiresAt: Long, val limit: Int?, @Volatile var accesses: Int = 0, val createdAt: Long = System.currentTimeMillis(), var readers: Int = 0, var revoked: Boolean = false)
     private val running = AtomicBoolean(false)
     private val shares = ConcurrentHashMap<String, Share>()
@@ -91,7 +104,9 @@ class AndroidQuickShareServer internal constructor(
     internal fun createFile(name: String, minutes: Long, limit: Int?, input: () -> InputStream): AndroidQuickShareItem {
         if (!running.get()) start()
         check(shares.size < 100) { "Quick Share publication limit reached" }
-        val target = File.createTempFile("quick-share-", ".tmp", cacheDir)
+        val target = synchronized(stagingLock) {
+            File.createTempFile("quick-share-", ".tmp", cacheDir).also { ownedStaging.add(it) }
+        }
         try {
             input().use { source -> target.outputStream().use { output ->
                 com.shterneregen.securelan.androidclient.transfer.stageStream(source, output) {
@@ -100,7 +115,7 @@ class AndroidQuickShareServer internal constructor(
             } }
             return add(name.ifBlank { "shared-file" }, null, target, minutes, limit)
         } catch (error: Exception) {
-            target.delete()
+            deleteStaging(target)
             throw error
         }
     }
@@ -127,7 +142,7 @@ class AndroidQuickShareServer internal constructor(
     private fun retire(share: Share) = synchronized(share) {
         share.revoked = true
         shares.remove(share.id, share)
-        if (share.readers == 0) share.file?.delete()
+        if (share.readers == 0) share.file?.let(::deleteStaging)
         Unit
     }
     private fun snapshot(s: Share) = AndroidQuickShareItem(s.id, s.name, "${urls.firstOrNull()?.removeSuffix("/") ?: "http://127.0.0.1:$port"}/s/${enc(s.id)}", s.text != null, s.expiresAt, s.limit, s.accesses)
@@ -187,18 +202,18 @@ class AndroidQuickShareServer internal constructor(
             if (input == null) { respond(c, "410 Gone", "Share is no longer available".toByteArray()); return@runCatching }
             try {
                 input.use { stream ->
-                    com.shterneregen.securelan.common.net.transport.SocketDeadlines.within(c, 60_000) {
+                    com.shterneregen.securelan.common.net.transport.SocketDeadlines.within(c, 10_000) {
                         val out = c.getOutputStream()
                         val name = share.name.map { if (it.code !in 32..126 || it == '"' || it == '\\') '_' else it }.joinToString("")
                         out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + share.file.length() +
                             "\r\nContent-Disposition: attachment; filename=\"" + name + "\"; filename*=UTF-8''" + enc(share.name).replace("+", "%20") + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").toByteArray())
-                        stream.copyTo(out); out.flush()
                     }
+                    com.shterneregen.securelan.common.net.transport.SocketDeadlines.copyWithProgress(c, stream, c.getOutputStream())
                 }
             } finally {
                 synchronized(share) {
                     share.readers--
-                    if (share.readers == 0 && (share.revoked || !available(share))) share.file.delete()
+                    if (share.readers == 0 && (share.revoked || !available(share))) deleteStaging(share.file)
                 }
             }
             return@runCatching
@@ -239,4 +254,9 @@ class AndroidQuickShareServer internal constructor(
         shares.clear()
         urls = emptyList()
     }
+    companion object {
+        private val stagingLock = Any()
+        private val ownedStaging = mutableSetOf<File>()
+    }
+
 }

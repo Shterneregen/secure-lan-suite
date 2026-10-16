@@ -38,6 +38,11 @@ Chat and encrypted files use the mutually authenticated V2 protocol on both
 clients. V1 clients must be updated; there is no insecure fallback. The room host
 can read chat and signaling. See [security guarantees and limits](docs/security-protocol.md)
 for peer identities, replay protection, receiver budgets and Quick Share boundaries.
+Updated desktop and Android peers negotiate encrypted idle health probes; a silent
+connection loss closes the session after roughly 30?40 seconds and can be retried
+manually. Older V2 peers remain compatible without the bounded idle-health guarantee.
+Desktop media selections apply before the next outgoing or accepted incoming call;
+changing a selection preserves the active call.
 
 ## Tech stack
 

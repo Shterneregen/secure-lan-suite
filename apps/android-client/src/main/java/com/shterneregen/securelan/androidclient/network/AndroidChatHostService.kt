@@ -66,6 +66,7 @@ class AndroidChatHostService : Service() {
     private var server: DefaultChatServerService? = null
     private var announceJob: Job? = null
     private var activeRequest: HostRequest? = null
+    @Volatile private var hostGeneration = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -96,7 +97,12 @@ class AndroidChatHostService : Service() {
         showForegroundNotification(request, 0)
 
         runCatching {
-            DefaultChatServerService(::handleServerEvent).also { created ->
+            val generation = hostGeneration
+            DefaultChatServerService { event ->
+                serviceScope.launch(Dispatchers.Main.immediate) {
+                    if (generation == hostGeneration) handleServerEvent(event)
+                }
+            }.also { created ->
                 created.start(ChatServerConfig(request.chatPort, request.sessionPassword))
                 server = created
             }
@@ -124,6 +130,7 @@ class AndroidChatHostService : Service() {
     }
 
     private fun closeHostResources() {
+        hostGeneration++
         announceJob?.cancel()
         announceJob = null
         server?.stop()

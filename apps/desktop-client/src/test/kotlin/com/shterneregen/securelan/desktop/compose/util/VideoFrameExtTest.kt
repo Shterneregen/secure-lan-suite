@@ -51,7 +51,14 @@ class VideoFrameExtTest {
         val image = frame(rotation).toPreviewBufferedImage()
         assertEquals(width, image.width)
         assertEquals(height, image.height)
-        assertArrayEquals(pixelIndices.map { colors[it] }.toIntArray(), image.getRGB(0, 0, width, height, null, 0, width))
+        val expected = pixelIndices.map { colors[it] }.toIntArray()
+        assertArrayEquals(expected, image.getRGB(0, 0, width, height, null, 0, width))
+        val composeImage = requireNotNull(frame(rotation).toPreviewImageBitmap())
+        assertEquals(width, composeImage.width)
+        assertEquals(height, composeImage.height)
+        val actual = IntArray(width * height)
+        composeImage.readPixels(actual)
+        assertArrayEquals(expected, actual)
     }
 
     private fun frame(rotation: Int) = RtcVideoFrameEvent("call", "phone", false, 3, 2, rotation, pixels())

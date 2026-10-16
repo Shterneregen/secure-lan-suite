@@ -39,6 +39,13 @@ object RtcEngineProvider {
         NoOpRtcEngine(buildFailureMessage(error))
     }
 
+    fun createDefault(configuration: com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration): RtcEngine = try {
+        WebRtcJavaEngine(configuration.microphoneId, configuration.cameraId, configuration.speakerId)
+    } catch (error: Throwable) {
+        RtcFileLogger.error("Failed to initialize selected media devices", error)
+        NoOpRtcEngine(buildFailureMessage(error))
+    }
+
     private fun buildFailureMessage(error: Throwable): String {
         var root = error
         while (root.cause != null && root.cause !== root) {

@@ -14,6 +14,25 @@ import java.util.concurrent.TimeUnit
 class AndroidQuickShareServerTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    @Test fun startupSweepsCrashOrphansButPreservesOtherLiveOwners() {
+        val directory = java.nio.file.Files.createTempDirectory("quick-share-recovery").toFile()
+        val orphan = java.io.File(directory, "quick-share-crashed.tmp").apply { writeText("orphan") }
+        val unrelated = java.io.File(directory, "unrelated.tmp").apply { writeText("keep") }
+        try {
+            AndroidQuickShareServer(directory) { null }.use { first ->
+                assertFalse(orphan.exists())
+                assertTrue(unrelated.exists())
+                first.createFile("active.bin", 1, null) { byteArrayOf(1, 2, 3).inputStream() }
+                val active = directory.listFiles()!!.single { it.name.startsWith("quick-share-") }
+                AndroidQuickShareServer(directory) { null }.use {
+                    assertTrue(active.exists())
+                }
+                assertTrue(active.exists())
+            }
+            assertTrue(directory.listFiles()!!.none { it.name.startsWith("quick-share-") })
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test(timeout = 10_000)
     fun unicodeTextIsDeliveredOnceAndThenUnavailable() {
         server().use { server ->

@@ -205,6 +205,7 @@ class ComposeDesktopHostAdapter(
     private val pendingIncomingTransferDecisions = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
 
     /** Dedicated scope for blocking desktop network-client work. */
+    private val mediaOperations = DesktopMediaOperations(::dispatchUiStateUpdate)
     private val networkIoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectionInProgress = AtomicBoolean(false)
     private val roomCommandGeneration = AtomicLong()
@@ -1228,30 +1229,37 @@ class ComposeDesktopHostAdapter(
             refreshRealtimeState()
             return
         }
-        val microphones = buildMediaChoices(mediaService.audioCaptureDevices(), "System default microphone")
-        val outputDevices = buildMediaChoices(mediaService.audioRenderDevices(), "System default speaker")
-        val cameras = buildMediaChoices(mediaService.videoCaptureDevices(), "System default camera")
-        mediaVoiceState = mediaVoiceState.copy(
-            microphones = microphones,
-            outputDevices = outputDevices,
-            microphoneTestStatus = "Microphones refreshed: ${microphones.size}",
-            speakerTestStatus = "Speakers refreshed: ${outputDevices.size}",
-        )
-        experimentalVideoState = experimentalVideoState.copy(cameras = cameras, cameraTestStatus = "Cameras refreshed: ${cameras.size}")
-        SecureLanLogger.logRealtime("Media devices refreshed: ${microphones.size} microphones, ${outputDevices.size} speakers, ${cameras.size} cameras.")
-        refreshRealtimeState()
+        mediaVoiceState = mediaVoiceState.copy(microphoneTestStatus = "Refreshing microphones?", speakerTestStatus = "Refreshing speakers?")
+        experimentalVideoState = experimentalVideoState.copy(cameraTestStatus = "Refreshing cameras?")
+        mediaOperations.submit("refresh", {
+            Triple(buildMediaChoices(mediaService.audioCaptureDevices(), "System default microphone"),
+                buildMediaChoices(mediaService.audioRenderDevices(), "System default speaker"),
+                buildMediaChoices(mediaService.videoCaptureDevices(), "System default camera"))
+        }) { result ->
+            result.onSuccess { (microphones, outputs, cameras) ->
+                mediaVoiceState = mediaVoiceState.copy(microphones = microphones, outputDevices = outputs,
+                    microphoneTestStatus = "Microphones refreshed: ${microphones.size}", speakerTestStatus = "Speakers refreshed: ${outputs.size}")
+                experimentalVideoState = experimentalVideoState.copy(cameras = cameras, cameraTestStatus = "Cameras refreshed: ${cameras.size}")
+            }.onFailure { error ->
+                val message = error.message ?: "Unable to refresh media devices."
+                mediaVoiceState = mediaVoiceState.copy(microphoneTestStatus = message, speakerTestStatus = message)
+                experimentalVideoState = experimentalVideoState.copy(cameraTestStatus = message)
+            }
+            refreshRealtimeState()
+        }
     }
 
     fun testMicrophone(deviceId: String? = mediaVoiceState.selectedMicrophone.deviceId): String {
-        val mediaService = rtcMediaDeviceService
-        val result = mediaService?.testAudioCaptureDevice(deviceId)
-            ?: "Microphone test unavailable: RTC media device service is not configured."
-        mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty(), microphoneTestStatus = result)
-        SecureLanLogger.logRealtime(result)
-        return result
+        val status = "Testing microphone?"
+        mediaVoiceState = mediaVoiceState.copy(microphoneTestStatus = status)
+        mediaOperations.submit("microphone", { rtcMediaDeviceService?.testAudioCaptureDevice(deviceId) ?: "Microphone test unavailable." }) {
+            mediaVoiceState = mediaVoiceState.copy(microphoneTestStatus = it.getOrElse { error -> error.message ?: "Microphone test failed." })
+        }
+        return status
     }
 
     fun selectMicrophone(deviceId: String?) {
+        mediaOperations.invalidate("microphone")
         mediaVoiceState = mediaVoiceState.copy(selectedMicrophoneId = deviceId.orEmpty())
         settingsController.update { settings ->
             settings.copy(media = settings.media.copy(microphoneDeviceId = deviceId.orEmpty()))
@@ -1260,15 +1268,16 @@ class ComposeDesktopHostAdapter(
     }
 
     fun testSpeaker(deviceId: String? = mediaVoiceState.selectedOutputDevice.deviceId): String {
-        val mediaService = rtcMediaDeviceService
-        val result = mediaService?.testAudioRenderDevice(deviceId)
-            ?: "Speaker test unavailable: RTC media device service is not configured."
-        mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty(), speakerTestStatus = result)
-        SecureLanLogger.logRealtime(result)
-        return result
+        val status = "Testing speaker?"
+        mediaVoiceState = mediaVoiceState.copy(speakerTestStatus = status)
+        mediaOperations.submit("speaker", { rtcMediaDeviceService?.testAudioRenderDevice(deviceId) ?: "Speaker test unavailable." }) {
+            mediaVoiceState = mediaVoiceState.copy(speakerTestStatus = it.getOrElse { error -> error.message ?: "Speaker test failed." })
+        }
+        return status
     }
 
     fun selectSpeaker(deviceId: String?) {
+        mediaOperations.invalidate("speaker")
         mediaVoiceState = mediaVoiceState.copy(selectedOutputDeviceId = deviceId.orEmpty())
         settingsController.update { settings ->
             settings.copy(media = settings.media.copy(outputDeviceId = deviceId.orEmpty()))
@@ -1277,15 +1286,16 @@ class ComposeDesktopHostAdapter(
     }
 
     fun testCamera(deviceId: String? = experimentalVideoState.selectedCamera.deviceId): String {
-        val mediaService = rtcMediaDeviceService
-        val result = mediaService?.testVideoCaptureDevice(deviceId)
-            ?: "Camera test unavailable: RTC media device service is not configured."
-        experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty(), cameraTestStatus = result)
-        SecureLanLogger.logRealtime(result)
-        return result
+        val status = "Testing camera?"
+        experimentalVideoState = experimentalVideoState.copy(cameraTestStatus = status)
+        mediaOperations.submit("camera", { rtcMediaDeviceService?.testVideoCaptureDevice(deviceId) ?: "Camera test unavailable." }) {
+            experimentalVideoState = experimentalVideoState.copy(cameraTestStatus = it.getOrElse { error -> error.message ?: "Camera test failed." })
+        }
+        return status
     }
 
     fun selectCamera(deviceId: String?) {
+        mediaOperations.invalidate("camera")
         closeCameraPreview()
         experimentalVideoState = experimentalVideoState.copy(selectedCameraId = deviceId.orEmpty())
         settingsController.update { settings ->
@@ -1313,6 +1323,7 @@ class ComposeDesktopHostAdapter(
             return
         }
         try {
+            configureCallMedia()
             val snapshot = service.startSession(
                 RtcSessionRequest(
                     localPeer.trim(),
@@ -1339,6 +1350,14 @@ class ComposeDesktopHostAdapter(
         refreshRealtimeState()
     }
 
+    private fun configureCallMedia() {
+        rtcSessionService?.configureMediaDevices(com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration(
+            mediaVoiceState.selectedMicrophone.deviceId.orEmpty(),
+            mediaVoiceState.selectedOutputDevice.deviceId.orEmpty(),
+            experimentalVideoState.selectedCamera.deviceId.orEmpty(),
+        ))
+    }
+
     fun closeRealtimeSession() {
         if (shuttingDown.get()) return
         clearRealtimeMediaState()
@@ -1349,6 +1368,7 @@ class ComposeDesktopHostAdapter(
 
     fun acceptIncomingRealtimeSession(sessionId: String) {
         if (!chatClientService.isConnected()) { closeRealtimeSession(); return }
+        configureCallMedia()
         rtcSessionService?.acceptIncomingSession(sessionId)
         refreshRealtimeState()
     }
@@ -1374,6 +1394,7 @@ class ComposeDesktopHostAdapter(
         pendingIncomingTransferDecisions.clear()
         toolOperations.close()
         settingsController.close()
+        mediaOperations.close()
         networkIoScope.cancel()
 
         roomSession.close()

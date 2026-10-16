@@ -14,6 +14,8 @@ interface RtcSessionService : AutoCloseable {
      *
      * @return runtime status descriptor.
      */
+    fun configureMediaDevices(configuration: RtcMediaConfiguration) {}
+
     fun runtimeStatus(): RtcRuntimeStatus
 
     /**
