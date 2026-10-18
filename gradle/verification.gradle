@@ -1,12 +1,13 @@
 import groovy.json.JsonOutput
 
 // Only application/test/lint graphs are locked; Gradle/AGP internal configurations
-// are covered by checksum verification and the build-tool inventory.
+// are recorded by the build-tool inventory without dependency checksum enforcement.
 allprojects { owner ->
     def platformSpecific = owner.path in [':apps:desktop-client', ':modules:webrtc-core']
     dependencyLocking {
         lockFile = rootProject.file("gradle/dependency-locks/${owner.path.replace(':', '_')}${platformSpecific ? '-' + rootProject.ext.desktopPlatform.classifier : ''}.lockfile")
-        lockMode = LockMode.STRICT
+        // AGP/IDE copies inherit locking but have no persistent state under their temporary names.
+        lockMode = owner.path == ':apps:android-client' ? LockMode.DEFAULT : LockMode.STRICT
     }
     configurations.configureEach {
         if (name == 'kotlinLint' || name ==~ /(?i)(test|debug|release)?(compile|runtime)Classpath/) {

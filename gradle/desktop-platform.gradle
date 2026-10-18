@@ -22,7 +22,7 @@ ext.resolveDesktopPlatform = { String osName, String architecture ->
 
 ext.desktopPlatform = resolveDesktopPlatform(System.getProperty('os.name'), System.getProperty('os.arch'))
 
-// Resolve other host graphs for reviewed lock/checksum updates without cross-building.
+// Resolve other host graphs for reviewed lock/inventory updates without cross-building.
 def dependencyTarget = providers.gradleProperty('secureLanDependencyTarget').orNull
 if (dependencyTarget) {
     if (!gradle.startParameter.taskNames.every { it.tokenize(':').last() == 'resolveDependencyInventory' }) {

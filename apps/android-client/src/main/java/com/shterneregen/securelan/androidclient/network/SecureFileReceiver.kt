@@ -24,6 +24,7 @@ import java.util.Locale
 
 /** Platform-independent receiver boundary for workspace lifecycle ownership and correlated events. */
 interface IncomingFileReceiver {
+    fun setReadinessListener(listener: (Boolean) -> Unit) {}
     fun close()
     suspend fun serve(
         port: Int = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT,
@@ -43,6 +44,8 @@ interface IncomingFileReceiver {
  * Callbacks run on the IO thread; [close] unblocks both the listener and current transfer.
  */
 class SecureFileReceiver(private val context: Context) : IncomingFileReceiver {
+    @Volatile private var readiness: (Boolean) -> Unit = {}
+    override fun setReadinessListener(listener: (Boolean) -> Unit) { readiness = listener }
     private val listener = java.util.concurrent.atomic.AtomicReference<com.shterneregen.securelan.common.net.transport.TcpServer?>()
     private val receiveSlot = java.util.concurrent.Semaphore(1)
     private val pending = context.getSharedPreferences("pending_received_files", Context.MODE_PRIVATE)
@@ -68,6 +71,7 @@ class SecureFileReceiver(private val context: Context) : IncomingFileReceiver {
             "android-file-receiver", com.shterneregen.securelan.common.net.transport.ServerSocketFactory.systemDefault(), 4,
         )
         check(listener.compareAndSet(null, server)) { "File receiver already running" }
+        val reportReady = readiness
         val budget = com.shterneregen.securelan.filetransfer.protocol.FileReceiveBudget()
         try {
             server.start(port, { socket ->
@@ -78,8 +82,10 @@ class SecureFileReceiver(private val context: Context) : IncomingFileReceiver {
                     onError("Incoming file transfer failed", error)
                 }
             }, { _, error -> onError("File receiver unavailable", error) })
+            reportReady(true)
             kotlinx.coroutines.awaitCancellation()
         } finally {
+            reportReady(false)
             server.close()
             listener.compareAndSet(server, null)
         }

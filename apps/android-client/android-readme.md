@@ -295,6 +295,21 @@ If Android Studio cannot find the SDK, check `local.properties` in the repositor
 
 ## Desktop client interoperability scenario
 
+Nearby rooms use both UDP and platform NSD. Search runs on foreground Devices
+for up to 60 seconds; Refresh opens another window and Stop remains explicit.
+Hosting advertisements belong to the foreground service and continue
+independently of browsing. **Discoverable nearby** controls both sources.
+
+Devices also offers **Scan QR** and **Paste room link**. The offline CameraX/ZXing
+scanner requests CAMERA only, with paste as fallback. Imported/deep-linked
+`securelan://join` links require review and prefill the password when the link
+contains it; passwordless links require entry. The review field filters
+whitespace from typing and paste. An
+external intent never disconnects an active room. An Android host can use
+**Invite to room**, copy its link, and have Desktop paste it into Join. Generated
+QR codes and links include the room password; share only with trusted people.
+See [URI/TXT formats and limitations](../../docs/room-discovery-and-invites.md).
+
 1. Start the desktop client on a computer in the same LAN:
 
 ```powershell

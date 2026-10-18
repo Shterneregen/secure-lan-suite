@@ -19,6 +19,7 @@ import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.Locale
@@ -27,7 +28,10 @@ interface HostRoom {
     val state: StateFlow<AndroidHostServiceState>
     fun password(): String
     fun start(peerId: String, nickname: String, password: String, chatPort: Int, filePort: Int)
+    fun start(peerId: String, nickname: String, password: String, chatPort: Int, filePort: Int, discoverable: Boolean) { start(peerId, nickname, password, chatPort, filePort) }
     fun stop()
+    fun setDiscoverable(value: Boolean) {}
+    fun updateFileReadiness(roomInstanceId: String, port: Int?) {}
 }
 
 /** A per-ViewModel graph. Platform resources are constructed lazily and have explicit owners. */
@@ -46,6 +50,8 @@ class MainDependencies(
     val hasCamera: () -> Boolean = { false },
     val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    val discoverRooms: ((String) -> Flow<com.shterneregen.securelan.chat.discovery.DiscoverySnapshot>)? = null,
+    val resolveRoute: (String?, String) -> com.shterneregen.securelan.androidclient.network.LanSocketRoute? = { _, _ -> null },
 )
 
 /** The single production composition root; never retained across an unrelated workspace lifetime. */
@@ -62,7 +68,12 @@ class MainViewModelFactory(private val application: Application) : ViewModelProv
             override fun start(peerId: String, nickname: String, password: String, chatPort: Int, filePort: Int) {
                 AndroidChatHostService.start(application, peerId, nickname, password, chatPort, filePort)
             }
+            override fun start(peerId: String, nickname: String, password: String, chatPort: Int, filePort: Int, discoverable: Boolean) {
+                AndroidChatHostService.start(application, peerId, nickname, password, chatPort, filePort, discoverable)
+            }
             override fun stop() { AndroidChatHostService.stop(application) }
+            override fun setDiscoverable(value: Boolean) { AndroidChatHostService.setDiscoverable(application, value) }
+            override fun updateFileReadiness(roomInstanceId: String, port: Int?) { AndroidChatHostService.updateFileReadiness(application, roomInstanceId, port) }
         }
         return MainViewModel(MainDependencies(
             preferences = application.getSharedPreferences("secure_lan_preferences", Context.MODE_PRIVATE),
@@ -72,6 +83,21 @@ class MainViewModelFactory(private val application: Application) : ViewModelProv
             createSender = { SecureFileSender(application.contentResolver, application.cacheDir) },
             createReceiver = { SecureFileReceiver(application) },
             createQuickShare = { AndroidQuickShareServer(application.contentResolver, application.cacheDir) },
+            discoverRooms = { peerId -> kotlinx.coroutines.flow.callbackFlow {
+                val composite = com.shterneregen.securelan.chat.discovery.impl.CompositePeerDiscoveryService(listOf(
+                    com.shterneregen.securelan.androidclient.network.discovery.AndroidUdpDiscoveryProvider(discovery),
+                    com.shterneregen.securelan.androidclient.network.discovery.AndroidNsdDiscoveryProvider(application),
+                ))
+                val listener = object : com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener {
+                    override fun onPeerDiscovered(peer: com.shterneregen.securelan.chat.discovery.DiscoveredPeer) = Unit
+                    override fun onPeerExpired(peer: com.shterneregen.securelan.chat.discovery.DiscoveredPeer) = Unit
+                    override fun onDiscoveryError(message: String, cause: Throwable) = Unit
+                }
+                composite.startSession(com.shterneregen.securelan.chat.discovery.DiscoveryStartRequest(
+                    com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig.listenOnly(peerId, "Android")), listener) { trySend(it) }
+                awaitClose { composite.close() }
+            } },
+            resolveRoute = { route, hostAddress -> LanSocketConnector(application).capture(route, hostAddress) },
             hasCamera = { application.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY) },
             configureFileNotifications = { language ->
                 val locale = when (language) { AppLanguage.SYSTEM -> null; AppLanguage.ENGLISH -> Locale.ENGLISH; AppLanguage.RUSSIAN -> Locale("ru") }

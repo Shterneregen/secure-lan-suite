@@ -24,14 +24,16 @@ internal fun ConnectionHub(
     initialMode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
     selectedJoinTarget: ComposeConnectionJoinTarget? = null,
     wrapInCard: Boolean = true,
+    onImportedTarget: (ComposeConnectionJoinTarget) -> Unit = {},
 ) {
+    var routeKey by remember { mutableStateOf<String?>(null) }
     var mode by remember(initialMode) { mutableStateOf(initialMode) }
     var nickname by remember { mutableStateOf(hostAdapter.statusState.nickname) }
     var password by remember { mutableStateOf(hostAdapter.currentRoomPassword) }
     var passwordVisible by remember { mutableStateOf(false) }
     var serverChatPort by remember { mutableStateOf(hostAdapter.statusState.serverChatPortText) }
     var serverFilePort by remember { mutableStateOf(hostAdapter.statusState.serverFilePortText) }
-    var discoverable by remember { mutableStateOf(defaultHostDiscoverable(hostAdapter.statusState.localServerRunning, hostAdapter.statusState.discoverable)) }
+    var discoverable by remember { mutableStateOf(hostAdapter.statusState.discoverable) }
     var manualHost by remember { mutableStateOf(hostAdapter.statusState.manualHost) }
     var clientChatPort by remember { mutableStateOf(hostAdapter.statusState.clientChatPortText) }
     var clientFilePort by remember { mutableStateOf(hostAdapter.statusState.clientFilePortText) }
@@ -43,6 +45,7 @@ internal fun ConnectionHub(
     LaunchedEffect(selectedJoinTarget) {
         val target = selectedJoinTarget ?: return@LaunchedEffect
         mode = ComposeConnectionHubMode.JOIN
+        routeKey = target.routeKey
         manualHost = target.host
         clientChatPort = target.chatPortText
         clientFilePort = target.filePortText
@@ -53,7 +56,7 @@ internal fun ConnectionHub(
         password = hostAdapter.currentRoomPassword
         serverChatPort = hostAdapter.statusState.serverChatPortText
         serverFilePort = hostAdapter.statusState.serverFilePortText
-        discoverable = defaultHostDiscoverable(hostAdapter.statusState.localServerRunning, hostAdapter.statusState.discoverable)
+        discoverable = hostAdapter.statusState.discoverable
         if (selectedJoinTarget == null) {
             manualHost = hostAdapter.statusState.manualHost
             clientChatPort = hostAdapter.statusState.clientChatPortText
@@ -81,51 +84,69 @@ internal fun ConnectionHub(
         actionInFlight = null
     }
 
+    var importOpen by remember { mutableStateOf(false) }
+    if (importOpen) ConnectionUriImportDialog(onClose = { importOpen = false }, onUse = { descriptor ->
+        mode = ComposeConnectionHubMode.JOIN
+        routeKey = null
+        manualHost = descriptor.primaryAddress.value
+        clientChatPort = descriptor.chatPort.toString()
+        descriptor.filePortHint?.let { clientFilePort = it.toString() }
+        password = descriptor.password.orEmpty()
+        passwordVisible = false
+        importOpen = false
+        onImportedTarget(ComposeConnectionJoinTarget(descriptor.displayNameHint ?: "Room", manualHost, clientChatPort, clientFilePort))
+    })
     val content: @Composable () -> Unit = {
-        ConnectionHubContent(
-            state = hubState,
-            actionInFlight = actionInFlight,
-            nickname = nickname,
-            onNicknameChange = { nickname = it },
-            password = password,
-            onPasswordChange = { password = it },
-            passwordVisible = passwordVisible,
-            onPasswordVisibleChange = { passwordVisible = it },
-            onGenerateNickname = { nickname = hostAdapter.generateNickname() },
-            mode = mode,
-            serverChatPort = serverChatPort,
-            onServerChatPortChange = { serverChatPort = it },
-            serverFilePort = serverFilePort,
-            onServerFilePortChange = { serverFilePort = it },
-            discoverable = discoverable,
-            onDiscoverableChange = { discoverable = it },
-            manualHost = manualHost,
-            onManualHostChange = { manualHost = it },
-            clientChatPort = clientChatPort,
-            onClientChatPortChange = { clientChatPort = it },
-            clientFilePort = clientFilePort,
-            onClientFilePortChange = { clientFilePort = it },
-            onOpenRoom = {
-                actionInFlight = ComposeConnectionHubMode.HOST
-                statusState.serverChatPort?.let { chat ->
-                    statusState.serverFilePort?.let { file ->
-                        hostAdapter.openRoom(nickname, password, chat, file, discoverable)
+        androidx.compose.foundation.layout.Column {
+            if (!hostAdapter.statusState.clientConnected && !hostAdapter.statusState.localServerRunning) {
+                androidx.compose.material.TextButton(onClick = { importOpen = true }) { androidx.compose.material.Text("Paste room link") }
+            }
+            ConnectionHubContent(
+                state = hubState,
+                actionInFlight = actionInFlight,
+                nickname = nickname,
+                onNicknameChange = { nickname = it },
+                password = password,
+                onPasswordChange = { password = it },
+                passwordVisible = passwordVisible,
+                onPasswordVisibleChange = { passwordVisible = it },
+                onGenerateNickname = { nickname = hostAdapter.generateNickname() },
+                mode = mode,
+                serverChatPort = serverChatPort,
+                onServerChatPortChange = { serverChatPort = it },
+                serverFilePort = serverFilePort,
+                onServerFilePortChange = { serverFilePort = it },
+                discoverable = discoverable,
+                onDiscoverableChange = { discoverable = it },
+                manualHost = manualHost,
+                onManualHostChange = { manualHost = it; routeKey = null },
+                clientChatPort = clientChatPort,
+                onClientChatPortChange = { clientChatPort = it },
+                clientFilePort = clientFilePort,
+                onClientFilePortChange = { clientFilePort = it },
+                onOpenRoom = {
+                    actionInFlight = ComposeConnectionHubMode.HOST
+                    statusState.serverChatPort?.let { chat ->
+                        statusState.serverFilePort?.let { file ->
+                            hostAdapter.openRoom(nickname, password, chat, file, discoverable)
+                        }
                     }
-                }
-            },
-            onStopHosting = { hostAdapter.stopHosting() },
-            onConnect = {
-                actionInFlight = ComposeConnectionHubMode.JOIN
-                statusState.clientChatPort?.let { chat ->
-                    statusState.clientFilePort?.let { file ->
-                        hostAdapter.connect(manualHost, nickname, password, chat, file)
+                },
+                onStopHosting = { hostAdapter.stopHosting() },
+                onConnect = {
+                    actionInFlight = ComposeConnectionHubMode.JOIN
+                    statusState.clientChatPort?.let { chat ->
+                        statusState.clientFilePort?.let { file ->
+                            hostAdapter.connect(manualHost, nickname, password, chat, file, routeKey)
+                        }
                     }
-                }
-            },
-            onDisconnect = { hostAdapter.disconnect() },
-            onSetDiscoverable = { hostAdapter.setDiscoverable(it) },
-        )
+                },
+                onDisconnect = { hostAdapter.disconnect() },
+                onSetDiscoverable = { hostAdapter.setDiscoverable(it) },
+            )
+        }
     }
+
     if (wrapInCard) {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -138,6 +159,3 @@ internal fun ConnectionHub(
         content()
     }
 }
-
-private fun defaultHostDiscoverable(localServerRunning: Boolean, currentDiscoverable: Boolean): Boolean =
-    if (localServerRunning) currentDiscoverable else true

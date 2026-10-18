@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +63,7 @@ private fun LiveConnectionHubSurface(
     hostAdapter: ComposeDesktopHostAdapter,
     selectedJoinTarget: ComposeConnectionJoinTarget?,
 ) {
+    var connectionDraft by remember { mutableStateOf(selectedJoinTarget) }
     var hubMode by remember {
         mutableStateOf(
             if (hostAdapter.preferredConnectionMode == DesktopConnectionMode.JOIN) {
@@ -72,6 +75,7 @@ private fun LiveConnectionHubSurface(
     }
     LaunchedEffect(selectedJoinTarget) {
         if (selectedJoinTarget != null) {
+            connectionDraft = selectedJoinTarget
             hubMode = ComposeConnectionHubMode.JOIN
         }
     }
@@ -113,9 +117,25 @@ private fun LiveConnectionHubSurface(
         ConnectionHub(
             hostAdapter = hostAdapter,
             initialMode = hubMode,
-            selectedJoinTarget = selectedJoinTarget,
+            selectedJoinTarget = connectionDraft,
             wrapInCard = false,
+            onImportedTarget = { connectionDraft = it; hubMode = ComposeConnectionHubMode.JOIN },
         )
+        if (!hostAdapter.statusState.clientConnected && !hostAdapter.statusState.localServerRunning) {
+            val targets = hostAdapter.nearbyRoomTargets
+            if (targets.isNotEmpty()) {
+                Text("Nearby rooms", style = MaterialTheme.typography.subtitle2)
+                targets.take(8).forEach { target ->
+                    CenterPanelRoomRow(target, selected = connectionDraft?.rowId == target.rowId, onSelected = {
+                        connectionDraft = target
+                        hubMode = ComposeConnectionHubMode.JOIN
+                    })
+                }
+            }
+            if (connectionDraft?.rowId?.startsWith("room-") == true && targets.none { it.rowId == connectionDraft?.rowId }) {
+                Text("The room address may have changed. Select a current nearby room or review the address.", style = MaterialTheme.typography.caption)
+            }
+        }
     }
 }
 

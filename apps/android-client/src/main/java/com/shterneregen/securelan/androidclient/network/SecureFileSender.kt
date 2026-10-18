@@ -37,6 +37,8 @@ data class FileTransferTimeouts(val connectMillis: Int = 10_000, val acceptanceM
  */
 class SecureFileSender(private val contentResolver: ContentResolver, private val cacheDirectory: File, private val timeouts: FileTransferTimeouts = FileTransferTimeouts()) {
     @Volatile private var active: Operation? = null
+    @Volatile private var route: LanSocketRoute? = null
+    fun setRoute(route: LanSocketRoute?) { this.route = route }
 
     /** Interrupts the current operation; future sends may reuse this sender. */
     fun close() { active?.close() }
@@ -93,6 +95,7 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
             val socket = operation.socket
             failureKind = FileTransferFailureKind.CONNECTION
             operation.touch(timeouts.connectMillis)
+            route?.bind(socket)
             socket.connect(InetSocketAddress(host, port), timeouts.connectMillis)
             socket.soTimeout = timeouts.acceptanceMillis
             operation.touch(timeouts.acceptanceMillis)

@@ -75,6 +75,7 @@ internal fun LiveComposeShellContent(
         voiceState = voiceState,
         videoState = videoState,
     )
+    var roomInvitationOpen by remember { mutableStateOf(false) }
     var quickShareDialogOpen by remember { mutableStateOf(false) }
     var steganographyDialogMode by remember { mutableStateOf<ComposeSteganographyMode?>(null) }
     var settingsDialogOpen by remember { mutableStateOf(false) }
@@ -134,6 +135,9 @@ internal fun LiveComposeShellContent(
                     selectedJoinTarget = selectedJoinTarget,
                     hubTooltip = hubTooltip,
                     headerActions = {
+                        if (hostAdapter.statusState.localServerRunning) {
+                            androidx.compose.material.TextButton(onClick = { roomInvitationOpen = true }) { androidx.compose.material.Text("Invite") }
+                        }
                         if (peerState.selectedPeer != null) {
                             ChatCallActions(
                                 hostAdapter = hostAdapter,
@@ -165,6 +169,7 @@ internal fun LiveComposeShellContent(
             },
         )
     }
+    if (roomInvitationOpen) com.shterneregen.securelan.desktop.compose.ui.connection.RoomInvitationDialog(hostAdapter) { roomInvitationOpen = false }
     if (quickShareDialogOpen) {
         LiveQuickShareDialog(
             hostAdapter = hostAdapter,

@@ -1,4 +1,4 @@
-"""Build an offline notice bundle from checksum-verified runtime artifacts and POMs."""
+"""Build an offline notice bundle from resolved runtime artifacts and POMs."""
 import argparse
 import hashlib
 import io

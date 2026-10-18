@@ -99,6 +99,7 @@ class ComposeDesktopHostAdapter(
     downloadsPath: Path = settingsController.settings.downloadsPath(),
     private val uiStateDispatcher: (((() -> Unit)) -> Unit)? = null,
     private val chatNotificationPublisher: (DesktopChatTrayNotification) -> Unit = {},
+    private val prepareConnectionRoute: (String?, String) -> Unit = { _, _ -> },
 ) : AutoCloseable {
     private var downloadsPath: Path = downloadsPath.toAbsolutePath().normalize()
 
@@ -159,6 +160,9 @@ class ComposeDesktopHostAdapter(
     /** Combined peer list: discovered LAN targets plus connected chat participants. */
     val visiblePeerItems: List<PeerPresence>
         get() {
+            if (discoveryService is com.shterneregen.securelan.chat.discovery.RoomDiscoveryService) {
+                return chatPeers.filterNot(::isLocalPeer).sortedWith(Comparator.comparing(PeerPresence::nickname, String.CASE_INSENSITIVE_ORDER))
+            }
             val merged = LinkedHashMap<String, PeerPresence>()
             chatPeers.filterNot(::isLocalPeer).forEach { peer ->
                 merged[peerKey(peer)] = peer
@@ -218,7 +222,17 @@ class ComposeDesktopHostAdapter(
     }
     var sendingMessage: Boolean by mutableStateOf(false)
         private set
-    private val roomSession = RoomSessionController(chatServerService, chatClientService, fileTransferServerService, discoveryService)
+    var roomDiscoverySnapshot by mutableStateOf(com.shterneregen.securelan.chat.discovery.DiscoverySnapshot())
+        private set
+    val hostedRoomAdvertisement get() = roomSession.hostedRoom?.takeIf { statusState.localServerRunning }
+    val nearbyRoomTargets: List<ComposeConnectionJoinTarget> get() = roomDiscoverySnapshot.rooms.mapNotNull { room ->
+        val endpoint = room.endpoints.firstOrNull() ?: return@mapNotNull null
+        ComposeConnectionJoinTarget(room.displayName ?: "Room", endpoint.host, endpoint.chatPort.toString(),
+            (room.filePortHint ?: statusState.clientFilePort ?: 5051).toString(), room.rowId, endpoint.routeKey)
+    }
+    private val roomSession = RoomSessionController(chatServerService, chatClientService, fileTransferServerService, discoveryService) { snapshot ->
+        dispatchUiStateUpdate { roomDiscoverySnapshot = snapshot; refreshState() }
+    }
     private val transferGeneration = AtomicLong()
     /** Unsent file selection bound to a captured recipient and connection generation. */
     var transferDraft: DesktopTransferDraft? by mutableStateOf(null)
@@ -516,14 +530,14 @@ class ComposeDesktopHostAdapter(
         override fun onPeerDiscovered(peer: DiscoveredPeer) {
             dispatchUiStateUpdate {
                 discoveredPeers = discoveryService.snapshot()
-                SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerFoundDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+                SecureLanLogger.logConnection("Discovery observation received; rooms=${discoveredPeers.size}.")
             }
         }
 
         override fun onPeerExpired(peer: DiscoveredPeer) {
             dispatchUiStateUpdate {
                 discoveredPeers = discoveryService.snapshot()
-                SecureLanLogger.logConnection(DesktopMainViewHelpers.discoveryPeerExpiredDiagnostics(peer) + "; snapshot=${discoveredPeers.size}.")
+                SecureLanLogger.logConnection("Discovery observation expired; rooms=${discoveredPeers.size}.")
             }
         }
 
@@ -591,7 +605,7 @@ class ComposeDesktopHostAdapter(
             filePeerAuthentication())
         val join = ChatClientConnectRequest("127.0.0.1", chatPort, trimmedNick, password, desktopCapabilities(filePort))
         networkIoScope.launch {
-            val result = runCatching { roomSession.start(ChatServerConfig(chatPort, password), files, join,
+            val result = runCatching { prepareConnectionRoute(null, "127.0.0.1"); roomSession.start(ChatServerConfig(chatPort, password), files, join,
                 announcement, previousDiscovery, discoveryListener, roomToken) }
             dispatchUiStateUpdate {
                 connectionInProgress.set(false)
@@ -631,29 +645,20 @@ class ComposeDesktopHostAdapter(
         publishEventKind(ComposeAdapterEventKind.CLEANUP_STARTED, "Stopping hosting.")
         invalidateTransferSession()
 
-        try {
-            if (chatClientService.isConnected()) {
-                chatClientService.disconnect()
-                publish(ComposeConnectionEventKind.INFO, "Disconnected before stopping room.")
+        statusState = statusState.copy(operationInProgress = true, serverStatus = "Stopping room...")
+        networkIoScope.launch {
+            roomSession.close()
+            dispatchUiStateUpdate {
+                currentConfig = null
+                discoveredPeers = emptyList()
+                roomDiscoverySnapshot = com.shterneregen.securelan.chat.discovery.DiscoverySnapshot()
+                clearChatPeers()
+                statusState = statusState.copy(operationInProgress = false)
+                publish(ComposeConnectionEventKind.SUCCESS, "Room stopped.")
+                publishEventKind(ComposeAdapterEventKind.HOST_STOPPED, "Host stopped.")
+                refreshState()
             }
-            if (fileTransferServerService.isRunning()) {
-                fileTransferServerService.stop()
-                publish(ComposeConnectionEventKind.INFO, "File transfer listener stopped.")
-            }
-            discoveryService.stop()
-            currentConfig = null
-            discoveredPeers = emptyList()
-            clearChatPeers()
-            SecureLanLogger.logConnection("Discovery stopped; peer snapshot cleared.")
-            chatServerService.stop()
-            publish(ComposeConnectionEventKind.SUCCESS, "Room stopped.")
-            publishEventKind(ComposeAdapterEventKind.HOST_STOPPED, "Host stopped.")
-        } catch (e: Exception) {
-            publish(ComposeConnectionEventKind.ERROR, "Error stopping room: ${e.message}")
-            publishEventKind(ComposeAdapterEventKind.RUNTIME_ERROR, e.message ?: "Unknown stop hosting error")
         }
-
-        refreshState()
     }
 
     /**
@@ -666,6 +671,7 @@ class ComposeDesktopHostAdapter(
         password: String,
         chatPort: Int,
         filePort: Int,
+        routeKey: String? = null,
     ) {
         if (shuttingDown.get()) return
         val trimmedHost = host.trim()
@@ -721,7 +727,7 @@ class ComposeDesktopHostAdapter(
         val previousDiscovery = currentConfig
         val roomToken = roomSession.operationGeneration()
         networkIoScope.launch {
-            val result = runCatching { roomSession.join(request, fileConfig, listenConfig, previousDiscovery, discoveryListener, roomToken) }
+            val result = runCatching { prepareConnectionRoute(routeKey, trimmedHost); roomSession.join(request, fileConfig, listenConfig, previousDiscovery, discoveryListener, roomToken) }
             dispatchUiStateUpdate {
                 connectionInProgress.set(false)
                 statusState = statusState.copy(operationInProgress = false)
@@ -783,12 +789,13 @@ class ComposeDesktopHostAdapter(
     /** Toggle discovery announcement mode. Only meaningful while a room is hosted. */
     fun setDiscoverable(enabled: Boolean) {
         if (shuttingDown.get()) return
-        if (!discoveryService.isRunning()) {
+        if (!chatServerService.isRunning()) {
             publish(ComposeConnectionEventKind.WARNING, "No room is open; start hosting first.")
             return
         }
         try {
             discoveryService.setAnnounceEnabled(enabled)
+            currentConfig = currentConfig?.copy(announceEnabled = enabled)
             settingsController.update { settings ->
                 settings.copy(network = settings.network.copy(discoverable = enabled))
             }
@@ -806,7 +813,7 @@ class ComposeDesktopHostAdapter(
 
     /** Resolve a selected Compose peer row to its advertised LAN file endpoint. */
     fun discoveredPeerFor(nickname: String): DiscoveredPeer? {
-        val discovered = discoveredPeers.firstOrNull { it.nickname.equals(nickname, ignoreCase = true) }
+        val discovered = discoveredPeers.takeUnless { discoveryService is com.shterneregen.securelan.chat.discovery.RoomDiscoveryService }?.firstOrNull { it.nickname.equals(nickname, ignoreCase = true) }
         if (discovered != null) {
             return discovered
         }
@@ -1441,6 +1448,7 @@ class ComposeDesktopHostAdapter(
             serverStatus = if (serverRunning) "Room running" else "Room closed",
             connectionStatus = if (clientConnected) "Connected" else "Connection idle",
             discoveryStatus = when {
+                roomDiscoverySnapshot.providers.any { it.availability in setOf(com.shterneregen.securelan.chat.discovery.ProviderAvailability.FAILED, com.shterneregen.securelan.chat.discovery.ProviderAvailability.UNAVAILABLE) } -> "Search partially available"
                 discoveryActive && config?.announceEnabled == true -> "Room visible nearby"
                 discoveryActive -> "Room hidden nearby"
                 else -> "Discovery not started"
@@ -1804,7 +1812,11 @@ class ComposeDesktopHostAdapter(
             return
         }
         currentConfig = discoveryConfig
-        discoveryService.start(discoveryConfig, discoveryListener)
+        if (discoveryService is com.shterneregen.securelan.chat.discovery.RoomDiscoveryService) {
+            discoveryService.startSession(com.shterneregen.securelan.chat.discovery.DiscoveryStartRequest(discoveryConfig), discoveryListener) { snapshot ->
+                dispatchUiStateUpdate { roomDiscoverySnapshot = snapshot; refreshState() }
+            }
+        } else discoveryService.start(discoveryConfig, discoveryListener)
         discoveredPeers = discoveryService.snapshot()
         if (discoveryService.isRunning()) {
             val message = if (hosting) {

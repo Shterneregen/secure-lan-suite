@@ -65,6 +65,7 @@ dependencies {
     implementation project(':modules:stego-core')
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
     implementation 'com.google.zxing:core:3.5.3'
+    implementation 'org.jmdns:jmdns:3.6.4'
     implementation 'com.formdev:flatlaf:3.7.1'
     def target = rootProject.ext.desktopPlatform
     def composeArch = target.classifier?.endsWith('aarch64') ? 'arm64' : 'x64'
@@ -87,6 +88,18 @@ def kotlinLintSources = fileTree('src') {
 
 apply from: rootProject.file('gradle/notices.gradle')
 distributions.main.contents { from(thirdPartyNotices) }
+
+tasks.register('prepareMdnsRuntimeProbe') {
+    group = 'verification'
+    description = 'Prepare classpath for the explicit two-JVM LAN mDNS smoke script.'
+    dependsOn tasks.named('testClasses')
+    notCompatibleWithConfigurationCache('Exports the test runtime classpath for a manual LAN probe.')
+    doLast {
+        def output = layout.buildDirectory.file('reports/mdns/classpath.txt').get().asFile
+        output.parentFile.mkdirs()
+        output.setText(sourceSets.test.runtimeClasspath.asPath, 'UTF-8')
+    }
+}
 
 tasks.register('lintKotlin', JavaExec) {
     group = 'verification'
@@ -127,12 +140,18 @@ def rawProjectVersion = project.version.toString()
 def appVersion = rawProjectVersion.replaceAll(/-SNAPSHOT$/, '')
 def mainJarName = "${project.name}-${project.version}.jar"
 
-tasks.named('processResources') {
+def versionResourcesDir = layout.buildDirectory.dir('generated/resources/appVersion')
+def generateVersionResources = tasks.register('generateVersionResources') {
     inputs.property('secureLanVersion', appVersion)
-    filesMatching('securelan-version.properties') {
-        expand(secureLanVersion: appVersion)
+    outputs.dir(versionResourcesDir)
+    doLast {
+        def target = versionResourcesDir.get().file('securelan-version.properties').asFile
+        target.parentFile.mkdirs()
+        target.setText("version=${appVersion}\n", 'UTF-8')
     }
 }
+// Keep version substitution out of CopySpec filters, which IDEA cannot import.
+sourceSets.main.resources.srcDir(generateVersionResources)
 
 def packageInputDir = layout.buildDirectory.dir('package-input')
 def packageOutputDir = layout.buildDirectory.dir('packaging')
@@ -605,5 +624,22 @@ tasks.register('writeToolchainManifest', Exec) {
                 '--jdk17', sharedLauncher.get().metadata.installationPath.asFile,
                 '--jdk25', packagingLauncher.get().metadata.installationPath.asFile,
                 '--output', layout.buildDirectory.file('reports/release/toolchain.json').get().asFile
+    }
+}
+
+// Preserve jpackage's generated application metadata; modify before final distribution/signing.
+['createAppImage', 'createProguardAppImage'].each { imageTask ->
+    tasks.matching { it.name == imageTask }.configureEach {
+        if (rootProject.ext.desktopPlatform.os == 'macos') {
+            inputs.file(rootProject.file('scripts/configure_macos_network_privacy.py'))
+            doLast {
+                def image = imageTask == 'createAppImage' ? appImageDir.get().asFile : proguardAppImageDir.get().asFile
+                providers.exec {
+                    commandLine 'python', rootProject.file('scripts/configure_macos_network_privacy.py'), new File(image, 'Contents/Info.plist')
+                }.result.get().assertNormalExitValue()
+                // Local portable images are ad-hoc signed; production signing follows qualification.
+                providers.exec { commandLine 'codesign', '--force', '--deep', '--sign', '-', image }.result.get().assertNormalExitValue()
+            }
+        }
     }
 }

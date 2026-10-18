@@ -9,7 +9,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
-import com.shterneregen.securelan.chat.discovery.impl.UdpBroadcastPeerDiscoveryService
 import com.shterneregen.securelan.chat.service.ChatEventPublisher
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
 import com.shterneregen.securelan.chat.service.impl.DefaultChatServerService
@@ -56,6 +55,7 @@ fun main() {
         var unreadMessageCount by remember { mutableStateOf(0) }
 
         val hostAdapter = remember {
+            val routes = com.shterneregen.securelan.desktop.network.discovery.DesktopLanSocketConnector()
             val sharedPublisher = ComposeDesktopChatEventBridge()
             val fileTransferBridge = ComposeDesktopFileTransferEventBridge()
             val quickShareBridge = ComposeDesktopQuickShareEventBridge()
@@ -63,12 +63,16 @@ fun main() {
             val signalingBridge = ComposeDesktopRtcSignalingBridge()
             ComposeDesktopHostAdapter(
                 chatServerService = DefaultChatServerService(sharedPublisher),
-                chatClientService = DefaultChatClientService(sharedPublisher),
+                chatClientService = DefaultChatClientService(sharedPublisher, routes),
                 fileTransferServerService = DefaultFileTransferServerService(fileTransferBridge),
                 quickShareService = DefaultQuickShareService(quickShareBridge),
-                discoveryService = UdpBroadcastPeerDiscoveryService(),
+                discoveryService = com.shterneregen.securelan.chat.discovery.impl.CompositePeerDiscoveryService(listOf(
+                    com.shterneregen.securelan.chat.discovery.impl.UdpBroadcastDiscoveryProvider(),
+                    com.shterneregen.securelan.desktop.network.discovery.DesktopMdnsDiscoveryProvider(),
+                )),
                 randomNicknameService = DefaultRandomNicknameService(),
-                fileTransferClientService = DefaultFileTransferClientService(fileTransferBridge),
+                fileTransferClientService = DefaultFileTransferClientService(fileTransferBridge, routes),
+                prepareConnectionRoute = routes::select,
                 rtcSessionService = DefaultRtcSessionService(rtcBridge, signalingBridge),
                 rtcMediaDeviceService = DefaultRtcMediaDeviceService(),
                 settingsController = settingsController,

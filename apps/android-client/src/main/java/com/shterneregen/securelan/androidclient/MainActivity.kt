@@ -8,10 +8,6 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.net.ConnectivityManager
-import android.net.LinkProperties
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.LocaleList
@@ -119,8 +115,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleConnectionIntent(intent)
+    }
+    private fun handleConnectionIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) intent.dataString?.let(viewModel::importConnectionUri)
+    }
+    override fun onStart() { super.onStart(); viewModel.updateSearchForeground(true) }
+    override fun onStop() { viewModel.updateSearchForeground(false); super.onStop() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) handleConnectionIntent(intent)
         setContent {
             val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                 viewModel.updateNearbyPermission(if (granted) NearbyPermissionState.GRANTED else NearbyPermissionState.DENIED)
@@ -144,24 +151,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
             DisposableEffect(Unit) {
-                val connectivityManager = getSystemService(ConnectivityManager::class.java)
+                val monitor = com.shterneregen.securelan.androidclient.network.discovery.AndroidLanNetworkMonitor(this@MainActivity)
+                val observing = java.util.concurrent.atomic.AtomicBoolean(true)
+                val mainExecutor = androidx.core.content.ContextCompat.getMainExecutor(this@MainActivity)
                 fun updateNetworkState() {
-                    val capabilities = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
-                    val available = capabilities?.let {
-                        it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                            it.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-                    } == true
-                    viewModel.updateNetworkAvailable(available)
+                    mainExecutor.execute {
+                        if (observing.get()) viewModel.updateNetworkAvailable(monitor.networks().isNotEmpty())
+                    }
                 }
-                val callback = object : ConnectivityManager.NetworkCallback() {
-                    override fun onAvailable(network: Network) = updateNetworkState()
-                    override fun onLost(network: Network) = updateNetworkState()
-                    override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) = updateNetworkState()
-                    override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) = updateNetworkState()
-                }
+                monitor.start(::updateNetworkState)
                 updateNetworkState()
-                connectivityManager.registerDefaultNetworkCallback(callback)
-                onDispose { connectivityManager.unregisterNetworkCallback(callback) }
+                onDispose { observing.set(false); monitor.close() }
             }
             SecureLanAndroidApp(
                 viewModel = viewModel,
@@ -231,8 +231,12 @@ private fun SecureLanAndroidApp(
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                     color = MaterialTheme.colorScheme.background,
                 ) {
+                    com.shterneregen.securelan.androidclient.ui.connection.PendingRoomConnectionDialog(viewModel, state)
                     CallHost(viewModel, baseContext as MainActivity) { requestCall ->
                         RedesignedMainScreen(
+                            roomTools = { com.shterneregen.securelan.androidclient.ui.connection.RoomConnectionTools(viewModel, state) },
+                            onSearchSurface = viewModel::updateSearchSurface,
+                            onHostDiscoverableChange = viewModel::setHostDiscoverable,
                             callActions = { CallButtons(state.callPeers, state.connected, requestCall) },
                             state = state,
                             queue = queue,
@@ -343,6 +347,9 @@ private enum class PrimaryDestination(val labelRes: Int, val icon: ImageVector) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RedesignedMainScreen(
+    roomTools: @Composable () -> Unit,
+    onSearchSurface: (Boolean) -> Unit,
+    onHostDiscoverableChange: (Boolean) -> Unit,
     callActions: @Composable () -> Unit,
     state: MainUiState,
     queue: TransferQueueState,
@@ -416,6 +423,7 @@ private fun RedesignedMainScreen(
         }
     }
 
+    LaunchedEffect(destination, settingsVisible) { onSearchSurface(destination == PrimaryDestination.DEVICES && !settingsVisible) }
     BackHandler(enabled = settingsVisible) { settingsVisible = false }
 
     LaunchedEffect(state.connected) {
@@ -466,6 +474,7 @@ private fun RedesignedMainScreen(
             onNicknameChange = onNicknameChange,
             onPasswordChange = onPasswordChange,
             onStartHosting = onStartHosting,
+            onDiscoverableChange = onHostDiscoverableChange,
             onDismiss = { if (!state.hostingStarting) hostRoomSheetVisible = false },
         )
     }
@@ -552,6 +561,7 @@ private fun RedesignedMainScreen(
                         )
                     } else when (destination) {
                         PrimaryDestination.DEVICES -> RedesignedDevicesScreen(
+                            roomTools = roomTools,
                             state = state,
                             onPeerClick = {
                                 onPeerSelected(it)
@@ -700,6 +710,7 @@ private fun RedesignedNavigationRail(selected: PrimaryDestination, onSelected: (
 
 @Composable
 private fun RedesignedDevicesScreen(
+    roomTools: @Composable () -> Unit,
     state: MainUiState,
     onPeerClick: (DiscoveredPeer) -> Unit,
     onOpenChat: () -> Unit,
@@ -725,6 +736,7 @@ private fun RedesignedDevicesScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DevicesSubtitle()
+                roomTools()
                 if (state.connected || state.hosting) CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect)
                 DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery)
                 if (!state.connected && !state.hosting) {
@@ -751,6 +763,7 @@ private fun RedesignedDevicesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { DevicesSubtitle() }
+            item { roomTools() }
             if (state.connected || state.hosting) item { CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect) }
             item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery) }
             if (serverPeers.isNotEmpty()) {
@@ -969,6 +982,7 @@ private fun HostRoomButton(state: MainUiState, onClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HostRoomBottomSheet(
+    onDiscoverableChange: (Boolean) -> Unit,
     state: MainUiState,
     onNicknameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
@@ -994,6 +1008,10 @@ private fun HostRoomBottomSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(stringResource(R.string.host_room_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(state.hostDiscoverable, onDiscoverableChange)
+                Text(stringResource(R.string.room_discoverable))
+            }
             Text(stringResource(R.string.host_room_message), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = state.nickname,

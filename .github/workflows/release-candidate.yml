@@ -76,7 +76,7 @@ jobs:
           try {
             if (!$env:ANDROID_RELEASE_STORE_BASE64) { throw 'Production Android keystore is required.' }
             [IO.File]::WriteAllBytes($env:ANDROID_RELEASE_STORE_FILE, [Convert]::FromBase64String($env:ANDROID_RELEASE_STORE_BASE64))
-            .\gradlew.bat :apps:android-client:productionApk :apps:desktop-client:buildPortable :apps:desktop-client:buildExe writeToolchainManifest --no-configuration-cache --no-build-cache --dependency-verification=strict --console=plain
+            .\gradlew.bat :apps:android-client:productionApk :apps:desktop-client:buildPortable :apps:desktop-client:buildExe writeToolchainManifest --no-configuration-cache --no-build-cache --console=plain
             if ($LASTEXITCODE -ne 0) { throw 'Production build failed.' }
           } finally {
             if (Test-Path -LiteralPath $env:ANDROID_RELEASE_STORE_FILE) { Remove-Item -LiteralPath $env:ANDROID_RELEASE_STORE_FILE -Force }

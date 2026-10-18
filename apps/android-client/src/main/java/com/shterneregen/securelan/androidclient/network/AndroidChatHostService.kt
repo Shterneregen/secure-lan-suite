@@ -29,6 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.DatagramPacket
@@ -53,6 +54,11 @@ data class AndroidHostServiceState(
     val filePort: Int = SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT,
     val participants: List<HostedParticipant> = emptyList(),
     val error: String? = null,
+    val roomInstanceId: String = "",
+    val discoverable: Boolean = true,
+    val activeFilePort: Int? = null,
+    val mdnsAvailability: com.shterneregen.securelan.chat.discovery.ProviderAvailability = com.shterneregen.securelan.chat.discovery.ProviderAvailability.STOPPED,
+    val legacyNsdScopeUnavailable: Boolean = false,
 )
 
 /**
@@ -65,7 +71,10 @@ class AndroidChatHostService : Service() {
     private val participants = ConcurrentHashMap<String, HostedParticipant>()
     private var server: DefaultChatServerService? = null
     private var announceJob: Job? = null
+    private var advertisementRetryJob: Job? = null
+    private var advertisementRetryAttempt = 0
     private var activeRequest: HostRequest? = null
+    private val advertiser by lazy { com.shterneregen.securelan.androidclient.network.discovery.AndroidRoomAdvertiser(this, ::handleAdvertisingStatus) }
     @Volatile private var hostGeneration = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -74,12 +83,28 @@ class AndroidChatHostService : Service() {
         when (intent?.action) {
             ACTION_STOP -> stopHosting()
             ACTION_START -> startHosting(HostRequest.from(intent))
+            ACTION_VISIBILITY -> {
+                val request = activeRequest
+                if (request != null && server?.isRunning() == true) {
+                    activeRequest = request.copy(discoverable = intent.getBooleanExtra("discoverable", true))
+                    _state.value = _state.value.copy(discoverable = activeRequest!!.discoverable)
+                    updateAdvertisement()
+                }
+            }
+            ACTION_FILE_READY -> {
+                if (intent.getStringExtra("room_instance") == _state.value.roomInstanceId && _state.value.running) {
+                    val port = intent.getIntExtra("ready_port", 0).takeIf { it in 1..65535 && it == _state.value.filePort }
+                    _state.value = _state.value.copy(activeFilePort = port)
+                    updateAdvertisement()
+                }
+            }
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         closeHostResources()
+        advertiser.close()
         serviceScope.cancel()
         if (_state.value.running || _state.value.starting) _state.value = AndroidHostServiceState()
         synchronized(stateLock) { sessionPassword = "" }
@@ -87,7 +112,7 @@ class AndroidChatHostService : Service() {
     }
 
     private fun startHosting(request: HostRequest) {
-        if (server?.isRunning() == true && activeRequest == request) return
+        if (server?.isRunning() == true && activeRequest?.copy(roomInstanceId = request.roomInstanceId) == request) return
         closeHostResources()
         participants.clear()
         activeRequest = request
@@ -108,6 +133,7 @@ class AndroidChatHostService : Service() {
             }
             _state.value = request.toState(running = true)
             startAnnouncements(request)
+            updateAdvertisement()
             showForegroundNotification(request, 0)
         }.onFailure { error ->
             closeHostResources()
@@ -131,8 +157,12 @@ class AndroidChatHostService : Service() {
 
     private fun closeHostResources() {
         hostGeneration++
+        advertisementRetryJob?.cancel()
+        advertisementRetryJob = null
+        advertisementRetryAttempt = 0
         announceJob?.cancel()
         announceJob = null
+        advertiser.update(null)
         server?.stop()
         server = null
     }
@@ -143,7 +173,7 @@ class AndroidChatHostService : Service() {
             val payload = DiscoveryCodec.encode(request.peerId, request.nickname, request.chatPort, request.filePort)
             val resolver = BroadcastAddressResolver()
             while (isActive && server?.isRunning() == true) {
-                runCatching {
+                if (_state.value.discoverable) runCatching {
                     DatagramSocket().use { socket ->
                         socket.broadcast = true
                         resolver.resolve().forEach { address ->
@@ -152,6 +182,34 @@ class AndroidChatHostService : Service() {
                     }
                 }
                 delay(ANNOUNCE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun updateAdvertisement() {
+        val current = _state.value
+        if (!current.running) { advertiser.update(null); return }
+        runCatching { advertiser.update(com.shterneregen.securelan.chat.discovery.HostedRoomAdvertisement(current.peerId, current.roomInstanceId,
+            current.nickname.takeIf(com.shterneregen.securelan.chat.discovery.DiscoveryValidation::displayName), current.chatPort,
+            current.activeFilePort, current.discoverable)) }.onFailure {
+                _state.update { it.copy(mdnsAvailability = com.shterneregen.securelan.chat.discovery.ProviderAvailability.UNAVAILABLE) }
+            }
+    }
+
+    private fun handleAdvertisingStatus(status: com.shterneregen.securelan.androidclient.network.discovery.NsdAdvertisingStatus) {
+        serviceScope.launch(Dispatchers.Main.immediate) {
+            val current = _state.value
+            if (!current.running) return@launch
+            _state.update { it.copy(mdnsAvailability = status.availability, legacyNsdScopeUnavailable = status.legacyScopeUnavailable) }
+            if (status.availability == com.shterneregen.securelan.chat.discovery.ProviderAvailability.RUNNING) advertisementRetryAttempt = 0
+            if (status.availability != com.shterneregen.securelan.chat.discovery.ProviderAvailability.FAILED || !current.discoverable || advertisementRetryJob != null) return@launch
+            val generation = hostGeneration
+            val seconds = listOf(1, 2, 5, 15, 30)[advertisementRetryAttempt.coerceAtMost(4)]
+            advertisementRetryAttempt++
+            advertisementRetryJob = serviceScope.launch(Dispatchers.Main.immediate) {
+                delay(seconds * 1000L + kotlin.random.Random.nextLong(200))
+                advertisementRetryJob = null
+                if (generation == hostGeneration && _state.value.running && _state.value.discoverable) updateAdvertisement()
             }
         }
     }
@@ -184,7 +242,7 @@ class AndroidChatHostService : Service() {
     private fun publishParticipants() {
         val request = activeRequest ?: return
         val snapshot = participants.values.sortedBy { it.nickname.lowercase() }
-        _state.value = request.toState(running = server?.isRunning() == true, participants = snapshot)
+        _state.value = request.toState(running = server?.isRunning() == true, participants = snapshot).copy(activeFilePort = _state.value.activeFilePort, mdnsAvailability = _state.value.mdnsAvailability, legacyNsdScopeUnavailable = _state.value.legacyNsdScopeUnavailable)
         showForegroundNotification(request, snapshot.size)
     }
 
@@ -232,13 +290,15 @@ class AndroidChatHostService : Service() {
         val sessionPassword: String,
         val chatPort: Int,
         val filePort: Int,
+        val roomInstanceId: String = java.util.UUID.randomUUID().toString(),
+        val discoverable: Boolean = true,
     ) {
         fun toState(
             starting: Boolean = false,
             running: Boolean = false,
             participants: List<HostedParticipant> = emptyList(),
             error: String? = null,
-        ) = AndroidHostServiceState(starting, running, peerId, nickname, chatPort, filePort, participants, error)
+        ) = AndroidHostServiceState(starting, running, peerId, nickname, chatPort, filePort, participants, error, roomInstanceId, discoverable)
 
         companion object {
             fun from(intent: Intent): HostRequest = HostRequest(
@@ -247,6 +307,7 @@ class AndroidChatHostService : Service() {
                 sessionPassword = intent.getStringExtra(EXTRA_PASSWORD).orEmpty(),
                 chatPort = intent.getIntExtra(EXTRA_CHAT_PORT, SecureLanPorts.DEFAULT_CHAT_PORT),
                 filePort = intent.getIntExtra(EXTRA_FILE_PORT, SecureLanPorts.DEFAULT_FILE_TRANSFER_PORT),
+                discoverable = intent.getBooleanExtra("discoverable", true),
             ).also {
                 require(it.peerId.isNotBlank()) { "Host peer id must not be blank" }
                 require(it.nickname.isNotBlank()) { "Host nickname must not be blank" }
@@ -259,6 +320,8 @@ class AndroidChatHostService : Service() {
     }
 
     companion object {
+        private const val ACTION_VISIBILITY = "com.shterneregen.securelan.androidclient.action.HOST_VISIBILITY"
+        private const val ACTION_FILE_READY = "com.shterneregen.securelan.androidclient.action.HOST_FILE_READY"
         private const val ACTION_START = "com.shterneregen.securelan.androidclient.action.START_HOST"
         private const val ACTION_STOP = "com.shterneregen.securelan.androidclient.action.STOP_HOST"
         private const val EXTRA_PEER_ID = "peer_id"
@@ -274,7 +337,7 @@ class AndroidChatHostService : Service() {
         val state: StateFlow<AndroidHostServiceState> = _state.asStateFlow()
         private var sessionPassword: String = ""
 
-        fun start(context: android.content.Context, peerId: String, nickname: String, password: String, chatPort: Int, filePort: Int) {
+        fun start(context: android.content.Context, peerId: String, nickname: String, password: String, chatPort: Int, filePort: Int, discoverable: Boolean = true) {
             val intent = Intent(context, AndroidChatHostService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_PEER_ID, peerId)
@@ -282,9 +345,17 @@ class AndroidChatHostService : Service() {
                 .putExtra(EXTRA_PASSWORD, password)
                 .putExtra(EXTRA_CHAT_PORT, chatPort)
                 .putExtra(EXTRA_FILE_PORT, filePort)
+                .putExtra("discoverable", discoverable)
             context.startForegroundService(intent)
         }
 
+        fun setDiscoverable(context: android.content.Context, value: Boolean) {
+            context.startService(Intent(context, AndroidChatHostService::class.java).setAction(ACTION_VISIBILITY).putExtra("discoverable", value))
+        }
+        fun updateFileReadiness(context: android.content.Context, roomInstanceId: String, port: Int?) {
+            context.startService(Intent(context, AndroidChatHostService::class.java).setAction(ACTION_FILE_READY)
+                .putExtra("room_instance", roomInstanceId).putExtra("ready_port", port ?: 0))
+        }
         fun stop(context: android.content.Context) {
             context.startService(Intent(context, AndroidChatHostService::class.java).setAction(ACTION_STOP))
         }

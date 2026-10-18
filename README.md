@@ -7,7 +7,7 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 ## Main features
 
 - Host or join password-protected LAN chat rooms.
-- Discover compatible peers with UDP broadcast or connect manually by host and port.
+- Discover rooms with UDP broadcast and mDNS/DNS-SD, or join through a QR/room link or manual address. See [room discovery and invitations](docs/room-discovery-and-invites.md).
 - Exchange encrypted chat messages and files with transfer progress and configurable downloads.
 - Select multiple files on Compose desktop or Android, review the recipient and
   send them as a sequential queue with per-file results and explicit retries.
@@ -101,7 +101,7 @@ changing a selection preserves the active call.
 
 ## Current limitations
 
-- LAN discovery uses UDP broadcast and may require additional hardening for complex networks, firewalls, VPNs, and multi-adapter setups.
+- LAN discovery combines UDP and mDNS. Physical IPv4 LAN is the default; IPv6-only and native cross-device qualification remain explicit release checks. Discovery and QR do not bypass firewalls, VPN policy or client isolation.
 - Key management and advanced file-transfer controls are not fully exposed in the desktop UI.
 - File batches are local sender queues of independent encrypted transfers, not
   atomic deliveries. Receiver approval remains per file. Stopping a batch waits

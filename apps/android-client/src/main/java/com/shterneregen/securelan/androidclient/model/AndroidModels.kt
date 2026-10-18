@@ -56,6 +56,9 @@ data class DiscoveredPeer(
     val role: PeerRole = PeerRole.SERVER,
     val fileTargetHost: String = host,
     val fileTargetPort: Int = filePort,
+    val routeKey: String? = null,
+    val discoveredRowId: String? = null,
+    val advertisedFilePort: Int? = filePort,
 )
 
 data class ChatLine(
@@ -115,10 +118,20 @@ data class TransferRecord(
 /**
  * Immutable workspace snapshot retained by the ViewModel across configuration changes.
  * [connectionPeer] identifies the room; [selectedPeer] may identify a different file recipient.
- * [sessionPassword] is memory-only and must never be logged or persisted. [callPeers] maps
+ * [sessionPassword] and [importedRoomPassword] are memory-only and must never be logged or persisted. [callPeers] maps
  * voice-capable participant names to video support. Outgoing batches have their own state owner.
  */
 data class MainUiState(
+    val pendingConnection: com.shterneregen.securelan.chat.connection.RoomConnectionDescriptor? = null,
+    val importedRoomPassword: String = "",
+    val connectionImportError: com.shterneregen.securelan.chat.connection.ConnectionUriError? = null,
+    val roomDiscovery: com.shterneregen.securelan.chat.discovery.DiscoverySnapshot = com.shterneregen.securelan.chat.discovery.DiscoverySnapshot(),
+    val hostRoomInstanceId: String? = null,
+    val hostedPeerId: String? = null,
+    val hostedFilePort: Int? = null,
+    val hostMdnsAvailability: com.shterneregen.securelan.chat.discovery.ProviderAvailability = com.shterneregen.securelan.chat.discovery.ProviderAvailability.STOPPED,
+    val hostLegacyNsdScopeUnavailable: Boolean = false,
+    val hostDiscoverable: Boolean = true,
     val callPeers: Map<String, Boolean> = emptyMap(),
     val nickname: String = "",
     val sessionPassword: String = "",

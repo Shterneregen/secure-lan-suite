@@ -324,6 +324,12 @@ private fun NetworkSettingsContent(
     val settings = controller.settings
 
     Column {
+        if (hostAdapter.roomDiscoverySnapshot.providers.isNotEmpty()) SettingsSection("Nearby search", "Discovery hints are unauthenticated. QR/manual Join remains available if search fails.") {
+            hostAdapter.roomDiscoverySnapshot.providers.forEach { provider ->
+                Text("${provider.provider}: ${provider.availability}" + if (provider.limited) " (limited results)" else "")
+            }
+            Text("mDNS prefers physical LAN interfaces. Legacy UDP and TCP listeners retain their existing interface scope.", style = MaterialTheme.typography.caption)
+        }
         SettingsSection("Network defaults", "Defaults used the next time a room is hosted or joined.") {
             PreferenceSwitch(
                 "Discoverable room",

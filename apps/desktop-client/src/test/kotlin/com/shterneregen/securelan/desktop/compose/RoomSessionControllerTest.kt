@@ -54,7 +54,7 @@ class RoomSessionControllerTest {
         val identity = FileTransferPeerAuthentication("alice", PeerIdentity()) { null }
         f.controller.start(ChatServerConfig(5050, "password"), FileTransferServerConfig(5051, directory, "password", null, identity),
             ChatClientConnectRequest("127.0.0.1", 5050, "alice", "password"),
-            PeerDiscoveryConfig.defaults("id", "alice", 5050, 5051, true), PeerDiscoveryConfig.listenOnly("id", "alice"),
+            PeerDiscoveryConfig.defaults("2da1e450-798a-401f-990b-cb1cc4f61d92", "alice", 5050, 5051, true), PeerDiscoveryConfig.listenOnly("2da1e450-798a-401f-990b-cb1cc4f61d92", "alice"),
             object : PeerDiscoveryListener {
                 override fun onPeerDiscovered(peer: DiscoveredPeer) = Unit
                 override fun onPeerExpired(peer: DiscoveredPeer) = Unit
@@ -63,19 +63,28 @@ class RoomSessionControllerTest {
     }
 
     @Test fun everyStartupFailureRollsBackAndAllowsRetry() {
-        for (failure in listOf("chat.start", "files.start", "client.connect", "discovery.start")) {
+        for (failure in listOf("chat.start", "files.start", "client.connect")) {
             val f = Fixture().apply { failAt = failure }
             assertThrows(IllegalStateException::class.java) { start(f) }
             assertFalse(f.serverRunning, failure)
             assertFalse(f.filesRunning, failure)
             assertFalse(f.connected, failure)
-            if (failure == "discovery.start") {
-                assertEquals(listOf("discovery.stop", "discovery.restore", "client.disconnect", "files.stop", "chat.stop"), f.operations.takeLast(5))
-            }
             f.failAt = ""
             start(f)
             assertTrue(f.connected)
         }
+    }
+
+    @Test fun discoveryFailureLeavesReadyRoomAvailableForManualAndQrJoin() {
+        val f = Fixture().apply { failAt = "discovery.start" }
+        start(f)
+        assertTrue(f.serverRunning)
+        assertTrue(f.filesRunning)
+        assertTrue(f.connected)
+        assertNotNull(f.controller.hostedRoom)
+        f.controller.close()
+        assertNull(f.controller.hostedRoom)
+        assertFalse(f.serverRunning)
     }
 
     @Test fun cancelledWorkCannotAcquireResourcesWhenItStartsLate() {

@@ -7,6 +7,8 @@ data class ComposeConnectionJoinTarget(
     val host: String,
     val chatPortText: String,
     val filePortText: String,
+    val rowId: String = "$host:$chatPortText",
+    val routeKey: String? = null,
 ) {
     val endpointLabel: String = "$host:$chatPortText · files $filePortText"
 

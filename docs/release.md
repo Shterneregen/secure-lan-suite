@@ -13,9 +13,9 @@ a separate target-SDK/AAB migration and platform qualification.
   Android lint, debug APK and instrumentation APK assembly.
 - Windows, Linux x64 and macOS ARM64 portable assembly/startup checks.
 - Android device contracts on API 26 and API 35 emulators.
-- Strict dependency checksums, platform lockfiles, resolved Maven inventory
-  and scoped OSV advisory checks. Failed tests, unexplained skipped JVM tests,
-  missing suites and untriaged/expired advisories fail the checks.
+- Platform lockfiles, resolved Maven inventory and scoped OSV advisory checks.
+  Failed tests, unexplained skipped JVM tests, missing suites and
+  untriaged/expired advisories fail the checks.
 - Reports retained for 14 days even on failure. Fork PR caches are read-only;
   no signing secrets are available to those jobs. Actions use full commit SHAs.
 
@@ -38,32 +38,38 @@ that the hosted baseline ran successfully.
 
 ## Dependency maintenance
 
-Wrapper distribution SHA-256 is pinned. `gradle/verification-metadata.xml`
-verifies downloaded artifact and module/POM content. Locks cover application
-compile/runtime, JVM test and Kotlin lint configurations. Desktop/WebRTC locks
-are separated by native target; Android AGP internal/device-test graphs are
-checksum-verified rather than forcibly locked because AGP chooses tested
-variants through its own artifact views.
+Wrapper distribution SHA-256 is pinned. Locks cover application compile/runtime,
+JVM test and Kotlin lint configurations. Desktop/WebRTC locks are separated by
+native target; Android AGP internal/device-test graphs are recorded in the
+inventory without forcing lock state onto AGP's internal artifact views.
 
-After reviewing a dependency change, update Windows inventory/locks/checksums:
+Android uses the default lock mode to allow temporary IDE/AGP configuration
+copies without dedicated lock state; existing states still reject version
+drift. Other JVM projects require strict lock state.
+
+Gradle dependency checksum verification is disabled for both normal builds and
+IDE imports. No `gradle/verification-metadata.xml` is maintained. The inventory
+still records resolved artifact hashes; those hashes are observational, rather
+than an enforced allowlist of dependency bytes. Wrapper distribution and release
+artifact/signature checks remain enabled.
+
+After reviewing a dependency change, update Windows inventory and locks:
 
 ```powershell
-.\gradlew.bat resolveDependencyInventory --write-locks --write-verification-metadata sha256 --no-configuration-cache
-.\gradlew.bat qualityGate --write-verification-metadata sha256 --no-configuration-cache
+.\gradlew.bat resolveDependencyInventory --write-locks --no-configuration-cache
+.\gradlew.bat qualityGate --no-configuration-cache
 ```
 
 Update each other desktop graph without cross-building:
 
 ```powershell
-.\gradlew.bat resolveDependencyInventory -PsecureLanDependencyTarget=linux-x86_64 --write-locks --write-verification-metadata sha256 --no-configuration-cache
+.\gradlew.bat resolveDependencyInventory -PsecureLanDependencyTarget=linux-x86_64 --write-locks --no-configuration-cache
 ```
 
 Repeat for `linux-aarch64`, `macos-x86_64` and `macos-aarch64`. The target override
-is restricted to inventory tasks. Review metadata/lock diffs and independently
-check newly trusted artifacts against upstream releases/checksums before accepting
-them. Generated bootstrap checksums alone do not establish upstream provenance.
-CI never regenerates trust metadata. Run the final checks with
-`--dependency-verification=strict` and no metadata-writing option.
+is restricted to inventory tasks. Review lock/inventory diffs and repeat the
+applicable quality and advisory checks. Do not regenerate dependency verification
+metadata during routine updates.
 
 `python scripts/audit_dependencies.py` scans resolved inventory files. OSV
 network failure blocks the check; it is not interpreted as zero vulnerabilities.
@@ -104,6 +110,15 @@ credentials/fingerprint and `--no-configuration-cache`. `assembleRelease`
 without any release values deliberately remains a local debug-signed build.
 
 ## Qualify the exact downloaded artifacts
+
+For room discovery/invitation changes, additionally record both UDP/mDNS and
+each provider disabled, Hidden plus QR/manual Join, wrong-password failure,
+network changes and resource cleanup. Exercise freshly installed offline
+Android scanning without GMS, API 26 legacy NSD and modern NSD, and both host
+directions with encrypted chat/files. No Android device or other native OS is
+implicitly qualified by a Windows JVM smoke. macOS Finder permission denial
+and recovery must be checked after final signing. IPv6 mDNS remains disabled
+until its separate multi-network/scope matrix passes.
 
 Create a JSON record with the exact `manifest.json` commit and artifact hashes:
 

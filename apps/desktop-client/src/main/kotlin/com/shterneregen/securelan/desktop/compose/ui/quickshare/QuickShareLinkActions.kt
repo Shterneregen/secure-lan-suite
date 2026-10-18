@@ -23,8 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -35,18 +33,10 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactIconButton
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
-import org.jetbrains.skia.Image as SkiaImage
 
 @Composable
 internal fun QuickShareLinkActions(
@@ -109,6 +99,11 @@ private fun QuickShareQrDialog(
     onCopy: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val bitmap by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { com.shterneregen.securelan.desktop.compose.ui.qr.renderQrCode(url) }.getOrNull()
+        }
+    }
     DialogWindow(
         onCloseRequest = onClose,
         state = rememberDialogState(size = DpSize(380.dp, 460.dp)),
@@ -155,8 +150,8 @@ private fun QuickShareQrDialog(
                     shape = RoundedCornerShape(tokens.radius.medium),
                     color = Color.White,
                 ) {
-                    Image(
-                        bitmap = remember(url) { createQrCodeBitmap(url) },
+                    if (bitmap != null) Image(
+                        bitmap = bitmap!!,
                         contentDescription = "QR code for the shared link",
                         modifier = Modifier.padding(12.dp).size(236.dp),
                         filterQuality = FilterQuality.None,
@@ -177,30 +172,4 @@ private fun QuickShareQrDialog(
             }
         }
     }
-}
-
-private fun createQrCodeBitmap(content: String): ImageBitmap {
-    val size = 512
-    val matrix = QRCodeWriter().encode(
-        content,
-        BarcodeFormat.QR_CODE,
-        size,
-        size,
-        mapOf(
-            EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
-            EncodeHintType.MARGIN to 2,
-            EncodeHintType.CHARACTER_SET to "UTF-8",
-        ),
-    )
-    val image = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
-    for (y in 0 until size) {
-        for (x in 0 until size) {
-            image.setRGB(x, y, if (matrix[x, y]) 0xFF101418.toInt() else 0xFFFFFFFF.toInt())
-        }
-    }
-    val encoded = ByteArrayOutputStream().use { output ->
-        ImageIO.write(image, "png", output)
-        output.toByteArray()
-    }
-    return SkiaImage.makeFromEncoded(encoded).toComposeImageBitmap()
 }

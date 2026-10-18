@@ -1,8 +1,13 @@
 package com.shterneregen.securelan.desktop.compose
 
+import com.shterneregen.securelan.chat.discovery.DiscoverySnapshot
+import com.shterneregen.securelan.chat.discovery.DiscoveryStartRequest
+import com.shterneregen.securelan.chat.discovery.DiscoveryValidation
+import com.shterneregen.securelan.chat.discovery.HostedRoomAdvertisement
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryService
+import com.shterneregen.securelan.chat.discovery.RoomDiscoveryService
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
 import com.shterneregen.securelan.chat.service.ChatClientService
 import com.shterneregen.securelan.chat.service.ChatServerConfig
@@ -18,8 +23,11 @@ internal class RoomSessionController(
     private val client: ChatClientService,
     private val files: FileTransferServerService,
     private val discovery: PeerDiscoveryService,
+    private val onSnapshot: (DiscoverySnapshot) -> Unit = {},
 ) {
     private val generation = AtomicLong()
+    @Volatile var hostedRoom: HostedRoomAdvertisement? = null
+        private set
 
     fun invalidate() { generation.incrementAndGet() }
     fun operationGeneration(): Long = generation.get()
@@ -41,9 +49,9 @@ internal class RoomSessionController(
             if (!server.isRunning()) {
                 rollback.addFirst {
                     discovery.stop()
-                    if (previousDiscovery != null && generation.get() == token) discovery.start(previousDiscovery, listener)
+                    if (previousDiscovery != null && generation.get() == token) startDiscovery(previousDiscovery, listener)
                 }
-                discovery.start(listen, listener)
+                startDiscovery(listen, listener)
             }
             checkCurrent()
             check(client.isConnected()) { "Room connection was lost during startup." }
@@ -57,6 +65,7 @@ internal class RoomSessionController(
     /** Releases room resources in reverse ownership order, attempting every cleanup after an error. */
     fun close() {
         invalidate()
+        hostedRoom = null
         listOf<() -> Unit>({ discovery.stop() }, { client.disconnect() }, { files.stop() }, { server.stop() })
             .forEach { runCatching(it) }
     }
@@ -88,15 +97,25 @@ internal class RoomSessionController(
             checkCurrent()
             rollback.addFirst {
                 discovery.stop()
-                if (previousDiscovery != null && generation.get() == token) discovery.start(previousDiscovery, listener)
+                if (previousDiscovery != null && generation.get() == token) startDiscovery(previousDiscovery, listener)
             }
-            discovery.start(announce, listener)
-            check(discovery.isRunning()) { "Could not start room discovery." }
+            hostedRoom = HostedRoomAdvertisement(announce.peerId, java.util.UUID.randomUUID().toString(),
+                announce.nickname.takeIf(DiscoveryValidation::displayName), announce.chatPort, announce.filePort, announce.announceEnabled)
+            // A running room stays usable through manual/QR even when every discovery backend fails.
+            runCatching {
+                startDiscovery(announce, listener, hostedRoom)
+            }
             check(client.isConnected()) { "Room connection was lost during startup." }
             checkCurrent()
         } catch (error: Throwable) {
+            hostedRoom = null
             rollback.forEach { cleanup -> runCatching(cleanup).exceptionOrNull()?.let(error::addSuppressed) }
             throw error
         }
+    }
+
+    private fun startDiscovery(config: PeerDiscoveryConfig, listener: PeerDiscoveryListener, host: HostedRoomAdvertisement? = null) {
+        if (discovery is RoomDiscoveryService) discovery.startSession(DiscoveryStartRequest(config, host), listener, onSnapshot)
+        else discovery.start(config, listener)
     }
 }

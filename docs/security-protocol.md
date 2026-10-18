@@ -13,6 +13,15 @@ password/key envelope. A person who already knows the password can host a room
 with that credential; it is not a certificate identifying a unique room owner.
 Discovery and IP addresses are availability hints, not authentication.
 
+DNS-SD TXT contains no password/key/token. Generated `securelan://join` QR links
+include the room password in percent-encoded plaintext, so treat them as shared
+membership credentials and share only with trusted recipients. Their addresses
+and identity hints remain untrusted. Explicit Join uses the unchanged V2
+handshake and file receivers still require authenticated presence and signatures;
+links have no enforced expiry or revocation, and their UUIDs do not prove the
+room owner's identity. See
+[discovery and invitation boundaries](room-discovery-and-invites.md).
+
 The room host is trusted: it decrypts chat and routes readable SDP/ICE. Chat and
 signaling are not end-to-end encrypted between room participants. Nicknames are
 unique within a live room, not permanent identities across reconnects.

@@ -23,6 +23,8 @@ import kotlin.coroutines.resumeWithException
  */
 class SecureChatClient(private val socketFactory: () -> Socket = { Socket() }) : RoomClient {
     override val fileIdentity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
+    @Volatile private var route: LanSocketRoute? = null
+    override fun setRoute(route: LanSocketRoute?) { this.route = route }
     private val lock = Any()
     @Volatile private var connecting: Socket? = null
     @Volatile
@@ -43,6 +45,7 @@ class SecureChatClient(private val socketFactory: () -> Socket = { Socket() }) :
         }
         var accepted = false
         try {
+            route?.bind(socket)
             socket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
             socket.soTimeout = HANDSHAKE_TIMEOUT_MS
             val createdSession = ChatSession(socket)

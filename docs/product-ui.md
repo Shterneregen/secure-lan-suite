@@ -70,6 +70,11 @@ column widths.
   controls.
 - Ask only for information required by the selected mode.
 - After connection, make communication the obvious next action.
+- Room-link paste/scan opens a confirmation draft, prefilling the password only
+  from that link. Passwordless links start with an empty password. Whitespace is
+  filtered from password entry. An existing room is preserved until explicitly
+  left. Hosted-room Invite is a compact temporary QR/copy dialog independent of
+  Discoverable; explain that its QR and link include the room password.
 - Explain failures in user language and offer recovery before technical detail.
 
 ### Conversation

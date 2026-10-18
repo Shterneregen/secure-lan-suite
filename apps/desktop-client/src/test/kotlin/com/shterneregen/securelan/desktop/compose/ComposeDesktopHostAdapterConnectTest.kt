@@ -146,18 +146,47 @@ class ComposeDesktopHostAdapterConnectTest {
         quickShare: QuickShareService = IdleQuickShareService(),
         rtc: com.shterneregen.securelan.webrtc.service.RtcSessionService? = null,
         server: ChatServerService = IdleChatServer(hosting),
+        discovery: PeerDiscoveryService = IdlePeerDiscovery(),
     ) = ComposeDesktopHostAdapter(
         chatServerService = server,
         chatClientService = client,
         fileTransferServerService = files,
         quickShareService = quickShare,
         rtcSessionService = rtc,
-        discoveryService = IdlePeerDiscovery(),
+        discoveryService = discovery,
         randomNicknameService = object : RandomNicknameService {
             override fun generate(): String = "desktop-test"
         },
         uiStateDispatcher = { action -> action() },
     )
+
+    @Test fun detailedRoomsWithSameNameStaySeparateFromAuthenticatedPresence() {
+        val discovery = object : com.shterneregen.securelan.chat.discovery.RoomDiscoveryService {
+            lateinit var publish: (com.shterneregen.securelan.chat.discovery.DiscoverySnapshot) -> Unit
+            override fun startSession(request: com.shterneregen.securelan.chat.discovery.DiscoveryStartRequest, listener: PeerDiscoveryListener,
+                onSnapshot: (com.shterneregen.securelan.chat.discovery.DiscoverySnapshot) -> Unit) { publish = onSnapshot }
+            override fun detailedSnapshot() = com.shterneregen.securelan.chat.discovery.DiscoverySnapshot()
+            override fun updateHostedRoom(value: com.shterneregen.securelan.chat.discovery.HostedRoomAdvertisement?) = Unit
+            override fun start(config: PeerDiscoveryConfig, listener: PeerDiscoveryListener) = Unit
+            override fun stop() = Unit
+            override fun isRunning() = true
+            override fun snapshot() = emptyList<DiscoveredPeer>()
+            override fun setAnnounceEnabled(announceEnabled: Boolean) = Unit
+        }
+        val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer(), discovery = discovery)
+        try {
+            val endpoints = listOf("192.168.1.42", "192.168.1.43").map { com.shterneregen.securelan.chat.discovery.DiscoveryEndpoint(
+                com.shterneregen.securelan.common.net.address.IpLiteral.parse(it)!!, 5050) }
+            val rooms = endpoints.mapIndexed { index, endpoint -> com.shterneregen.securelan.chat.discovery.DiscoveredRoom("room-$index", "peer-$index",
+                null, "Same name", listOf(endpoint), null, setOf(com.shterneregen.securelan.chat.discovery.DiscoveryProviderId.MDNS)) }
+            discovery.publish(com.shterneregen.securelan.chat.discovery.DiscoverySnapshot(rooms))
+            assertEquals(2, adapter.nearbyRoomTargets.size)
+            assertNotEquals(adapter.nearbyRoomTargets[0].rowId, adapter.nearbyRoomTargets[1].rowId)
+            assertTrue(adapter.visiblePeerItems.isEmpty(), "Unauthenticated discovery must not create authenticated room participants")
+            discovery.publish(com.shterneregen.securelan.chat.discovery.DiscoverySnapshot())
+            assertTrue(adapter.nearbyRoomTargets.isEmpty())
+        } finally { adapter.shutdown() }
+    }
 
     @Test fun userTextNeverBecomesPresenceOrSystemPresentation() {
         val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer())

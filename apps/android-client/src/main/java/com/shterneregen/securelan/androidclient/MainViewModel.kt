@@ -65,6 +65,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     private val senderResource = lazy(dependencies.createSender)
     private val receiverResource = lazy(dependencies.createReceiver)
     private val quickShareResource = lazy(dependencies.createQuickShare)
+    private var sessionRoute: com.shterneregen.securelan.androidclient.network.LanSocketRoute? = null
     private val fileSender by senderResource
     private val fileReceiver by receiverResource
     private val quickShareServer by quickShareResource
@@ -100,6 +101,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         isAvailable = { recipient -> isTransferRecipientAvailable(recipient) },
         send = { recipient, source, onUpdate ->
             val current = _uiState.value
+            fileSender.setRoute(sessionRoute)
             fileSender.sendFile(
                 host = recipient.host,
                 port = recipient.port,
@@ -207,19 +209,21 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     }
 
     fun updateNearbyPermission(state: NearbyPermissionState) {
+        val previous = _uiState.value.nearbyPermissionState
         _uiState.update { it.copy(nearbyPermissionState = state) }
         if (state == NearbyPermissionState.GRANTED || state == NearbyPermissionState.NOT_REQUIRED) {
-            startDiscovery()
+            if (previous == NearbyPermissionState.DENIED && !searchExplicitlyStopped) restartDiscovery() else startDiscovery()
         }
     }
 
     fun updateNetworkAvailable(available: Boolean) {
+        val wasAvailable = _uiState.value.networkAvailable
         if (!available) viewModelScope.launch { calls.connectionLost() }
         _uiState.update { it.copy(networkAvailable = available) }
         refreshLocalRoomAddresses()
         if (!available && discoveryJob != null) {
-            stopDiscovery()
-        }
+            stopDiscoveryInternal()
+        } else if (available && !wasAvailable) startDiscovery()
     }
 
     fun updateInputMessage(value: String) {
@@ -239,7 +243,18 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         addLog("Selected peer ${peer.nickname} at ${peer.host}:${peer.chatPort}")
     }
 
+    private var searchForeground = true
+    private var searchSurface = true
+    private var searchExplicitlyStopped = false
+    fun updateSearchForeground(value: Boolean) = updateSearchLifecycle(value, searchSurface)
+    fun updateSearchSurface(value: Boolean) = updateSearchLifecycle(searchForeground, value)
+    fun updateSearchLifecycle(foreground: Boolean, surface: Boolean) {
+        val resumed = (!searchForeground || !searchSurface) && foreground && surface
+        searchForeground = foreground; searchSurface = surface
+        if (!foreground || !surface) stopDiscoveryInternal() else if (resumed && !searchExplicitlyStopped) startDiscovery()
+    }
     fun startDiscovery() {
+        if (!searchForeground || !searchSurface || searchExplicitlyStopped) return
         if (discoveryJob != null) return
         if (_uiState.value.nearbyPermissionState == NearbyPermissionState.REQUIRED ||
             _uiState.value.nearbyPermissionState == NearbyPermissionState.DENIED
@@ -252,6 +267,26 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
             if (_uiState.value.peers.none { it.role == PeerRole.SERVER }) {
                 _uiState.update { it.copy(discoveryTimedOut = true) }
             }
+        }
+        if (dependencies.discoverRooms != null) {
+            discoveryJob = viewModelScope.launch {
+                try { dependencies.discoverRooms.invoke(hostPeerId).collect { snapshot ->
+                    val rooms = snapshot.rooms.filter { it.peerId != hostPeerId }.mapNotNull { room ->
+                        val endpoint = room.endpoints.firstOrNull() ?: return@mapNotNull null
+                        DiscoveredPeer("discovery:${room.rowId}", room.displayName ?: "Room", endpoint.host, endpoint.chatPort,
+                            room.filePortHint ?: _uiState.value.manualFilePort.toIntOrNull()?.takeIf { it in 1..65535 } ?: 5051,
+                            routeKey = endpoint.routeKey, discoveredRowId = room.rowId, advertisedFilePort = room.filePortHint)
+                    }
+                    _uiState.update { state -> state.copy(roomDiscovery = snapshot,
+                        peers = state.peers.filter { it.discoveredRowId == null } + rooms.filterNot { room -> state.peers.any { it.peerId.startsWith("manual:") && it.host == room.host && it.chatPort == room.chatPort } },
+                        discoveryTimedOut = rooms.isEmpty(), status = "Searching for nearby rooms") }
+                } } catch (error: Exception) {
+                    if (error !is kotlinx.coroutines.CancellationException) _uiState.update { it.copy(discoveryRunning = false, discoveryTimedOut = true) }
+                }
+            }
+            discoveryTimeoutJob?.cancel()
+            discoveryTimeoutJob = viewModelScope.launch { delay(60_000); stopDiscoveryInternal(); _uiState.update { it.copy(discoveryTimedOut = true) } }
+            return
         }
         discoveryJob = viewModelScope.launch {
             val expiry = launch {
@@ -276,7 +311,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                             if (samePeer(selected, serverPeer)) serverPeer else selected
                         }
                         val connectionPeer = state.connectionPeer?.let { current ->
-                            if (samePeer(current, serverPeer)) serverPeer else current
+                            if (!state.connected && samePeer(current, serverPeer)) serverPeer else current
                         } ?: serverPeer
                         state.copy(
                             peers = peers,
@@ -360,13 +395,14 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     }
 
     fun restartDiscovery() {
+        searchExplicitlyStopped = false
         refreshLocalRoomAddresses()
         val previousJob = discoveryJob
         if (previousJob == null) {
             startDiscovery()
             return
         }
-        stopDiscovery()
+        stopDiscoveryInternal()
         viewModelScope.launch {
             previousJob.join()
             startDiscovery()
@@ -397,6 +433,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         val generation = receiverGeneration.incrementAndGet()
         val receiverJob = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
             runCatching {
+                val hostLease = dependencies.host.state.value.takeIf { it.running }?.roomInstanceId
+                fileReceiver.setReadinessListener { ready ->
+                    if (generation == receiverGeneration.get() && hostLease != null) dependencies.host.updateFileReadiness(hostLease, listenPort.takeIf { ready })
+                }
                 fileReceiver.serve(
                     port = listenPort,
                     sessionPassword = password,
@@ -502,6 +542,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     }
 
     fun stopFileReceiver() {
+        dependencies.host.state.value.takeIf { it.running }?.let { dependencies.host.updateFileReadiness(it.roomInstanceId, null) }
         receiverGeneration.incrementAndGet()
         fileReceiver.close()
         fileReceiverJob?.cancel()
@@ -510,7 +551,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         addLog("File receiver stopped")
     }
 
-    fun stopDiscovery() {
+    fun stopDiscovery() { searchExplicitlyStopped = true; stopDiscoveryInternal() }
+    private fun stopDiscoveryInternal() {
+        _uiState.update { state -> state.copy(peers = state.peers.filter { it.discoveredRowId == null },
+            roomDiscovery = com.shterneregen.securelan.chat.discovery.DiscoverySnapshot()) }
         removeDiscoveredPeers(discoverySeen.keys.toSet())
         discoverySeen.clear()
         discoveryJob?.cancel()
@@ -521,6 +565,44 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         addLog("Peer discovery stopped")
     }
 
+    fun importConnectionUri(raw: String) {
+        when (val result = com.shterneregen.securelan.chat.connection.RoomConnectionUriCodec.decode(raw.trim())) {
+            is com.shterneregen.securelan.chat.connection.ConnectionUriParseResult.Success -> _uiState.update {
+                it.copy(pendingConnection = result.descriptor, importedRoomPassword = result.descriptor.password.orEmpty(), connectionImportError = null)
+            }
+            is com.shterneregen.securelan.chat.connection.ConnectionUriParseResult.Invalid -> _uiState.update {
+                it.copy(connectionImportError = result.error)
+            }
+        }
+    }
+    fun chooseImportedAddress(address: com.shterneregen.securelan.common.net.address.IpLiteral) {
+        _uiState.update { state ->
+            val draft = state.pendingConnection ?: return@update state
+            val addresses = listOf(draft.primaryAddress) + draft.alternativeAddresses
+            if (address !in addresses) state else state.copy(pendingConnection = draft.copy(primaryAddress = address,
+                alternativeAddresses = addresses.filter { it != address }.distinct()))
+        }
+    }
+    fun updateImportedRoomPassword(value: String) {
+        _uiState.update { it.copy(importedRoomPassword = value.filterNot(Char::isWhitespace)) }
+    }
+    fun dismissConnectionImport() { _uiState.update { it.copy(pendingConnection = null, importedRoomPassword = "", connectionImportError = null) } }
+    fun confirmImportedConnection() {
+        val state = _uiState.value
+        val draft = state.pendingConnection ?: return
+        if (state.connected || state.hosting || state.hostingStarting || state.connecting || state.connectionImportError != null) return
+        val password = state.importedRoomPassword
+        if (password.isBlank() || password.any(Char::isWhitespace)) return
+        val file = draft.filePortHint ?: state.manualFilePort.toIntOrNull()?.takeIf { it in 1..65535 } ?: 5051
+        val peer = DiscoveredPeer("manual:${draft.primaryAddress.value}:${draft.chatPort}", draft.displayNameHint ?: draft.primaryAddress.value,
+            draft.primaryAddress.value, draft.chatPort, file)
+        _uiState.update { it.copy(selectedPeer = peer, connectionPeer = peer, sessionPassword = password) }
+        connectToPeer(peer, password, localFileReceiverPortFor(peer))
+    }
+    fun setHostDiscoverable(value: Boolean) {
+        _uiState.update { it.copy(hostDiscoverable = value) }
+        if (_uiState.value.hosting) dependencies.host.setDiscoverable(value)
+    }
     fun connectSelectedPeer() {
         val state = _uiState.value
         val peer = state.selectedPeer?.takeIf { it.role == PeerRole.SERVER }
@@ -560,6 +642,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                 password = state.sessionPassword,
                 chatPort = chatPort,
                 filePort = filePort,
+                discoverable = state.hostDiscoverable,
             )
         }.onFailure { error ->
             _uiState.update { it.copy(hostingStarting = false) }
@@ -610,6 +693,9 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
         viewModelScope.launch {
             runCatching {
+                val route = dependencies.resolveRoute(peer.routeKey, peer.host)
+                chatClient.setRoute(route)
+                sessionRoute = route
                 chatClient.connect(
                     peer.host,
                     peer.chatPort,
@@ -625,6 +711,8 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                         selectedPeer = peer,
                         connectionPeer = peer,
                         connected = true,
+                        pendingConnection = null,
+                        importedRoomPassword = "",
                         connecting = false,
                         status = "Connected as $acceptedNickname",
                         error = null,
@@ -1055,6 +1143,12 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                     sessionPassword = dependencies.host.password(),
                     hosting = true,
                     hostingStarting = false,
+                    hostRoomInstanceId = hostState.roomInstanceId,
+                    hostedPeerId = hostState.peerId,
+                    hostedFilePort = hostState.activeFilePort,
+                    hostMdnsAvailability = hostState.mdnsAvailability,
+                    hostLegacyNsdScopeUnavailable = hostState.legacyNsdScopeUnavailable,
+                    hostDiscoverable = hostState.discoverable,
                     hostChatPort = hostState.chatPort.toString(),
                     hostFilePort = hostState.filePort.toString(),
                     hostedParticipantCount = hostedPeers.size,

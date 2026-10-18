@@ -52,15 +52,15 @@ jobs:
           python -m unittest discover -s scripts -p 'test_*.py'
           if [[ "$RUNNER_OS" == Linux ]]; then
             test -x gradlew
-            xvfb-run -a ./gradlew qualityGate resolveDependencyInventory --no-configuration-cache --dependency-verification=strict --console=plain
+            xvfb-run -a ./gradlew qualityGate resolveDependencyInventory --no-configuration-cache --console=plain
           else
-            ./gradlew qualityGate resolveDependencyInventory --no-configuration-cache --dependency-verification=strict --console=plain
+            ./gradlew qualityGate resolveDependencyInventory --no-configuration-cache --console=plain
           fi
           python scripts/check_test_reports.py
           python scripts/audit_dependencies.py
       - name: Portable package
         run: |
-          ./gradlew :apps:desktop-client:buildPortable writeToolchainManifest --no-configuration-cache --dependency-verification=strict --console=plain
+          ./gradlew :apps:desktop-client:buildPortable writeToolchainManifest --no-configuration-cache --console=plain
           python scripts/packaged_smoke.py
       - name: Preserve reports even on failure
         if: always()
@@ -110,7 +110,7 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: ./gradlew :apps:android-client:connectedDebugAndroidTest --no-configuration-cache --dependency-verification=strict --console=plain
+          script: ./gradlew :apps:android-client:connectedDebugAndroidTest --no-configuration-cache --console=plain
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

@@ -1,6 +1,5 @@
 package com.shterneregen.securelan.androidclient.ui
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,15 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.shterneregen.securelan.androidclient.R
 import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
 import kotlinx.coroutines.delay
@@ -86,20 +80,10 @@ fun QuickShareScreen(
 
 @Composable
 private fun QuickShareQrDialog(item: AndroidQuickShareItem, onDismiss: () -> Unit) {
-    val bitmap = remember(item.url) {
-        val size = 512
-        val matrix = QRCodeWriter().encode(
-            item.url, BarcodeFormat.QR_CODE, size, size,
-            mapOf(
-                EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
-                EncodeHintType.MARGIN to 4,
-                EncodeHintType.CHARACTER_SET to "UTF-8",
-            ),
-        )
-        val pixels = IntArray(size * size) { index ->
-            if (matrix[index % size, index / size]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, item.url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { com.shterneregen.securelan.androidclient.ui.qr.renderQrCode(item.url) }.getOrNull()
         }
-        Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888).asImageBitmap()
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -107,8 +91,8 @@ private fun QuickShareQrDialog(item: AndroidQuickShareItem, onDismiss: () -> Uni
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (item.isText) stringResource(R.string.quick_share_text_type) else item.name)
-                Image(
-                    bitmap = bitmap,
+                if (bitmap != null) Image(
+                    bitmap = bitmap!!,
                     contentDescription = stringResource(R.string.quick_share_qr_description),
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                     filterQuality = FilterQuality.None,
