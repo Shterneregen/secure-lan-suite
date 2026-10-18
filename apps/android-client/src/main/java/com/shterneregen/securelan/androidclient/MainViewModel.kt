@@ -152,6 +152,8 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     fun toggleCallSpeaker() = calls.toggleSpeaker()
 
     private var discoveryJob: Job? = null
+    private var discoveryRestartJob: Job? = null
+    private var discoveryRetiringJob: Job? = null
     private var discoveryTimeoutJob: Job? = null
     private var receiveJob: Job? = null
     private var fileReceiverJob: Job? = null
@@ -209,11 +211,10 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     }
 
     fun updateNearbyPermission(state: NearbyPermissionState) {
-        val previous = _uiState.value.nearbyPermissionState
         _uiState.update { it.copy(nearbyPermissionState = state) }
         if (state == NearbyPermissionState.GRANTED || state == NearbyPermissionState.NOT_REQUIRED) {
-            if (previous == NearbyPermissionState.DENIED && !searchExplicitlyStopped) restartDiscovery() else startDiscovery()
-        }
+            startAutomaticDiscovery()
+        } else stopDiscoveryInternal()
     }
 
     fun updateNetworkAvailable(available: Boolean) {
@@ -221,9 +222,9 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         if (!available) viewModelScope.launch { calls.connectionLost() }
         _uiState.update { it.copy(networkAvailable = available) }
         refreshLocalRoomAddresses()
-        if (!available && discoveryJob != null) {
+        if (!available) {
             stopDiscoveryInternal()
-        } else if (available && !wasAvailable) startDiscovery()
+        } else if (available && !wasAvailable) startAutomaticDiscovery()
     }
 
     fun updateInputMessage(value: String) {
@@ -245,16 +246,19 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
 
     private var searchForeground = true
     private var searchSurface = true
-    private var searchExplicitlyStopped = false
     fun updateSearchForeground(value: Boolean) = updateSearchLifecycle(value, searchSurface)
     fun updateSearchSurface(value: Boolean) = updateSearchLifecycle(searchForeground, value)
     fun updateSearchLifecycle(foreground: Boolean, surface: Boolean) {
         val resumed = (!searchForeground || !searchSurface) && foreground && surface
         searchForeground = foreground; searchSurface = surface
-        if (!foreground || !surface) stopDiscoveryInternal() else if (resumed && !searchExplicitlyStopped) startDiscovery()
+        if (!foreground || !surface) stopDiscoveryInternal() else if (resumed) startAutomaticDiscovery()
     }
-    fun startDiscovery() {
-        if (!searchForeground || !searchSurface || searchExplicitlyStopped) return
+    private fun startAutomaticDiscovery() {
+        if (_uiState.value.autoDiscoveryEnabled && !_uiState.value.discoveryRunning) restartDiscovery()
+    }
+    private fun startDiscovery() {
+        if (!searchForeground || !searchSurface) return
+        if (!_uiState.value.networkAvailable) return
         if (discoveryJob != null) return
         if (_uiState.value.nearbyPermissionState == NearbyPermissionState.REQUIRED ||
             _uiState.value.nearbyPermissionState == NearbyPermissionState.DENIED
@@ -263,10 +267,11 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         addLog("Started peer discovery")
         discoveryTimeoutJob?.cancel()
         discoveryTimeoutJob = viewModelScope.launch {
-            delay(DISCOVERY_EMPTY_STATE_DELAY_MS.milliseconds)
-            if (_uiState.value.peers.none { it.role == PeerRole.SERVER }) {
-                _uiState.update { it.copy(discoveryTimedOut = true) }
-            }
+            do {
+                delay(60_000)
+            } while (_uiState.value.autoDiscoveryEnabled)
+            stopDiscoveryInternal()
+            _uiState.update { it.copy(discoveryTimedOut = true) }
         }
         if (dependencies.discoverRooms != null) {
             discoveryJob = viewModelScope.launch {
@@ -279,13 +284,11 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                     }
                     _uiState.update { state -> state.copy(roomDiscovery = snapshot,
                         peers = state.peers.filter { it.discoveredRowId == null } + rooms.filterNot { room -> state.peers.any { it.peerId.startsWith("manual:") && it.host == room.host && it.chatPort == room.chatPort } },
-                        discoveryTimedOut = rooms.isEmpty(), status = "Searching for nearby rooms") }
+                        discoveryTimedOut = false, status = "Searching for nearby rooms") }
                 } } catch (error: Exception) {
                     if (error !is kotlinx.coroutines.CancellationException) _uiState.update { it.copy(discoveryRunning = false, discoveryTimedOut = true) }
                 }
             }
-            discoveryTimeoutJob?.cancel()
-            discoveryTimeoutJob = viewModelScope.launch { delay(60_000); stopDiscoveryInternal(); _uiState.update { it.copy(discoveryTimedOut = true) } }
             return
         }
         discoveryJob = viewModelScope.launch {
@@ -395,18 +398,20 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     }
 
     fun restartDiscovery() {
-        searchExplicitlyStopped = false
-        refreshLocalRoomAddresses()
-        val previousJob = discoveryJob
-        if (previousJob == null) {
-            startDiscovery()
-            return
-        }
         stopDiscoveryInternal()
-        viewModelScope.launch {
-            previousJob.join()
+        refreshLocalRoomAddresses()
+        val previousJob = discoveryRetiringJob
+        discoveryRestartJob = viewModelScope.launch {
+            previousJob?.join()
             startDiscovery()
         }
+    }
+
+    /** Memory-only search choice; foreground/surface ownership and explicit Stop still apply. */
+    fun updateAutoDiscovery(enabled: Boolean) {
+        if (_uiState.value.autoDiscoveryEnabled == enabled) return
+        _uiState.update { it.copy(autoDiscoveryEnabled = enabled) }
+        if (enabled) startAutomaticDiscovery() else stopDiscoveryInternal()
     }
 
     fun refreshLocalRoomAddresses() {
@@ -551,13 +556,18 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         addLog("File receiver stopped")
     }
 
-    fun stopDiscovery() { searchExplicitlyStopped = true; stopDiscoveryInternal() }
+    fun stopDiscovery() {
+        _uiState.update { it.copy(autoDiscoveryEnabled = false) }
+        stopDiscoveryInternal()
+    }
     private fun stopDiscoveryInternal() {
+        discoveryRestartJob?.cancel()
+        discoveryRestartJob = null
         _uiState.update { state -> state.copy(peers = state.peers.filter { it.discoveredRowId == null },
             roomDiscovery = com.shterneregen.securelan.chat.discovery.DiscoverySnapshot()) }
         removeDiscoveredPeers(discoverySeen.keys.toSet())
         discoverySeen.clear()
-        discoveryJob?.cancel()
+        discoveryJob?.let { it.cancel(); discoveryRetiringJob = it }
         discoveryJob = null
         discoveryTimeoutJob?.cancel()
         discoveryTimeoutJob = null
@@ -586,6 +596,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     fun updateImportedRoomPassword(value: String) {
         _uiState.update { it.copy(importedRoomPassword = value.filterNot(Char::isWhitespace)) }
     }
+
     fun dismissConnectionImport() { _uiState.update { it.copy(pendingConnection = null, importedRoomPassword = "", connectionImportError = null) } }
     fun confirmImportedConnection() {
         val state = _uiState.value
@@ -1282,6 +1293,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
     override fun onCleared() {
         if (quickShareResource.isInitialized()) quickShareServer.close()
         calls.close()
+        discoveryRestartJob?.cancel()
         discoveryJob?.cancel()
         discoveryTimeoutJob?.cancel()
         receiveJob?.cancel()
@@ -1300,7 +1312,6 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         private const val CLIENT_FILE_PORT_OFFSET = 1000
         private const val MAX_LOG_ENTRIES = 300
         private const val MAX_RECENT_TRANSFERS = 20
-        private const val DISCOVERY_EMPTY_STATE_DELAY_MS = 8_000L
         private const val LOCAL_ADDRESS_REFRESH_INTERVAL_MS = 10_000L
         private val TRANSFER_TERMINAL_PHASES = setOf(
             TransferPhase.COMPLETED,

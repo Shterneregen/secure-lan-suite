@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
@@ -11,12 +12,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogWindow
@@ -28,6 +31,9 @@ import com.shterneregen.securelan.common.net.address.LanAddressPolicy
 import com.shterneregen.securelan.common.net.interfaces.NetworkBindingSelector
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactButtonTone
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.compose.ui.qr.renderQrCode
 import com.shterneregen.securelan.desktop.network.discovery.DesktopNetworkMonitor
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +64,7 @@ internal fun RoomInvitationDialog(hostAdapter: ComposeDesktopHostAdapter, onClos
     var changed by remember { mutableStateOf(false) }
     LaunchedEffect(uri) { if (previousUri != null && previousUri != uri) changed = true; previousUri = uri }
     val clipboard = LocalClipboardManager.current
-    DialogWindow(onCloseRequest = onClose, title = "Invite to room", state = rememberDialogState(size = DpSize(400.dp, 470.dp)),
+    DialogWindow(onCloseRequest = onClose, title = "Invite to room", state = rememberDialogState(size = DpSize(400.dp, 500.dp)),
         onPreviewKeyEvent = { if (it.key == Key.Escape && it.type == KeyEventType.KeyUp) { onClose(); true } else false }) {
         RoomInvitationContent(addresses, address, host?.chatPort, uri, qr, changed, onAddressSelected = { selected = it },
             onCopy = { uri?.let { clipboard.setText(AnnotatedString(it)) } }, onClose = onClose)
@@ -81,20 +87,28 @@ internal fun RoomInvitationContent(
     val tokens = LocalSecureLanDesignTokens.current
     val copyFocus = remember { FocusRequester() }
     LaunchedEffect(uri != null) { if (uri != null) copyFocus.requestFocus() }
-    Surface {
-        Column(Modifier.fillMaxSize().padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("The QR and link include the room password. Share only with people you trust.", style = MaterialTheme.typography.body2)
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colors.background) {
+        Column(Modifier.fillMaxSize().padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                Icon(SecureLanIcons.QrCode, contentDescription = null, modifier = Modifier.size(22.dp), tint = MaterialTheme.colors.primary)
+                Text("Invite to room", style = MaterialTheme.typography.h6, color = tokens.colors.textPrimary)
+            }
+            Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("The QR and link include the room password. Share only with people you trust.", style = MaterialTheme.typography.body2, color = tokens.colors.textSecondary)
                 if (changed && chatPort != null) Text("The room address changed. Copy the updated link.")
                 if (chatPort == null) Text("The room has stopped.")
                 else if (address == null) Text("No suitable LAN address. Connect to Wi-Fi or Ethernet.")
                 else if (uri == null) Text("Unable to create the invitation. Check the room password and its length.", color = MaterialTheme.colors.error)
                 if (uri != null) {
-                    qr?.getOrNull()?.let { Image(it, "Room invitation QR", Modifier.widthIn(max = 256.dp).fillMaxWidth().aspectRatio(1f), filterQuality = FilterQuality.None) }
+                    qr?.getOrNull()?.let { bitmap ->
+                        Surface(shape = RoundedCornerShape(tokens.radius.medium), color = Color.White) {
+                            Image(bitmap, "Room invitation QR", Modifier.widthIn(max = 260.dp).fillMaxWidth().padding(12.dp).aspectRatio(1f), filterQuality = FilterQuality.None)
+                        }
+                    }
                     if (qr == null) Text("Preparing QR…")
                     if (qr?.isFailure == true) Text("Unable to generate QR. Copy the room link instead.")
-                    Text("${address?.value}:$chatPort", style = MaterialTheme.typography.body2, color = tokens.colors.textSecondary)
+                    Text("${address?.value}:$chatPort", style = MaterialTheme.typography.caption, color = tokens.colors.textSecondary, textAlign = TextAlign.Center)
                     if (addresses.size > 1) addresses.forEach { candidate ->
                         Row(Modifier.fillMaxWidth().selectable(candidate == address, role = Role.RadioButton, onClick = { onAddressSelected(candidate) }),
                             verticalAlignment = Alignment.CenterVertically) {
@@ -104,9 +118,9 @@ internal fun RoomInvitationContent(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose) { Text("Close") }
-                Button(onClick = onCopy, enabled = uri != null, modifier = Modifier.focusRequester(copyFocus)) { Text("Copy room link") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                CompactButton(onClick = onClose, tone = CompactButtonTone.TERTIARY) { Text("Close") }
+                CompactButton(onClick = onCopy, enabled = uri != null, modifier = Modifier.focusRequester(copyFocus)) { Text("Copy room link") }
             }
         }
     }

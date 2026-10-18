@@ -33,7 +33,7 @@ class RoomInvitationInteractionTest {
         val qr = Result.success(renderQrCode(uri))
         var copies = 0
         compose.setContent { SecureLanTheme {
-            Box(Modifier.size(400.dp, 440.dp).testTag("invitation")) {
+            Box(Modifier.size(400.dp, 470.dp).testTag("invitation")) {
                 RoomInvitationContent(listOf(address), address, 5050, uri, qr, false, {}, { copies++ }, {})
             }
         } }

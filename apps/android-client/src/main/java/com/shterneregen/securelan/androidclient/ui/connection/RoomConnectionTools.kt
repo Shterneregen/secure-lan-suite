@@ -3,7 +3,14 @@ package com.shterneregen.securelan.androidclient.ui.connection
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,7 +22,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.androidclient.MainViewModel
 import com.shterneregen.securelan.androidclient.R
@@ -42,11 +51,27 @@ fun RoomConnectionTools(viewModel: MainViewModel, state: MainUiState) {
     val calls by viewModel.callState.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { paste = true }) { Text(stringResource(R.string.room_paste)) }
-            if (!state.connected && !state.hosting) TextButton(onClick = { scan = true }, enabled = calls.phase in setOf(CallPhase.IDLE, CallPhase.ENDED)) { Text(stringResource(R.string.room_scan)) }
-            if (state.hosting) TextButton(onClick = { invite = true }) { Text(stringResource(R.string.room_invite)) }
+            if (!state.connected && !state.hosting) {
+                OutlinedButton(onClick = { paste = true }) {
+                    Icon(Icons.Outlined.ContentPaste, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.room_paste))
+                }
+                OutlinedButton(onClick = { scan = true }, enabled = calls.phase in setOf(CallPhase.IDLE, CallPhase.ENDED)) {
+                    Icon(Icons.Outlined.QrCodeScanner, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.room_scan))
+                }
+            } else {
+                TextButton(onClick = { paste = true }) { Text(stringResource(R.string.room_paste)) }
+            }
+            if (state.hosting) FilledTonalButton(onClick = { invite = true }) {
+                Icon(Icons.Outlined.QrCode, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.room_invite))
+            }
         }
-        if (state.hosting) Row(verticalAlignment = Alignment.CenterVertically) {
+        if (state.hosting) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             val visibilityLabel = stringResource(R.string.room_discoverable)
             Switch(state.hostDiscoverable, viewModel::setHostDiscoverable, modifier = Modifier.semantics { contentDescription = visibilityLabel })
             Text(stringResource(R.string.room_discoverable))
@@ -85,6 +110,7 @@ fun PendingRoomConnectionDialog(viewModel: MainViewModel, state: MainUiState) {
     val local = draft?.let { d -> bindings.any { it.prefix.contains(d.primaryAddress) } } == true
     val broadcast = draft?.let { d -> bindings.any { it.prefix.isDirectedBroadcast(d.primaryAddress) } } == true
     var confirmed by remember(draft) { mutableStateOf(false) }
+    var passwordVisible by remember(draft?.roomInstanceIdHint, draft?.peerIdHint, draft?.password) { mutableStateOf(false) }
     val occupied = state.connected || state.hosting || state.hostingStarting
     AlertDialog(onDismissRequest = viewModel::dismissConnectionImport, title = { Text(stringResource(R.string.room_review)) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -102,9 +128,17 @@ fun PendingRoomConnectionDialog(viewModel: MainViewModel, state: MainUiState) {
                     }
                 }
                 if (occupied) Text(stringResource(R.string.room_leave_first)) else {
-                    OutlinedTextField(state.nickname, viewModel::updateNickname, label = { Text(stringResource(R.string.nickname)) })
+                    OutlinedTextField(state.nickname, viewModel::updateNickname, label = { Text(stringResource(R.string.nickname)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(state.importedRoomPassword, viewModel::updateImportedRoomPassword,
-                        label = { Text(stringResource(R.string.session_password)) }, visualTransformation = PasswordVisualTransformation(),
+                        label = { Text(stringResource(R.string.session_password)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                    stringResource(if (passwordVisible) R.string.hide_password else R.string.show_password))
+                            }
+                        },
                         singleLine = true, modifier = Modifier.fillMaxWidth())
                     if (!local) Row {
                         val label = stringResource(R.string.room_external_confirm)

@@ -12,9 +12,14 @@ cache/lost callback rather than an application 45-second timer. Legacy Android
 resolution uses a 90-second application lease, refreshed during active search.
 This is freshness guidance, not proof that TCP is reachable.
 
-Android searches on Devices while the Activity is in the foreground, for up to
-60 seconds per search window. Refresh starts another window. Stop search stays
-stopped across network/lifecycle callbacks until Refresh. The foreground host
+Android searches only on foreground Devices. **Search again** starts one manual
+60-second search without changing the checkbox; its button stays visible and is
+disabled during an active search. **Automatic search** is off by default and
+retains its choice in memory across Activity recreation. Checking it starts or
+continues search; unchecking it stops immediately. With automatic search off,
+launch, lifecycle, permission and network callbacks never start a search.
+With it on, search resumes when foreground Devices and network access return.
+The foreground host
 service owns advertisements independently of the search window.
 
 ## Host visibility and invitations
@@ -40,7 +45,8 @@ hardware leaves paste available. Importing a link opens a connection draft;
 it never joins automatically or disconnects an existing room. A new target
 does not reuse the previous room's password. Passwordless links leave the draft
 password empty. The review password field filters whitespace from typing and
-paste; choosing another address preserves this draft.
+paste; choosing another address preserves this draft. Android review hides the
+password initially and offers a labelled show/hide icon.
 
 Quick Share remains a separate temporary unauthenticated local HTTP feature.
 Its QR renderer is shared with invitations, but room invitations do not start

@@ -111,7 +111,8 @@ class WorkspaceReliabilityTest {
         val store = ViewModelStore()
         try {
             val model = workspace(store, Chat(), Receiver(), { announcements }, { testScheduler.currentTime })
-            model.updateNearbyPermission(NearbyPermissionState.GRANTED); runCurrent()
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED)
+            model.restartDiscovery(); runCurrent()
             announcements.emit(DiscoveredPeer("gone", "gone", "127.0.0.2", 5050, 5051))
             announcements.emit(DiscoveredPeer("alive", "alive", "127.0.0.3", 5050, 5051))
             runCurrent(); advanceTimeBy(10_000)
@@ -155,7 +156,8 @@ class WorkspaceReliabilityTest {
         val snapshots = MutableSharedFlow<com.shterneregen.securelan.chat.discovery.DiscoverySnapshot>(extraBufferCapacity = 8)
         try {
             val model = workspace(store, Chat(), Receiver(), rooms = { snapshots })
-            model.updateNearbyPermission(NearbyPermissionState.GRANTED); runCurrent()
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED)
+            model.restartDiscovery(); runCurrent()
             val endpoint = com.shterneregen.securelan.chat.discovery.DiscoveryEndpoint(com.shterneregen.securelan.common.net.address.IpLiteral.parse("192.168.1.42")!!, 5050)
             val room = com.shterneregen.securelan.chat.discovery.DiscoveredRoom("one", "remote", null, "Room", listOf(endpoint), null,
                 setOf(com.shterneregen.securelan.chat.discovery.DiscoveryProviderId.MDNS))
@@ -171,6 +173,141 @@ class WorkspaceReliabilityTest {
             assertTrue(model.uiState.value.discoveryRunning)
             advanceTimeBy(60_001); runCurrent()
             assertFalse(model.uiState.value.discoveryRunning)
+        } finally { store.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun emptyDiscoverySnapshotKeepsSearchingUntilTheDefaultWindowEnds() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val snapshots = MutableSharedFlow<com.shterneregen.securelan.chat.discovery.DiscoverySnapshot>(extraBufferCapacity = 8)
+        try {
+            val model = workspace(store, Chat(), Receiver(), rooms = { snapshots })
+            assertFalse(model.uiState.value.autoDiscoveryEnabled)
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            model.restartDiscovery(); runCurrent()
+            snapshots.emit(com.shterneregen.securelan.chat.discovery.DiscoverySnapshot()); runCurrent()
+            advanceTimeBy(8_001); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            assertFalse(model.uiState.value.discoveryTimedOut)
+            advanceTimeBy(52_000); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            assertTrue(model.uiState.value.discoveryTimedOut)
+        } finally { store.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun automaticSearchRespectsSurfaceForegroundNetworkAndExplicitStop() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        try {
+            val model = workspace(store, Chat(), Receiver(), rooms = { flow { awaitCancellation() } })
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED)
+            model.updateAutoDiscovery(true); runCurrent()
+            advanceTimeBy(120_001); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            model.updateSearchSurface(false); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            model.updateSearchSurface(true); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            model.updateSearchForeground(false); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            model.updateSearchForeground(true); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            model.updateNetworkAvailable(false); runCurrent()
+            model.restartDiscovery(); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            model.updateNetworkAvailable(true); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            model.stopDiscovery(); runCurrent()
+            model.updateSearchForeground(false); model.updateSearchForeground(true)
+            model.updateNetworkAvailable(false); model.updateNetworkAvailable(true); runCurrent()
+            advanceTimeBy(120_001); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            assertFalse(model.uiState.value.autoDiscoveryEnabled)
+            model.restartDiscovery(); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            model.updateAutoDiscovery(true)
+            model.updateAutoDiscovery(false)
+            assertFalse(model.uiState.value.discoveryRunning)
+            advanceTimeBy(60_001); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+        } finally { store.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun manualSearchDoesNotEnableAutomaticSearchOrResumeAfterLifecycleCallbacks() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        var searches = 0
+        try {
+            val model = workspace(store, Chat(), Receiver(), rooms = { flow { searches++; awaitCancellation() } })
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED)
+            model.updateSearchSurface(false); model.updateSearchSurface(true)
+            model.updateSearchForeground(false); model.updateSearchForeground(true)
+            model.updateNetworkAvailable(false); model.updateNetworkAvailable(true)
+            runCurrent()
+            assertEquals(0, searches)
+            assertFalse(model.uiState.value.discoveryRunning)
+            model.restartDiscovery(); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            assertFalse(model.uiState.value.autoDiscoveryEnabled)
+            assertEquals(1, searches)
+            model.updateSearchSurface(false); model.updateSearchSurface(true)
+            model.updateSearchForeground(false); model.updateSearchForeground(true)
+            model.updateNetworkAvailable(false); model.updateNetworkAvailable(true)
+            model.updateNearbyPermission(NearbyPermissionState.DENIED)
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED)
+            runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            assertEquals(1, searches)
+            model.restartDiscovery(); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            advanceTimeBy(60_001); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            assertFalse(model.uiState.value.autoDiscoveryEnabled)
+            assertEquals(2, searches)
+        } finally { store.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun disablingAutomaticSearchCancelsAQueuedRestartWhileTheProviderIsClosing() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        val closed = CompletableDeferred<Unit>()
+        var searches = 0
+        try {
+            val model = workspace(store, Chat(), Receiver(), rooms = { flow {
+                searches++
+                try { awaitCancellation() } finally { withContext(NonCancellable) { closed.await() } }
+            } })
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED)
+            model.updateAutoDiscovery(true); runCurrent()
+            assertEquals(1, searches)
+            model.updateAutoDiscovery(false)
+            assertFalse(model.uiState.value.discoveryRunning)
+            model.updateAutoDiscovery(true); runCurrent()
+            assertEquals(1, searches)
+            model.updateAutoDiscovery(false)
+            closed.complete(Unit); runCurrent()
+            assertFalse(model.uiState.value.discoveryRunning)
+            assertEquals(1, searches)
+            model.updateAutoDiscovery(true); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            assertEquals(2, searches)
+        } finally { closed.complete(Unit); store.clear(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun enablingAutomaticSearchRestartsAPausedSearchWithoutChangingWorkspace() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = ViewModelStore()
+        try {
+            val model = workspace(store, Chat(), Receiver(), rooms = { flow { awaitCancellation() } })
+            model.updateNearbyPermission(NearbyPermissionState.GRANTED); runCurrent()
+            model.updateSessionPassword("room-password")
+            model.updateInputMessage("unsent message")
+            model.stopDiscovery(); runCurrent()
+            model.updateAutoDiscovery(true); runCurrent()
+            assertTrue(model.uiState.value.discoveryRunning)
+            assertEquals("room-password", model.uiState.value.sessionPassword)
+            assertEquals("unsent message", model.uiState.value.inputMessage)
         } finally { store.clear(); runCurrent(); Dispatchers.resetMain() }
     }
 
@@ -238,6 +375,7 @@ class WorkspaceReliabilityTest {
             override fun stop() = Unit
         }
         return MainViewModel(MainDependencies(preferences, chat, discover, { emptyList() }, host, { _, _, _, _ -> calls },
-            createReceiver = { receiver }, monotonicMillis = now, discoverRooms = rooms)).also { store.put("workspace", it) }
+            createReceiver = { receiver }, monotonicMillis = now, discoverRooms = rooms,
+            ioDispatcher = StandardTestDispatcher())).also { store.put("workspace", it) }
     }
 }

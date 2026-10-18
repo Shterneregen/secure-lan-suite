@@ -64,6 +64,16 @@
     <string name="network_unavailable_title">Connect to a local network</string>
     <string name="network_unavailable_message">Wi‑Fi or Ethernet is required to discover nearby devices.</string>
     <string name="search_again">Search again</string>
+    <string name="join_room">Join a room</string>
+    <string name="join_room_hint">Use an invitation or choose a nearby room below.</string>
+    <string name="other_connection_options">Other ways to connect</string>
+    <string name="nearby_rooms">Nearby rooms</string>
+    <string name="no_other_rooms">No other rooms nearby</string>
+    <string name="search_preserves_room">You can search again without leaving your current room.</string>
+    <string name="choose_room_hint">Choose a room to review its connection.</string>
+    <string name="search_paused">Search paused</string>
+    <string name="automatic_search">Automatic search</string>
+    <string name="automatic_search_hint">Find nearby rooms automatically while Devices is open.</string>
     <string name="stop_search">Stop search</string>
     <string name="available_devices">Available devices</string>
     <plurals name="device_count">

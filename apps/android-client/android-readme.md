@@ -10,7 +10,7 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 - TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
 - Android reuses shared V2 handshakes, record ciphers, wire models and stream rules. `ChatSession`, `WireMessage` and `FileTransferSession` are aliases to the core implementation. Android adapters own URI access, staging, MediaStore, permissions and lifecycle; its WebRTC engine and HTTP server remain platform-specific.
 - Supported flows include desktop-compatible UDP discovery, mutually authenticated V2 chat, ordered encrypted messages/files, Android-to-desktop file sending, and desktop-to-Android file receiving. V1 endpoints must be updated; there is no protocol fallback.
-- The app starts UDP discovery automatically on launch, lets the user stop or restart it from the Devices screen, and requests `NEARBY_WIFI_DEVICES` on Android 13+.
+- The Devices screen offers manual nearby-room search and an **Automatic search** checkbox, off by default. It requests `NEARBY_WIFI_DEVICES` on Android 13+.
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
 - Android-to-Android and Android-to-desktop voice/video calls use WebRTC in the LAN, with the existing encrypted TCP connection for signaling. WebRTC data channels, screen sharing and steganography tools are not implemented yet. Browser Quick Share supports temporary file/text links and QR codes.
 - For discovery and file receiving, the phone and desktop must be on the same network. Firewalls, VPNs, guest Wi-Fi networks, client-isolated Wi-Fi, and mobile hotspots can block UDP broadcast or inbound TCP connections.
@@ -295,8 +295,18 @@ If Android Studio cannot find the SDK, check `local.properties` in the repositor
 
 ## Desktop client interoperability scenario
 
-Nearby rooms use both UDP and platform NSD. Search runs on foreground Devices
-for up to 60 seconds; Refresh opens another window and Stop remains explicit.
+Nearby rooms use both UDP and platform NSD. **Search again** starts a manual
+search for up to 60 seconds without enabling automatic search. The button stays
+visible and is disabled while a search is running; a manual search can be stopped.
+**Automatic search** is unchecked by default: launch, returning to Devices,
+permission grants, and network recovery do not start search while it is off.
+Checking it starts continuous search on foreground Devices; unchecking it stops
+search immediately. Leaving Devices or backgrounding the app releases discovery,
+and automatic search resumes on return only if the checkbox is checked.
+The choice survives Activity recreation in memory but resets on process restart.
+Devices separates invitation entry,
+nearby discovery, and other connection options, with the current room first
+when connected. Searching no longer shows a premature empty-result error.
 Hosting advertisements belong to the foreground service and continue
 independently of browsing. **Discoverable nearby** controls both sources.
 
@@ -304,7 +314,7 @@ Devices also offers **Scan QR** and **Paste room link**. The offline CameraX/ZXi
 scanner requests CAMERA only, with paste as fallback. Imported/deep-linked
 `securelan://join` links require review and prefill the password when the link
 contains it; passwordless links require entry. The review field filters
-whitespace from typing and paste. An
+whitespace from typing and paste and includes a show/hide password icon. An
 external intent never disconnects an active room. An Android host can use
 **Invite to room**, copy its link, and have Desktop paste it into Join. Generated
 QR codes and links include the room password; share only with trusted people.

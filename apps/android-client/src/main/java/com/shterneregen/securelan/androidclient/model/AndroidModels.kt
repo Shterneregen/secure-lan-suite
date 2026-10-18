@@ -163,6 +163,7 @@ data class MainUiState(
     val recentTransfers: List<TransferRecord> = emptyList(),
     val fileReceiverRunning: Boolean = false,
     val discoveryRunning: Boolean = false,
+    val autoDiscoveryEnabled: Boolean = false,
     val discoveryTimedOut: Boolean = false,
     val status: String = "Ready",
     val error: String? = null,

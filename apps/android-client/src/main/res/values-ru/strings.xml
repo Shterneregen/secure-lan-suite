@@ -66,6 +66,16 @@
     <string name="network_unavailable_title">Подключитесь к локальной сети</string>
     <string name="network_unavailable_message">Для поиска устройств требуется Wi‑Fi или Ethernet.</string>
     <string name="search_again">Искать снова</string>
+    <string name="join_room">Войти в комнату</string>
+    <string name="join_room_hint">Используйте приглашение или выберите комнату поблизости ниже.</string>
+    <string name="other_connection_options">Другие способы подключения</string>
+    <string name="nearby_rooms">Комнаты поблизости</string>
+    <string name="no_other_rooms">Других комнат поблизости нет</string>
+    <string name="search_preserves_room">Можно повторить поиск, оставаясь в текущей комнате.</string>
+    <string name="choose_room_hint">Выберите комнату, чтобы проверить параметры подключения.</string>
+    <string name="search_paused">Поиск приостановлен</string>
+    <string name="automatic_search">Автоматический поиск</string>
+    <string name="automatic_search_hint">Находить комнаты автоматически, пока открыт экран «Устройства».</string>
     <string name="stop_search">Остановить поиск</string>
     <string name="available_devices">Доступные устройства</string>
     <plurals name="device_count">
