@@ -1,0 +1,88 @@
+import groovy.json.JsonOutput
+
+// Only application/test/lint graphs are locked; Gradle/AGP internal configurations
+// are covered by checksum verification and the build-tool inventory.
+allprojects { owner ->
+    def platformSpecific = owner.path in [':apps:desktop-client', ':modules:webrtc-core']
+    dependencyLocking {
+        lockFile = rootProject.file("gradle/dependency-locks/${owner.path.replace(':', '_')}${platformSpecific ? '-' + rootProject.ext.desktopPlatform.classifier : ''}.lockfile")
+        lockMode = LockMode.STRICT
+    }
+    configurations.configureEach {
+        if (name == 'kotlinLint' || name ==~ /(?i)(test|debug|release)?(compile|runtime)Classpath/) {
+            resolutionStrategy.activateDependencyLocking()
+        }
+        if (name == 'kotlinLint') {
+            resolutionStrategy.eachDependency {
+                if (requested.group == 'ch.qos.logback') useVersion '1.5.34'
+            }
+        }
+    }
+}
+
+allprojects { owner ->
+    tasks.register('resolveProjectDependencyInventory') {
+        group = 'verification'
+        notCompatibleWithConfigurationCache('Inspects project dependency configurations.')
+        doLast {
+            def inventory = []
+            def graphs = owner.configurations.findAll {
+                it.canBeResolved && (it.name == 'kotlinLint' || it.name ==~ /(?i)(test|debug|release)?(compile|runtime)Classpath/)
+            }.collect { [scope: it.name, configuration: it] }
+            graphs.add([scope: 'buildscript', configuration: owner.buildscript.configurations.classpath])
+            graphs.each { graph ->
+                graph.configuration.resolvedConfiguration.resolvedArtifacts.findAll { it.id.componentIdentifier instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier }.each { artifact ->
+                    def id = artifact.moduleVersion.id
+                    inventory.add([
+                        project: owner.path, scope: graph.scope,
+                        coordinate: "${id.group}:${id.name}:${id.version}".toString(),
+                        classifier: artifact.classifier, file: artifact.file.name,
+                        sha256: java.security.MessageDigest.getInstance('SHA-256').digest(artifact.file.bytes).encodeHex().toString()
+                    ])
+                }
+            }
+            def output = owner.layout.buildDirectory.file("reports/dependencies/${rootProject.ext.desktopPlatform.classifier}.json").get().asFile
+            output.parentFile.mkdirs()
+            output.text = JsonOutput.prettyPrint(JsonOutput.toJson(inventory.sort { "${it.project}:${it.scope}:${it.coordinate}:${it.classifier}" })) + '\n'
+        }
+    }
+}
+
+tasks.register('resolveDependencyInventory') {
+    group = 'verification'
+    description = 'Resolve locked application graphs and record runtime/build tool versions and hashes.'
+    dependsOn allprojects.collect { "${it.path == ':' ? '' : it.path}:resolveProjectDependencyInventory" }
+}
+
+tasks.register('qualityGate') {
+    group = 'verification'
+    description = 'Secret-free JVM, desktop interaction, Android lint and assembly checks.'
+    dependsOn ':apps:desktop-client:check', ':apps:android-client:lintKotlin',
+            ':apps:android-client:testDebugUnitTest', ':apps:android-client:lintDebug',
+            ':apps:android-client:assembleDebug', ':apps:android-client:assembleDebugAndroidTest'
+    dependsOn subprojects.findAll { it.path.startsWith(':modules:') && it.buildFile.isFile() }.collect { "${it.path}:check" }
+}
+
+tasks.register('writeToolchainManifest') {
+    dependsOn ':apps:desktop-client:writeToolchainManifest'
+}
+
+tasks.register('advisoryCheck', Exec) {
+    group = 'verification'
+    dependsOn tasks.named('resolveDependencyInventory')
+    commandLine 'python', rootProject.file('scripts/audit_dependencies.py')
+    workingDir rootProject.projectDir
+}
+
+tasks.register('checkJvmReports', Exec) {
+    group = 'verification'
+    dependsOn tasks.named('qualityGate')
+    commandLine 'python', rootProject.file('scripts/check_test_reports.py')
+    workingDir rootProject.projectDir
+}
+
+tasks.register('releaseGate') {
+    group = 'verification'
+    description = 'Require quality checks, complete JVM reports and scoped advisory triage.'
+    dependsOn tasks.named('checkJvmReports'), tasks.named('advisoryCheck')
+}

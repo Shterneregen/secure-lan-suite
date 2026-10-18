@@ -54,3 +54,7 @@ bin/
 ### Android CLient ###
 /apps/android-client/.idea/
 /local.properties
+
+### Build/release Python helpers ###
+__pycache__/
+*.py[cod]

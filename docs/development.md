@@ -11,6 +11,7 @@ The owning Gradle files define exact dependency and plugin versions.
 - The checked-in Gradle Wrapper; no separate Gradle or Kotlin installation is
   needed.
 - Internet access for the first dependency download.
+- Python 3.11+ for distribution notices and release verification; CI uses Python 3.12.
 - Android SDK Platform 35, compatible Build Tools, and Platform Tools for the
   Android client.
 
@@ -45,6 +46,14 @@ Use `test` for a fast repository verification and `build` when assembled outputs
 also matter. `:apps:desktop-client:runComposeShell` remains a compatibility
 alias for the primary desktop run task.
 
+Use `qualityGate` for the secret-free PR/release baseline: shared JVM tests,
+desktop tests including real Compose interactions, Kotlin lint, Android JVM/lint,
+debug APK and instrumentation APK assembly. Device tests run separately on
+API 26/35. CI also resolves the dependency inventory, checks OSV advisories,
+builds portable images and checks package startup. Local `buildPortable`,
+`buildExe` and `assembleRelease` remain fast packaging tasks and do not establish
+production readiness. See [Release and qualification](release.md).
+
 ### Desktop Kotlin checks and documentation
 
 ```powershell
@@ -54,6 +63,8 @@ alias for the primary desktop run task.
 ```
 
 The desktop `check` task includes unit tests and ktlint source-hygiene checks.
+Desktop test JVMs enable native access for Skiko, as the application JVM does;
+application JVM arguments are not automatically inherited by test workers.
 The module's `.editorconfig` explicitly enables import order, unused imports,
 KDoc placement, modifier order, string templates, and whitespace checks while
 preserving existing Compose naming and layout conventions. `formatKotlin`
@@ -216,6 +227,12 @@ The archive is written under `apps/desktop-client/build/distributions/`; the
 intermediate application image is under
 `apps/desktop-client/build/packaging/SecureLanSuite/`. This `app-image` flow does
 not require WiX.
+
+Portable names include the target, for example
+`SecureLanSuite-<version>-windows-x86_64-portable.zip`; experimental archives use
+`SecureLanSuite-<version>-<target>-proguard-portable.zip`. Both preserve source
+Unix executable permissions. Generated `third-party/` inventories/notices are
+included in desktop JARs, app-images, ZIPs and Android APK assets.
 
 Build the Windows EXE installer:
 

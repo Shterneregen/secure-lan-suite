@@ -136,15 +136,17 @@ private fun CallScreen(vm: MainViewModel, call: CallState, pip: Boolean, accept:
         if (controls && call.phase == CallPhase.ACTIVE && remote != null) { delay(5_000); controls = false }
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).clickable { controls = !controls }) {
+        val availableWidth = this.maxWidth
+        val availableHeight = this.maxHeight
         remote?.let { VideoView(it, false, Modifier.fillMaxSize()) }
         if (remote == null) Text(call.peer, color = Color.White, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.align(Alignment.Center))
         if (!pip && local != null && camera) {
             val density = androidx.compose.ui.platform.LocalDensity.current
-            val maxX = with(density) { (maxWidth - 120.dp).toPx().coerceAtLeast(0f) }
-            val maxY = with(density) { (maxHeight - 160.dp).toPx().coerceAtLeast(0f) }
+            val maxX = with(density) { (availableWidth - 120.dp).toPx().coerceAtLeast(0f) }
+            val maxY = with(density) { (availableHeight - 160.dp).toPx().coerceAtLeast(0f) }
             var x by remember(call.id) { mutableFloatStateOf(0f) }
             var y by remember(call.id) { mutableFloatStateOf(0f) }
-            VideoView(local!!, front, Modifier.offset { IntOffset(x.coerceIn(0f, maxX).roundToInt(), y.coerceIn(0f, maxY).roundToInt()) }
+            VideoView(local, front, Modifier.offset { IntOffset(x.coerceIn(0f, maxX).roundToInt(), y.coerceIn(0f, maxY).roundToInt()) }
                 .size(120.dp, 160.dp).pointerInput(maxX, maxY) {
                     detectDragGestures { change, amount -> change.consume(); x = (x + amount.x).coerceIn(0f, maxX); y = (y + amount.y).coerceIn(0f, maxY) }
                 }, overlay = true)

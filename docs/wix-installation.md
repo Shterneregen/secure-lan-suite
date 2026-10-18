@@ -167,7 +167,7 @@ apps/desktop-client/build/distributions/
 Expected output file:
 
 ```text
-apps/desktop-client/build/distributions/SecureLanSuite-<version>-portable.zip
+apps/desktop-client/build/distributions/SecureLanSuite-<version>-windows-x86_64-portable.zip
 ```
 
 The intermediate application image is written to:
@@ -177,6 +177,15 @@ apps/desktop-client/build/packaging/SecureLanSuite/
 ```
 
 The portable build uses `jpackage --type app-image`, so WiX is not required for this task.
+
+Local packaging tasks do not qualify a public release. The repository release
+workflow requires the quality gate, records toolchain/artifact hashes, verifies
+the Android certificate and either signs the EXE with timestamped Authenticode
+or explicitly identifies it as an unsigned pilot. Before publication, install,
+upgrade from the previous release without losing settings/downloads, launch on
+a Windows machine without Java, and uninstall on a disposable VM. Keep the
+existing jpackage upgrade identity until compatibility with previous installers
+has been established. See [Release and qualification](release.md).
 
 ## Troubleshooting
 

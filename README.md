@@ -31,6 +31,8 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 
 Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
 and [realtime architecture](docs/webrtc-architecture.md) for platform owners and remaining hardware checks.
+Build checks, production signing and artifact qualification are described in
+[Release and qualification](docs/release.md).
 
 ## Security and compatibility
 

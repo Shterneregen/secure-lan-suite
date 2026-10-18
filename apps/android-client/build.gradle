@@ -43,6 +43,10 @@ def releaseStorePassword = findProperty('android.release.storePassword') ?: Syst
 def releaseKeyAlias = findProperty('android.release.keyAlias') ?: System.getenv('ANDROID_RELEASE_KEY_ALIAS')
 def releaseKeyPassword = findProperty('android.release.keyPassword') ?: System.getenv('ANDROID_RELEASE_KEY_PASSWORD')
 def hasReleaseSigningConfig = releaseStoreFilePath && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+def signingValuesPresent = [releaseStoreFilePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].count { it }
+if (signingValuesPresent > 0 && signingValuesPresent < 4) {
+    throw new GradleException('Incomplete Android release signing configuration: supply all four signing values or remove all of them for local development.')
+}
 
 def appVersion = project.version.toString().replaceAll(/-SNAPSHOT$/, '')
 def versionParts = appVersion.tokenize('.')
@@ -60,6 +64,7 @@ if (appVersionCode < 1 || appVersionCode > 2100000000) {
 android {
     namespace = 'com.shterneregen.securelan.androidclient'
     compileSdk = 35
+    buildToolsVersion = '36.0.0'
 
     bundle {
         language {
@@ -75,11 +80,16 @@ android {
         versionName = appVersion
 
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
+        testInstrumentationRunnerArguments clearPackageData: 'true'
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        execution = 'ANDROIDX_TEST_ORCHESTRATOR'
     }
 
     signingConfigs {
@@ -155,4 +165,52 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    androidTestImplementation 'androidx.test:rules:1.6.1'
+    androidTestUtil 'androidx.test:orchestrator:1.5.1'
+    constraints {
+        androidTestImplementation('com.google.guava:guava:33.4.8-android') {
+            because 'Keep device-test tooling off vulnerable Guava temporary-directory implementations.'
+        }
+    }
+}
+
+tasks.register('validateProductionSigning') {
+    group = 'verification'
+    description = 'Reject missing production credentials and an unspecified expected certificate.'
+    doLast {
+        if (!hasReleaseSigningConfig) {
+            throw new GradleException('Production APK requires all four Android release signing values.')
+        }
+        if (!(System.getenv('ANDROID_RELEASE_CERT_SHA256')?.replace(':', '') ==~ /(?i)[0-9a-f]{64}/)) {
+            throw new GradleException('Set ANDROID_RELEASE_CERT_SHA256 to the independently trusted production certificate fingerprint.')
+        }
+    }
+}
+
+def androidSdkDirectory = androidComponents.sdkComponents.sdkDirectory
+tasks.register('verifyProductionApk', Exec) {
+    group = 'verification'
+    dependsOn tasks.named('validateProductionSigning'), tasks.named('assembleRelease')
+    doFirst {
+        commandLine 'python', rootProject.file('scripts/release.py'), 'verify-apk',
+                '--apk', layout.buildDirectory.file("distributions/apk/release/secure-lan-${appVersion}.apk").get().asFile,
+                '--sdk', androidSdkDirectory.get().asFile, '--version', appVersion, '--version-code', appVersionCode.toString(),
+                '--output', layout.buildDirectory.file('reports/release/android-signature.json').get().asFile
+    }
+}
+
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach {
+    mustRunAfter tasks.named('validateProductionSigning')
+}
+
+tasks.register('productionApk') {
+    group = 'distribution'
+    description = 'Build a production APK only after quality checks and verification of the final certificate and identity.'
+    dependsOn rootProject.tasks.named('releaseGate'), tasks.named('verifyProductionApk')
+}
+
+apply from: rootProject.file('gradle/notices.gradle')
+androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+    variant.sources.assets.addGeneratedSourceDirectory(tasks.named('generateThirdPartyNotices'), { it.noticeDirectory })
 }

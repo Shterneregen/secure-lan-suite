@@ -152,7 +152,21 @@ Output path:
 apps/android-client/build/distributions/apk/release/secure-lan-<version>.apk
 ```
 
-By default, release APKs fall back to the local Android debug key when no release signing configuration is provided. This keeps local release builds installable, but it is not a real production signature. For a real release, provide a private signing key through Gradle properties or environment variables.
+Local `assembleRelease` builds use the Android debug key when all release signing
+values are absent. A partial signing configuration fails immediately. A local
+release variant is not a production candidate. For production, supply all four
+signing values and the independently trusted `ANDROID_RELEASE_CERT_SHA256`, then run:
+
+```powershell
+.\gradlew.bat :apps:android-client:productionApk --no-configuration-cache
+```
+
+This runs the quality gate and verifies the final APK certificate, application ID,
+version, non-debuggable flag and 16 KB ZIP alignment. Missing credentials, debug
+certificates and unexpected fingerprints fail the production task. Set
+`ANDROID_PREVIOUS_VERSION_CODE` to enforce an increase over the previous release.
+Production device/upgrade qualification and publication are described in
+[the release guide](../../docs/release.md).
 
 Create a release keystore once:
 
@@ -212,7 +226,13 @@ To confirm that the APK was signed with the intended release certificate rather 
 keytool -list -v -keystore D:\Projects\My\keys\secure-lan-release.jks -alias secure-lan
 ```
 
-For Google Play distribution, prefer an Android App Bundle:
+The supported release channel is direct APK distribution on a trusted LAN.
+Google Play readiness is not claimed for `targetSdk 35`. Before selecting Play,
+perform a separate compile/target SDK migration against the
+[current target API requirements](https://developer.android.com/google/play/requirements/target-sdk),
+test behavior changes, validate an AAB and its generated APKs, and confirm the
+application's status in Play Console. `bundleRelease` creates a development
+bundle; successful assembly alone does not establish Play eligibility:
 
 ```powershell
 .\gradlew.bat :apps:android-client:bundleRelease
@@ -404,16 +424,29 @@ When connected, the Android file receiver may use the remote file-transfer port 
 
 ## Android permissions
 
-The manifest declares:
+The manifest declarations and runtime requests serve different purposes:
 
-- `INTERNET`
-- `ACCESS_NETWORK_STATE`
-- `ACCESS_WIFI_STATE`
-- `CHANGE_WIFI_MULTICAST_STATE`
-- `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`
-- `NEARBY_WIFI_DEVICES`
+| Permissions | Purpose and runtime behavior |
+|---|---|
+| `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE` | LAN sockets and network status; normal permissions, no runtime prompt. |
+| `CHANGE_WIFI_MULTICAST_STATE`, `CHANGE_NETWORK_STATE`, `CHANGE_WIFI_STATE` | Discovery/network operations and connected-device foreground-service prerequisites; normal permissions. |
+| `NEARBY_WIFI_DEVICES` (`neverForLocation`) | Android 13+ nearby-device permission. The UI tracks grant/denial and offers a request action; declaration does not grant access. |
+| `WRITE_EXTERNAL_STORAGE` (`maxSdkVersion=28`) | Legacy Downloads writes on Android 8/9. On API 29+ the receiver publishes through MediaStore without this permission. |
+| `CAMERA`, `RECORD_AUDIO` | Requested when starting/accepting the relevant call. Denial must leave chat usable; grant in system settings and retry. Camera/microphone hardware is optional. |
+| `MODIFY_AUDIO_SETTINGS` | Call audio routing; normal permission. |
+| `BLUETOOTH` (`maxSdkVersion=30`), `BLUETOOTH_CONNECT` | Legacy Bluetooth access and Android 12+ call-route permission. Denial must allow another audio route. |
+| `POST_NOTIFICATIONS` | Android 13+ prompt when enabling notifications; denial does not grant notification access or substitute for service lifecycle checks. |
+| `WAKE_LOCK`, `VIBRATE` | Call/background behavior and alerts; normal permissions. |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE` | Background room hosting, with the `connectedDevice` service type. |
+| `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE` | Active-call service types; camera/microphone runtime grants and platform start restrictions still apply. |
 
-On Android 13+, the app requests `NEARBY_WIFI_DEVICES` at startup. Without network permissions, discovery and LAN connections may not work.
+For device acceptance, deny and then grant nearby access, camera, microphone,
+Bluetooth and notifications; retry the affected action without restarting chat.
+On API 26/28 verify legacy storage denial/recovery; on API 29+ verify pending
+MediaStore cleanup and file publication. Recreate the Activity while hosting,
+stop hosting and check that its port and notification are released. Exercise
+background call start/stop and PiP separately. See the
+[release qualification checklist](../../docs/release.md).
 
 ## Tests
 
@@ -451,6 +484,14 @@ Instrumented tests on a connected device or emulator:
 ```powershell
 .\gradlew.bat :apps:android-client:connectedDebugAndroidTest
 ```
+
+`PlatformBoundaryTest` exercises pending Downloads cleanup using the real
+platform provider, camera permission denial/grant and Activity recreation, and
+foreground host recreation/stop/port release. CI runs the suite on API 26 and 35.
+The suite uses Android Test Orchestrator with `clearPackageData=true`; use a
+dedicated test device/emulator because app data is cleared between cases.
+Physical LAN/media, notification prompts, Bluetooth routes and PiP remain manual
+qualification checks; a successful JVM suite does not establish those results.
 
 ## Clean build artifacts
 

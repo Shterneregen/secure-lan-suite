@@ -2,8 +2,8 @@ package com.shterneregen.securelan.desktop.compose.ui.connection
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
@@ -44,17 +44,13 @@ internal fun ConnectionModeSegment(
     Surface(
         modifier = modifier
             .calmFocusRing(interactive.focused, tokens.radius.small)
-            .then(
-                if (enabled) {
-                    Modifier.clickable(
-                        interactionSource = interactionSource,
-                        indication = LocalIndication.current,
-                        role = Role.Tab,
-                        onClick = onClick,
-                    )
-                } else {
-                    Modifier
-                }
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Tab,
+                onClick = onClick,
             ),
         shape = RoundedCornerShape(tokens.radius.small),
         color = background,

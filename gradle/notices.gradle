@@ -1,0 +1,67 @@
+import groovy.json.JsonOutput
+import org.gradle.process.ExecOperations
+import javax.inject.Inject
+
+abstract class GenerateThirdPartyNotices extends DefaultTask {
+    @OutputDirectory
+    abstract DirectoryProperty getNoticeDirectory()
+
+    @Input
+    abstract Property<String> getInventoryJson()
+
+    @InputFiles
+    @PathSensitive(PathSensitivity.NONE)
+    abstract ConfigurableFileCollection getRuntimeArtifacts()
+
+    @InputFile
+    @PathSensitive(PathSensitivity.NONE)
+    abstract RegularFileProperty getGeneratorScript()
+
+    @InputDirectory
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract DirectoryProperty getNoticeSources()
+
+    @Internal
+    abstract DirectoryProperty getDependencyCache()
+
+    @Inject
+    abstract ExecOperations getExecOperations()
+
+    @TaskAction
+    void generate() {
+        def input = new File(temporaryDir, 'inventory.json')
+        input.parentFile.mkdirs()
+        input.text = inventoryJson.get()
+        execOperations.exec {
+            commandLine 'python', generatorScript.get().asFile, '--input', input,
+                    '--cache', dependencyCache.get().asFile,
+                    '--sources', noticeSources.get().asFile, '--output', noticeDirectory.get().asFile
+        }
+    }
+}
+
+def noticeConfigurationName = project.path == ':apps:android-client' ? 'releaseRuntimeClasspath' : 'runtimeClasspath'
+def noticeFiles = providers.provider { configurations.getByName(noticeConfigurationName) }
+// ProviderFactory.provider computes this plain value when the configuration cache is stored.
+// No Configuration or Project object is used by the task action after restoration.
+def inventory = providers.provider {
+    JsonOutput.toJson(configurations.getByName(noticeConfigurationName).resolvedConfiguration.resolvedArtifacts.findAll {
+        it.id.componentIdentifier instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier
+    }.collect {
+        def id = it.moduleVersion.id
+        [coordinate: "${id.group}:${id.name}:${id.version}".toString(), file: it.file.absolutePath, classifier: it.classifier]
+    })
+}
+def noticeOutput = layout.buildDirectory.dir('generated/third-party')
+ext.thirdPartyNotices = noticeOutput
+
+tasks.register('generateThirdPartyNotices', GenerateThirdPartyNotices) {
+    group = 'distribution'
+    description = 'Collect the exact runtime inventory, POM licenses and embedded/upstream notices.'
+    runtimeArtifacts.from(noticeFiles)
+    inventoryJson.set(inventory)
+    generatorScript.set(rootProject.file('scripts/third_party.py'))
+    noticeSources.set(rootProject.file('third-party'))
+    dependencyCache.set(new File(gradle.gradleUserHomeDir, 'caches/modules-2/files-2.1'))
+    noticeDirectory.set(noticeOutput)
+}

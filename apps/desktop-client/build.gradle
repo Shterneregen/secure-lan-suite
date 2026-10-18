@@ -13,6 +13,11 @@ buildscript {
     dependencies {
         classpath 'com.guardsquare:proguard-gradle:7.8.2'
     }
+    configurations.classpath {
+        resolutionStrategy.eachDependency {
+            if (requested.group == 'org.apache.logging.log4j') useVersion '2.25.5'
+        }
+    }
 }
 
 plugins {
@@ -33,6 +38,11 @@ application {
 
 tasks.named('run') {
     dependsOn ':modules:webrtc-core:verifyNativePlatform'
+}
+
+tasks.withType(Test).configureEach {
+    // Compose UI tests load Skiko in a separate JVM from the application.
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 configurations {
@@ -56,8 +66,17 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.formdev:flatlaf:3.7.1'
-    implementation compose.desktop.currentOs
+    def target = rootProject.ext.desktopPlatform
+    def composeArch = target.classifier?.endsWith('aarch64') ? 'arm64' : 'x64'
+    implementation "org.jetbrains.compose.desktop:desktop-jvm-${target.os}-${composeArch}:1.9.0"
     implementation 'org.jetbrains.compose.material:material-icons-core-desktop:1.7.3'
+    testImplementation compose.desktop.uiTestJUnit4
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.10.2'
+    constraints {
+        testImplementation('com.google.guava:guava:33.4.8-android') {
+            because 'Compose test tooling brings an older Guava with insecure temporary-directory handling.'
+        }
+    }
 }
 
 def kotlinLintSources = fileTree('src') {
@@ -65,6 +84,9 @@ def kotlinLintSources = fileTree('src') {
     // Checked-in upstream Material icons retain their original generated style.
     exclude 'main/kotlin/androidx/**'
 }
+
+apply from: rootProject.file('gradle/notices.gradle')
+distributions.main.contents { from(thirdPartyNotices) }
 
 tasks.register('lintKotlin', JavaExec) {
     group = 'verification'
@@ -235,6 +257,8 @@ tasks.named('startScripts') {
 }
 
 tasks.named('jar') {
+    dependsOn tasks.named('generateThirdPartyNotices')
+    from(thirdPartyNotices)
     // jpackage reads the ICO directly from src/main/resources. Only app-icon.png
     // is loaded by the application, so do not ship launcher-only variants in the JAR.
     exclude 'icons/app-icon-*.png', 'icons/app-icon.ico'
@@ -255,6 +279,7 @@ tasks.register('prepareJpackageInput') {
 
     doLast {
         prepareJpackageDirectory()
+        copy { from(thirdPartyNotices); into(packageInputDir) }
     }
 }
 
@@ -304,12 +329,13 @@ tasks.register('portableDistZip', Zip) {
     dependsOn tasks.named('createAppImage')
 
     from(appImageDir) {
+        useFileSystemPermissions()
         if (desktopPlatform.os == 'macos') {
             into(appImageName)
         }
     }
     destinationDirectory.set(layout.buildDirectory.dir('distributions'))
-    archiveFileName.set("${appName}-${appVersion}-portable.zip")
+    archiveFileName.set("${appName}-${appVersion}-${desktopPlatform.classifier}-portable.zip")
 }
 
 tasks.register('buildPortable') {
@@ -335,40 +361,32 @@ tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
     outputs.file(proguardOutputJar)
     outputs.dir(proguardReportsDir)
 
+    def proguardInputJar = tasks.named('jar').flatMap { it.archiveFile }
+
     doFirst {
         def outputFile = proguardOutputJar.get().asFile
         def reportsDir = proguardReportsDir.get().asFile
-        delete(outputFile)
-        if (reportsDir.exists()) {
-            delete(reportsDir)
-        }
-        mkdir(outputFile.parentFile)
-        mkdir(reportsDir)
+        outputFile.delete()
+        ['usage.txt', 'seeds.txt', 'mapping.txt', 'configuration.txt'].each { new File(reportsDir, it).delete() }
+        outputFile.parentFile.mkdirs()
+        reportsDir.mkdirs()
     }
 
     def applicationJarFilter = '!module-info.class,!META-INF/versions/**,!META-INF/*.SF,!META-INF/*.RSA,!META-INF/*.DSA'
     def dependencyJarFilter = "${applicationJarFilter},!META-INF/MANIFEST.MF".toString()
-    injars(tasks.named('jar').flatMap { it.archiveFile }, filter: applicationJarFilter)
-    configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.sort { it.file.absolutePath }.each { artifact ->
-        def artifactFilter = dependencyJarFilter
-        if (artifact.moduleVersion.id.group == 'org.jetbrains.compose.runtime' && artifact.name == 'runtime-desktop') {
-            // This 416-byte Compose compatibility artifact contains a second, empty
-            // META-INF/runtime.kotlin_module. Keep the real AndroidX runtime metadata.
-            artifactFilter = "${artifactFilter},!META-INF/runtime.kotlin_module".toString()
-        }
-        injars(artifact.file, filter: artifactFilter)
-    }
+    injars(proguardInputJar, filter: applicationJarFilter)
+    // Providers defer dependency resolution until task inputs/execution are needed.
+    def runtimeArtifacts = providers.provider { configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts }
+    def isCompatibilityArtifact = { it.moduleVersion.id.group == 'org.jetbrains.compose.runtime' && it.name == 'runtime-desktop' }
+    injars(runtimeArtifacts.map { artifacts -> artifacts.findAll { !isCompatibilityArtifact(it) }.collect { it.file } }, filter: dependencyJarFilter)
+    injars(runtimeArtifacts.map { artifacts -> artifacts.findAll(isCompatibilityArtifact).collect { it.file } }, filter: "${dependencyJarFilter},!META-INF/runtime.kotlin_module".toString())
     outjars(proguardOutputJar)
 
-    def jmodsDir = packagingLauncher.get().metadata.installationPath.dir('jmods').asFile
-    if (!jmodsDir.isDirectory()) {
-        throw new GradleException("JDK modules directory was not found: ${jmodsDir.absolutePath}")
+    def jmods = packagingLauncher.map { launcher ->
+        fileTree(launcher.metadata.installationPath.dir('jmods')) { include '*.jmod' }
     }
-    fileTree(jmodsDir) {
-        include '*.jmod'
-    }.files.sort { it.absolutePath }.each { jmod ->
-        libraryjars(jmod, jarfilter: '!**.jar', filter: '!module-info.class')
-    }
+    inputs.files(jmods)
+    libraryjars(jmods, jarfilter: '!**.jar', filter: '!module-info.class')
 
     configuration file('proguard-desktop.pro')
     printusage proguardReportsDir.map { it.file('usage.txt') }
@@ -394,7 +412,7 @@ tasks.register('proguardJar', proguard.gradle.ProGuardTask) {
                 throw new GradleException("ProGuard JAR is missing required resources: ${missingResources.join(', ')}")
             }
 
-            def applicationZip = new ZipFile(tasks.named('jar').get().archiveFile.get().asFile)
+            def applicationZip = new ZipFile(proguardInputJar.get().asFile)
             try {
                 def missingApplicationResources = applicationZip.entries().findAll { entry ->
                     !entry.directory &&
@@ -439,6 +457,7 @@ tasks.register('prepareProguardJpackageInput') {
                 new File(targetDir, proguardMainJarName).toPath(),
                 StandardCopyOption.REPLACE_EXISTING
         )
+        copy { from(thirdPartyNotices); into(proguardPackageInputDir) }
     }
 }
 
@@ -487,12 +506,13 @@ tasks.register('proguardPortableDistZip', Zip) {
     dependsOn tasks.named('createProguardAppImage')
 
     from(proguardAppImageDir) {
+        useFileSystemPermissions()
         if (desktopPlatform.os == 'macos') {
             into(appImageName)
         }
     }
     destinationDirectory.set(layout.buildDirectory.dir('distributions'))
-    archiveFileName.set("${appName}-${appVersion}-proguard-portable.zip")
+    archiveFileName.set("${appName}-${appVersion}-${desktopPlatform.classifier}-proguard-portable.zip")
 }
 
 tasks.register('buildProguardPortable') {
@@ -572,5 +592,18 @@ tasks.register('buildExe') {
         inputs.property('jpackageJdk', packagingLauncher.map { it.metadata.javaRuntimeVersion })
         inputs.property('runtimeModules', appRuntimeModules)
         inputs.property('mainClass', application.mainClass)
+    }
+}
+
+tasks.register('writeToolchainManifest', Exec) {
+    group = 'verification'
+    def sharedLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
+    outputs.file(layout.buildDirectory.file('reports/release/toolchain.json'))
+    outputs.upToDateWhen { false }
+    doFirst {
+        commandLine 'python', rootProject.file('scripts/toolchain.py'),
+                '--jdk17', sharedLauncher.get().metadata.installationPath.asFile,
+                '--jdk25', packagingLauncher.get().metadata.installationPath.asFile,
+                '--output', layout.buildDirectory.file('reports/release/toolchain.json').get().asFile
     }
 }

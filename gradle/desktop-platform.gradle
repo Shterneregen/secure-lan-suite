@@ -21,3 +21,16 @@ ext.resolveDesktopPlatform = { String osName, String architecture ->
 }
 
 ext.desktopPlatform = resolveDesktopPlatform(System.getProperty('os.name'), System.getProperty('os.arch'))
+
+// Resolve other host graphs for reviewed lock/checksum updates without cross-building.
+def dependencyTarget = providers.gradleProperty('secureLanDependencyTarget').orNull
+if (dependencyTarget) {
+    if (!gradle.startParameter.taskNames.every { it.tokenize(':').last() == 'resolveDependencyInventory' }) {
+        throw new GradleException('secureLanDependencyTarget is only supported by resolveDependencyInventory.')
+    }
+    if (!(dependencyTarget in ['windows-x86_64', 'linux-x86_64', 'linux-aarch64', 'macos-x86_64', 'macos-aarch64'])) {
+        throw new GradleException('Unsupported dependency inventory target.')
+    }
+    def parts = dependencyTarget.split('-', 2)
+    ext.desktopPlatform = resolveDesktopPlatform(parts[0] == 'macos' ? 'Mac OS X' : parts[0], parts[1])
+}

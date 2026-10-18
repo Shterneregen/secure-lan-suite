@@ -1,3 +1,15 @@
+buildscript {
+    // Build tools have their own dependency graph; these do not change application crypto.
+    configurations.classpath {
+        resolutionStrategy.eachDependency {
+            if (requested.group == 'org.bouncycastle') useVersion '1.86'
+            if (requested.group == 'org.apache.commons' && requested.name == 'commons-lang3') useVersion '3.18.0'
+            if (requested.group == 'org.bitbucket.b_c' && requested.name == 'jose4j') useVersion '0.9.6'
+            if (requested.group == 'org.jdom' && requested.name == 'jdom2') useVersion '2.0.6.1'
+        }
+    }
+}
+
 plugins {
     id 'base'
     id 'com.android.application' apply false
@@ -7,6 +19,7 @@ plugins {
 }
 
 apply from: 'gradle/desktop-platform.gradle'
+apply from: 'gradle/verification.gradle'
 
 allprojects {
     group = 'com.shterneregen.securelan'
@@ -19,7 +32,7 @@ allprojects {
 }
 
 subprojects {
-    if (path != ':apps:android-client') {
+    if (buildFile.isFile() && path != ':apps:android-client') {
         apply plugin: 'java-library'
 
         def androidSharedModules = [
