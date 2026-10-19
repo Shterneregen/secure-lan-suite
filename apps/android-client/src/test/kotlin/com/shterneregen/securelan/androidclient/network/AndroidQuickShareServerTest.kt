@@ -8,6 +8,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.net.Socket
 import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -84,6 +85,34 @@ class AndroidQuickShareServerTest {
         assertTrue(server.items().isEmpty())
         assertTrue(runCatching { server.createText("late", 1, null) }.isFailure)
         assertTrue(runCatching { Socket("127.0.0.1", port).use { } }.isFailure)
+    }
+
+    @Test(timeout = 15_000)
+    fun closeWaitsForAcceptWithoutHoldingThePublicationLock() {
+        val entered = CountDownLatch(1)
+        val cancelled = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val listener = object : java.net.ServerSocket(0) {
+            override fun accept(): Socket {
+                entered.countDown()
+                try { return super.accept() }
+                finally { cancelled.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+            }
+        }
+        val server = AndroidQuickShareServer(temporary.root, { listener }) { null }
+        val workers = Executors.newFixedThreadPool(2)
+        try {
+            server.start()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val closing = workers.submit { server.close() }
+            assertTrue(cancelled.await(5, TimeUnit.SECONDS))
+            // Publication must be rejected even while the old accept operation is finishing.
+            assertTrue(workers.submit<Boolean> { runCatching { server.createText("late", 1, null) }.isFailure }.get(2, TimeUnit.SECONDS))
+            val stillClosing = runCatching { closing.get(200, TimeUnit.MILLISECONDS) }.exceptionOrNull()
+            assertTrue("close() returned before accept() released the listener", stillClosing is java.util.concurrent.TimeoutException)
+            release.countDown()
+            closing.get(5, TimeUnit.SECONDS)
+        } finally { release.countDown(); server.close(); workers.shutdownNow() }
     }
 
     @Test

@@ -34,9 +34,10 @@ data class AndroidQuickShareItem(
  */
 class AndroidQuickShareServer internal constructor(
     private val cacheDir: File,
+    private val listenerFactory: (Int) -> ServerSocket = { port -> ServerSocket(port, 32, InetAddress.getByName("0.0.0.0")) },
     private val openInput: (Uri) -> InputStream?,
 ) : Closeable {
-    constructor(resolver: ContentResolver, cacheDir: File) : this(cacheDir, resolver::openInputStream)
+    constructor(resolver: ContentResolver, cacheDir: File) : this(cacheDir, openInput = resolver::openInputStream)
 
     init {
         synchronized(stagingLock) {
@@ -58,9 +59,9 @@ class AndroidQuickShareServer internal constructor(
         java.util.concurrent.SynchronousQueue(),
         { runnable -> Thread(runnable, "securelan-quick-share-client").apply { isDaemon = true } })
     private val activeClients = ConcurrentHashMap.newKeySet<Socket>()
+    private val acceptGate = Any()
     private var closed = false
     @Volatile private var socket: ServerSocket? = null
-    @Volatile private var acceptThread: Thread? = null
     @Volatile var urls: List<String> = emptyList(); private set
     @Volatile var port: Int = 5053; private set
 
@@ -68,8 +69,8 @@ class AndroidQuickShareServer internal constructor(
         check(!closed) { "Quick Share server is closed" }
         if (running.get()) return
         var server: ServerSocket? = null
-        for (p in 5053..5063) try { server = ServerSocket(p, 32, InetAddress.getByName("0.0.0.0")); break } catch (_: Exception) { }
-        val listener = server ?: ServerSocket(0, 32, InetAddress.getByName("0.0.0.0"))
+        for (p in 5053..5063) try { server = listenerFactory(p); break } catch (_: Exception) { }
+        val listener = server ?: listenerFactory(0)
         socket = listener
         port = listener.localPort
         val hosts = runCatching {
@@ -78,10 +79,13 @@ class AndroidQuickShareServer internal constructor(
         }.getOrDefault(emptyList()).ifEmpty { listOf("127.0.0.1") }
         urls = hosts.map { "http://$it:$port/" }
         running.set(true)
-        acceptThread = Thread {
+        Thread {
             while (running.get()) {
                 try {
-                    val client = listener.accept()
+                    val client = synchronized(acceptGate) {
+                        if (!running.get()) return@Thread
+                        listener.accept()
+                    }
                     synchronized(this@AndroidQuickShareServer) {
                         if (closed) client.close() else {
                             activeClients.add(client)
@@ -242,17 +246,22 @@ class AndroidQuickShareServer internal constructor(
             out.write(body); out.flush()
         }
     }
-    @Synchronized override fun close() {
-        closed = true
-        running.set(false)
-        runCatching { socket?.close() }
-        socket = null
-        activeClients.forEach { runCatching { it.close() } }
-        activeClients.clear()
-        clients.shutdownNow()
-        shares.values.forEach(::retire)
-        shares.clear()
-        urls = emptyList()
+    override fun close() {
+        synchronized(this) {
+            closed = true
+            running.set(false)
+            runCatching { socket?.close() }
+            socket = null
+            activeClients.forEach { runCatching { it.close() } }
+            activeClients.clear()
+            clients.shutdownNow()
+            shares.values.forEach(::retire)
+            shares.clear()
+            urls = emptyList()
+        }
+        // A JDK socket may defer releasing its descriptor until accept() aborts.
+        // Release the publication lock before waiting for that operation to finish.
+        synchronized(acceptGate) { }
     }
     companion object {
         private val stagingLock = Any()

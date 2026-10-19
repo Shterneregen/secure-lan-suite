@@ -425,7 +425,8 @@ Publication IDs include a fresh UUID so revoked links are not reused. HTTP reque
 headers and client workers are bounded. Cache files remain alive while an already
 admitted download is using them; expiry or individual revocation rejects new
 accesses, while an admitted stream may finish. Closing the server stops active
-clients and revokes all publications. Document staging is limited to 1 GiB and
+clients and revokes all publications. The HTTP listener has stopped accepting
+connections when shutdown returns. Document staging is limited to 1 GiB and
 checks free cache space.
 
 The server prefers TCP port `5053`, tries `5054` through `5063` when occupied,
