@@ -13,24 +13,24 @@ import zipfile
 NS = {'m': 'http://maven.apache.org/POM/4.0.0'}
 
 
-def licenses(cache, coordinate, visited=None):
+def licenses(pom_index, coordinate, visited=None):
     visited = set() if visited is None else visited
     if coordinate in visited:
         return [], []
     visited.add(coordinate)
-    group, name, version = coordinate.split(':')
-    poms = sorted((cache / group / name / version).glob('*/*.pom'))
-    if not poms:
+    pom = pom_index.get(coordinate)
+    if pom is None:
         return [], []
-    root = ET.parse(poms[0]).getroot()
+    pom = Path(pom)
+    root = ET.parse(pom).getroot()
     result = [{'name': x.findtext('m:name', namespaces=NS), 'url': x.findtext('m:url', namespaces=NS)}
               for x in root.findall('m:licenses/m:license', NS)]
     parents = []
     parent = root.find('m:parent', NS)
     if not result and parent is not None:
         parent_id = ':'.join(parent.findtext('m:' + key, namespaces=NS) for key in ('groupId', 'artifactId', 'version'))
-        result, parents = licenses(cache, parent_id, visited)
-    return result, poms[:1] + parents
+        result, parents = licenses(pom_index, parent_id, visited)
+    return result, [pom] + parents
 
 
 def embedded_notices(archive, output, prefix=''):
@@ -51,7 +51,7 @@ def embedded_notices(archive, output, prefix=''):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('input', 'cache', 'sources', 'output'):
+    for name in ('input', 'poms', 'sources', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     args = parser.parse_args()
     # Only remove our declared, fixed build output; never consume artifact paths as deletion targets.
@@ -64,11 +64,12 @@ def main():
     bundle = args.output / 'third-party'
     shutil.copytree(args.sources, bundle)
     inventory = []
+    pom_index = json.loads(args.poms.read_text(encoding='utf-8'))
     for artifact in json.loads(args.input.read_text(encoding='utf-8')):
         coordinate = artifact['coordinate']
         target = bundle / 'components' / (coordinate.replace(':', '_') + ('_' + artifact['classifier'] if artifact.get('classifier') else ''))
         target.mkdir(parents=True, exist_ok=True)
-        declared, poms = licenses(args.cache, coordinate)
+        declared, poms = licenses(pom_index, coordinate)
         for pom in poms:
             shutil.copy2(pom, target / pom.name)
         source = Path(artifact['file'])

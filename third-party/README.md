@@ -5,6 +5,10 @@ classifier, SHA-256 and POM license declarations, copies POMs and extracts embed
 license/notice/copyright files (including `classes.jar` inside Android AARs).
 It fails when license metadata cannot be established. Application modules and
 build-only tools are not misrepresented as external runtime dependencies.
+Gradle explicitly resolves the exact runtime POMs and any parents needed for
+inherited license declarations. These files are task inputs and are passed to
+the offline generator through a metadata index; notice generation does not scan
+or depend on incidental files in Gradle's cache.
 
 Checked-in upstream texts:
 

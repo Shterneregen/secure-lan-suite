@@ -1207,14 +1207,15 @@ class ComposeDesktopHostAdapter(
 
     private fun <T> runTool(status: String, work: () -> T, complete: (T) -> Unit) {
         if (shuttingDown.get()) return
-        val started = toolOperations.execute(work) { result ->
+        val started = toolOperations.execute(work, onStarted = {
+            stegoState = stegoState.copy(busy = true, statusText = status)
+        }) { result ->
             stegoState = stegoState.copy(busy = false)
             result.onSuccess(complete).onFailure {
                 stegoState = stegoState.copy(statusText = "Tool operation failed: ${DesktopMainViewHelpers.fileTransferErrorMessage(it)}")
             }
         }
-        if (started) stegoState = stegoState.copy(busy = true, statusText = status)
-        else stegoState = stegoState.copy(statusText = "The previous tool operation is finishing. Retry shortly.")
+        if (!started) stegoState = stegoState.copy(statusText = "The previous tool operation is finishing. Retry shortly.")
     }
 
     /** Invalidates results when the temporary tool closes, without discarding its draft. */

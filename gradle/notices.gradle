@@ -1,4 +1,5 @@
 import groovy.json.JsonOutput
+import groovy.xml.XmlSlurper
 import org.gradle.process.ExecOperations
 import javax.inject.Inject
 
@@ -21,8 +22,12 @@ abstract class GenerateThirdPartyNotices extends DefaultTask {
     @PathSensitive(PathSensitivity.RELATIVE)
     abstract DirectoryProperty getNoticeSources()
 
-    @Internal
-    abstract DirectoryProperty getDependencyCache()
+    @Input
+    abstract Property<String> getPomIndexJson()
+
+    @InputFiles
+    @PathSensitive(PathSensitivity.NONE)
+    abstract ConfigurableFileCollection getPomArtifacts()
 
     @Inject
     abstract ExecOperations getExecOperations()
@@ -32,9 +37,11 @@ abstract class GenerateThirdPartyNotices extends DefaultTask {
         def input = new File(temporaryDir, 'inventory.json')
         input.parentFile.mkdirs()
         input.text = inventoryJson.get()
+        def poms = new File(temporaryDir, 'poms.json')
+        poms.text = pomIndexJson.get()
         execOperations.exec {
             commandLine 'python', generatorScript.get().asFile, '--input', input,
-                    '--cache', dependencyCache.get().asFile,
+                    '--poms', poms,
                     '--sources', noticeSources.get().asFile, '--output', noticeDirectory.get().asFile
         }
     }
@@ -52,6 +59,31 @@ def inventory = providers.provider {
         [coordinate: "${id.group}:${id.name}:${id.version}".toString(), file: it.file.absolutePath, classifier: it.classifier]
     })
 }
+
+// Gradle Module Metadata can resolve a runtime variant without downloading its POM.
+// Resolve exact POM artifacts (and license-bearing parents) as declared task inputs.
+def pomIndex = providers.provider {
+    def remaining = configurations.getByName(noticeConfigurationName).resolvedConfiguration.resolvedArtifacts.findAll {
+        it.id.componentIdentifier instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier
+    }.collect { it.moduleVersion.id.toString() }.toSet()
+    def metadata = [:]
+    while (!remaining.isEmpty()) {
+        def pomConfiguration = configurations.detachedConfiguration(*remaining.collect { dependencies.create("${it}@pom") })
+        pomConfiguration.transitive = false
+        remaining = [] as Set
+        pomConfiguration.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+            def coordinate = artifact.moduleVersion.id.toString()
+            metadata[coordinate] = artifact.file.absolutePath
+            def pom = new XmlSlurper(false, false).parse(artifact.file)
+            if (pom.licenses.license.size() == 0 && pom.parent.size() > 0) {
+                def parent = "${pom.parent.groupId.text()}:${pom.parent.artifactId.text()}:${pom.parent.version.text()}".toString()
+                if (!metadata.containsKey(parent)) remaining.add(parent)
+            }
+        }
+        remaining.removeAll(metadata.keySet())
+    }
+    metadata
+}
 def noticeOutput = layout.buildDirectory.dir('generated/third-party')
 ext.thirdPartyNotices = noticeOutput
 
@@ -62,6 +94,7 @@ tasks.register('generateThirdPartyNotices', GenerateThirdPartyNotices) {
     inventoryJson.set(inventory)
     generatorScript.set(rootProject.file('scripts/third_party.py'))
     noticeSources.set(rootProject.file('third-party'))
-    dependencyCache.set(new File(gradle.gradleUserHomeDir, 'caches/modules-2/files-2.1'))
+    pomIndexJson.set(pomIndex.map { JsonOutput.toJson(it) })
+    pomArtifacts.from(pomIndex.map { it.values() })
     noticeDirectory.set(noticeOutput)
 }
