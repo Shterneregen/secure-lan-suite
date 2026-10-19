@@ -105,14 +105,14 @@ jobs:
           python scripts/release.py manifest --directory candidate --commit $env:GITHUB_SHA --version $version --target windows-x86_64+android --toolchain apps/desktop-client/build/reports/release/toolchain.json
           if ($LASTEXITCODE -ne 0) { throw 'Candidate manifest failed.' }
           @{ policy = $env:WINDOWS_SIGNING_POLICY; reason = $env:WINDOWS_UNSIGNED_PILOT_REASON } | ConvertTo-Json | Set-Content -Encoding utf8 candidate/windows-signing.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-candidate
           path: candidate/
           if-no-files-found: error
           retention-days: 30
       - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-reports
           retention-days: 14
