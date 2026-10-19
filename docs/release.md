@@ -67,6 +67,17 @@ After reviewing a dependency change, update Windows inventory and locks:
 .\gradlew.bat qualityGate --no-configuration-cache
 ```
 
+Dependency update PRs, including Dependabot PRs, must include the affected
+files under `gradle/dependency-locks/`. Changing a version in `build.gradle`
+alone leaves the previous locked version enforced and fails dependency
+resolution before tests run. For an Android-only coroutines update, refresh
+its compile/runtime graphs selectively, then verify without lock-writing flags:
+
+```powershell
+.\gradlew.bat :apps:android-client:resolveProjectDependencyInventory --update-locks 'org.jetbrains.kotlinx:kotlinx-coroutines-*' --no-configuration-cache
+.\gradlew.bat qualityGate resolveDependencyInventory --no-configuration-cache
+```
+
 Update each other desktop graph without cross-building:
 
 ```powershell
