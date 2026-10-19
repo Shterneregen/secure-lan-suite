@@ -3,7 +3,7 @@
 # This file is expected to be part of source control.
 dev.onvoid.webrtc:webrtc-java:0.14.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.apiguardian:apiguardian-api:1.1.2=testCompileClasspath
-org.jetbrains.kotlin:kotlin-stdlib:2.4.20=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.jetbrains.kotlin:kotlin-stdlib:2.4.21=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.jetbrains:annotations:13.0=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.junit.jupiter:junit-jupiter-api:5.10.2=testCompileClasspath,testRuntimeClasspath
 org.junit.jupiter:junit-jupiter-engine:5.10.2=testRuntimeClasspath

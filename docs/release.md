@@ -78,6 +78,21 @@ its compile/runtime graphs selectively, then verify without lock-writing flags:
 .\gradlew.bat qualityGate resolveDependencyInventory --no-configuration-cache
 ```
 
+Keep the Kotlin JVM and Compose compiler plugins on the same version;
+Dependabot groups these plugin updates. Kotlin updates also require refreshing
+the Kotlin standard-library locks in every shared and platform-specific graph.
+ZXing is used by both clients, so its updates require Android and all desktop
+locks. For a combined Kotlin/ZXing update, use this selective refresh for Windows
+and each target listed below, then run the quality gate without lock-writing flags:
+
+```powershell
+.\gradlew.bat resolveDependencyInventory --update-locks 'org.jetbrains.kotlin:kotlin-stdlib,org.jetbrains.kotlin:kotlin-stdlib-common,com.google.zxing:core' --no-configuration-cache
+```
+
+AndroidX Core stays at 1.15.0 while the app compiles against Android SDK 35.
+Core 1.19.1 requires compileSdk 37. Dependabot ignores newer Core versions until
+a coordinated SDK, CI and compatibility update removes this restriction.
+
 Update each other desktop graph without cross-building:
 
 ```powershell

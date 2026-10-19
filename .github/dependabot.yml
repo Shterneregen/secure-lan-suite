@@ -9,3 +9,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      kotlin-plugins:
+        patterns:
+          - org.jetbrains.kotlin.jvm
+          - org.jetbrains.kotlin.plugin.compose
+    ignore:
+      # Newer Core versions require a compileSdk upgrade from Android 35.
+      - dependency-name: androidx.core:core-ktx
+        versions: ['>1.15.0']
