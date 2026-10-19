@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.ui.qr
 
 import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
 import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
@@ -13,7 +14,11 @@ class QrCodeRendererTest {
             val image = renderQrCode(content)
             val pixels = IntArray(image.width * image.height)
             image.readPixels(pixels)
-            assertEquals(content, QRCodeReader().decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(image.width, image.height, pixels)))).text)
+            // The source has one pixel per module; the UI interaction test scans its displayed size.
+            assertEquals(content, QRCodeReader().decode(
+                BinaryBitmap(HybridBinarizer(RGBLuminanceSource(image.width, image.height, pixels))),
+                mapOf(DecodeHintType.PURE_BARCODE to true),
+            ).text)
             assertEquals(-1, pixels.first())
         }
     }

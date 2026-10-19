@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.common.net.transport
 
 import java.io.IOException
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 
 /**
@@ -19,11 +20,22 @@ fun interface ServerSocketFactory {
 
     companion object {
         /**
-         * Returns the default system [ServerSocketFactory] using standard Java [ServerSocket].
+         * Returns a system factory allowing a stopped listener to rebind while prior connections
+         * are in TIME_WAIT. Address reuse must be configured before binding.
          *
          * @return a standard [ServerSocketFactory].
          */
         @JvmStatic
-        fun systemDefault(): ServerSocketFactory = ServerSocketFactory { port -> ServerSocket(port) }
+        fun systemDefault(): ServerSocketFactory = ServerSocketFactory { port ->
+            val socket = ServerSocket()
+            try {
+                socket.reuseAddress = true
+                socket.bind(InetSocketAddress(port))
+                socket
+            } catch (error: Throwable) {
+                SocketClose.closeQuietly(socket)
+                throw error
+            }
+        }
     }
 }

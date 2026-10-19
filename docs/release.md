@@ -36,6 +36,9 @@ Wrapper/plugin versions remain in their owning configuration files.
 records the actual JDK vendors/runtime versions, OS/architecture, Gradle,
 Kotlin, AGP, Compose, SDK selection and WiX/extensions. The signing job sets
 `SECURELAN_VERIFY_RELEASE_TOOLCHAIN=true` to reject a different JDK/WiX baseline.
+Portable checks do not require WiX; on Windows a manifest records `wix: null`
+and an empty extension list when WiX is absent. Release verification still
+requires the pinned WiX toolset and extensions.
 Update pinned tools deliberately after security review and repeat qualification.
 The local JDK can differ; a local manifest must not be presented as evidence
 that the hosted baseline ran successfully.

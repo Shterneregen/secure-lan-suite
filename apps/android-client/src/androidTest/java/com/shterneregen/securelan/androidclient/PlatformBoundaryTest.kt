@@ -2,8 +2,10 @@ package com.shterneregen.securelan.androidclient
 
 import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import androidx.core.content.edit
 import androidx.test.core.app.ActivityScenario
@@ -28,7 +30,7 @@ class PlatformBoundaryTest {
     @Test
     fun interruptedReceiveIsRemovedByTheRealDownloadsProvider() = runBlocking {
         if (Build.VERSION.SDK_INT <= 28) {
-            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            grantPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         val journal = context.getSharedPreferences("pending_received_files", Context.MODE_PRIVATE)
         val uri = if (Build.VERSION.SDK_INT >= 29) {
@@ -69,10 +71,23 @@ class PlatformBoundaryTest {
         // Orchestrator clears package data and permission state between tests.
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED, it.checkSelfPermission(Manifest.permission.CAMERA)) }
-            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.CAMERA)
+            grantPermission(Manifest.permission.CAMERA)
             scenario.recreate()
             scenario.onActivity { assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED, it.checkSelfPermission(Manifest.permission.CAMERA)) }
         }
+    }
+
+    private fun grantPermission(permission: String) {
+        if (Build.VERSION.SDK_INT >= 28) {
+            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission)
+        } else {
+            // UiAutomation.grantRuntimePermission is unavailable on Android 8/8.1.
+            val command = "pm grant ${context.packageName} $permission"
+            ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { stream ->
+                assertEquals("", stream.bufferedReader().readText().trim())
+            }
+        }
+        assertEquals(PackageManager.PERMISSION_GRANTED, context.checkSelfPermission(permission))
     }
 
     @Test
