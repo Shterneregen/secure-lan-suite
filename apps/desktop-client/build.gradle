@@ -64,7 +64,7 @@ dependencies {
     implementation project(':modules:webrtc-core')
     implementation project(':modules:stego-core')
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
-    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.zxing:core:3.5.4'
     implementation 'org.jmdns:jmdns:3.6.4'
     implementation 'com.formdev:flatlaf:3.7.1'
     def target = rootProject.ext.desktopPlatform
