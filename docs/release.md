@@ -27,8 +27,12 @@ files cannot establish or prove them. No workflow uses `pull_request_target`.
 ## Toolchain baseline
 
 The workflow pins Temurin 17.0.20.1+1 and 25.0.4.1+1, Android Platform 35 and
-Build Tools 36.0.0, and Windows WiX/UI/Util extensions 5.0.2. Wrapper/plugin
-versions remain in their owning configuration files. `writeToolchainManifest`
+Build Tools 36.0.0, and Windows WiX/UI/Util extensions 5.0.2. For `setup-java`,
+the Temurin versions use Adoptium's SemVer identifiers `17.0.20+101` and
+`25.0.4+101.0.LTS`, respectively. The four-component runtime versions are not
+valid `java-version` inputs; keep them in the release runtime verification.
+Wrapper/plugin versions remain in their owning configuration files.
+`writeToolchainManifest`
 records the actual JDK vendors/runtime versions, OS/architecture, Gradle,
 Kotlin, AGP, Compose, SDK selection and WiX/extensions. The signing job sets
 `SECURELAN_VERIFY_RELEASE_TOOLCHAIN=true` to reject a different JDK/WiX baseline.
