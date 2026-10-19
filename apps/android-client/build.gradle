@@ -173,7 +173,7 @@ dependencies {
     androidTestImplementation 'androidx.test:rules:1.6.1'
     androidTestUtil 'androidx.test:orchestrator:1.5.1'
     constraints {
-        androidTestImplementation('com.google.guava:guava:33.4.8-android') {
+        androidTestImplementation('com.google.guava:guava:33.7.2-android') {
             because 'Keep device-test tooling off vulnerable Guava temporary-directory implementations.'
         }
     }
