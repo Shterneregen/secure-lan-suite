@@ -74,7 +74,7 @@ dependencies {
     testImplementation compose.desktop.uiTestJUnit4
     testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.10.2'
     constraints {
-        testImplementation('com.google.guava:guava:33.4.8-android') {
+        testImplementation('com.google.guava:guava:33.7.2-android') {
             because 'Compose test tooling brings an older Guava with insecure temporary-directory handling.'
         }
     }
