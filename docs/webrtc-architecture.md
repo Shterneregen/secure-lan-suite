@@ -175,14 +175,26 @@ deadline; late results are discarded and shutdown does not wait on JNI. Preview
 rotation/raster conversion runs outside composition and uses raw BGRA raster copies
 instead of PNG compression/decompression.
 
-Peer close invalidates the same acquisition gate used by remote track/channel
-callbacks. Observers and sinks detach before PeerConnection.close; owned local audio
-tracks and data channels release their JNI references afterwards. Remote tracks are
-borrowed and are not disposed by the application. Failed factory/peer construction
-rolls back already acquired resources. SDP-ready publication and pending ICE enqueue/
-drain share one monitor, including the existing 256-candidate limit.
+Peer operations and native signaling observers run on one engine worker. Observers
+enqueue their work and return immediately: JNI can wait for its signaling thread,
+so holding a Java monitor across SDP/ICE calls can deadlock remote-track delivery
+and prevent queued camera cleanup. Application calls wait for the engine worker
+off the UI thread. Media frames keep their existing delivery path.
+
+Peer close invalidates queued callbacks before detaching observers and sinks.
+Local senders detach before PeerConnection.close; owned tracks and data channels
+then release their JNI references. Pending channel handoffs are also released.
+Remote tracks are borrowed and are not disposed by the application. Failed
+factory/peer construction rolls back acquired resources. SDP readiness and pending
+ICE enqueue/drain share the worker, including the existing 256-candidate limit.
 
 Local HANGUP publishes closing/closed state and schedules native cleanup immediately;
 signaling uses a separate bounded serial outbox and never holds the service monitor
 while writing to chat. Hardware timing and native memory behavior still require the
 physical-device checks described above.
+
+The `:modules:webrtc-core:nativeVideoSmoke` task checks real JNI negotiation,
+synthetic remote video, outgoing data and teardown in a separate process with a
+deadline. `-PrtcSmokeCamera=true` also exercises two outgoing video calls with the
+local camera to check remote/local frames and reopening after cleanup. It does
+not replace desktop/Android testing on two physical devices.

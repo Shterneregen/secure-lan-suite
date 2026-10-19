@@ -28,3 +28,14 @@ tasks.register('verifyNativePlatform') {
 tasks.withType(Test).configureEach {
     dependsOn tasks.named('verifyNativePlatform')
 }
+
+// Separate process: a JNI deadlock must not hang the unit-test worker.
+tasks.register('nativeVideoSmoke', JavaExec) {
+    group = 'verification'
+    description = 'Checks native video negotiation, remote frames and teardown without a camera.'
+    dependsOn tasks.named('testClasses'), tasks.named('verifyNativePlatform')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.shterneregen.securelan.webrtc.runtime.NativeVideoSmoke'
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    args providers.gradleProperty('rtcSmokeCamera').getOrElse('false')
+}

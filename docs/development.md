@@ -46,6 +46,13 @@ Use `test` for a fast repository verification and `build` when assembled outputs
 also matter. `:apps:desktop-client:runComposeShell` remains a compatibility
 alias for the primary desktop run task.
 
+For native RTC negotiation and cleanup regressions, run
+`.\gradlew.bat :modules:webrtc-core:nativeVideoSmoke`. This uses synthetic video
+without opening the camera or microphone. Add `-PrtcSmokeCamera=true` to also
+check outgoing video and camera reopening across two calls. The probe runs in a
+separate JVM with a 45-second deadline and requires the platform's native WebRTC
+runtime. It does not establish Android interoperability.
+
 Use `qualityGate` for the secret-free PR/release baseline: shared JVM tests,
 desktop tests including real Compose interactions, Kotlin lint, Android JVM/lint,
 debug APK and instrumentation APK assembly. Device tests run separately on

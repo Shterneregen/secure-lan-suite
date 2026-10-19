@@ -45,6 +45,9 @@ connection loss closes the session after roughly 30?40 seconds and can be retrie
 manually. Older V2 peers remain compatible without the bounded idle-health guarantee.
 Desktop media selections apply before the next outgoing or accepted incoming call;
 changing a selection preserves the active call.
+Desktop WebRTC negotiation, track callbacks and cleanup share a serial worker to
+avoid blocking remote video and camera release. A native regression probe is
+documented in the [development guide](docs/development.md).
 
 ## Tech stack
 

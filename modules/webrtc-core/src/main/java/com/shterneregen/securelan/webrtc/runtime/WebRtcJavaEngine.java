@@ -79,6 +79,8 @@ public final class WebRtcJavaEngine implements RtcEngine {
     private final AudioDeviceModule audioDeviceModule;
     private final PeerConnectionFactory factory;
     private final ConcurrentMap<String, PeerSession> sessions = new ConcurrentHashMap<>();
+    private final NativeRtcExecutor worker = new NativeRtcExecutor();
+    private boolean disposed;
     private final RtcRuntimeStatus status;
     private final String preferredAudioCaptureDeviceId;
     private final String preferredVideoCaptureDeviceId;
@@ -142,6 +144,12 @@ public final class WebRtcJavaEngine implements RtcEngine {
             @NotNull Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             @NotNull Consumer<RtcEvent> eventConsumer
     ) {
+        if (!worker.isOwner()) {
+            worker.invoke(() -> startSession(sessionId, localPeer, remotePeer, mode, dataChannelLabel,
+                    audioCaptureDeviceId, videoCaptureDeviceId, outboundSignalConsumer, eventConsumer));
+            return;
+        }
+        if (disposed) return;
         Objects.requireNonNull(outboundSignalConsumer, "outboundSignalConsumer must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
         PeerSession session = createSession(sessionId, localPeer, remotePeer, mode, dataChannelLabel, audioCaptureDeviceId, videoCaptureDeviceId, outboundSignalConsumer, eventConsumer);
@@ -154,6 +162,11 @@ public final class WebRtcJavaEngine implements RtcEngine {
             @NotNull Consumer<RtcSignalEnvelope> outboundSignalConsumer,
             @NotNull Consumer<RtcEvent> eventConsumer
     ) {
+        if (!worker.isOwner()) {
+            worker.invoke(() -> handleRemoteSignal(signal, outboundSignalConsumer, eventConsumer));
+            return;
+        }
+        if (disposed) return;
         Objects.requireNonNull(signal, "signal must not be null");
         Objects.requireNonNull(outboundSignalConsumer, "outboundSignalConsumer must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
@@ -191,6 +204,11 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
     @Override
     public void sendData(String sessionId, String payload, @NotNull Consumer<RtcEvent> eventConsumer) {
+        if (!worker.isOwner()) {
+            worker.invoke(() -> sendData(sessionId, payload, eventConsumer));
+            return;
+        }
+        if (disposed) return;
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
         PeerSession session = sessions.get(sessionId);
         if (session == null) {
@@ -202,6 +220,11 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
     @Override
     public void closeSession(String sessionId, @NotNull Consumer<RtcEvent> eventConsumer) {
+        if (!worker.isOwner()) {
+            worker.invoke(() -> closeSession(sessionId, eventConsumer));
+            return;
+        }
+        if (disposed) return;
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
         PeerSession session = sessions.remove(sessionId);
         if (session == null) {
@@ -212,6 +235,12 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
     @Override
     public void close() {
+        worker.close(this::dispose);
+    }
+
+    private void dispose() {
+        if (disposed) return;
+        disposed = true;
         List<PeerSession> snapshots = new ArrayList<>(sessions.values());
         sessions.clear();
         for (PeerSession session : snapshots) {
@@ -508,6 +537,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
         private final AtomicBoolean closed = new AtomicBoolean(false);
         private final AtomicBoolean remoteDescriptionReady = new AtomicBoolean(false);
         private final Queue<RtcSignalEnvelope> pendingRemoteIceCandidates = new java.util.concurrent.ArrayBlockingQueue<>(256);
+        private final Queue<RTCDataChannel> pendingDataChannels = new ConcurrentLinkedQueue<>();
         private final String streamId;
 
         private AutoCloseable captureLease;
@@ -562,24 +592,26 @@ public final class WebRtcJavaEngine implements RtcEngine {
             }
         }
 
-        private synchronized void createOffer() {
+        private void createOffer() {
             if (closed.get()) return;
             publishState(RtcSessionState.NEGOTIATING, "Creating local offer");
             peerConnection.createOffer(new RTCOfferOptions(), new CreateSessionDescriptionObserver() {
                 @Override
                 public void onSuccess(RTCSessionDescription description) {
-                    setLocalDescription(description, RtcSignalType.OFFER);
+                    dispatch(() -> setLocalDescription(description, RtcSignalType.OFFER));
                 }
 
                 @Override
                 public void onFailure(String error) {
-                    consoleError("Failed to create local offer: " + error);
-                    fail("Failed to create local offer: " + error, true);
+                    dispatch(() -> {
+                        consoleError("Failed to create local offer: " + error);
+                        fail("Failed to create local offer: " + error, true);
+                    });
                 }
             });
         }
 
-        private synchronized void applyRemoteOffer(RtcSignalEnvelope signal) {
+        private void applyRemoteOffer(RtcSignalEnvelope signal) {
             if (closed.get()) return;
             diag(eventConsumer, "applying remote offer sdpLength=" + signal.sdp().length() + " from=" + signal.fromPeer());
             publishState(RtcSessionState.CONNECTING, "Applying remote offer");
@@ -587,35 +619,41 @@ public final class WebRtcJavaEngine implements RtcEngine {
             peerConnection.setRemoteDescription(description, new SetSessionDescriptionObserver() {
                 @Override
                 public void onSuccess() {
-                    markRemoteDescriptionReady();
-                    createAnswer();
+                    dispatch(() -> {
+                        markRemoteDescriptionReady();
+                        createAnswer();
+                    });
                 }
 
                 @Override
                 public void onFailure(String error) {
-                    consoleError("Failed to apply remote offer: " + error);
-                    fail("Failed to apply remote offer: " + error, true);
+                    dispatch(() -> {
+                        consoleError("Failed to apply remote offer: " + error);
+                        fail("Failed to apply remote offer: " + error, true);
+                    });
                 }
             });
         }
 
-        private synchronized void createAnswer() {
+        private void createAnswer() {
             if (closed.get()) return;
             peerConnection.createAnswer(new RTCAnswerOptions(), new CreateSessionDescriptionObserver() {
                 @Override
                 public void onSuccess(RTCSessionDescription description) {
-                    setLocalDescription(description, RtcSignalType.ANSWER);
+                    dispatch(() -> setLocalDescription(description, RtcSignalType.ANSWER));
                 }
 
                 @Override
                 public void onFailure(String error) {
-                    consoleError("Failed to create answer: " + error);
-                    fail("Failed to create answer: " + error, true);
+                    dispatch(() -> {
+                        consoleError("Failed to create answer: " + error);
+                        fail("Failed to create answer: " + error, true);
+                    });
                 }
             });
         }
 
-        private synchronized void applyRemoteAnswer(RtcSignalEnvelope signal) {
+        private void applyRemoteAnswer(RtcSignalEnvelope signal) {
             if (closed.get()) return;
             diag(eventConsumer, "applying remote answer sdpLength=" + signal.sdp().length() + " from=" + signal.fromPeer());
             publishState(RtcSessionState.CONNECTING, "Applying remote answer");
@@ -623,25 +661,29 @@ public final class WebRtcJavaEngine implements RtcEngine {
             peerConnection.setRemoteDescription(description, new SetSessionDescriptionObserver() {
                 @Override
                 public void onSuccess() {
-                    markRemoteDescriptionReady();
-                    publishState(RtcSessionState.CONNECTING, "Remote answer applied");
+                    dispatch(() -> {
+                        markRemoteDescriptionReady();
+                        publishState(RtcSessionState.CONNECTING, "Remote answer applied");
+                    });
                 }
 
                 @Override
                 public void onFailure(String error) {
-                    consoleError("Failed to apply remote answer: " + error);
-                    fail("Failed to apply remote answer: " + error, true);
+                    dispatch(() -> {
+                        consoleError("Failed to apply remote answer: " + error);
+                        fail("Failed to apply remote answer: " + error, true);
+                    });
                 }
             });
         }
 
-        private synchronized void markRemoteDescriptionReady() {
+        private void markRemoteDescriptionReady() {
             if (closed.get()) return;
             remoteDescriptionReady.set(true);
             flushPendingRemoteIceCandidates();
         }
 
-        private synchronized void applyRemoteIceCandidate(RtcSignalEnvelope signal) {
+        private void applyRemoteIceCandidate(RtcSignalEnvelope signal) {
             if (closed.get()) return;
             if (!remoteDescriptionReady.get()) {
                 if (!pendingRemoteIceCandidates.offer(signal)) {
@@ -672,7 +714,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
             }
         }
 
-        private synchronized void sendData(String payload) {
+        private void sendData(String payload) {
             if (closed.get()) return;
             if (dataChannel == null) {
                 warn(eventConsumer, "RTCDataChannel is not ready yet for session " + sessionId);
@@ -695,17 +737,13 @@ public final class WebRtcJavaEngine implements RtcEngine {
         }
 
         private void close(String message, boolean emitState) {
-            // Same acquisition gate as onTrack/onDataChannel/ICE. Native close runs outside it.
-            synchronized (this) {
-                if (!closed.compareAndSet(false, true)) return;
-                pendingRemoteIceCandidates.clear();
-            }
+            if (!closed.compareAndSet(false, true)) return;
+            pendingRemoteIceCandidates.clear();
             if (emitState) {
                 try { publishState(RtcSessionState.CLOSED, message); }
                 catch (Throwable error) { consoleError("Closed-state publication failed", error); }
             }
-            // No acquisition can pass the closed gate now. Do not hold its monitor across
-            // native teardown, which can wait for an observer already entering that gate.
+            // All acquisition runs on the worker. Observers only enqueue and cannot block JNI.
             if (dataChannel != null) {
                 try { dataChannel.unregisterObserver(); } catch (Throwable error) { consoleError("Channel observer detach failed", error); }
                 try { dataChannel.close(); } catch (Throwable error) { consoleError("Channel close failed", error); }
@@ -715,11 +753,23 @@ public final class WebRtcJavaEngine implements RtcEngine {
             remoteVideoSink = null;
             localVideoSink = null;
             detachAudioSinks();
+            // Senders retain local tracks even after PeerConnection.close in webrtc-java.
+            // Release those references before disposing the owned capture tracks.
+            try {
+                for (var sender : peerConnection.getSenders()) {
+                    try { peerConnection.removeTrack(sender); }
+                    catch (Throwable error) { consoleError("Local track detach failed", error); }
+                }
+            } catch (Throwable error) { consoleError("Local sender enumeration failed", error); }
             try { peerConnection.close(); }
             catch (Throwable error) { consoleError("Peer connection close failed", error); }
             finally {
-                try { disposeDataChannel(); }
-                finally { try { disposeVideo(); } finally { disposeAudio(); } }
+                // close() has joined native observers, including any channel handoff during close.
+                try { drainDataChannels(); }
+                finally {
+                    try { disposeDataChannel(); }
+                    finally { try { disposeVideo(); } finally { disposeAudio(); } }
+                }
             }
         }
 
@@ -815,7 +865,7 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         private void registerDataChannel(RTCDataChannel channel) {
             this.dataChannel = channel;
-            channel.registerObserver(new RTCDataChannelObserver() {
+            RTCDataChannelObserver observer = new RTCDataChannelObserver() {
                 @Override
                 public void onBufferedAmountChange(long previousAmount) {
                     // No-op, but keeping the callback registered gives us future room for file chunking / backpressure.
@@ -823,17 +873,15 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
                 @Override
                 public void onStateChange() {
-                    if (closed.get()) return;
-                    synchronized (PeerSession.this) {
-                    if (closed.get()) return;
-                    RTCDataChannelState state = channel.getState();
-                    switch (state) {
-                        case OPEN -> publishState(RtcSessionState.CONNECTED, "RTCDataChannel is open");
-                        case CLOSING -> publishState(RtcSessionState.CLOSING, "RTCDataChannel is closing");
-                        case CLOSED -> publishState(RtcSessionState.CLOSED, "RTCDataChannel is closed");
-                        case CONNECTING -> publishState(RtcSessionState.CONNECTING, "RTCDataChannel is connecting");
-                    }
-                    }
+                    dispatch(() -> {
+                        RTCDataChannelState state = channel.getState();
+                        switch (state) {
+                            case OPEN -> publishState(RtcSessionState.CONNECTED, "RTCDataChannel is open");
+                            case CLOSING -> publishState(RtcSessionState.CLOSING, "RTCDataChannel is closing");
+                            case CLOSED -> publishState(RtcSessionState.CLOSED, "RTCDataChannel is closed");
+                            case CONNECTING -> publishState(RtcSessionState.CONNECTING, "RTCDataChannel is connecting");
+                        }
+                    });
                 }
 
                 @Override
@@ -847,56 +895,63 @@ public final class WebRtcJavaEngine implements RtcEngine {
                         eventConsumer.accept(new RtcDataMessageEvent(sessionId, remotePeer, false, new String(data, StandardCharsets.UTF_8)));
                     }
                 }
-            });
+            };
+            channel.registerObserver(observer);
+            // An inbound channel can open before its queued handoff reaches this worker.
+            observer.onStateChange();
         }
 
-        private synchronized void setLocalDescription(RTCSessionDescription description, RtcSignalType signalType) {
+        private void setLocalDescription(RTCSessionDescription description, RtcSignalType signalType) {
             if (closed.get()) return;
             peerConnection.setLocalDescription(description, new SetSessionDescriptionObserver() {
                 @Override
                 public void onSuccess() {
-                    diag(eventConsumer, "set local description success type=" + signalType + " sdpLength=" + (description.sdp == null ? 0 : description.sdp.length()));
-                    if (signalType == RtcSignalType.OFFER) {
-                        publishState(RtcSessionState.NEGOTIATING, "Local offer created");
-                        safeSendSignal(new RtcSignalEnvelope(
-                                sessionId,
-                                localPeer,
-                                remotePeer,
-                                RtcSignalType.OFFER,
-                                mode,
-                                dataChannelLabel,
-                                mode.audioEnabled(),
-                                mode.videoEnabled(),
-                                description.sdp,
-                                "",
-                                "",
-                                -1,
-                                ""
-                        ));
-                    } else {
-                        publishState(RtcSessionState.CONNECTING, "Local answer created");
-                        safeSendSignal(new RtcSignalEnvelope(
-                                sessionId,
-                                localPeer,
-                                remotePeer,
-                                RtcSignalType.ANSWER,
-                                mode,
-                                dataChannelLabel,
-                                mode.audioEnabled(),
-                                mode.videoEnabled(),
-                                description.sdp,
-                                "",
-                                "",
-                                -1,
-                                ""
-                        ));
-                    }
+                    dispatch(() -> {
+                        diag(eventConsumer, "set local description success type=" + signalType + " sdpLength=" + (description.sdp == null ? 0 : description.sdp.length()));
+                        if (signalType == RtcSignalType.OFFER) {
+                            publishState(RtcSessionState.NEGOTIATING, "Local offer created");
+                            safeSendSignal(new RtcSignalEnvelope(
+                                    sessionId,
+                                    localPeer,
+                                    remotePeer,
+                                    RtcSignalType.OFFER,
+                                    mode,
+                                    dataChannelLabel,
+                                    mode.audioEnabled(),
+                                    mode.videoEnabled(),
+                                    description.sdp,
+                                    "",
+                                    "",
+                                    -1,
+                                    ""
+                            ));
+                        } else {
+                            publishState(RtcSessionState.CONNECTING, "Local answer created");
+                            safeSendSignal(new RtcSignalEnvelope(
+                                    sessionId,
+                                    localPeer,
+                                    remotePeer,
+                                    RtcSignalType.ANSWER,
+                                    mode,
+                                    dataChannelLabel,
+                                    mode.audioEnabled(),
+                                    mode.videoEnabled(),
+                                    description.sdp,
+                                    "",
+                                    "",
+                                    -1,
+                                    ""
+                            ));
+                        }
+                    });
                 }
 
                 @Override
                 public void onFailure(String error) {
-                    consoleError("Failed to set local description: " + error);
-                    fail("Failed to set local description: " + error, true);
+                    dispatch(() -> {
+                        consoleError("Failed to set local description: " + error);
+                        fail("Failed to set local description: " + error, true);
+                    });
                 }
             });
         }
@@ -909,6 +964,12 @@ public final class WebRtcJavaEngine implements RtcEngine {
                 warn(eventConsumer, "Failed to publish realtime signaling: " + error.getMessage());
                 consoleError("Failed to publish realtime signaling", error);
             }
+        }
+
+        private void dispatch(Runnable callback) {
+            worker.post(() -> {
+                if (!closed.get()) callback.run();
+            });
         }
 
         private void publishState(RtcSessionState state, String message) {
@@ -1032,120 +1093,149 @@ public final class WebRtcJavaEngine implements RtcEngine {
 
         @Override
         public void onIceCandidate(RTCIceCandidate candidate) {
-            String candidateSdp = candidate.sdp == null ? "" : candidate.sdp;
-            String sdpMid = candidate.sdpMid == null ? "" : candidate.sdpMid;
-            diag(eventConsumer, "emitting local ICE candidate mid=" + sdpMid + " index=" + candidate.sdpMLineIndex + " candidateLength=" + candidateSdp.length());
-            safeSendSignal(RtcSignalEnvelope.iceCandidate(
-                    sessionId,
-                    localPeer,
-                    remotePeer,
-                    mode,
-                    dataChannelLabel,
-                    candidateSdp,
-                    sdpMid,
-                    candidate.sdpMLineIndex
-            ));
+            dispatch(() -> {
+                String candidateSdp = candidate.sdp == null ? "" : candidate.sdp;
+                String sdpMid = candidate.sdpMid == null ? "" : candidate.sdpMid;
+                diag(eventConsumer, "emitting local ICE candidate mid=" + sdpMid + " index=" + candidate.sdpMLineIndex + " candidateLength=" + candidateSdp.length());
+                safeSendSignal(RtcSignalEnvelope.iceCandidate(
+                        sessionId,
+                        localPeer,
+                        remotePeer,
+                        mode,
+                        dataChannelLabel,
+                        candidateSdp,
+                        sdpMid,
+                        candidate.sdpMLineIndex
+                ));
+            });
         }
 
         @Override
         public void onConnectionChange(RTCPeerConnectionState state) {
-            diag(eventConsumer, "peer connection state=" + state + " session=" + sessionId);
-            switch (state) {
-                case CONNECTED -> publishState(RtcSessionState.CONNECTED, "Peer connection established");
-                case CONNECTING, NEW -> publishState(RtcSessionState.CONNECTING, "Peer connection is negotiating");
-                case DISCONNECTED -> publishState(RtcSessionState.CONNECTING, "Peer connection was disconnected");
-                case FAILED -> fail("Peer connection failed", true);
-                case CLOSED -> {
-                    sessions.remove(sessionId, this);
-                    close("Peer connection closed", true);
+            dispatch(() -> {
+                diag(eventConsumer, "peer connection state=" + state + " session=" + sessionId);
+                switch (state) {
+                    case CONNECTED -> publishState(RtcSessionState.CONNECTED, "Peer connection established");
+                    case CONNECTING, NEW -> publishState(RtcSessionState.CONNECTING, "Peer connection is negotiating");
+                    case DISCONNECTED -> publishState(RtcSessionState.CONNECTING, "Peer connection was disconnected");
+                    case FAILED -> fail("Peer connection failed", true);
+                    case CLOSED -> {
+                        sessions.remove(sessionId, this);
+                        close("Peer connection closed", true);
+                    }
                 }
-            }
+            });
         }
 
         @Override
         public void onIceConnectionChange(RTCIceConnectionState state) {
-            diag(eventConsumer, "ice connection state=" + state + " session=" + sessionId);
-            switch (state) {
-                case CONNECTED, COMPLETED -> publishState(RtcSessionState.CONNECTED, "ICE connected");
-                case CHECKING -> publishState(RtcSessionState.CONNECTING, "Checking ICE connectivity");
-                case FAILED -> fail("ICE connectivity failed", true);
-                case CLOSED -> publishState(RtcSessionState.CLOSED, "ICE transport closed");
-                case DISCONNECTED -> publishState(RtcSessionState.CONNECTING, "ICE was disconnected");
-                default -> {
+            dispatch(() -> {
+                diag(eventConsumer, "ice connection state=" + state + " session=" + sessionId);
+                switch (state) {
+                    case CONNECTED, COMPLETED -> publishState(RtcSessionState.CONNECTED, "ICE connected");
+                    case CHECKING -> publishState(RtcSessionState.CONNECTING, "Checking ICE connectivity");
+                    case FAILED -> fail("ICE connectivity failed", true);
+                    case CLOSED -> publishState(RtcSessionState.CLOSED, "ICE transport closed");
+                    case DISCONNECTED -> publishState(RtcSessionState.CONNECTING, "ICE was disconnected");
+                    default -> {
+                    }
                 }
-            }
+            });
         }
 
         @Override
         public void onIceGatheringChange(RTCIceGatheringState state) {
-            if (state == RTCIceGatheringState.GATHERING) {
-                publishState(RtcSessionState.NEGOTIATING, "Gathering ICE candidates");
-            }
+            dispatch(() -> {
+                if (state == RTCIceGatheringState.GATHERING) {
+                    publishState(RtcSessionState.NEGOTIATING, "Gathering ICE candidates");
+                }
+            });
         }
 
         @Override
         public void onSignalingChange(RTCSignalingState state) {
-            if (state == RTCSignalingState.STABLE) {
-                publishState(RtcSessionState.CONNECTING, "Signaling is stable");
-            }
+            dispatch(() -> {
+                if (state == RTCSignalingState.STABLE) {
+                    publishState(RtcSessionState.CONNECTING, "Signaling is stable");
+                }
+            });
         }
 
         @Override
-        public synchronized void onDataChannel(RTCDataChannel channel) {
-            if (closed.get() || !dataChannelLabel.equals(channel.getLabel()) || dataChannel != null) { channel.close(); channel.dispose(); return; }
-            registerDataChannel(channel);
+        public void onDataChannel(RTCDataChannel channel) {
+            pendingDataChannels.add(channel);
+            worker.post(this::drainDataChannels);
+        }
+
+        private void drainDataChannels() {
+            RTCDataChannel channel;
+            while ((channel = pendingDataChannels.poll()) != null) {
+                if (closed.get() || !dataChannelLabel.equals(channel.getLabel()) || dataChannel != null) {
+                    try { channel.close(); } finally { channel.dispose(); }
+                } else {
+                    registerDataChannel(channel);
+                }
+            }
         }
 
         @Override
         public void onRenegotiationNeeded() {
-            if (!closed.get()) {
-                publishState(RtcSessionState.NEGOTIATING, "Renegotiation requested by WebRTC");
-            }
+            dispatch(() -> {
+                if (!closed.get()) {
+                    publishState(RtcSessionState.NEGOTIATING, "Renegotiation requested by WebRTC");
+                }
+            });
         }
 
         @Override
         public void onAddTrack(RTCRtpReceiver receiver, MediaStream[] mediaStreams) {
-            MediaStreamTrack track = receiver.getTrack();
-            if (track != null) {
-                publishState(RtcSessionState.CONNECTING, "Remote track added: " + track.getKind());
-            }
+            dispatch(() -> {
+                MediaStreamTrack track = receiver.getTrack();
+                if (track != null) {
+                    publishState(RtcSessionState.CONNECTING, "Remote track added: " + track.getKind());
+                }
+            });
         }
 
         @Override
         public void onRemoveTrack(RTCRtpReceiver receiver) {
-            MediaStreamTrack track = receiver.getTrack();
-            if (track != null) {
-                publishState(RtcSessionState.CONNECTING, "Remote track removed: " + track.getKind());
-            }
+            dispatch(() -> {
+                MediaStreamTrack track = receiver.getTrack();
+                if (track != null) {
+                    publishState(RtcSessionState.CONNECTING, "Remote track removed: " + track.getKind());
+                }
+            });
         }
 
         @Override
-        public synchronized void onTrack(RTCRtpTransceiver transceiver) {
-            if (closed.get()) return;
-            MediaStreamTrack track = transceiver.getReceiver().getTrack();
-            if (track == null) {
-                diag(eventConsumer, "received transceiver without track for session=" + sessionId);
-                return;
-            }
-
-            diag(eventConsumer, "onTrack kind=" + track.getKind() + " class=" + track.getClass().getSimpleName() + " peer=" + remotePeer);
-
-            if (MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind()) && track instanceof VideoTrack remoteTrack) {
-                attachRemoteVideoTrack(remoteTrack);
-            } else if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind()) && track instanceof AudioTrack remoteTrack) {
-                remoteAudioTrack = remoteTrack;
-                if (playoutLease == null) playoutLease = acquireAudioDevice(playout, audioPlayoutAvailable, eventConsumer);
-                if (playoutLease != null) {
-                    remoteAudioSink = new LevelAudioSink(sessionId, remotePeer, mode, false, eventConsumer);
-                    remoteTrack.addSink(remoteAudioSink);
-                    publishState(RtcSessionState.CONNECTING, "Remote audio track attached");
-                    diag(eventConsumer, "remote audio sink attached for session=" + sessionId + " peer=" + remotePeer);
-                } else {
-                    remoteAudioSink = null;
-                    publishState(RtcSessionState.CONNECTING, "Remote audio track attached, but local speaker output is unavailable");
-                    diag(eventConsumer, "remote audio sink skipped because audio playout is unavailable for session=" + sessionId + " peer=" + remotePeer);
+        public void onTrack(RTCRtpTransceiver transceiver) {
+            dispatch(() -> {
+                if (closed.get()) return;
+                MediaStreamTrack track = transceiver.getReceiver().getTrack();
+                if (track == null) {
+                    diag(eventConsumer, "received transceiver without track for session=" + sessionId);
+                    return;
                 }
-            }
+
+                diag(eventConsumer, "onTrack kind=" + track.getKind() + " class=" + track.getClass().getSimpleName() + " peer=" + remotePeer);
+
+                if (MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind()) && track instanceof VideoTrack remoteTrack) {
+                    attachRemoteVideoTrack(remoteTrack);
+                } else if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind()) && track instanceof AudioTrack remoteTrack) {
+                    remoteAudioTrack = remoteTrack;
+                    if (playoutLease == null) playoutLease = acquireAudioDevice(playout, audioPlayoutAvailable, eventConsumer);
+                    if (playoutLease != null) {
+                        remoteAudioSink = new LevelAudioSink(sessionId, remotePeer, mode, false, eventConsumer);
+                        remoteTrack.addSink(remoteAudioSink);
+                        publishState(RtcSessionState.CONNECTING, "Remote audio track attached");
+                        diag(eventConsumer, "remote audio sink attached for session=" + sessionId + " peer=" + remotePeer);
+                    } else {
+                        remoteAudioSink = null;
+                        publishState(RtcSessionState.CONNECTING, "Remote audio track attached, but local speaker output is unavailable");
+                        diag(eventConsumer, "remote audio sink skipped because audio playout is unavailable for session=" + sessionId + " peer=" + remotePeer);
+                    }
+                }
+            });
         }
     }
 }
