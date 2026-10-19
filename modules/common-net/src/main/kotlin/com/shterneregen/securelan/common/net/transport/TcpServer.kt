@@ -37,8 +37,7 @@ class TcpServer(
     @Volatile
     private var clientExecutor: ExecutorService? = null
 
-    @Volatile
-    private var acceptThread: Thread? = null
+    private var acceptGate: Any? = null
 
     /**
      * Creates a new [TcpServer] using the default system [ServerSocketFactory].
@@ -84,8 +83,10 @@ class TcpServer(
                 clientExecutor = createdExecutor
                 val activeSocket = createdSocket
                 val activeExecutor = createdExecutor
-                acceptThread = Thread(
-                    { acceptLoop(activeSocket, activeExecutor, socketHandler, errorHandler) },
+                val gate = Any()
+                acceptGate = gate
+                Thread(
+                    { acceptLoop(activeSocket, activeExecutor, gate, socketHandler, errorHandler) },
                     "$threadNamePrefix-accept",
                 ).apply {
                     isDaemon = true
@@ -115,17 +116,23 @@ class TcpServer(
     fun port(): Int = localPort()
 
     /**
-     * Stops the server, closes the listening server socket, and shuts down the client worker thread pool.
+     * Stops the server and waits for the accept operation to release the listening socket before
+     * returning, so the caller can immediately rebind its port. Client workers are interrupted.
      */
     override fun close() {
-        synchronized(lifecycleLock) {
+        val gate = synchronized(lifecycleLock) {
+            val gate = acceptGate
             generation++
             running.set(false)
             stop(serverSocket, clientExecutor)
             serverSocket = null
             clientExecutor = null
-            acceptThread = null
+            acceptGate = null
+            gate
         }
+        // A JDK socket close can defer releasing its descriptor until accept() aborts.
+        // Wait only for that operation, outside the lifecycle lock and application callbacks.
+        if (gate != null) synchronized(gate) { }
     }
 
     private fun rollback(token: Long, socket: ServerSocket?, executor: ExecutorService?) {
@@ -136,7 +143,7 @@ class TcpServer(
                 running.set(false)
                 serverSocket = null
                 clientExecutor = null
-                acceptThread = null
+                acceptGate = null
             }
         }
     }
@@ -144,12 +151,16 @@ class TcpServer(
     private fun acceptLoop(
         activeSocket: ServerSocket,
         activeExecutor: ExecutorService,
+        gate: Any,
         socketHandler: SocketHandler,
         errorHandler: ErrorHandler,
     ) {
         while (isActive(activeSocket, activeExecutor)) {
             try {
-                val socket = activeSocket.accept()
+                val socket = synchronized(gate) {
+                    if (!isActive(activeSocket, activeExecutor)) return
+                    activeSocket.accept()
+                }
                 activeSockets.add(socket)
                 if (!isActive(activeSocket, activeExecutor)) {
                     activeSockets.remove(socket)

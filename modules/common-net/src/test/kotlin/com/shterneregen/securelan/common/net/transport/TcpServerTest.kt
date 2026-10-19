@@ -11,6 +11,67 @@ import java.util.concurrent.TimeUnit
 
 class TcpServerTest {
     @Test
+    fun closeWaitsForTheAcceptOperationToExit() {
+        val accepting = CountDownLatch(1)
+        val cancelled = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val listener = object : java.net.ServerSocket(0) {
+            override fun accept(): Socket {
+                accepting.countDown()
+                try {
+                    return super.accept()
+                } finally {
+                    cancelled.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+            }
+        }
+        val server = TcpServer("close-waits-for-accept", ServerSocketFactory { listener })
+        val closer = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            server.start(0, { it.close() }, { _, _ -> })
+            assertTrue(accepting.await(5, TimeUnit.SECONDS))
+            val closing = closer.submit { server.close() }
+            assertTrue(cancelled.await(5, TimeUnit.SECONDS))
+            assertThrows(java.util.concurrent.TimeoutException::class.java) { closing.get(200, TimeUnit.MILLISECONDS) }
+            release.countDown()
+            closing.get(5, TimeUnit.SECONDS)
+            assertFalse(server.isRunning())
+        } finally { release.countDown(); server.close(); closer.shutdownNow() }
+    }
+
+    @Test
+    fun acceptErrorHandlerCanCloseItsOwnServer() {
+        val closed = CountDownLatch(1)
+        val listener = object : java.net.ServerSocket(0) {
+            override fun accept(): Socket = throw java.io.IOException("injected accept failure")
+        }
+        val server = TcpServer("close-from-accept", ServerSocketFactory { listener })
+        server.use {
+            server.start(0, { it.close() }, { _, _ -> server.close(); closed.countDown() })
+            assertTrue(closed.await(5, TimeUnit.SECONDS))
+            assertFalse(server.isRunning())
+        }
+    }
+
+    @Test
+    fun closeDoesNotWaitForAnAcceptErrorCallback() {
+        val callback = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val listener = object : java.net.ServerSocket(0) {
+            override fun accept(): Socket = throw java.io.IOException("injected accept failure")
+        }
+        val server = TcpServer("close-during-error-callback", ServerSocketFactory { listener })
+        val closer = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            server.start(0, { it.close() }, { _, _ -> callback.countDown(); check(release.await(5, TimeUnit.SECONDS)) })
+            assertTrue(callback.await(5, TimeUnit.SECONDS))
+            closer.submit { server.close() }.get(2, TimeUnit.SECONDS)
+            assertFalse(server.isRunning())
+        } finally { release.countDown(); server.close(); closer.shutdownNow() }
+    }
+
+    @Test
     fun closeDuringAcquisitionRollsBackOnlyTheCancelledRun() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)

@@ -33,8 +33,10 @@ class CompositePeerDiscoveryServiceTest {
         val updates = LinkedBlockingQueue<DiscoverySnapshot>()
         CompositePeerDiscoveryService(listOf(udp, mdns)).use { service ->
             service.startSession(request, listener) { updates += it }
+            // Provider startup can publish an empty snapshot before the first observation.
+            awaitSnapshot(updates) { it.providers.any { state -> state.provider == mdns.id && state.availability == ProviderAvailability.FAILED } }
             udp.emit(DiscoveryEvent.Upsert(observation(udp.id)))
-            val result = updates.poll(2, TimeUnit.SECONDS)!!
+            val result = awaitSnapshot(updates) { it.rooms.isNotEmpty() }
             assertEquals(1, result.rooms.size)
             assertEquals(ProviderAvailability.FAILED, result.providers.single { it.provider == mdns.id }.availability)
             val old = udp.emit
@@ -46,6 +48,17 @@ class CompositePeerDiscoveryServiceTest {
             assertTrue(service.detailedSnapshot().rooms.isEmpty())
         }
         assertTrue(udp.stopped >= 2)
+    }
+
+    private fun awaitSnapshot(updates: LinkedBlockingQueue<DiscoverySnapshot>, matches: (DiscoverySnapshot) -> Boolean): DiscoverySnapshot {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (true) {
+            val remaining = deadline - System.nanoTime()
+            if (remaining <= 0) break
+            val snapshot = updates.poll(remaining, TimeUnit.NANOSECONDS) ?: break
+            if (matches(snapshot)) return snapshot
+        }
+        throw AssertionError("Expected discovery snapshot was not published")
     }
     @Test fun `closing from snapshot callback does not wait on its own executor`() {
         val udp = Provider(DiscoveryProviderId.UDP_BROADCAST)

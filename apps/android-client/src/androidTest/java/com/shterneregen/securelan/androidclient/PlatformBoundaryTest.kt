@@ -30,6 +30,8 @@ class PlatformBoundaryTest {
     @Test
     fun interruptedReceiveIsRemovedByTheRealDownloadsProvider() = runBlocking {
         if (Build.VERSION.SDK_INT <= 28) {
+            // Match GrantPermissionRule: legacy storage mounts need both grants.
+            grantPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
             grantPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         val journal = context.getSharedPreferences("pending_received_files", Context.MODE_PRIVATE)
@@ -41,7 +43,8 @@ class PlatformBoundaryTest {
             })!!.also { target -> journal.edit(commit = true) { putString("uri", target.toString()) } }
         } else null
         val temp = if (uri == null) {
-            val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SecureLan").apply { mkdirs() }
+            val directory = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SecureLan")
+            check(directory.isDirectory || directory.mkdirs()) { "Unable to prepare legacy Downloads directory" }
             File.createTempFile(".securelan-incoming-", ".tmp", directory).also { target ->
                 journal.edit(commit = true) { putString("temp", target.absolutePath) }
             }

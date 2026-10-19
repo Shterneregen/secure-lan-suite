@@ -388,8 +388,10 @@ class ComposeDesktopHostAdapterConnectTest {
             override fun connectedUsers() = 0
         }
         val adapter = connectedAdapter(client, TrackingFileTransferServer(), server = server)
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
-            assertTrue(measureTimeMillis { adapter.openRoom("alice", "password", 5050, 5051, true) } < 500)
+            // The action must return while join is blocked, independent of cold-start speed.
+            caller.submit { adapter.openRoom("alice", "password", 5050, 5051, true) }.get(5, TimeUnit.SECONDS)
             assertTrue(entered.await(2, TimeUnit.SECONDS))
             assertTrue(adapter.statusState.operationInProgress)
             assertFalse(adapter.statusState.canOpenRoom)
@@ -397,7 +399,7 @@ class ComposeDesktopHostAdapterConnectTest {
             release.countDown()
             assertTrue(closed.await(2, TimeUnit.SECONDS))
             assertFalse(running)
-        } finally { release.countDown(); adapter.shutdown() }
+        } finally { release.countDown(); adapter.shutdown(); caller.shutdownNow() }
     }
 
     @Test fun blockedMessageWriteDoesNotBlockUiAndReturnsCorrelatedFailure() {
