@@ -49,6 +49,7 @@ class AndroidLanDeviceDiscovery(
         val limited = AtomicBoolean()
         val denied = AtomicBoolean()
         val registry = LanDeviceRegistry()
+        var networkChanged = false
         try {
             // A timed-out stop acknowledgement must not permit another generation of native handles.
             if (retiring.isNotEmpty()) {
@@ -75,7 +76,9 @@ class AndroidLanDeviceDiscovery(
             withTimeoutOrNull(durationMillis) {
                 while (true) {
                     currentCoroutineContext().ensureActive()
+                    if (denied.get()) return@withTimeoutOrNull
                     if (platform.links().none { it.binding == selected.binding }) {
+                        networkChanged = true
                         registry.resetScope(selected.binding.key)
                         update(registry.snapshot(nanoTime()))
                         return@withTimeoutOrNull
@@ -101,8 +104,16 @@ class AndroidLanDeviceDiscovery(
             }
             currentCoroutineContext().ensureActive()
             // A network can disappear between the final polling tick and the deadline.
-            if (platform.links().none { it.binding == selected.binding }) registry.resetScope(selected.binding.key)
+            if (platform.links().none { it.binding == selected.binding }) {
+                networkChanged = true
+                registry.resetScope(selected.binding.key)
+            }
+            if (limited.get()) registry.markPartial()
             if (denied.get()) LanResult.Failure(LanError.PERMISSION_DENIED)
+            else if (networkChanged) {
+                update(registry.snapshot(nanoTime(), stale = true))
+                LanResult.Failure(LanError.NETWORK_CHANGED)
+            }
             else registry.snapshot(nanoTime(), stale = true).let { update(it); LanResult.Success(it) }
         } catch (cancel: CancellationException) { throw cancel }
         catch (_: SecurityException) { LanResult.Failure(LanError.PERMISSION_DENIED) }

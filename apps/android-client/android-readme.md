@@ -65,6 +65,15 @@ light/dark themes. Physical Wi-Fi switching, OEM permission/multicast behavior,
 WoL equipment and concurrent room/file/media traffic still require device
 qualification; emulator tests do not establish those guarantees.
 
+The [LAN Tools validation matrix](../../docs/quality/lantools-validation.md)
+records automated checks and outstanding device work. A local API 35 integration
+test verifies actual V2 hosting/chat, an encrypted file received into Downloads
+and Quick Share HTTP while the tools are open, then chat after closing them.
+It does not qualify two physical clients or simultaneous media traffic.
+Diagnostics outcomes retain their submitted endpoint/name even if fields change;
+network loss ends browsing with a network-change result, and permission denial
+releases the browser promptly.
+
 ### Voice and video calls
 
 Connect the clients to the same room, then open **Chat → Call** on Android and choose a participant and audio/video mode. The menu uses advertised call capabilities, regardless of platform: audio requires supportsVoice, and video additionally requires supportsVideo. Clients without voice support are excluded. The room can be hosted on Android or desktop. Update the host as well: the updated server delivers RTC signaling only to its recipient and supplies the sender identity from the authenticated session.
@@ -95,7 +104,9 @@ The [realtime architecture](../../docs/webrtc-architecture.md) and this guide de
 
 Exact Android Gradle Plugin and Kotlin versions are defined in `settings.gradle`;
 the Compose BOM is defined in `apps/android-client/build.gradle`. The current
-Android Gradle Plugin is 9.1.1.
+Android Gradle Plugin is pinned to 9.1.0 for IDEs supporting the AGP 9.1 line.
+Before upgrading AGP, check the installed IDE's Android plugin compatibility;
+command-line Gradle build success alone does not establish IDE sync support.
 
 ### When building the whole monorepo
 

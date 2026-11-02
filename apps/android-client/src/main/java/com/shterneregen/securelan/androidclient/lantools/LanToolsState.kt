@@ -15,7 +15,8 @@ enum class LanPhase { IDLE, RUNNING, SUCCESS, FAILURE, CANCELLED }
 
 /** Resource identifiers stay local to the application; shared services return only typed data/errors. */
 data class LanMessage(val resource: Int, val args: List<String> = emptyList())
-data class LanOutcome(val phase: LanPhase = LanPhase.IDLE, val message: LanMessage? = null)
+/** Captured request label remains attached to an outcome even when the form is edited or cancelled. */
+data class LanOutcome(val phase: LanPhase = LanPhase.IDLE, val message: LanMessage? = null, val subject: LanMessage? = null)
 data class LanCheck(val host: String, val port: Int, val binding: String?, val at: Instant, val outcome: LanOutcome)
 data class LanDiagnosticInput(val host: String = "", val port: String = "", val dns: String = "", val timeout: String = "5000",
     val family: AddressFamily = AddressFamily.ALL, val gateway: String? = null, val gatewayPort: String = "", val origin: String? = null)

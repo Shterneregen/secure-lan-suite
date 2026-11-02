@@ -56,6 +56,7 @@ class DesktopLanDeviceDiscovery(
                         if (all.count { it.up && it.multicast && it.address.isIpv4 && it.address.isUnicast && it.kind == com.shterneregen.securelan.common.net.interfaces.NetworkKind.LAN } > selected.size) registry.markPartial()
                         // Same key with changed prefix/source is a new scope incarnation. Old callbacks are ignored.
                         handles.values.toList().filter { it.binding !in selected }.forEach { old ->
+                            registry.markPartial()
                             registry.resetScope(old.binding.key)
                             old.browser.close()
                             handles.remove(old.binding.key)
@@ -107,9 +108,16 @@ class DesktopLanDeviceDiscovery(
             }
             currentCoroutineContext().ensureActive()
             if (everOpened) {
+                // The final deadline can precede the next periodic topology poll.
+                val current = NetworkBindingSelector.select(networks()).distinctBy { it.interfaceKey }.take(4)
+                handles.values.filter { it.binding !in current }.forEach {
+                    registry.markPartial()
+                    registry.resetScope(it.binding.key)
+                }
                 val completed = registry.snapshot(nanoTime(), stale = true)
                 update(completed) // Listening is over even if library cleanup has not finished yet.
-                LanResult.Success(completed)
+                if (handles.values.none { it.binding in current }) LanResult.Failure(LanError.NETWORK_CHANGED)
+                else LanResult.Success(completed)
             } else LanResult.Failure(LanError.NETWORK_UNAVAILABLE)
         } catch (cancel: CancellationException) { throw cancel }
         catch (_: SecurityException) { LanResult.Failure(LanError.PERMISSION_DENIED) }

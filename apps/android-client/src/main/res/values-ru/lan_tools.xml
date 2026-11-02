@@ -59,6 +59,8 @@
     <string name="lan_metadata_unknown">Сведения о шлюзе / DNS недоступны</string>
     <string name="lan_timeout">Таймаут (мс, 1–30000)</string>
     <string name="lan_tcp">TCP-доступность</string>
+    <string name="lan_tcp_subject">Цель TCP: %1$s:%2$s</string>
+    <string name="lan_dns_subject">Запрос DNS: %1$s</string>
     <string name="lan_tcp_host">Имя узла или IP для TCP</string>
     <string name="lan_tcp_port">TCP-порт</string>
     <string name="lan_check_tcp">Проверить TCP</string>

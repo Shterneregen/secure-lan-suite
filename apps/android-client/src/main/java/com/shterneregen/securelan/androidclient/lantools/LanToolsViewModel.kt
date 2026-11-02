@@ -144,14 +144,15 @@ class LanToolsViewModel(private val services: LanToolsServices, private val stor
         val input = captured.input
         val port = input.port.toIntOrNull()?.takeIf { it in 1..65535 } ?: return invalid(LanOperation.TCP, R.string.lan_invalid_port)
         val timeout = timeout(LanOperation.TCP) ?: return
-        run(LanOperation.TCP, timeout, input.origin, input.host.trim(), port, captured.binding) {
+        run(LanOperation.TCP, timeout, input.origin, input.host.trim(), port, captured.binding,
+            LanMessage(R.string.lan_tcp_subject, listOf(input.host.trim(), port.toString()))) {
             tcpMessage(services.diagnostics.tcp(TcpCheckRequest(input.host.trim(), port, captured.binding, timeout)))
         }
     }
     fun dns() {
         val input = state.value.input
         val timeout = timeout(LanOperation.DNS) ?: return
-        run(LanOperation.DNS, timeout) { when (val value = services.diagnostics.lookup(DnsLookupRequest(input.dns.trim(), input.family, timeout))) {
+        run(LanOperation.DNS, timeout, subject = LanMessage(R.string.lan_dns_subject, listOf(input.dns.trim()))) { when (val value = services.diagnostics.lookup(DnsLookupRequest(input.dns.trim(), input.family, timeout))) {
             is LanResult.Failure -> failure(value)
             is LanResult.Success -> LanMessage(if (value.value.numericInput) R.string.lan_dns_numeric else R.string.lan_dns_result,
                 listOf(value.value.host, value.value.addresses.joinToString { it.value }, milliseconds(value.value.lookupNanos)))
@@ -163,7 +164,7 @@ class LanToolsViewModel(private val services: LanToolsServices, private val stor
         val target = captured.input.gateway?.takeIf { key -> source.gateways.any { it.value == key } } ?: return invalid(LanOperation.GATEWAY, R.string.lan_select_gateway)
         val port = captured.input.gatewayPort.toIntOrNull()?.takeIf { it in 1..65535 } ?: return invalid(LanOperation.GATEWAY, R.string.lan_invalid_port)
         val timeout = timeout(LanOperation.GATEWAY) ?: return
-        run(LanOperation.GATEWAY, timeout) {
+        run(LanOperation.GATEWAY, timeout, subject = LanMessage(R.string.lan_tcp_subject, listOf(target, port.toString()))) {
             when (val fresh = services.network.snapshot()) {
                 is LanResult.Failure -> failure(fresh)
                 is LanResult.Success -> {
@@ -184,11 +185,11 @@ class LanToolsViewModel(private val services: LanToolsServices, private val stor
     private fun failure(value: LanResult.Failure): Nothing = throw LanCheckFailure(value.code)
 
     /** Network jobs are bounded, per-kind and invalidated before cancellation; no queued health scans. */
-    private fun run(kind: LanOperation, timeout: Long, origin: String? = null, host: String = "", port: Int = 0, binding: String? = null, block: suspend () -> LanMessage) {
+    private fun run(kind: LanOperation, timeout: Long, origin: String? = null, host: String = "", port: Int = 0, binding: String? = null, subject: LanMessage? = null, block: suspend () -> LanMessage) {
         if (!state.value.active || state.value.outcome(kind).phase == LanPhase.RUNNING) return
         val token = (generations[kind] ?: 0) + 1
         generations[kind] = token
-        result(kind, LanOutcome(LanPhase.RUNNING, LanMessage(R.string.lan_running)))
+        result(kind, LanOutcome(LanPhase.RUNNING, LanMessage(R.string.lan_running), subject))
         jobs[kind] = scope.launch {
             val outcome = try {
                 val message = withTimeoutOrNull(timeout) { block() }
@@ -197,10 +198,10 @@ class LanToolsViewModel(private val services: LanToolsServices, private val stor
             catch (failure: LanCheckFailure) { LanOutcome(LanPhase.FAILURE, errorMessage(failure.code)) }
             catch (_: Exception) { LanOutcome(LanPhase.FAILURE, errorMessage(LanError.IO)) }
             if (state.value.active && generations[kind] == token) {
-                result(kind, outcome)
+                result(kind, outcome.copy(subject = subject))
                 if (kind == LanOperation.DISCOVERY) update { it.copy(found = it.found.copy(devices = it.found.devices.map { row -> row.copy(stale = true) })) }
                 if (origin != null) update { state ->
-                    val check = LanCheck(host, port, binding, clock.instant(), outcome)
+                    val check = LanCheck(host, port, binding, clock.instant(), outcome.copy(subject = subject))
                     state.copy(checks = ((state.checks - origin) + (origin to check)).entries.toList().takeLast(256).associate { it.toPair() })
                 }
             }
@@ -209,7 +210,7 @@ class LanToolsViewModel(private val services: LanToolsServices, private val stor
     fun cancel(kind: LanOperation) {
         generations[kind] = (generations[kind] ?: 0) + 1
         jobs.remove(kind)?.cancel()
-        if (state.value.outcome(kind).phase == LanPhase.RUNNING) result(kind, LanOutcome(LanPhase.CANCELLED, LanMessage(R.string.lan_cancelled)))
+        if (state.value.outcome(kind).phase == LanPhase.RUNNING) result(kind, LanOutcome(LanPhase.CANCELLED, LanMessage(R.string.lan_cancelled), state.value.outcome(kind).subject))
         if (kind == LanOperation.DISCOVERY) update { it.copy(found = it.found.copy(devices = it.found.devices.map { row -> row.copy(stale = true) })) }
     }
     private fun result(kind: LanOperation, outcome: LanOutcome) = update { it.copy(outcomes = it.outcomes + (kind to outcome)) }

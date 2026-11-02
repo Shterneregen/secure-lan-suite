@@ -163,7 +163,8 @@ private fun InterfacePicker(state: LanToolsUiState, controller: DesktopLanToolsC
     val selected = state.networks.interfaces.firstOrNull { it.binding.key == state.bindingKey }
     Box {
         OutlinedButton(onClick = { expanded = true }, enabled = !state.networkLoading && state.wakingId == null) {
-            Text(selected?.let { "${it.displayName} · ${it.binding.address.value}" } ?: "Automatic / saved preference")
+            Text(selected?.let { "${it.displayName} · ${it.binding.address.value}" }
+                ?: if (state.bindingKey != null) "Selected interface unavailable — choose an interface" else "Automatic / saved preference")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(onClick = { controller.selectBinding(null); expanded = false }) { Text("Automatic / saved preference") }

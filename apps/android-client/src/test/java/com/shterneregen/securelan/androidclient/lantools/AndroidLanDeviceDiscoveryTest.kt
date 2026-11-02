@@ -80,7 +80,9 @@ class AndroidLanDeviceDiscoveryTest {
         runCurrent(); browser.calls.first().resolved(resolved()); advanceTimeBy(251); runCurrent(); assertEquals(1, latest.devices.size)
         browser.calls.first().lost("Printer"); advanceTimeBy(251); runCurrent(); assertTrue(latest.devices.isEmpty())
         browser.calls.first().resolved(resolved()); advanceTimeBy(251); runCurrent(); assertEquals(1, latest.devices.size)
-        platform.entries = emptyList(); advanceTimeBy(251); runCurrent(); job.await(); assertTrue(latest.devices.isEmpty())
+        platform.entries = emptyList(); advanceTimeBy(251); runCurrent()
+        assertEquals(LanError.NETWORK_CHANGED, (job.await() as LanResult.Failure).code)
+        assertTrue(latest.devices.isEmpty())
     }
     @Test fun permissionFailureIsTypedAndCancellationClosesAllHandles() = runTest {
         val browser = Browser(); val lease = Lease()
@@ -91,7 +93,9 @@ class AndroidLanDeviceDiscoveryTest {
         assertEquals(6, browser.closes); assertEquals(1, lease.closed)
         val before = updates; browser.calls.first().resolved(resolved()); assertEquals(before, updates)
         browser.opened = { it.failed(NsdFailure.PERMISSION_DENIED) }
+        val beforeDenial = testScheduler.currentTime
         assertEquals(LanError.PERMISSION_DENIED, (discovery.browse(null) {} as LanResult.Failure).code)
+        assertTrue(testScheduler.currentTime - beforeDenial < 500)
     }
     @Test fun concurrentBrowsesAreRejectedWithoutAdditionalHandles() = runTest {
         val browser = Browser()

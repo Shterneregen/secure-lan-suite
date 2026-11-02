@@ -17,6 +17,7 @@ and owning build files take precedence over this plan.
 | Outcome | Completion evidence |
 | --- | --- |
 | Harden LAN discovery | Useful behavior and recovery across firewalls, VPNs, multiple adapters, guest/client-isolated networks, and duplicate nicknames |
+| Qualify LAN Tools on physical networks | Actual WoL equipment, Wi-Fi off/on/switch, multiple physical adapters, Android API 26/OEM multicast behavior and simultaneous room/file/call traffic exercised; [validation matrix](quality/lantools-validation.md) updated |
 | Stabilize desktop video | Camera capture, local preview, negotiation, remote rendering, device changes, cleanup, and failure recovery validated across representative machines; product status updated only after evidence supports it |
 | Finish desktop workflow hardening | Keyboard/focus, narrow-window behavior, composer and attachments, peer states, transfers, settings, errors, and recovery pass the project UI checklists and runtime review |
 | Define key-management UX | A product decision and implemented workflow for key generation/loading where user control is required |

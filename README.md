@@ -37,7 +37,7 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 | Browser file/text Quick Share, TTL/count/revoke, QR | Implemented | Implemented, experimental |
 | RTC data channels | Implemented | Unavailable |
 | BMP steganography | Implemented | Unavailable |
-| Saved LAN devices / Wake-on-LAN | Implemented | Implemented; hardware wake-up unqualified |
+| Saved LAN devices / Wake-on-LAN | Implemented; physical wake-up unqualified | Implemented; physical wake-up unqualified |
 | LAN TCP checks / system DNS lookup | Implemented | Implemented |
 | LAN gateway / DNS metadata | Windows only | LinkProperties when available |
 | LAN advertised-device browser | Implemented (IPv4 mDNS/DNS-SD) | Android NSD, supported types, one LAN per run |
@@ -45,6 +45,8 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 
 Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
 and [realtime architecture](docs/webrtc-architecture.md) for platform owners and remaining hardware checks.
+LAN Tools verification and the remaining physical-network checks are recorded in
+[LAN Tools validation](docs/quality/lantools-validation.md).
 Build checks, production signing and artifact qualification are described in
 [Release and qualification](docs/release.md).
 

@@ -59,6 +59,8 @@
     <string name="lan_metadata_unknown">Gateway / DNS metadata unavailable</string>
     <string name="lan_timeout">Timeout (ms, 1–30000)</string>
     <string name="lan_tcp">TCP connectivity</string>
+    <string name="lan_tcp_subject">TCP target: %1$s:%2$s</string>
+    <string name="lan_dns_subject">DNS input: %1$s</string>
     <string name="lan_tcp_host">TCP hostname or IP</string>
     <string name="lan_tcp_port">TCP port</string>
     <string name="lan_check_tcp">Check TCP</string>

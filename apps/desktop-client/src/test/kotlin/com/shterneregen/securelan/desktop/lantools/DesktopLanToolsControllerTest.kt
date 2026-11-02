@@ -137,4 +137,24 @@ class DesktopLanToolsControllerTest {
         assertFalse(controller.state.value.networkLoading)
         controller.close()
     }
+
+    @Test fun lostExplicitInterfaceCannotFallBackToAnotherNetworkAfterRefresh() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var current = network
+        val changing = LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(current))) }
+        val sent = mutableListOf<String>()
+        val controller = DesktopLanToolsController(MemoryLanStore(listOf(device)), changing,
+            DefaultWakeOnLanService(changing, DatagramSender { route, _ -> sent += route.network.binding.key }), dispatcher, dispatcher)
+        try {
+            controller.open(); runCurrent(); controller.selectDevice(device.id); controller.selectBinding(network.binding.key)
+            current = network.copy(binding = network.binding.copy(key = "other:192.168.1.42", interfaceKey = "other"))
+            controller.refreshInterfaces(); runCurrent()
+            assertEquals(network.binding.key, controller.state.value.bindingKey)
+            controller.wakeDevice(device.id); runCurrent()
+            assertTrue(sent.isEmpty(), "Interface loss must not authorize a send through another network")
+            assertTrue(controller.state.value.lastResults.getValue(device.id).contains("unavailable"))
+            controller.selectBinding(current.binding.key); controller.wakeDevice(device.id); runCurrent()
+            assertEquals(listOf(current.binding.key), sent)
+        } finally { controller.close() }
+    }
 }
