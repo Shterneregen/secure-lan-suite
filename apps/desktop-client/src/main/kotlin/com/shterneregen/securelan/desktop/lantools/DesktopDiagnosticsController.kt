@@ -6,6 +6,7 @@ import com.shterneregen.securelan.lantools.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.Clock
 
 /**
  * UI-thread owner of bounded diagnostic jobs. Forms survive temporary closure; jobs do not.
@@ -17,6 +18,7 @@ class DesktopDiagnosticsController(
     private val networks: DiagnosticsNetworkInfoProvider,
     dispatcher: CoroutineDispatcher = LanToolsUiDispatcher,
     private val release: () -> Unit = {},
+    private val clock: Clock = Clock.systemUTC(),
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val mutable = MutableStateFlow(LanDiagnosticsUiState())
@@ -33,7 +35,20 @@ class DesktopDiagnosticsController(
     }
 
     /** The controller's pure editor callback keeps orchestration and validation out of composables. */
-    fun edit(change: (DiagnosticInputs) -> DiagnosticInputs) { if (!closed) mutable.value = state.value.copy(inputs = change(state.value.inputs)) }
+    fun edit(change: (DiagnosticInputs) -> DiagnosticInputs) {
+        if (closed) return
+        val old = state.value.inputs
+        val changed = change(old)
+        // A manually changed endpoint no longer belongs to the row that originally prefilled it.
+        mutable.value = state.value.copy(inputs = if (old.tcpHost != changed.tcpHost || old.bindingKey != changed.bindingKey)
+            changed.copy(deviceKey = null) else changed)
+    }
+
+    /** Prefill only: an explicit Check TCP action is still required. Existing running checks keep their input. */
+    fun prepareTcp(host: String, port: Int?, bindingKey: String?, deviceKey: String) {
+        if (!closed) mutable.value = state.value.copy(inputs = state.value.inputs.copy(
+            tcpHost = host, tcpPort = port?.toString().orEmpty(), bindingKey = bindingKey, gateway = null, deviceKey = deviceKey))
+    }
 
     fun selectInterface(key: String?) = edit { it.copy(bindingKey = key, gateway = null) }
 
@@ -54,7 +69,7 @@ class DesktopDiagnosticsController(
         val port = input.tcpPort.toIntOrNull()
         val timeout = input.timeoutMillis.toLongOrNull()
         if (port == null || port !in 1..65535 || timeout == null || timeout !in 1..30_000) { invalid(DiagnosticKind.TCP, "Enter a TCP port (1–65535) and timeout (1–30000 ms)."); return }
-        start(DiagnosticKind.TCP, timeout) { tcpResult(service.tcp(TcpCheckRequest(input.tcpHost.trim(), port, input.bindingKey, timeout)), "TCP ${input.tcpHost.trim()}:$port") }
+        start(DiagnosticKind.TCP, timeout, input) { tcpResult(service.tcp(TcpCheckRequest(input.tcpHost.trim(), port, input.bindingKey, timeout)), "TCP ${input.tcpHost.trim()}:$port") }
     }
 
     fun lookupDns() {
@@ -116,7 +131,7 @@ class DesktopDiagnosticsController(
         if (visible && state.value.outcome(kind).phase != DiagnosticPhase.RUNNING) outcome(kind, DiagnosticOutcome(DiagnosticPhase.FAILURE, message))
     }
 
-    private fun start(kind: DiagnosticKind, timeout: Long = 30_000, operation: suspend () -> DiagnosticOutcome) {
+    private fun start(kind: DiagnosticKind, timeout: Long = 30_000, check: DiagnosticInputs? = null, operation: suspend () -> DiagnosticOutcome) {
         if (closed || !visible || state.value.outcome(kind).phase == DiagnosticPhase.RUNNING) return
         val token = generations.getValue(kind) + 1
         generations[kind] = token
@@ -126,10 +141,10 @@ class DesktopDiagnosticsController(
                 // Includes metadata refresh for a gateway, as well as the service's own deadline.
                 val result = withTimeoutOrNull(timeout) { operation() }
                     ?: DiagnosticOutcome(DiagnosticPhase.FAILURE, "Operation timed out.")
-                if (visible && generations[kind] == token) outcome(kind, result)
+                if (visible && generations[kind] == token) complete(kind, result, check)
             } catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) { if (visible && generations[kind] == token) outcome(kind,
-                DiagnosticOutcome(DiagnosticPhase.FAILURE, "Could not complete the check. Refresh network information and try again.")) }
+            catch (_: Exception) { if (visible && generations[kind] == token) complete(kind,
+                DiagnosticOutcome(DiagnosticPhase.FAILURE, "Could not complete the check. Refresh network information and try again."), check) }
         }
     }
 
@@ -159,6 +174,14 @@ class DesktopDiagnosticsController(
     }
 
     private fun milliseconds(nanos: Long): String = java.lang.String.format(java.util.Locale.ROOT, "%.2f", nanos / 1_000_000.0)
+    private fun complete(kind: DiagnosticKind, value: DiagnosticOutcome, input: DiagnosticInputs?) {
+        outcome(kind, value)
+        if (!closed && input?.deviceKey != null) {
+            val history = state.value.deviceChecks - input.deviceKey + (input.deviceKey to DeviceTcpCheck(
+                input.tcpHost.trim(), input.tcpPort.toInt(), input.bindingKey, clock.instant(), value))
+            mutable.value = state.value.copy(deviceChecks = history.entries.toList().takeLast(256).associate { it.toPair() })
+        }
+    }
     private fun outcome(kind: DiagnosticKind, value: DiagnosticOutcome) { if (!closed) mutable.value = state.value.copy(outcomes = state.value.outcomes + (kind to value)) }
     override fun close() { if (!closed) { dismiss(); closed = true; scope.cancel(); release() } }
 }

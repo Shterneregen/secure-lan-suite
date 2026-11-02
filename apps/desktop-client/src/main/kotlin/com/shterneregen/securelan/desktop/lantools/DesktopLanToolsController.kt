@@ -22,6 +22,7 @@ class DesktopLanToolsController(
     dispatcher: CoroutineDispatcher = LanToolsUiDispatcher,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     val diagnostics: DesktopDiagnosticsController? = null,
+    val explorer: DesktopExplorerController? = null,
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val mutable = MutableStateFlow(LanToolsUiState())
@@ -36,6 +37,7 @@ class DesktopLanToolsController(
         generation++
         update { it.copy(visible = true) }
         if (!state.value.loaded) reload()
+        explorer?.open()
         refreshInterfaces()
         if (state.value.tab == LanToolsTab.DIAGNOSTICS) diagnostics?.open()
     }
@@ -43,6 +45,7 @@ class DesktopLanToolsController(
     /** Keeps drafts/selection but cancels the dialog's network work and rejects late completions. */
     fun dismiss() {
         diagnostics?.dismiss()
+        explorer?.dismiss()
         generation++
         networkJob?.cancel(); wakeJob?.cancel()
         update { value -> value.copy(visible = false, networkLoading = false, wakingId = null,
@@ -53,7 +56,35 @@ class DesktopLanToolsController(
         update { it.copy(tab = tab) }
         if (state.value.visible && tab == LanToolsTab.DIAGNOSTICS) diagnostics?.open()
     }
-    fun selectDevice(id: UUID) = update { it.copy(selectedId = id, bindingKey = if (it.selectedId == id) it.bindingKey else null) }
+    fun selectDevice(id: UUID) {
+        explorer?.select(null)
+        update { it.copy(selectedId = id, bindingKey = if (it.selectedId == id) it.bindingKey else null) }
+    }
+
+    /** Explicitly copies untrusted observations into an editable form; saving never implies identity. */
+    fun beginSaveDiscovered(id: String) {
+        val device = explorer?.state?.value?.snapshot?.devices?.firstOrNull { it.id == id } ?: return
+        if (state.value.canModify && state.value.editor == null) update { it.copy(editor = LanDeviceDraft(
+            name = (device.displayName ?: device.hostname ?: "LAN device").take(128).trim(),
+            address = device.addresses.firstOrNull()?.value.orEmpty(), hostname = device.hostname.orEmpty()), editorError = null) }
+    }
+
+    fun diagnoseSaved(id: UUID) {
+        val device = state.value.devices.firstOrNull { it.id == id } ?: return
+        prepareDiagnostics(device.addressHint?.value ?: device.hostnameHint ?: return, null, null, "saved:$id")
+    }
+
+    fun diagnoseDiscovered(id: String, host: String, port: Int) {
+        val device = explorer?.state?.value?.snapshot?.devices?.firstOrNull { it.id == id } ?: return
+        if (device.services.none { it.port == port && it.addresses.any { address -> address.value == host } }) return
+        prepareDiagnostics(host, port, device.scope, "found:$id")
+    }
+
+    private fun prepareDiagnostics(host: String, port: Int?, bindingKey: String?, key: String) {
+        if (!state.value.visible || diagnostics == null) return
+        diagnostics.prepareTcp(host, port, bindingKey, key)
+        selectTab(LanToolsTab.DIAGNOSTICS)
+    }
     fun selectBinding(key: String?) = update { it.copy(bindingKey = key) }
     fun editDraft(draft: LanDeviceDraft) { if (!state.value.saving) update { it.copy(editor = draft, editorError = null) } }
     fun beginAdd() { if (state.value.canModify) update { it.copy(editor = LanDeviceDraft(), editorError = null) } }
@@ -82,7 +113,7 @@ class DesktopLanToolsController(
     fun saveEditor() {
         if (!state.value.canModify) return
         val draft = state.value.editor ?: return
-        val device = try { draft.validated().copy(hostnameHint = state.value.devices.firstOrNull { it.id == draft.id }?.hostnameHint) } catch (error: IllegalArgumentException) {
+        val device = try { draft.validated() } catch (error: IllegalArgumentException) {
             update { it.copy(editorError = error.message) }; return
         }
         val existing = state.value.devices
@@ -104,6 +135,7 @@ class DesktopLanToolsController(
         scope.launch {
             try {
                 withContext(io) { store.save(devices) }
+                explorer?.select(null)
                 // Publish only after replacement succeeds; failures retain both the old list and draft.
                 update { it.copy(saving = false, devices = devices, selectedId = selected,
                     editor = null, deletingId = null, editorError = null, bindingKey = null,
@@ -169,7 +201,7 @@ class DesktopLanToolsController(
 
     private fun update(change: (LanToolsUiState) -> LanToolsUiState) { if (!closed) mutable.value = change(mutable.value) }
 
-    override fun close() { dismiss(); closed = true; scope.cancel(); diagnostics?.close() }
+    override fun close() { dismiss(); closed = true; scope.cancel(); diagnostics?.close(); explorer?.close() }
 }
 
 /** Matches existing desktop state owners: UI mutations belong to Swing EDT, without a Main provider. */

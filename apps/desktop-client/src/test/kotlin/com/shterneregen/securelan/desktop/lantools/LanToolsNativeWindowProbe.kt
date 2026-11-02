@@ -18,12 +18,14 @@ import com.shterneregen.securelan.desktop.compose.state.lantools.LanToolsTab
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import com.shterneregen.securelan.lantools.diagnostics.*
+import com.shterneregen.securelan.lantools.discovery.LanDeviceDiscovery
 import com.shterneregen.securelan.lantools.model.LanNetworkInfoProvider
 import com.shterneregen.securelan.lantools.model.LanNetworkSnapshot
 import com.shterneregen.securelan.lantools.model.LanResult
 import com.shterneregen.securelan.lantools.wol.DatagramSender
 import com.shterneregen.securelan.lantools.wol.DefaultWakeOnLanService
 import com.shterneregen.securelan.lantools.wol.JvmLanNetworkInfoProvider
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.*
@@ -33,6 +35,7 @@ import java.awt.Dialog
 import java.awt.event.KeyEvent
 import java.lang.reflect.Proxy
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -54,10 +57,16 @@ object LanToolsNativeWindowProbe {
         val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
         val host = workspaceHost(calls)
         val networks = LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(emptyList())) }
+        val browseStarted = CountDownLatch(1)
+        val browseCancelled = CountDownLatch(1)
         val controller = DesktopLanToolsController(MemoryLanStore(), networks,
             DefaultWakeOnLanService(networks, DatagramSender { _, _ -> error("Native UI smoke must not broadcast") }),
             diagnostics = DesktopDiagnosticsController(DefaultNetworkDiagnosticsService(HostResolver { error("No DNS in native UI smoke") }, networks,
-                TcpConnector { _, _, _ -> error("No TCP in native UI smoke") }), DiagnosticsNetworkInfoProvider { LanResult.Success(snapshot) }))
+                TcpConnector { _, _, _ -> error("No TCP in native UI smoke") }), DiagnosticsNetworkInfoProvider { LanResult.Success(snapshot) }),
+            explorer = DesktopExplorerController(LanDeviceDiscovery {
+                browseStarted.countDown()
+                try { awaitCancellation() } finally { browseCancelled.countDown() }
+            }))
         val exit = AtomicReference<(() -> Unit)?>(null)
         val failure = AtomicReference<Throwable?>(null)
         val worker = Executors.newSingleThreadExecutor()
@@ -70,17 +79,21 @@ object LanToolsNativeWindowProbe {
                     baseline = listOf(host.statusState, host.currentRoomPassword, host.transferEntries, host.mediaVoiceState, host.experimentalVideoState, host.discoveredPeers)
                     serviceCalls = calls.toList()
                     controller.open()
+                    controller.explorer!!.refresh()
                     controller.selectTab(LanToolsTab.DIAGNOSTICS)
                 }
                 await { java.awt.Window.getWindows().filterIsInstance<Dialog>().any { it.isShowing && it.title.endsWith("LAN Tools") } }
                 val dialog = java.awt.Window.getWindows().filterIsInstance<Dialog>().first { it.isShowing && it.title.endsWith("LAN Tools") }
                 await { controller.diagnostics!!.state.value.outcome(DiagnosticKind.NETWORK).phase == DiagnosticPhase.SUCCESS }
+                assertTrue(browseStarted.await(3, TimeUnit.SECONDS))
                 // Dispatch only into this test's AWT listeners; do not steal global keyboard focus.
                 SwingUtilities.invokeAndWait { escape(dialog) }
                 await { !controller.state.value.visible }
+                assertTrue(browseCancelled.await(3, TimeUnit.SECONDS))
                 SwingUtilities.invokeAndWait {
                     assertEquals(baseline, listOf(host.statusState, host.currentRoomPassword, host.transferEntries, host.mediaVoiceState, host.experimentalVideoState, host.discoveredPeers))
                     assertEquals(serviceCalls, calls.toList(), "Opening a utility must not restart or stop workspace services")
+                    assertEquals(DiagnosticPhase.CANCELLED, controller.explorer!!.state.value.phase)
                     assertTrue(host.statusState.localServerRunning)
                     assertTrue(host.statusState.clientConnected)
                 }

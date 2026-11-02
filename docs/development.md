@@ -76,7 +76,7 @@ for API, routing and hardware qualification limits.
 Desktop integration and UI checks:
 
 ```powershell
-.\gradlew.bat :modules:lan-tools-core:check :apps:desktop-client:check
+.\gradlew.bat :modules:lan-tools-core:check :modules:chat-core:test :apps:desktop-client:check
 ```
 
 For an explicit native-window smoke in a graphical desktop session:
@@ -86,8 +86,9 @@ For an explicit native-window smoke in a graphical desktop session:
 ```
 
 The probe reads bounded local JVM/Windows network metadata, opens the production
-shell/dialog and Diagnostics with service doubles, sends Escape only into its
-own AWT listeners and verifies workspace services were not restarted or stopped.
+shell/dialog and Diagnostics with service doubles, starts a cancellable discovery
+double, sends Escape only into its own AWT listeners and verifies browse
+cancellation and that workspace services were not restarted or stopped.
 It never connects to remote endpoints, broadcasts or opens a real room. It runs separately
 from `check`/`qualityGate` so headless CI does not require a window manager.
 Compose tests exercise CRUD, diagnostics validation/TCP/DNS/gateway/cancellation,
@@ -97,6 +98,24 @@ process output/deadline/cleanup and nonblocking connection cleanup; DNS failures
 use injected resolvers, with no external DNS dependency. Screenshots are written to
 `apps/desktop-client/build/reports/lan-tools-ui/`. Physical WoL and simultaneous
 real chat/file/media traffic remain manual qualification checks.
+
+Explorer unit tests use fake browsers and virtual clocks for multi-interface
+grouping, leases/goodbyes, topology changes, callback races, capacity and cleanup.
+They never multicast. UI tests cover filters/search, details, explicit saving,
+diagnostics prefill/history and scrollable layouts down to 400×320 dp.
+
+For an explicit multicast integration probe on a real LAN interface:
+
+```powershell
+.\gradlew.bat :apps:desktop-client:lanExplorerMdnsSmoke
+```
+
+This opt-in task publishes local HTTP/SSH test advertisements and a separate
+SecureLan room advertisement. It verifies resolution/merging, goodbye removal,
+and continued room updates after Explorer cleanup. It closes only its own
+handles and makes no TCP connection to any advertised port. Unlike `check`, it
+requires working multicast/firewall rules and may take about a minute. It does
+not qualify a physical printer/router or a live encrypted chat/file/call session.
 
 ### Dependency locking during IDE sync
 

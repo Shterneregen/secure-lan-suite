@@ -24,10 +24,12 @@ import com.shterneregen.securelan.desktop.compose.tray.DesktopTrayMenuState
 import com.shterneregen.securelan.desktop.compose.tray.SecureLanTray
 import com.shterneregen.securelan.desktop.compose.tray.desktopCloseOutcome
 import com.shterneregen.securelan.desktop.lantools.DesktopDiagnosticsController
+import com.shterneregen.securelan.desktop.lantools.DesktopExplorerController
 import com.shterneregen.securelan.desktop.lantools.DesktopHostResolver
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 import com.shterneregen.securelan.desktop.lantools.DesktopNetworkInfoProvider
 import com.shterneregen.securelan.desktop.lantools.PropertiesSavedLanDeviceStore
+import com.shterneregen.securelan.desktop.lantools.discovery.DesktopLanDeviceDiscovery
 import com.shterneregen.securelan.desktop.network.discovery.LinuxDefaultRouteHintProvider
 import com.shterneregen.securelan.desktop.quickshare.DefaultQuickShareService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
@@ -66,7 +68,8 @@ fun main() {
             val resolver = DesktopHostResolver()
             val diagnostics = DesktopDiagnosticsController(DefaultNetworkDiagnosticsService(resolver, networks),
                 DesktopNetworkInfoProvider(networks), release = resolver::close)
-            DesktopLanToolsController(PropertiesSavedLanDeviceStore(), networks, DefaultWakeOnLanService(networks), diagnostics = diagnostics)
+            DesktopLanToolsController(PropertiesSavedLanDeviceStore(), networks, DefaultWakeOnLanService(networks),
+                diagnostics = diagnostics, explorer = DesktopExplorerController(DesktopLanDeviceDiscovery()))
         }
         DisposableEffect(lanToolsController) { onDispose { lanToolsController.close() } }
         val chatNotificationChannel = remember { Channel<DesktopChatTrayNotification>(Channel.UNLIMITED) }

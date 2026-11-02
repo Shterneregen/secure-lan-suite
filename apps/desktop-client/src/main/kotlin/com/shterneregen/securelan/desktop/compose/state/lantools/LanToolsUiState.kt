@@ -11,6 +11,7 @@ enum class LanToolsTab { DEVICES, DIAGNOSTICS }
 data class LanDeviceDraft(
     val id: UUID = UUID.randomUUID(), val name: String = "", val address: String = "",
     val mac: String = "", val broadcast: String = "", val port: String = "9", val preferredInterface: String = "",
+    val hostname: String = "",
 ) {
     /** Parses input before persistence or network operations; messages are safe application text. */
     fun validated(): SavedLanDevice {
@@ -35,13 +36,13 @@ data class LanDeviceDraft(
             require(preferred == null || preferred.length <= 256 && preferred.none(Char::isISOControl)) { "The preferred interface is invalid." }
             WakeConfiguration(parsed, destination, preferred, udpPort)
         }
-        return SavedLanDevice(id, displayName, ip, wake = wake)
+        return SavedLanDevice(id, displayName, ip, hostname.takeIf(String::isNotEmpty), wake)
     }
 
     companion object {
         fun from(device: SavedLanDevice) = LanDeviceDraft(device.id, device.displayName, device.addressHint?.value.orEmpty(),
             device.wake?.mac?.value.orEmpty(), device.wake?.broadcast?.value.orEmpty(),
-            (device.wake?.port ?: 9).toString(), device.wake?.preferredInterfaceKey.orEmpty())
+            (device.wake?.port ?: 9).toString(), device.wake?.preferredInterfaceKey.orEmpty(), device.hostnameHint.orEmpty())
     }
 }
 

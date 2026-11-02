@@ -110,8 +110,19 @@ column widths.
 ### LAN Tools
 
 LAN Tools uses a separate wide, resizable dialog, available without a room.
-Devices contains saved devices, details and configuration; Wake-on-LAN is a
-device action. Diagnostics offers local IPv4 information, explicit TCP checks,
+Devices separates saved settings from observed devices, with search, source
+filters, details and manual Refresh/Cancel. Discovery is an explicit bounded
+DNS-SD browse, not a complete LAN inventory or an online-status check. Mark
+completed/cancelled results as historical and limited results as partial. Do not
+merge user settings with observations automatically or treat service declarations
+as authenticated peers. Unknown hostname/hardware type stays Unknown. Saving an
+observation opens an editable form; MAC/WoL settings are never inferred.
+
+Wake-on-LAN is a saved-device action. Device Diagnostics pre-fills an exact
+endpoint but requires Check TCP before connecting. Keep last-check results tied
+to their submitted endpoint/time rather than a global device status. At short
+dialog heights the browse controls scroll with the devices so actions stay
+reachable. Diagnostics offers local IPv4 information, explicit TCP checks,
 system DNS lookup and a gateway TCP check where OS metadata is available. Keep
 each result tied to its submitted endpoint. Distinguish TCP connection time,
 name resolution and ICMP RTT; a refused port does not establish device state.
