@@ -19,12 +19,15 @@ import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
 import com.shterneregen.securelan.desktop.compose.ui.shell.AppToolButtons
 import com.shterneregen.securelan.desktop.compose.ui.shell.LiveComposeShellContent
+import com.shterneregen.securelan.desktop.lantools.DesktopDiagnosticsController
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 import com.shterneregen.securelan.desktop.lantools.LanToolsNativeWindowProbe
 import com.shterneregen.securelan.desktop.lantools.MemoryLanStore
+import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import org.jetbrains.skia.Image
 import org.junit.After
 import org.junit.Assert.*
@@ -42,6 +45,8 @@ class LanToolsInteractionTest {
     private val store = MemoryLanStore()
     private var sends = 0
     private var sentBinding: String? = null
+    private var blockDns = false
+    private var metadata = MetadataAvailability.AVAILABLE
     private val network = LanInterfaceSnapshot(NetworkBinding("eth0:192.168.1.42", "eth0", IpLiteral.parse("192.168.1.42")!!, 24),
         "Ethernet", true, IpLiteral.parse("192.168.1.255"))
     private val controller = DesktopLanToolsController(store,
@@ -52,7 +57,13 @@ class LanToolsInteractionTest {
                 sentBinding = request.bindingKey
                 return LanResult.Success(WakeReceipt(WakeRoute(network, network.broadcast!!, 9), 102, Instant.EPOCH))
             }
-        }, Dispatchers.Unconfined, Dispatchers.Unconfined)
+        }, Dispatchers.Unconfined, Dispatchers.Unconfined,
+        diagnostics = DesktopDiagnosticsController(
+            DefaultNetworkDiagnosticsService(HostResolver {
+                if (blockDns) awaitCancellation() else LanResult.Success(listOf(network.binding.address))
+            }, LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(network))) }, TcpConnector { _, _, _ -> }),
+            DiagnosticsNetworkInfoProvider { LanResult.Success(DiagnosticsNetworkSnapshot(listOf(DiagnosticInterface(network,
+                listOf(IpLiteral.parse("192.168.1.1")!!), listOf("192.168.1.1"), metadata)), "controlled fixture")) }, Dispatchers.Unconfined))
 
     @After fun close() { compose.runOnIdle { controller.close() } }
 
@@ -111,8 +122,7 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Tools").performClick()
         compose.onNodeWithText("LAN Tools", substring = false).performClick()
         compose.onNodeWithText("Diagnostics").performClick()
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("Network diagnostics are not available yet.").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Network diagnostics are not available yet.").assertExists()
+        compose.onNodeWithText("Network information").assertExists()
         compose.onNodeWithText("Devices", substring = false).performClick()
         compose.onNodeWithText("Add device").performClick()
         compose.onNodeWithTag("lan-name").performTextInput("Unfinished")
@@ -165,6 +175,57 @@ class LanToolsInteractionTest {
             compose.onNode(hasSetTextAction()).assertTextContains("Keep this chat draft")
             compose.onNode(hasText("Other room") and selected).assertExists()
         } finally { compose.runOnIdle { host.shutdown(); settings.close() } }
+    }
+
+    @Test fun diagnosticsValidatesChecksTcpDnsAndGatewayWithHonestResults() {
+        content(740, 520, SecureLanThemeMode.LIGHT)
+        compose.onNodeWithText("Diagnostics").performClick()
+        compose.onNodeWithText("IPv4: 192.168.1.42/24", substring = true).assertExists()
+        compose.onNodeWithTag("diag-tcp-host").performScrollTo().performTextInput("host.local")
+        compose.onNodeWithTag("diag-tcp-host").performKeyInput { pressKey(Key.Tab) }
+        compose.onNodeWithTag("diag-tcp-port").assertIsFocused()
+        compose.onNodeWithText("Check TCP", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Enter a TCP port", substring = true).assertExists()
+        compose.onNodeWithTag("diag-tcp-port").performScrollTo().performTextInput("1234")
+        compose.onNodeWithText("Check TCP", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Only this TCP port accepted", substring = true).assertExists()
+        compose.onNodeWithText("Only this TCP port accepted", substring = true).performScrollTo()
+        screenshot("diagnostics-tcp-narrow-light.png")
+        compose.onNodeWithTag("diag-dns-host").performScrollTo().performTextInput("host.local")
+        compose.onNodeWithText("Look up DNS").performScrollTo().performClick()
+        compose.onNodeWithText("Lookup time:", substring = true).assertExists()
+        compose.onNodeWithTag("diag-source").performScrollTo().performClick()
+        compose.onNodeWithText("eth0 · 192.168.1.42", substring = false).performClick()
+        compose.waitUntil(2_000) { compose.onAllNodesWithText("eth0 · 192.168.1.42", substring = false).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText("Choose gateway").performScrollTo().performClick()
+        compose.onNodeWithText("192.168.1.1", substring = false).performClick()
+        compose.onNodeWithTag("diag-gateway-port").performScrollTo().performTextInput("1234")
+        compose.onNodeWithText("Check gateway TCP", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Gateway TCP 192.168.1.1:1234", substring = true).assertExists()
+        compose.onNodeWithText("Gateway TCP 192.168.1.1:1234", substring = true).performScrollTo()
+        screenshot("diagnostics-gateway-narrow-light.png")
+        compose.onNodeWithText("Network information").performScrollTo()
+        screenshot("diagnostics-narrow-light.png")
+        compose.onNodeWithText("Devices", substring = false).performClick()
+        compose.onNodeWithText("Diagnostics", substring = false).performClick()
+        compose.onNodeWithTag("diag-tcp-host").performScrollTo().assertTextContains("host.local")
+    }
+
+    @Test fun diagnosticsCancelAndUnsupportedGatewayRemainTruthful() {
+        blockDns = true
+        metadata = MetadataAvailability.UNSUPPORTED
+        content()
+        compose.onNodeWithText("Diagnostics").performClick()
+        compose.onNodeWithText("Gateway / DNS: Unsupported", substring = true).assertExists()
+        compose.onNodeWithTag("diag-dns-host").performScrollTo().performTextInput("host.local")
+        compose.onNodeWithText("Look up DNS").performScrollTo().performClick()
+        compose.onNodeWithText("Cancel dns").performScrollTo().performClick()
+        compose.onNodeWithText("Lookup cancelled.", substring = true).assertExists()
+        compose.onNodeWithText("Check gateway TCP", substring = false).assertDoesNotExist()
+        compose.onNodeWithText("ICMP ping: unavailable", substring = true).performScrollTo().assertIsDisplayed()
+        screenshot("diagnostics-cancel-wide-dark.png")
+        compose.onNodeWithText("Network information").performScrollTo()
+        screenshot("diagnostics-wide-dark.png")
     }
 
     private fun screenshot(name: String) {

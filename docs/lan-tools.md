@@ -1,10 +1,10 @@
 # LAN Tools
 
-`modules/lan-tools-core` provides a room-independent Wake-on-LAN API. It is a
+`modules/lan-tools-core` provides room-independent Wake-on-LAN and diagnostics APIs. It is a
 Kotlin/JVM module targeting Java 17, using `common-net` IP/interface values and
 coroutines. It has no Compose, Android SDK, chat, file-transfer or crypto dependency.
-Desktop exposes saved-device management and Wake-on-LAN in a standalone dialog.
-Android integration, diagnostics and device browsing are not implemented.
+Desktop exposes saved-device management, Wake-on-LAN and diagnostics in a standalone dialog.
+Android integration and device browsing are not implemented. ICMP has no qualified backend.
 See the [implementation plan](lantools-implementation-plan.md).
 
 ## Desktop workflow
@@ -29,8 +29,7 @@ devices. There is no automatic device scan or connectivity check.
 
 An outcome such as “Packet sent” means local submission only. A device may remain
 off despite successful submission. MAC/broadcast/port/interface errors are shown
-with recovery guidance. **Diagnostics** currently explains that checks are not
-available; no inactive diagnostic action is presented as implemented.
+with recovery guidance. **Diagnostics** offers the checks described below.
 
 The dialog resizes into a list/details layout when wide and a single scrollable
 column when narrow. Close/Escape cancels network work and preserves the tab,
@@ -39,6 +38,99 @@ delete confirmation. **Cancel editing** explicitly discards a form. On returning
 to the tool, the form remains; after a process restart only successfully saved
 devices are restored. A save already in progress may finish after the dialog
 closes; it is owned by the application, not by the temporary dialog.
+
+### Diagnostics workflow
+
+Opening **Diagnostics** reads local interface metadata; it does not contact
+other devices. **Refresh network information** repeats that one-shot read.
+Cards show IPv4/prefix, interface state and available OS-reported gateways/DNS.
+Unavailable, unsupported, denied and timed-out metadata are distinct from an
+available but empty list. No gateway is inferred by replacing an address octet.
+
+For **TCP connectivity**, enter a hostname or numeric IP, one port (1–65535) and
+a timeout (1–30000 ms, default 5000). OS routing is the default; optionally choose
+a source IPv4 binding. A disappeared selection fails rather than silently using
+another source. A hostname check attempts only its first suitable resolved
+address, without port/address sweeps. The connection is immediately closed
+without sending application data. Connection time excludes name resolution;
+success means this TCP port accepted a connection. Refusal, timeout and absence
+of a route do not establish whether the device is powered on or offline.
+
+For **DNS lookup**, enter a hostname or IP and choose the returned-address filter
+(ALL/IPV4/IPV6). This is system name resolution, potentially using hosts/cache;
+it does not guarantee a fresh DNS wire query or prove connectivity. Numeric input
+bypasses DNS and is labelled accordingly. TCP source selection does not bind
+name resolution to that interface or to the DNS servers shown in its card.
+
+For **Gateway TCP check**, select a source interface, one of its OS-reported
+gateways and an explicit TCP port. No port is preselected or scanned. The gateway
+and source are checked against fresh metadata before connecting. A gateway may
+route traffic while refusing the selected port; interpret the result as TCP only.
+**ICMP ping is unavailable**: there is no reliable qualified platform backend,
+and neither `InetAddress.isReachable()` nor TCP timing is presented as ICMP.
+
+Checks have independent running/success/failure/cancelled states. **Cancel** or
+closing the dialog cancels active work; forms/results remain in memory and late
+answers cannot overwrite a later operation. TCP attempts may already have
+reached an endpoint when cancelled. Form edits while a check runs do not relabel
+its result: the submitted endpoint remains in the outcome.
+
+### Diagnostics architecture and limits
+
+Shared `NetworkDiagnosticsService` exposes `tcp(TcpCheckRequest)` and
+`lookup(DnsLookupRequest)`, returning typed `LanResult<TcpCheckReceipt>` /
+`LanResult<DnsLookupReceipt>`. `DefaultNetworkDiagnosticsService` takes injected
+`HostResolver`, `LanNetworkInfoProvider`, `TcpConnector` and monotonic clock.
+It validates before network access, admits four concurrent calls without a
+queue, and includes resolution/snapshots/connect in the deadline. At most 32
+resolver answers are admitted. Host validation accepts IDN hostnames and strict
+numeric IPs; URLs, embedded ports, control characters, malformed addresses and
+scoped IPv6 input are rejected. Multicast/unspecified/limited-broadcast TCP
+targets are rejected, as is a directed broadcast of a selected source subnet.
+
+`JvmTcpConnector` uses a nonblocking channel on IO, polls completion with
+cancellation checks and closes on success, failure or cancellation. It sends no
+credentials or application payload. As with WoL, short synchronous OS open/bind
+and enumeration calls cannot promise forced interruption of a stuck kernel call.
+Transport callers outside the service must supply their own deadline.
+
+Desktop owns the platform adapters and `DesktopDiagnosticsController`, separate
+from room orchestration. `DesktopHostResolver` wraps the JVM system resolver
+with two daemon workers and no waiting queue. Timeout/cancellation promptly
+releases the coroutine caller, but a native lookup may continue occupying its
+worker until the OS returns. Saturation fails with `RESOURCE_LIMIT`; repeated
+cancellation cannot create replacement threads. App shutdown cancels pending
+callers and shuts down the executor; it cannot guarantee termination of native
+DNS code. There is no process-wide DNS/routing change. See the
+[JVM resolver/cache contract](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/net/InetAddress.html).
+
+`DesktopNetworkInfoProvider` enriches the existing JVM snapshot with separate
+diagnostic metadata, so route/DNS changes do not alter WoL snapshot equality.
+On Windows, `WindowsNetworkInfoBackend` runs a fixed, local-only
+[`Get-NetIPConfiguration -All`](https://learn.microsoft.com/en-us/powershell/module/nettcpip/get-netipconfiguration?view=windowsserver2025-ps)
+query through the system PowerShell executable. No user input is interpolated.
+The private numeric output format avoids localized display-table parsing and
+has a 128 KiB / 512-row bound, strict decoding and a five-second deadline.
+Cancellation/timeout destroys the child and closes pipes; cleanup can add up to
+one second of bounded waiting. The UI bounds a complete local refresh to ten
+seconds and includes a gateway metadata refresh in the submitted check timeout.
+Unavailable cmdlets, permission failures and malformed output produce explicit
+unavailable status; no fallback guesses are made.
+
+| Capability | Windows Desktop | Linux/macOS Desktop | Android |
+| --- | --- | --- | --- |
+| Local IPv4/prefix/interface state | JVM snapshot | JVM snapshot | Integration pending |
+| Gateway / configured DNS metadata | Local PowerShell backend | Unsupported backend | Integration pending |
+| TCP / system lookup | Implemented | Shared JVM implementation; runtime unqualified | Integration pending |
+| Gateway TCP check | Available with reported metadata | Unavailable | Integration pending |
+| ICMP | Unavailable | Unavailable | Integration pending |
+
+Interface inventory/source selection is IPv4-oriented. Numeric global IPv6 TCP
+can use OS routing; link-local IPv6 needs a scope and is unsupported for TCP.
+Configured scoped IPv6 DNS addresses can be displayed, but scoped resolver
+answers cannot be represented as endpoint inputs by the current common IP
+value. Full IPv6 inventory/scoped endpoint support is not claimed. Gateway/DNS
+facts are a snapshot, not a guarantee of the route/resolver a later OS call uses.
 
 ### Device settings file and recovery
 
@@ -161,7 +253,7 @@ without its Spring configuration or permanently cached topology. Kotlin API
 documentation uses English KDoc (the Kotlin equivalent of Javadoc), with inline
 comments for packet layout, route policy, resource ownership and cancellation.
 
-## Deadlines, cancellation and results
+## Wake-on-LAN deadlines, cancellation and results
 
 Default operation timeout is 2 seconds; valid caller values are 1–30000 ms. The
 deadline covers snapshots, selection and send. A service admits at most four
@@ -206,3 +298,26 @@ Additional tests use local procfs fixtures for default-route metrics, ambiguity,
 malformed input, size limits and topology refresh. They do not require Linux or
 access the host's actual route table. CIDR tests include non-octet-aligned prefixes
 and verify that route hints never bypass explicit source selection.
+
+For the complete core and Desktop checks (including compilation and Kotlin lint):
+
+```powershell
+.\gradlew.bat :modules:lan-tools-core:check :apps:desktop-client:check
+.\gradlew.bat :apps:desktop-client:lanToolsWindowSmoke
+```
+
+Diagnostics tests use a controlled loopback TCP server, injected resolver and
+transport failures, virtual-time deadlines and fake process streams. They verify
+no payload, channel release, source/topology validation, DNS filtering, resource
+caps, cancellation and shutdown, including a native-like lookup that ignores
+interruption. No test depends on external DNS servers or real gateway ports.
+Compose tests cover validation, real shared service orchestration with fake
+ports, cancellation, unsupported metadata and form restoration in light/dark
+layouts. The explicit native-window probe additionally reads actual local
+Windows/JVM metadata and checks Escape/workspace preservation with room-service
+doubles; it does not perform remote checks. Screenshots are under
+`apps/desktop-client/build/reports/lan-tools-ui/`.
+
+Real gateway/firewall behavior, Wi-Fi loss, multi-platform runtime, screen-reader
+and OS scaling behavior, physical WoL and simultaneous real chat/file/call traffic
+still need manual qualification. Local/fake checks do not qualify those scenarios.

@@ -111,9 +111,19 @@ column widths.
 
 LAN Tools uses a separate wide, resizable dialog, available without a room.
 Devices contains saved devices, details and configuration; Wake-on-LAN is a
-device action. Diagnostics shows an informative unavailable state until real
-checks exist. Do not add fake discovery or Ping. IP/MAC hints confer no room
-authentication or trusted identity.
+device action. Diagnostics offers local IPv4 information, explicit TCP checks,
+system DNS lookup and a gateway TCP check where OS metadata is available. Keep
+each result tied to its submitted endpoint. Distinguish TCP connection time,
+name resolution and ICMP RTT; a refused port does not establish device state.
+Show unavailable gateway/DNS metadata and ICMP honestly. Do not add fake
+discovery or Ping. IP/MAC hints confer no room authentication or trusted identity.
+
+Network refresh reads local information only. Gateway checks require an
+OS-reported gateway and an explicit TCP port; never guess addresses or scan
+ports. DNS uses system resolution/cache/default routing independently of TCP
+source selection. Each check has a timeout, running state and cancellation.
+Keep settings and results scrollable on narrow windows, with labelled inputs
+and announced status changes.
 
 Require confirmation before deleting settings. Preserve unfinished forms and
 selection on close; Cancel editing explicitly discards a form. Select a source
