@@ -22,6 +22,9 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
   advertising supported HTTP(S), IPP(S), SSH and SMB services, separately from
   secure-room participants. ICMP is unavailable.
   See [LAN Tools](docs/lan-tools.md).
+- On Android, open **Devices → Network utilities → LAN Tools** for saved devices,
+  Wake-on-LAN, local network information, TCP/DNS checks and manual DNS-SD browsing.
+  The tools have their own screen and lifecycle, independently of room membership.
 - Persist desktop profile, appearance, network, media, download, window, and diagnostics settings.
 - Build and use the experimental Android client for room hosting/joining, encrypted chat, and file transfer. Android supports adaptive layouts, light/dark themes, and English/Russian/system UI languages.
 
@@ -34,10 +37,10 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 | Browser file/text Quick Share, TTL/count/revoke, QR | Implemented | Implemented, experimental |
 | RTC data channels | Implemented | Unavailable |
 | BMP steganography | Implemented | Unavailable |
-| Saved LAN devices / Wake-on-LAN | Implemented | Unavailable |
-| LAN TCP checks / system DNS lookup | Implemented | Unavailable |
-| LAN gateway / DNS metadata | Windows only | Unavailable |
-| LAN advertised-device browser | Implemented (IPv4 mDNS/DNS-SD) | Unavailable |
+| Saved LAN devices / Wake-on-LAN | Implemented | Implemented; hardware wake-up unqualified |
+| LAN TCP checks / system DNS lookup | Implemented | Implemented |
+| LAN gateway / DNS metadata | Windows only | LinkProperties when available |
+| LAN advertised-device browser | Implemented (IPv4 mDNS/DNS-SD) | Android NSD, supported types, one LAN per run |
 | Screen sharing | Unavailable | Unavailable |
 
 Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
@@ -80,7 +83,7 @@ documented in the [development guide](docs/development.md).
 
 - `modules/common-model` and `modules/common-net` - shared models and networking utilities
 - `modules/lan-tools-core` - UI-independent saved-device, Wake-on-LAN, diagnostics and discovery APIs;
-  used by the desktop LAN Tools dialog. See [LAN Tools](docs/lan-tools.md).
+  used by desktop and Android LAN Tools. See [LAN Tools](docs/lan-tools.md).
 - `modules/crypto-core` - encryption, hashing, signatures, key and file-crypto workflows
 - `modules/chat-core` - secure rooms, handshake, messaging, signaling, and peer discovery
 - `modules/file-transfer-core` - encrypted V2 file transfer, stream contracts, and shared Quick Share models/HTML; HTTP backends belong to the applications

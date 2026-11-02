@@ -6,16 +6,64 @@ The Secure LAN Suite Android client is an experimental Android MVP for connectin
 
 - The Android client is currently an experimental MVP, not yet a full feature peer of the desktop client.
 - The UI is implemented with native Android + Jetpack Compose Material 3 inside `apps/android-client`.
-- The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths use labeled Devices, Chat, and Files bottom navigation; wider widths use a labeled navigation rail. At 840 dp the Devices screen becomes two-pane, and at 1200 dp chat/file screens gain a persistent device sidebar.
+- The UI uses one adaptive Compose layout for phones, tablets, landscape displays, and TV-like screens. Compact widths use labeled Devices, Chat, Files and Quick Share bottom navigation; wider widths use a labeled navigation rail. At 840 dp the Devices screen becomes two-pane, and at 1200 dp chat/file screens gain a persistent device sidebar.
 - TV-like usage is supported as a large-screen layout target without a separate Android TV launcher. Controls keep touch-friendly sizing and predictable keyboard/D-pad traversal, but the app is still distributed as the standard Android client.
 - Android reuses shared V2 handshakes, record ciphers, wire models and stream rules. `ChatSession`, `WireMessage` and `FileTransferSession` are aliases to the core implementation. Android adapters own URI access, staging, MediaStore, permissions and lifecycle; its WebRTC engine and HTTP server remain platform-specific.
 - Supported flows include desktop-compatible UDP discovery, mutually authenticated V2 chat, ordered encrypted messages/files, Android-to-desktop file sending, and desktop-to-Android file receiving. V1 endpoints must be updated; there is no protocol fallback.
 - The Devices screen offers manual nearby-room search and an **Automatic search** checkbox, off by default. It requests `NEARBY_WIFI_DEVICES` on Android 13+.
+- **Devices → Network utilities → LAN Tools** opens a separate Material 3 screen
+  with Devices and Diagnostics, without adding a primary navigation tab. It offers
+  saved-device CRUD, Wake-on-LAN, local IPv4/prefix/gateway/DNS information,
+  explicit TCP/gateway checks, system DNS lookup and manual bounded NSD browsing.
+  LAN observations are never authenticated room participants. See [LAN Tools](../../docs/lan-tools.md#android-workflow).
 - The UI uses a device-first connection flow, keeps the active desktop as the file recipient, starts the incoming file receiver automatically after connecting, and exposes transfer history, system/light/dark themes, file notifications, an in-app system/English/Russian language selector, and diagnostics logs.
 - Android-to-Android and Android-to-desktop voice/video calls use WebRTC in the LAN, with the existing encrypted TCP connection for signaling. WebRTC data channels, screen sharing and steganography tools are not implemented yet. Browser Quick Share supports temporary file/text links and QR codes.
 - For discovery and file receiving, the phone and desktop must be on the same network. Firewalls, VPNs, guest Wi-Fi networks, client-isolated Wi-Fi, and mobile hotspots can block UDP broadcast or inbound TCP connections.
 
 ## Requirements
+
+### LAN Tools
+
+Tools work without hosting/joining a room. The workspace remains composed;
+closing the screen or sending the app to the background cancels tool networking
+and releases its network subscription/multicast lease. Activity recreation keeps
+forms/results in the tool ViewModel; process death restores only committed
+devices, held in a separate private preference file. A save in progress may
+complete after closing the screen. Back returns to Devices without clearing the
+room ViewModel, chat draft, transfer queue or call coordinator.
+
+No new manifest permission or startup permission prompt is introduced. Existing
+`INTERNET`, network-state and multicast permissions are reused. On Android 13+
+**Refresh devices** requests the existing `NEARBY_WIFI_DEVICES` permission if
+missing; granting it does not start browsing automatically: tap Refresh again.
+After denial, enable Nearby devices in Android app settings and retry. WoL and
+TCP/DNS do not request Nearby permission. This target-35 app does not opt into
+Android 16's local-network permission experiment; future target upgrades must
+reassess [local network protections](https://developer.android.com/privacy-and-security/local-network-permission).
+
+The interface picker uses current Wi-Fi/Ethernet bindings. TCP/UDP sockets are
+bound to one Android Network, never process-wide; an old selection fails.
+An ephemeral saved interface key may change after reconnecting: choose a current
+interface to override it or edit the saved preference. Broadcast capability must
+be reported by the OS. MAC is entered manually, never read from Android hardware
+identifiers or inferred from discovery. A sent WoL packet is no power-state proof.
+
+Discovery covers six fixed HTTP(S)/IPP(S)/SSH/SMB DNS-SD types, one chosen LAN,
+at most thirty seconds plus bounded cleanup. API 33+ uses network-scoped NSD
+when the capability/extension is available; API 34+ supports service updates.
+Older backends require one LAN and no VPN and serialize legacy resolves, which
+cannot be forcibly cancelled. Missing SRV hostname/type stays Unknown. Compile
+SDK 35 cannot access the newer NSD hostname getter; different advertisements
+without a hostname remain separate even when their IPs match. IPv6 discovery,
+SSDP, subnet/port scans and ICMP are unavailable. DNS uses the system network,
+independently of the TCP source picker; API 26–28 native lookups have bounded
+workers and may finish after caller cancellation.
+
+Phone layout is one scrollable column; at 840 dp the device list and details
+sit side by side. English/Russian strings follow the app language and existing
+light/dark themes. Physical Wi-Fi switching, OEM permission/multicast behavior,
+WoL equipment and concurrent room/file/media traffic still require device
+qualification; emulator tests do not establish those guarantees.
 
 ### Voice and video calls
 
@@ -53,7 +101,7 @@ Android Gradle Plugin is 9.1.1.
 
 JDK 25 is recommended for full repository builds because the desktop and
 desktop-only modules target Java 25. `common-model`, `common-net`, `crypto-core`,
-`chat-core` and `file-transfer-core` target Java 17 for Android reuse.
+`chat-core`, `file-transfer-core` and `lan-tools-core` target Java 17 for Android reuse.
 Android-only tasks can run Gradle on JDK 17 without requiring JDK 25.
 The Android application uses AGP's built-in Kotlin support.
 Shared SHA-256 hex formatting uses platform-independent lowercase encoding

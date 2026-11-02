@@ -160,6 +160,7 @@ dependencies {
     implementation project(':modules:common-model')
     implementation project(':modules:chat-core')
     implementation project(':modules:common-net')
+    implementation project(':modules:lan-tools-core')
     implementation project(':modules:file-transfer-core')
 
     debugImplementation 'androidx.compose.ui:ui-tooling'

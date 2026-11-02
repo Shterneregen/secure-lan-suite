@@ -73,6 +73,30 @@ The module targets Java 17 for future Android reuse. Its tests use fakes and
 loopback UDP/TCP, without physical LAN broadcasts or external endpoints. See [LAN Tools core](lan-tools.md)
 for API, routing and hardware qualification limits.
 
+Android integration checks:
+
+```powershell
+.\gradlew.bat :modules:lan-tools-core:check :apps:android-client:testDebugUnitTest :apps:android-client:lintKotlin :apps:android-client:lintDebug :apps:android-client:assembleDebug :apps:android-client:assembleDebugAndroidTest
+.\gradlew.bat :apps:desktop-client:test --tests '*DesktopHostResolverTest'
+```
+
+On a **dedicated test emulator/device**, run:
+
+```powershell
+.\gradlew.bat :apps:android-client:connectedDebugAndroidTest
+```
+
+The configured Orchestrator clears app data; do not run against a user's active
+installation. LAN unit tests use injected network/NSD/store boundaries and
+virtual time. Socket tests use local endpoints and assert binding/cleanup and
+absence of TCP payload. Instrumentation exercises actual Android Network-bound
+local TCP/UDP and a local NSD advertisement, plus CRUD/Back/recreation/background
+and retained chat drafts. API 26 and 35 should both be exercised for legacy and
+modern NSD. The UI tests save screenshots on API 29+ in
+`/sdcard/Download/SecureLanLanTools/`; pull them with adb to an ignored build
+report directory for review. These tests do not establish physical WoL,
+multicast behavior of third-party routers/OEMs or live room/file/call coexistence.
+
 Desktop integration and UI checks:
 
 ```powershell

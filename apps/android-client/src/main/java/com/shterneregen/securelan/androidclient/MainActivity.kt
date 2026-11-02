@@ -231,48 +231,51 @@ private fun SecureLanAndroidApp(
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    com.shterneregen.securelan.androidclient.ui.connection.PendingRoomConnectionDialog(viewModel, state)
-                    CallHost(viewModel, baseContext as MainActivity) { requestCall ->
-                        RedesignedMainScreen(
-                            roomTools = { com.shterneregen.securelan.androidclient.ui.connection.RoomConnectionTools(viewModel, state) },
-                            onSearchSurface = viewModel::updateSearchSurface,
-                            onHostDiscoverableChange = viewModel::setHostDiscoverable,
-                            callActions = { CallButtons(state.callPeers, state.connected, requestCall) },
-                            state = state,
-                            queue = queue,
-                            quickShares = quickShares,
-                            quickShareUrls = viewModel.quickShareUrls,
-                            onQuickShareText = viewModel::createQuickShareText,
-                            onQuickShareFile = viewModel::createQuickShareFile,
-                            onStopQuickShare = viewModel::stopQuickShare,
-                            onQuickShareRefresh = viewModel::refreshQuickShares,
-                            onNicknameChange = viewModel::updateNickname,
-                            onPasswordChange = viewModel::updateSessionPassword,
-                            onThemeModeChange = viewModel::updateThemeMode,
-                            onLanguageChange = viewModel::updateAppLanguage,
-                            onNotificationsChange = onNotificationsChange,
-                            onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
-                            onPeerSelected = viewModel::selectPeer,
-                            onConnect = viewModel::connectSelectedPeer,
-                            onConnectManual = viewModel::connectManualPeer,
-                            onStartHosting = viewModel::startHosting,
-                            onStopHosting = viewModel::stopHosting,
-                            onDisconnect = viewModel::disconnect,
-                            onInputChange = viewModel::updateInputMessage,
-                            onSendMessage = viewModel::sendTextMessage,
-                            onBeginFileSelection = viewModel::beginFileSelection,
-                            onFilesPicked = viewModel::addSelectedFiles,
-                            onClearFiles = viewModel::clearFiles,
-                            onRemoveFile = viewModel::removeFile,
-                            onStartFileBatch = viewModel::startFileBatch,
-                            onRetryFailedFiles = viewModel::retryFailedFiles,
-                            onSkipFailedFiles = viewModel::skipFailedFiles,
-                            onStopAfterCurrentFile = viewModel::stopAfterCurrentFile,
-                            onRequestNearbyPermission = onRequestNearbyPermission,
-                            onRetryDiscovery = viewModel::restartDiscovery,
-                            onStopDiscovery = viewModel::stopDiscovery,
-                            onAutoDiscoveryChange = viewModel::updateAutoDiscovery,
-                        )
+                    com.shterneregen.securelan.androidclient.ui.lantools.LanToolsHost { openLanTools ->
+                        com.shterneregen.securelan.androidclient.ui.connection.PendingRoomConnectionDialog(viewModel, state)
+                        CallHost(viewModel, baseContext as MainActivity) { requestCall ->
+                            RedesignedMainScreen(
+                                roomTools = { com.shterneregen.securelan.androidclient.ui.connection.RoomConnectionTools(viewModel, state) },
+                                onSearchSurface = viewModel::updateSearchSurface,
+                                onOpenLanTools = openLanTools,
+                                onHostDiscoverableChange = viewModel::setHostDiscoverable,
+                                callActions = { CallButtons(state.callPeers, state.connected, requestCall) },
+                                state = state,
+                                queue = queue,
+                                quickShares = quickShares,
+                                quickShareUrls = viewModel.quickShareUrls,
+                                onQuickShareText = viewModel::createQuickShareText,
+                                onQuickShareFile = viewModel::createQuickShareFile,
+                                onStopQuickShare = viewModel::stopQuickShare,
+                                onQuickShareRefresh = viewModel::refreshQuickShares,
+                                onNicknameChange = viewModel::updateNickname,
+                                onPasswordChange = viewModel::updateSessionPassword,
+                                onThemeModeChange = viewModel::updateThemeMode,
+                                onLanguageChange = viewModel::updateAppLanguage,
+                                onNotificationsChange = onNotificationsChange,
+                                onAutoReceiveChange = viewModel::updateAutoReceiveFiles,
+                                onPeerSelected = viewModel::selectPeer,
+                                onConnect = viewModel::connectSelectedPeer,
+                                onConnectManual = viewModel::connectManualPeer,
+                                onStartHosting = viewModel::startHosting,
+                                onStopHosting = viewModel::stopHosting,
+                                onDisconnect = viewModel::disconnect,
+                                onInputChange = viewModel::updateInputMessage,
+                                onSendMessage = viewModel::sendTextMessage,
+                                onBeginFileSelection = viewModel::beginFileSelection,
+                                onFilesPicked = viewModel::addSelectedFiles,
+                                onClearFiles = viewModel::clearFiles,
+                                onRemoveFile = viewModel::removeFile,
+                                onStartFileBatch = viewModel::startFileBatch,
+                                onRetryFailedFiles = viewModel::retryFailedFiles,
+                                onSkipFailedFiles = viewModel::skipFailedFiles,
+                                onStopAfterCurrentFile = viewModel::stopAfterCurrentFile,
+                                onRequestNearbyPermission = onRequestNearbyPermission,
+                                onRetryDiscovery = viewModel::restartDiscovery,
+                                onStopDiscovery = viewModel::stopDiscovery,
+                                onAutoDiscoveryChange = viewModel::updateAutoDiscovery,
+                            )
+                        }
                     }
                 }
             }
@@ -350,6 +353,7 @@ private enum class PrimaryDestination(val labelRes: Int, val icon: ImageVector) 
 private fun RedesignedMainScreen(
     roomTools: @Composable () -> Unit,
     onSearchSurface: (Boolean) -> Unit,
+    onOpenLanTools: () -> Unit,
     onHostDiscoverableChange: (Boolean) -> Unit,
     callActions: @Composable () -> Unit,
     state: MainUiState,
@@ -564,6 +568,7 @@ private fun RedesignedMainScreen(
                     } else when (destination) {
                         PrimaryDestination.DEVICES -> RedesignedDevicesScreen(
                             roomTools = roomTools,
+                            onOpenLanTools = onOpenLanTools,
                             state = state,
                             onPeerClick = {
                                 onPeerSelected(it)
@@ -714,6 +719,7 @@ private fun RedesignedNavigationRail(selected: PrimaryDestination, onSelected: (
 @Composable
 private fun RedesignedDevicesScreen(
     roomTools: @Composable () -> Unit,
+    onOpenLanTools: () -> Unit,
     state: MainUiState,
     onPeerClick: (DiscoveredPeer) -> Unit,
     onOpenChat: () -> Unit,
@@ -741,6 +747,7 @@ private fun RedesignedDevicesScreen(
             ) {
                 if (state.connected || state.hosting) CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect)
                 RoomEntryCard(state, roomTools)
+                com.shterneregen.securelan.androidclient.ui.lantools.NetworkUtilitiesEntry(onOpenLanTools)
                 if (!state.connected && !state.hosting) {
                     OtherConnectionOptions(state, onHostRoom, onConnectManual)
                 }
@@ -766,6 +773,7 @@ private fun RedesignedDevicesScreen(
         ) {
             if (state.connected || state.hosting) item { CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect) }
             item { RoomEntryCard(state, roomTools) }
+            item { com.shterneregen.securelan.androidclient.ui.lantools.NetworkUtilitiesEntry(onOpenLanTools) }
             item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery, onAutoDiscoveryChange) }
             if (serverPeers.isNotEmpty()) {
                 item { DevicesSectionHeader(serverPeers.size) }
