@@ -7,11 +7,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
 import com.shterneregen.securelan.desktop.compose.ui.shell.ComposeShellContent
+import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 
 @Composable
 fun SecureLanComposeApp(
     hostAdapter: ComposeDesktopHostAdapter? = null,
     settingsController: DesktopAppSettingsController? = null,
+    lanToolsController: DesktopLanToolsController? = null,
 ) {
     val localSettingsController = remember { DesktopAppSettingsController() }
     val controller = settingsController ?: localSettingsController
@@ -31,6 +33,7 @@ fun SecureLanComposeApp(
                     hostAdapter = hostAdapter,
                     themeMode = settings.themeMode,
                     settingsController = controller,
+                    lanToolsController = lanToolsController,
                     onThemeToggle = {
                         controller.update { it.copy(themeMode = it.themeMode.next()) }
                     },

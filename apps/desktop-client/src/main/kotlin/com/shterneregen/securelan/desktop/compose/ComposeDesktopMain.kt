@@ -23,9 +23,14 @@ import com.shterneregen.securelan.desktop.compose.tray.DesktopCloseOutcome
 import com.shterneregen.securelan.desktop.compose.tray.DesktopTrayMenuState
 import com.shterneregen.securelan.desktop.compose.tray.SecureLanTray
 import com.shterneregen.securelan.desktop.compose.tray.desktopCloseOutcome
+import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
+import com.shterneregen.securelan.desktop.lantools.PropertiesSavedLanDeviceStore
+import com.shterneregen.securelan.desktop.network.discovery.LinuxDefaultRouteHintProvider
 import com.shterneregen.securelan.desktop.quickshare.DefaultQuickShareService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
+import com.shterneregen.securelan.lantools.wol.DefaultWakeOnLanService
+import com.shterneregen.securelan.lantools.wol.JvmLanNetworkInfoProvider
 import com.shterneregen.securelan.webrtc.event.RtcEvent
 import com.shterneregen.securelan.webrtc.service.RtcEventPublisher
 import com.shterneregen.securelan.webrtc.service.RtcSignalingGateway
@@ -51,6 +56,12 @@ fun main() {
             DesktopAppSettingsController(startupSettings, settingsStore)
         }
         val initialSettings = remember(settingsController) { settingsController.settings }
+        val lanToolsController = remember {
+            val hint = LinuxDefaultRouteHintProvider()
+            val networks = JvmLanNetworkInfoProvider(defaultRouteInterfaceKey = hint::interfaceKey)
+            DesktopLanToolsController(PropertiesSavedLanDeviceStore(), networks, DefaultWakeOnLanService(networks))
+        }
+        DisposableEffect(lanToolsController) { onDispose { lanToolsController.close() } }
         val chatNotificationChannel = remember { Channel<DesktopChatTrayNotification>(Channel.UNLIMITED) }
         var unreadMessageCount by remember { mutableStateOf(0) }
 
@@ -169,6 +180,7 @@ fun main() {
 
         fun quitApplication() {
             saveWindowState()
+            lanToolsController.close()
             hostAdapter.shutdown()
             exitApplication()
         }
@@ -250,6 +262,7 @@ fun main() {
             SecureLanComposeApp(
                 hostAdapter = hostAdapter,
                 settingsController = settingsController,
+                lanToolsController = lanToolsController,
             )
         }
     }

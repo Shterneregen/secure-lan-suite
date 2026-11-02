@@ -1,11 +1,58 @@
-# LAN Tools core
+# LAN Tools
 
 `modules/lan-tools-core` provides a room-independent Wake-on-LAN API. It is a
 Kotlin/JVM module targeting Java 17, using `common-net` IP/interface values and
 coroutines. It has no Compose, Android SDK, chat, file-transfer or crypto dependency.
-Neither application exposes LAN Tools in its UI yet. Saved devices currently
-have a shared model; persistent stores, diagnostics and device browsing are not
-implemented. See the [implementation plan](lantools-implementation-plan.md).
+Desktop exposes saved-device management and Wake-on-LAN in a standalone dialog.
+Android integration, diagnostics and device browsing are not implemented.
+See the [implementation plan](lantools-implementation-plan.md).
+
+## Desktop workflow
+
+Open **Tools → LAN Tools** in the top bar. Quick Share stays alongside Tools;
+Steganography is another item in that menu. LAN Tools works while disconnected
+and preserves the existing room, selected peer, chat draft, transfers and calls.
+
+In **Devices**, choose **Add device**, enter a name and optionally an IP hint and
+MAC address, then **Save device**. Without a MAC the device can be saved but Wake
+up is unavailable. With a MAC you may override the broadcast and UDP port or
+store a preferred platform interface key. Broadcast must belong to the source
+subnet; leave it empty to use the subnet default. The IP hint is descriptive and
+does not choose the WoL destination.
+
+**Details** selects a saved device. Use **Edit device** to change its settings;
+**Delete device** asks for confirmation and removes only saved settings. Choose
+the current **Network interface** before **Wake up** if several source bindings
+exist. Linux default-route recommendations are marked, never selected in place
+of a user choice. **Refresh interfaces** reads current local metadata, not nearby
+devices. There is no automatic device scan or connectivity check.
+
+An outcome such as “Packet sent” means local submission only. A device may remain
+off despite successful submission. MAC/broadcast/port/interface errors are shown
+with recovery guidance. **Diagnostics** currently explains that checks are not
+available; no inactive diagnostic action is presented as implemented.
+
+The dialog resizes into a list/details layout when wide and a single scrollable
+column when narrow. Close/Escape cancels network work and preserves the tab,
+selection and unfinished device form in memory. Escape first dismisses a pending
+delete confirmation. **Cancel editing** explicitly discards a form. On returning
+to the tool, the form remains; after a process restart only successfully saved
+devices are restored. A save already in progress may finish after the dialog
+closes; it is owned by the application, not by the temporary dialog.
+
+### Device settings file and recovery
+
+Devices are stored separately in portable `config/lan-tools-devices.properties`,
+next to the existing application settings. There is no change to room settings
+or passwords. The versioned store admits at most 256 devices and 1 MiB of data.
+Writes use a temporary sibling file and atomic replacement when supported.
+
+Read failures disable changes until **Reload saved devices** succeeds. A damaged
+or unsupported schema is read-only; valid rows may still be displayed. Back up
+and repair the file, then reload. Failed Save/Delete retains the original list,
+form or confirmation so the action can be retried. An external change detected
+before writing requires reloading. Concurrent external writers are unsupported;
+the fingerprint check is not a cross-process file lock.
 
 ## Wake-on-LAN API
 
@@ -97,8 +144,8 @@ val networks = JvmLanNetworkInfoProvider(defaultRouteInterfaceKey = hint::interf
 
 `LinuxDefaultRouteHintProvider` belongs to the Desktop application, under
 `desktop.network.discovery`; the core module does not read procfs or import
-platform SDKs. The adapter is ready for future Desktop service composition; it
-is not wired to the main application before LAN Tools UI integration.
+platform SDKs. The Desktop composition root injects this callback into the shared
+JVM provider used for interface selection and WoL revalidation.
 
 On Linux it reads at most 64 KiB / 512 route rows from `/proc/net/route`, checks
 UP/non-reject default routes, and recommends the unique lowest-metric interface.

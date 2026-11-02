@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.ui.shell
 
 import androidx.compose.runtime.*
+import androidx.compose.ui.focus.FocusRequester
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
@@ -15,6 +16,7 @@ import com.shterneregen.securelan.desktop.compose.ui.chat.LiveChatWorkspaceCard
 import com.shterneregen.securelan.desktop.compose.ui.connection.MessengerCenterPanel
 import com.shterneregen.securelan.desktop.compose.ui.context.ChatCallActions
 import com.shterneregen.securelan.desktop.compose.ui.context.LiveActionsColumn
+import com.shterneregen.securelan.desktop.compose.ui.lantools.LiveLanToolsDialog
 import com.shterneregen.securelan.desktop.compose.ui.media.ComposeVideoStage
 import com.shterneregen.securelan.desktop.compose.ui.peerlist.LivePeerListCard
 import com.shterneregen.securelan.desktop.compose.ui.quickshare.LiveQuickShareDialog
@@ -23,6 +25,7 @@ import com.shterneregen.securelan.desktop.compose.ui.steganography.LiveSteganogr
 import com.shterneregen.securelan.desktop.compose.ui.transfer.LiveTransferBatchDialog
 import com.shterneregen.securelan.desktop.compose.util.resolveAttachCandidatePeer
 import com.shterneregen.securelan.desktop.compose.util.resolveSelectedJoinTarget
+import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 
 @Composable
 internal fun LiveComposeShellContent(
@@ -30,7 +33,17 @@ internal fun LiveComposeShellContent(
     themeMode: SecureLanThemeMode,
     settingsController: DesktopAppSettingsController,
     onThemeToggle: () -> Unit,
+    lanToolsController: DesktopLanToolsController? = null,
 ) {
+    val toolsFocus = remember { FocusRequester() }
+    var restoreToolsFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(restoreToolsFocus) {
+        if (restoreToolsFocus) {
+            withFrameNanos { }
+            toolsFocus.requestFocus()
+            restoreToolsFocus = false
+        }
+    }
     val inMessengerMode = hostAdapter.statusState.localServerRunning || hostAdapter.statusState.clientConnected
 
     var selectedPeerKey by remember { mutableStateOf<String?>(null) }
@@ -113,6 +126,8 @@ internal fun LiveComposeShellContent(
         onOpenSteganography = { steganographyDialogMode = ComposeSteganographyMode.HIDE },
         onSettingsClick = { settingsDialogOpen = true },
         onThemeToggle = onThemeToggle,
+        onOpenLanTools = lanToolsController?.let { it::open },
+        toolsFocusRequester = toolsFocus,
     ) {
         val rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title
         MainWorkspaceRow(
@@ -168,6 +183,13 @@ internal fun LiveComposeShellContent(
                 )
             },
         )
+    }
+    if (lanToolsController != null) {
+        val lanToolsState by lanToolsController.state.collectAsState()
+        if (lanToolsState.visible) LiveLanToolsDialog(lanToolsController) {
+            lanToolsController.dismiss()
+            restoreToolsFocus = true
+        }
     }
     if (roomInvitationOpen) com.shterneregen.securelan.desktop.compose.ui.connection.RoomInvitationDialog(hostAdapter) { roomInvitationOpen = false }
     if (quickShareDialogOpen) {

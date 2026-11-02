@@ -1,12 +1,14 @@
 package com.shterneregen.securelan.desktop.compose.ui.shell
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.Icon
-import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
@@ -16,17 +18,34 @@ import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 internal fun AppToolButtons(
     onOpenQuickShare: () -> Unit,
     onOpenSteganography: () -> Unit,
+    onOpenLanTools: (() -> Unit)? = null,
+    toolsFocusRequester: FocusRequester? = null,
 ) {
     AppToolButton(
         label = "Quick Share",
         icon = SecureLanIcons.QuickShare,
         onClick = onOpenQuickShare,
     )
-    AppToolButton(
-        label = "Steganography",
-        icon = SecureLanIcons.Steganography,
-        onClick = onOpenSteganography,
-    )
+    var toolsExpanded by remember { mutableStateOf(false) }
+    Box {
+        CompactButton(onClick = { toolsExpanded = true },
+            modifier = toolsFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier) {
+            Icon(SecureLanIcons.Commands, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Tools")
+            Text(" ▾")
+        }
+        DropdownMenu(expanded = toolsExpanded, onDismissRequest = { toolsExpanded = false }) {
+            DropdownMenuItem(onClick = { toolsExpanded = false; onOpenLanTools?.invoke() }, enabled = onOpenLanTools != null) {
+                Icon(SecureLanIcons.Network, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp)); Text("LAN Tools")
+            }
+            DropdownMenuItem(onClick = { toolsExpanded = false; onOpenSteganography() }) {
+                Icon(SecureLanIcons.Steganography, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp)); Text("Steganography")
+            }
+        }
+    }
 }
 
 @Composable

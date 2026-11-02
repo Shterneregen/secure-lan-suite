@@ -101,9 +101,27 @@ column widths.
 
 ### Quick Share and steganography
 
+- Keep Quick Share in the top bar. The adjacent Tools menu opens LAN Tools or
+  Steganography; settings and theme remain separate controls.
 - Open these tools intentionally and restore the prior context when they close.
 - Explain the Quick Share trust boundary before publishing a link.
 - Make validation, password failures, and output locations understandable.
+
+### LAN Tools
+
+LAN Tools uses a separate wide, resizable dialog, available without a room.
+Devices contains saved devices, details and configuration; Wake-on-LAN is a
+device action. Diagnostics shows an informative unavailable state until real
+checks exist. Do not add fake discovery or Ping. IP/MAC hints confer no room
+authentication or trusted identity.
+
+Require confirmation before deleting settings. Preserve unfinished forms and
+selection on close; Cancel editing explicitly discards a form. Select a source
+interface explicitly when ambiguous; default-route hints are recommendations
+only. Report packet submission without claiming delivery or physical wake-up.
+Closing cancels bounded network jobs and returns focus to Tools. Escape first
+dismisses a pending delete confirmation, then the containing utility. Keep the
+messenger mounted and its services running underneath.
 
 ### Settings
 

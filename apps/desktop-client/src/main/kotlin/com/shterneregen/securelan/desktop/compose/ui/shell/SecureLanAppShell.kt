@@ -9,6 +9,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
@@ -28,6 +29,8 @@ internal fun SecureLanAppShell(
     onOpenSteganography: () -> Unit,
     onSettingsClick: () -> Unit,
     onThemeToggle: () -> Unit,
+    onOpenLanTools: (() -> Unit)? = null,
+    toolsFocusRequester: FocusRequester? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -69,6 +72,8 @@ internal fun SecureLanAppShell(
                 AppToolButtons(
                     onOpenQuickShare = onOpenQuickShare,
                     onOpenSteganography = onOpenSteganography,
+                    onOpenLanTools = onOpenLanTools,
+                    toolsFocusRequester = toolsFocusRequester,
                 )
                 SettingsButton(onClick = onSettingsClick)
                 ThemeToggleButton(themeMode = themeMode, onThemeToggle = onThemeToggle)
