@@ -4,7 +4,8 @@
 Kotlin/JVM module targeting Java 17, using `common-net` IP/interface values and
 coroutines. It has no Compose, Android SDK, chat, file-transfer or crypto dependency.
 Desktop exposes saved devices, Wake-on-LAN, diagnostics and an advertised-device browser in a standalone dialog.
-Android integration is not implemented. ICMP has no qualified backend.
+Android exposes the same core operations through platform socket/NSD adapters and
+a separate Material 3 screen. ICMP has no qualified backend.
 See the [implementation plan](lantools-implementation-plan.md).
 
 ## Desktop workflow
@@ -134,7 +135,8 @@ handles. Short synchronous OS/library calls cannot promise forced kernel
 interruption. A binding change detected by the monitor retires old data; a
 network replacement with identical interface/address/prefix is not distinguishable
 by this JVM snapshot. No topology cache or room-level identity is used to fill
-that gap. Scoped IPv6 browsing and Android NSD are not implemented here.
+that gap. Scoped IPv6 browsing is unavailable; Android uses the separate NSD
+adapter described below.
 
 ### Diagnostics workflow
 
@@ -216,11 +218,11 @@ unavailable status; no fallback guesses are made.
 
 | Capability | Windows Desktop | Linux/macOS Desktop | Android |
 | --- | --- | --- | --- |
-| Local IPv4/prefix/interface state | JVM snapshot | JVM snapshot | Integration pending |
-| Gateway / configured DNS metadata | Local PowerShell backend | Unsupported backend | Integration pending |
-| TCP / system lookup | Implemented | Shared JVM implementation; runtime unqualified | Integration pending |
-| Gateway TCP check | Available with reported metadata | Unavailable | Integration pending |
-| ICMP | Unavailable | Unavailable | Integration pending |
+| Local IPv4/prefix/interface state | JVM snapshot | JVM snapshot | Shared LAN registry / LinkProperties |
+| Gateway / configured DNS metadata | Local PowerShell backend | Unsupported backend | LinkProperties when available |
+| TCP / system lookup | Implemented | Shared JVM implementation; runtime unqualified | Network-bound sockets / system resolver |
+| Gateway TCP check | Available with reported metadata | Unavailable | Available with reported IPv4 gateway |
+| ICMP | Unavailable | Unavailable | Unavailable |
 
 Interface inventory/source selection is IPv4-oriented. Numeric global IPv6 TCP
 can use OS routing; link-local IPv6 needs a scope and is unsupported for TCP.
@@ -376,6 +378,79 @@ application localization, not raw exception messages.
 target, port, byte count and timestamp. It does **not** confirm network delivery,
 that the device supports WoL, or that it turned on. BIOS/UEFI, NIC, power state,
 router/client isolation, firewall and Wi-Fi behavior require physical testing.
+
+## Android workflow
+
+Open **Devices → Network utilities → LAN Tools**. The four primary destinations
+remain Devices, Chat, Files and Quick Share. This secondary full-screen surface
+keeps the room workspace composed and uses its own ViewModel; opening/closing
+it never changes membership, selected peer, draft or transfer/call owners.
+The existing app language and Material 3 light/dark theme are reused.
+Phones use one scrollable column; at 840 dp the list and details are separate.
+
+**Devices** supports the same manual save/edit/confirmed delete, interface
+selection, search/filter, explicit copy from discovery and Wake-on-LAN actions.
+Settings are private to this installation, separately from room preferences.
+MAC must be entered manually; Android hardware identifiers are not read.
+An invalid/future/oversized settings payload disables writes until a valid
+reload, preserving the original content. Failed saves retain the form/list.
+There is no sync/import of desktop devices or implicit trusted identity by IP.
+
+**Refresh devices** is the only start of a browse. On API 33+ it requests the
+existing Nearby devices permission when missing; after granting, press Refresh
+again. Opening the app/tool, a permission grant or network recovery never
+starts discovery. Denial has an actionable message; app settings can be used
+to restore a denied permission. No manifest permission or SDK level is added.
+
+The Android browser subscribes to the six fixed service types through its own
+`NsdFacade`. Secure room browsing still calls the room-only wrapper and codec.
+Generic browsing deliberately does not copy TXT data. Each run chooses one LAN:
+with multiple networks select an explicit current binding. Capabilities decide
+whether network-scoped APIs (API 33/extensions) and service updates (API
+34/extensions) can be used. Legacy NSD requires one LAN without a VPN. Its
+uncancellable native resolves share one gate across all types/generations in
+this tool facade. A stuck resolve may keep the tool busy until Android returns;
+repeated refresh cannot create replacement resolver workers.
+
+Compile SDK 35 has no usable SRV hostname getter (`getHostname` is newer;
+see [NsdServiceInfo](https://developer.android.com/reference/android/net/nsd/NsdServiceInfo)).
+Android hostname/type therefore stays Unknown. Records without hostname do
+not merge solely by IP; several services may appear as separate device rows.
+The core registry still supplies lease expiry, loss handling, bounds and stale
+snapshots. The app bounds the callback queue to 256, candidate lists to 32 per
+type, one run to thirty seconds and stop acknowledgements to two extra seconds.
+If a stop acknowledgement exceeds that budget, subsequent runs return busy
+until the old handles acknowledge stopping; repeated refresh cannot accumulate
+native browsers.
+Binding loss clears observations; late callbacks from an old run are ignored.
+There is no continuous background browsing or room-discovery coupling.
+
+**Diagnostics** reads IPv4/prefix and gateway/DNS facts from `LinkProperties`.
+Unavailable facts are shown explicitly; no gateway or MAC is guessed. Broadcast
+must be reported by the interface; if unavailable WoL fails with an unsuitable
+interface result. Source selections are revalidated for each operation.
+[`Network.bindSocket`](https://developer.android.com/reference/android/net/Network)
+binds only the current TCP/UDP socket, before connect/send, never the process.
+If two current networks have the same source IP, the TCP adapter rejects the
+ambiguous source instead of choosing a different Network silently. WoL carries
+the exact binding and is not subject to this source-IP ambiguity.
+
+DNS uses [`DnsResolver`](https://developer.android.com/reference/android/net/DnsResolver)
+and `CancellationSignal` on API 29+, with four concurrent requests/no queue;
+API 26–28 uses `JvmHostResolver`, extracted from the existing Desktop adapter,
+with two bounded native workers. The Desktop wrapper preserves its constructor
+and behavior. DNS uses the default system network regardless of the TCP source
+picker. Numeric input bypasses lookup. TCP/gateway messages describe one port,
+WoL messages describe submission, and neither is interpreted as ICMP or power
+state. ICMP, IPv6 discovery and scoped IPv6 endpoints remain unavailable.
+
+Back/closing/background cancels tool network jobs and releases only its network
+subscription, browsers and multicast lease. Cancellation can include up to two
+seconds of NSD acknowledgement cleanup; native legacy DNS/NSD can finish later.
+Completed/failed/cancelled observations are historical. Forms, selection and
+results survive Activity recreation and temporary closure; only committed
+devices survive process death. Saves may finish after closing the tool.
+See the [Android guide](../apps/android-client/android-readme.md#lan-tools).
 
 ## Verification
 

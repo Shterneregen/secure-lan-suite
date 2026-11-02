@@ -42,17 +42,29 @@ class NsdFacade(private val context: Context) : NsdBackend {
     }
     private val callbackExecutor = Executor { command -> dispatch { command.run() } }
 
-    interface Browser : AutoCloseable
+    interface Browser : AutoCloseable {
+        /** A bounded caller may await the platform stop acknowledgement before starting another run. */
+        suspend fun awaitClosed() = Unit
+    }
     interface Registration : AutoCloseable
 
     @SuppressLint("NewApi") // Centralized extension capability check also covers backported NSD methods.
-    override fun browse(networkKey: String?, resolved: (Resolved) -> Unit, lost: (String) -> Unit, failed: (NsdFailure) -> Unit): Browser {
+    override fun browse(networkKey: String?, resolved: (Resolved) -> Unit, lost: (String) -> Unit, failed: (NsdFailure) -> Unit): Browser =
+        browseType(DnsSdRecordCodec.ANDROID_SERVICE_TYPE, networkKey, resolved, lost, failed, includeRoomTxt = true)
+
+    /** Generic browse owns separate leases. Only the room wrapper is allowed to copy room TXT. */
+    @SuppressLint("NewApi")
+    fun browseType(serviceType: String, networkKey: String?, resolved: (Resolved) -> Unit, lost: (String) -> Unit,
+        failed: (NsdFailure) -> Unit, includeRoomTxt: Boolean = false): Browser {
+        require(serviceType.length <= 64 && Regex("_[a-z0-9-]+\\._tcp\\.").matches(serviceType))
+        require(!includeRoomTxt || serviceType == DnsSdRecordCodec.ANDROID_SERVICE_TYPE)
         val network = networkKey?.let { requireNotNull(AndroidLanNetworkMonitor(context).network(it)) { "Selected LAN is unavailable" } }
         val capabilities = NsdApiCapabilities.current()
         val candidates = linkedMapOf<String, NsdServiceInfo>()
         val subscriptions = linkedMapOf<String, NsdManager.ServiceInfoCallback>()
         val queue = ArrayDeque<String>()
         var closed = false
+        val stopped = kotlinx.coroutines.CompletableDeferred<Unit>()
         var activeLegacy: NsdManager.ResolveListener? = null
         var watchdog: java.util.concurrent.ScheduledFuture<*>? = null
         val overflowKey = Any()
@@ -61,8 +73,9 @@ class NsdFacade(private val context: Context) : NsdBackend {
         fun publish(info: NsdServiceInfo) {
             if (closed || info.serviceName !in candidates) return
             val addresses = if (capabilities.serviceUpdates) info.hostAddresses else listOfNotNull(info.host)
+            if (!includeRoomTxt && addresses.size > 8) failed(NsdFailure.LIMIT)
             resolved(Resolved(info.serviceName, info.port, addresses.take(8).mapNotNull { it.hostAddress },
-                info.attributes.entries.take(13).associate { it.key to it.value.copyOf() },
+                if (includeRoomTxt) info.attributes.entries.take(13).associate { it.key to it.value.copyOf() } else emptyMap(),
                 (if (capabilities.networkScoped) info.network else null)?.toString() ?: network?.toString()))
         }
         fun pump() {
@@ -86,9 +99,9 @@ class NsdFacade(private val context: Context) : NsdBackend {
         }
         val discovery = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) = Unit
-            override fun onDiscoveryStopped(serviceType: String) = Unit
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { dispatch { if (!closed) failed(NsdFailure.PLATFORM) } }
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { dispatch { if (!closed) failed(NsdFailure.PLATFORM) } }
+            override fun onDiscoveryStopped(serviceType: String) { stopped.complete(Unit) }
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { stopped.complete(Unit); dispatch { if (!closed) failed(NsdFailure.PLATFORM) } }
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { stopped.complete(Unit); dispatch { if (!closed) failed(NsdFailure.PLATFORM) } }
             override fun onServiceFound(info: NsdServiceInfo) { dispatch {
                 if (closed || info.serviceName in candidates || info.serviceName.length > 255) return@dispatch
                 if (candidates.size >= 32) {
@@ -128,20 +141,23 @@ class NsdFacade(private val context: Context) : NsdBackend {
         val refresh = owner.scheduleWithFixedDelay({ if (!closed && !capabilities.serviceUpdates) candidates.keys.forEach { if (it !in queue) queue += it } }, 60, 60, TimeUnit.SECONDS)
         dispatch {
             try {
-                if (capabilities.networkScoped) manager.discoverServices(DnsSdRecordCodec.ANDROID_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, network, callbackExecutor, discovery)
-                else manager.discoverServices(DnsSdRecordCodec.ANDROID_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discovery)
-            } catch (error: Exception) { failed(if (error is SecurityException) NsdFailure.PERMISSION_DENIED else NsdFailure.PLATFORM) }
+                if (!closed) {
+                    if (capabilities.networkScoped) manager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, network, callbackExecutor, discovery)
+                    else manager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discovery)
+                }
+            } catch (error: Exception) { stopped.complete(Unit); failed(if (error is SecurityException) NsdFailure.PERMISSION_DENIED else NsdFailure.PLATFORM) }
         }
         return object : Browser {
             override fun close() { dispatch(control = true) {
                 if (closed) return@dispatch
                 closed = true; ticker.cancel(false); refresh.cancel(false); watchdog?.cancel(false)
                 overflowHandlers.remove(overflowKey)
-                runCatching { manager.stopServiceDiscovery(discovery) }
+                runCatching { manager.stopServiceDiscovery(discovery) }.onFailure { stopped.complete(Unit) }
                 subscriptions.values.forEach { runCatching { manager.unregisterServiceInfoCallback(it) } }
                 subscriptions.clear(); candidates.clear(); queue.clear()
                 if (capabilities.serviceUpdates) activeLegacy?.let { runCatching { manager.stopServiceResolution(it) } }
             } }
+            override suspend fun awaitClosed() { stopped.await() }
         }
     }
 
