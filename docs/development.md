@@ -73,6 +73,27 @@ The module targets Java 17 for future Android reuse. Its tests use fakes and
 loopback UDP, without physical LAN broadcasts. See [LAN Tools core](lan-tools.md)
 for API, routing and hardware qualification limits.
 
+Desktop integration and UI checks:
+
+```powershell
+.\gradlew.bat :modules:lan-tools-core:check :apps:desktop-client:check
+```
+
+For an explicit native-window smoke in a graphical desktop session:
+
+```powershell
+.\gradlew.bat :apps:desktop-client:lanToolsWindowSmoke
+```
+
+The probe opens the production shell/dialog with local service doubles, sends
+Escape only into its own AWT listeners and verifies workspace services were not
+restarted or stopped. It never broadcasts or opens a real room. It runs separately
+from `check`/`qualityGate` so headless CI does not require a window manager.
+Compose tests exercise CRUD, validation, interface selection, keyboard, drafts,
+peer selection and layout; screenshots are written to
+`apps/desktop-client/build/reports/lan-tools-ui/`. Physical WoL and simultaneous
+real chat/file/media traffic remain manual qualification checks.
+
 ### Dependency locking during IDE sync
 
 JVM projects use strict dependency locking. Android uses `LockMode.DEFAULT`:

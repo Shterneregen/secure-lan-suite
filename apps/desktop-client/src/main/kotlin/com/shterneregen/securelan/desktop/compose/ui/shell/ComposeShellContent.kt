@@ -12,6 +12,7 @@ import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
+import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 
 @Composable
 internal fun ComposeShellContent(
@@ -19,6 +20,7 @@ internal fun ComposeShellContent(
     themeMode: SecureLanThemeMode,
     settingsController: DesktopAppSettingsController,
     onThemeToggle: () -> Unit,
+    lanToolsController: DesktopLanToolsController? = null,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     Column(
@@ -29,7 +31,7 @@ internal fun ComposeShellContent(
         verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         if (hostAdapter != null) {
-            LiveComposeShellContent(hostAdapter, themeMode, settingsController, onThemeToggle)
+            LiveComposeShellContent(hostAdapter, themeMode, settingsController, onThemeToggle, lanToolsController)
         } else {
             PreviewComposeShellContent(themeMode, onThemeToggle)
         }

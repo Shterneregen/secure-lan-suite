@@ -15,6 +15,9 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 - Use voice sessions and experimental 1-to-1 video calls through WebRTC,
   including microphone, speaker, and camera selection and diagnostics.
 - Hide or extract text in BMP images with optional password-based encryption through the desktop Steganography tool.
+- Open **Tools → LAN Tools** on desktop to save LAN devices and send Wake-on-LAN
+  packets without joining a room. Device discovery and connectivity diagnostics
+  are not available yet. See [LAN Tools](docs/lan-tools.md).
 - Persist desktop profile, appearance, network, media, download, window, and diagnostics settings.
 - Build and use the experimental Android client for room hosting/joining, encrypted chat, and file transfer. Android supports adaptive layouts, light/dark themes, and English/Russian/system UI languages.
 
@@ -27,6 +30,7 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 | Browser file/text Quick Share, TTL/count/revoke, QR | Implemented | Implemented, experimental |
 | RTC data channels | Implemented | Unavailable |
 | BMP steganography | Implemented | Unavailable |
+| Saved LAN devices / Wake-on-LAN | Implemented | Unavailable |
 | Screen sharing | Unavailable | Unavailable |
 
 Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
@@ -69,7 +73,7 @@ documented in the [development guide](docs/development.md).
 
 - `modules/common-model` and `modules/common-net` - shared models and networking utilities
 - `modules/lan-tools-core` - UI-independent saved-device models and Wake-on-LAN API;
-  application UI integration is pending. See [LAN Tools core](docs/lan-tools.md).
+  used by the desktop LAN Tools dialog. See [LAN Tools](docs/lan-tools.md).
 - `modules/crypto-core` - encryption, hashing, signatures, key and file-crypto workflows
 - `modules/chat-core` - secure rooms, handshake, messaging, signaling, and peer discovery
 - `modules/file-transfer-core` - encrypted V2 file transfer, stream contracts, and shared Quick Share models/HTML; HTTP backends belong to the applications
