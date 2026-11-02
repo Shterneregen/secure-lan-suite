@@ -69,7 +69,7 @@ For the independent LAN Tools core (no UI integration required), run:
 .\gradlew.bat :modules:lan-tools-core:check :modules:common-net:test
 ```
 
-The module targets Java 17 for future Android reuse. Its tests use fakes and
+The module targets Java 17 and is reused by Android. Its tests use fakes and
 loopback UDP/TCP, without physical LAN broadcasts or external endpoints. See [LAN Tools core](lan-tools.md)
 for API, routing and hardware qualification limits.
 

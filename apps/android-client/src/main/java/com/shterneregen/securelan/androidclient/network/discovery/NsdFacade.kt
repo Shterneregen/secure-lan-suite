@@ -40,7 +40,8 @@ class NsdFacade(private val context: Context) : NsdBackend {
         val task = { try { block() } finally { if (!control) queuedCallbacks.decrementAndGet() }; Unit }
         try { owner.execute(task) } catch (_: java.util.concurrent.RejectedExecutionException) { task() }
     }
-    private val callbackExecutor = Executor { command -> dispatch { command.run() } }
+    // Callbacks classify themselves below: data is bounded, terminal acknowledgements cannot drop.
+    private val callbackExecutor = Executor { command -> command.run() }
 
     interface Browser : AutoCloseable {
         /** A bounded caller may await the platform stop acknowledgement before starting another run. */
@@ -64,7 +65,7 @@ class NsdFacade(private val context: Context) : NsdBackend {
         val subscriptions = linkedMapOf<String, NsdManager.ServiceInfoCallback>()
         val queue = ArrayDeque<String>()
         var closed = false
-        val stopped = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val teardown = NsdBrowserTeardown()
         var activeLegacy: NsdManager.ResolveListener? = null
         var watchdog: java.util.concurrent.ScheduledFuture<*>? = null
         val overflowKey = Any()
@@ -99,34 +100,38 @@ class NsdFacade(private val context: Context) : NsdBackend {
         }
         val discovery = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) = Unit
-            override fun onDiscoveryStopped(serviceType: String) { stopped.complete(Unit) }
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { stopped.complete(Unit); dispatch { if (!closed) failed(NsdFailure.PLATFORM) } }
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { stopped.complete(Unit); dispatch { if (!closed) failed(NsdFailure.PLATFORM) } }
+            override fun onDiscoveryStopped(serviceType: String) { dispatch(control = true) { teardown.discoveryStopped() } }
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { dispatch(control = true) { teardown.discoveryStopped(); if (!closed) failed(NsdFailure.PLATFORM) } }
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) { dispatch(control = true) { if (!closed) failed(NsdFailure.PLATFORM) } }
             override fun onServiceFound(info: NsdServiceInfo) { dispatch {
                 if (closed || info.serviceName in candidates || info.serviceName.length > 255) return@dispatch
-                if (candidates.size >= 32) {
+                // Retiring subscriptions still consume native capacity until their ACK, even after loss.
+                if (candidates.size >= 32 || teardown.pendingSubscriptions >= 32) {
                     failed(NsdFailure.LIMIT)
-                    val old = candidates.keys.first()
-                    candidates.remove(old); queue.remove(old)
-                    subscriptions.remove(old)?.let { runCatching { manager.unregisterServiceInfoCallback(it) } }
-                    lost(old)
+                    return@dispatch
                 }
                 candidates[info.serviceName] = info
                 if (capabilities.serviceUpdates) {
                     val callback = object : NsdManager.ServiceInfoCallback {
-                        override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) { subscriptions.remove(info.serviceName); if (!closed) failed(NsdFailure.PLATFORM) }
-                        override fun onServiceUpdated(serviceInfo: NsdServiceInfo) { if (subscriptions[info.serviceName] === this) publish(serviceInfo) }
-                        override fun onServiceLost() {
-                            if (subscriptions[info.serviceName] !== this) return
+                        override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) { dispatch(control = true) {
+                            teardown.unregistered(this)
+                            if (subscriptions[info.serviceName] === this) subscriptions.remove(info.serviceName)
+                            if (!closed) failed(NsdFailure.PLATFORM)
+                        } }
+                        override fun onServiceUpdated(serviceInfo: NsdServiceInfo) { dispatch { if (subscriptions[info.serviceName] === this) publish(serviceInfo) } }
+                        override fun onServiceLost() { dispatch lost@{
+                            if (subscriptions[info.serviceName] !== this) return@lost
                             candidates.remove(info.serviceName); subscriptions.remove(info.serviceName)
                             runCatching { manager.unregisterServiceInfoCallback(this) }
                             if (!closed) lost(info.serviceName)
-                        }
-                        override fun onServiceInfoCallbackUnregistered() = Unit
+                        } }
+                        override fun onServiceInfoCallbackUnregistered() { dispatch(control = true) { teardown.unregistered(this) } }
                     }
                     subscriptions[info.serviceName] = callback
+                    teardown.registered(callback)
                     runCatching { manager.registerServiceInfoCallback(info, callbackExecutor, callback) }.onFailure {
                         subscriptions.remove(info.serviceName)
+                        teardown.unregistered(callback)
                         failed(if (it is SecurityException) NsdFailure.PERMISSION_DENIED else NsdFailure.PLATFORM)
                     }
                 } else { queue += info.serviceName; pump() }
@@ -139,25 +144,27 @@ class NsdFacade(private val context: Context) : NsdBackend {
         }
         val ticker = owner.scheduleWithFixedDelay({ if (!closed && !capabilities.serviceUpdates) pump() }, 100, 100, TimeUnit.MILLISECONDS)
         val refresh = owner.scheduleWithFixedDelay({ if (!closed && !capabilities.serviceUpdates) candidates.keys.forEach { if (it !in queue) queue += it } }, 60, 60, TimeUnit.SECONDS)
-        dispatch {
+        dispatch(control = true) {
             try {
                 if (!closed) {
                     if (capabilities.networkScoped) manager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, network, callbackExecutor, discovery)
                     else manager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discovery)
                 }
-            } catch (error: Exception) { stopped.complete(Unit); failed(if (error is SecurityException) NsdFailure.PERMISSION_DENIED else NsdFailure.PLATFORM) }
+            } catch (error: Exception) { teardown.discoveryStopped(); failed(if (error is SecurityException) NsdFailure.PERMISSION_DENIED else NsdFailure.PLATFORM) }
         }
         return object : Browser {
             override fun close() { dispatch(control = true) {
                 if (closed) return@dispatch
                 closed = true; ticker.cancel(false); refresh.cancel(false); watchdog?.cancel(false)
+                teardown.closeRequested()
                 overflowHandlers.remove(overflowKey)
-                runCatching { manager.stopServiceDiscovery(discovery) }.onFailure { stopped.complete(Unit) }
+                // An exception/stop failure does not prove the native listener has been released.
+                runCatching { manager.stopServiceDiscovery(discovery) }
                 subscriptions.values.forEach { runCatching { manager.unregisterServiceInfoCallback(it) } }
                 subscriptions.clear(); candidates.clear(); queue.clear()
                 if (capabilities.serviceUpdates) activeLegacy?.let { runCatching { manager.stopServiceResolution(it) } }
             } }
-            override suspend fun awaitClosed() { stopped.await() }
+            override suspend fun awaitClosed() { teardown.awaitClosed() }
         }
     }
 

@@ -402,6 +402,10 @@ Settings are private to this installation, separately from room preferences.
 MAC must be entered manually; Android hardware identifiers are not read.
 An invalid/future/oversized settings payload disables writes until a valid
 reload, preserving the original content. Failed saves retain the form/list.
+SharedPreferences updates memory before its disk result: a failed commit restores
+the last acknowledged payload. If that rollback also fails, Save/Reload requires
+a successful recovery commit before the cached value can be accepted as durable.
+Disk failure is reported, never converted into a successful save.
 There is no sync/import of desktop devices or implicit trusted identity by IP.
 
 **Refresh devices** is the only start of a browse. On API 33+ it requests the
@@ -427,9 +431,15 @@ not merge solely by IP; several services may appear as separate device rows.
 The core registry still supplies lease expiry, loss handling, bounds and stale
 snapshots. The app bounds the callback queue to 256, candidate lists to 32 per
 type, one run to thirty seconds and stop acknowledgements to two extra seconds.
-If a stop acknowledgement exceeds that budget, subsequent runs return busy
-until the old handles acknowledge stopping; repeated refresh cannot accumulate
-native browsers.
+The facade additionally bounds data callbacks to 512; terminal acknowledgements
+are dispatched separately so a data flood cannot drop them. The 32 service-info
+registration limit includes retiring callbacks, not just visible candidates.
+If an acknowledgement exceeds the cleanup budget, subsequent runs return busy
+until both discovery and all service-info registrations acknowledge stopping.
+A stop failure/exception is not an acknowledgement. A missing acknowledgement
+can leave discovery busy for the rest of this process; restarting the app is the
+recovery when Android never completes cleanup. Repeated refresh cannot admit
+replacement native resources in that state. The legacy resolve gate is unchanged.
 Binding loss clears observations; late callbacks from an old run are ignored.
 There is no continuous background browsing or room-discovery coupling.
 Permission denial ends the browse promptly and closes its owned handles; it

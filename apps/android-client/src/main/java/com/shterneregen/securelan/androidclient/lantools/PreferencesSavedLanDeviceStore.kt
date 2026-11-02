@@ -17,18 +17,21 @@ interface LanDeviceStore {
 }
 
 /** A separate preference file, bounded versioned payload and synchronous commit on the caller's IO dispatcher. */
-class PreferencesSavedLanDeviceStore(private val read: () -> String?, private val write: (String) -> Boolean) : LanDeviceStore {
+class PreferencesSavedLanDeviceStore(private val read: () -> String?, private val write: (String?) -> Boolean) : LanDeviceStore {
     @SuppressLint("UseKtx") // KTX edit returns Unit; the Boolean commit result must reach the ViewModel.
     constructor(context: Context) : this(context.getSharedPreferences("lan-tools-devices", Context.MODE_PRIVATE).let { preferences ->
         { preferences.getString("payload", null) }
     }, context.getSharedPreferences("lan-tools-devices", Context.MODE_PRIVATE).let { preferences ->
-        { value: String -> preferences.edit().putString("payload", value).commit() }
+        { value: String? -> preferences.edit().putString("payload", value).commit() }
     })
     private var loaded = false
     private var expected: String? = null
+    private var recoveryPending = false
+    private var failedPayload: String? = null
 
     @Synchronized override fun load(): List<SavedLanDevice> {
         loaded = false
+        recover()
         val raw = read()
         val devices = if (raw == null) emptyList() else SavedLanDeviceCodec.decode(raw)
         expected = raw; loaded = true
@@ -36,10 +39,28 @@ class PreferencesSavedLanDeviceStore(private val read: () -> String?, private va
     }
     @Synchronized override fun save(devices: List<SavedLanDevice>) {
         check(loaded) { "A valid reload is required" }
+        recover()
         if (read() != expected) throw IOException("Device preferences changed")
         val encoded = SavedLanDeviceCodec.encode(devices)
-        if (!write(encoded)) throw IOException("Preference commit failed")
+        if (!runCatching { write(encoded) }.getOrDefault(false)) {
+            // Android commits to memory before disk. Restore the last acknowledged payload so a
+            // failed save cannot appear successful on reload or poison the external-change guard.
+            recoveryPending = true
+            failedPayload = encoded
+            runCatching { recover() }
+            throw IOException("Preference commit failed")
+        }
         expected = encoded
+    }
+
+    /** A failed rollback remains unconfirmed; do not expose the process cache as durable storage. */
+    private fun recover() {
+        if (!recoveryPending) return
+        val current = read()
+        if (current != expected && current != failedPayload) throw IOException("Device preferences changed during recovery")
+        if (!write(expected)) throw IOException("Preference recovery failed")
+        recoveryPending = false
+        failedPayload = null
     }
 }
 
