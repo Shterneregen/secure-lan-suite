@@ -7,6 +7,8 @@ Desktop exposes saved devices, Wake-on-LAN, diagnostics and an advertised-device
 Android exposes the same core operations through platform socket/NSD adapters and
 a separate Material 3 screen. ICMP has no qualified backend.
 See the [implementation plan](lantools-implementation-plan.md).
+The [validation matrix](quality/lantools-validation.md) distinguishes automated
+coverage, local runtime probes and physical scenarios awaiting qualification.
 
 ## Desktop workflow
 
@@ -27,6 +29,9 @@ the current **Network interface** before **Wake up** if several source bindings
 exist. Linux default-route recommendations are marked, never selected in place
 of a user choice. **Refresh interfaces** reads current local metadata, not nearby
 devices. There is no automatic device scan or connectivity check.
+An explicit selection is retained if its interface disappears. The picker shows
+that it is unavailable; sending fails until the user chooses a current interface
+or explicitly restores automatic/saved selection.
 
 An outcome such as “Packet sent” means local submission only. A device may remain
 off despite successful submission. MAC/broadcast/port/interface errors are shown
@@ -74,6 +79,9 @@ session and are never saved as device identities. Another refresh creates a
 new session and reconciles observations rather than retaining old rows as
 current. Source loss retires that source's observations and ignores its late
 callbacks, even if the replacement binding has the same key.
+Both browsers recheck topology at completion as well as while listening. Losing
+all browsed sources returns a network-change error; losing one Desktop source
+retains only the others and marks the result partial.
 
 Goodbyes remove observations immediately when delivered by JmDNS. A thirty-second
 monotonic application lease limits records whose removal was missed; this is
@@ -424,6 +432,8 @@ until the old handles acknowledge stopping; repeated refresh cannot accumulate
 native browsers.
 Binding loss clears observations; late callbacks from an old run are ignored.
 There is no continuous background browsing or room-discovery coupling.
+Permission denial ends the browse promptly and closes its owned handles; it
+does not wait for the full thirty-second listening period.
 
 **Diagnostics** reads IPv4/prefix and gateway/DNS facts from `LinkProperties`.
 Unavailable facts are shown explicitly; no gateway or MAC is guessed. Broadcast
@@ -443,6 +453,8 @@ and behavior. DNS uses the default system network regardless of the TCP source
 picker. Numeric input bypasses lookup. TCP/gateway messages describe one port,
 WoL messages describe submission, and neither is interpreted as ICMP or power
 state. ICMP, IPv6 discovery and scoped IPv6 endpoints remain unavailable.
+TCP, gateway and DNS outcomes retain their submitted target/name when the form
+is edited, including on failure, timeout and cancellation.
 
 Back/closing/background cancels tool network jobs and releases only its network
 subscription, browsers and multicast lease. Cancellation can include up to two
@@ -504,3 +516,12 @@ goodbye removal, then verifies a separate SecureLan room advertisement still
 updates after Explorer closes. It never opens TCP connections or authenticates
 a room. This controlled multicast probe is opt-in, separate from `check`, and
 is not physical third-party-device or live chat/file/call qualification.
+
+Android instrumentation also starts the actual foreground host, joins it with a
+local shared V2 client, exchanges messages while LAN Tools is open and after it
+closes, transfers and verifies an encrypted 256 KiB file into Android Downloads,
+and fetches a temporary Quick Share text over local HTTP. It verifies that draft,
+peer selection, outgoing queue, receiver and room instance remain intact. This
+is one-emulator service integration, separate from two-machine Desktop/Android
+interoperability or physical call/Wi-Fi qualification. Current results and the
+remaining manual matrix are in [LAN Tools validation](quality/lantools-validation.md).

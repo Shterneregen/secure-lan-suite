@@ -64,6 +64,7 @@ internal fun Outcome(state: LanToolsState, kind: LanOperation, model: LanToolsVi
     val outcome = state.outcome(kind)
     if (outcome.phase == LanPhase.IDLE) return
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        outcome.subject?.let { Notice(it) }
         val phase = when (outcome.phase) {
             LanPhase.RUNNING -> R.string.lan_running
             LanPhase.SUCCESS -> R.string.lan_phase_success

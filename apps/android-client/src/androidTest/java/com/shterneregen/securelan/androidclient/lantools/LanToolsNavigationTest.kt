@@ -11,17 +11,42 @@ import com.shterneregen.securelan.androidclient.MainViewModel
 import com.shterneregen.securelan.androidclient.R
 import com.shterneregen.securelan.androidclient.model.AppLanguage
 import com.shterneregen.securelan.androidclient.model.ThemeMode
+import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
+import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
+import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
+import com.shterneregen.securelan.chat.service.ChatEventPublisher
+import com.shterneregen.securelan.chat.service.ChatSendOutcome
+import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
+import com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication
+import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
+import com.shterneregen.securelan.filetransfer.service.FileTransferTimeouts
+import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 
 /** Uses a dedicated test device: Orchestrator clears the app's preferences after every test. */
 @RunWith(AndroidJUnit4::class)
 class LanToolsNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun label(id: Int) = compose.activity.getString(id)
-    private fun open() { compose.onNodeWithTag("lan-open").performScrollTo().performClick(); compose.onNodeWithTag("lan-tools").assertIsDisplayed() }
+    private fun open() {
+        // Short lazy viewports may not have composed the utilities card yet.
+        if (compose.onAllNodesWithTag("lan-open").fetchSemanticsNodes().isEmpty()) {
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("lan-open"))
+        }
+        compose.onNodeWithTag("lan-open").performScrollTo().performClick()
+        compose.onNodeWithTag("lan-tools").assertIsDisplayed()
+    }
     private fun model() = ViewModelProvider(compose.activity)[LanToolsViewModel::class.java]
 
     @Test fun secondaryScreenBackAndRecreationPreserveChatDraftAndToolForm() {
@@ -62,6 +87,7 @@ class LanToolsNavigationTest {
         compose.onNodeWithTag("lan-save").performScrollTo().performClick()
         compose.waitUntil(10_000) { model().state.value.devices.size == 1 }
         compose.runOnIdle { assertEquals("Test workstation", PreferencesSavedLanDeviceStore(compose.activity).load().single().displayName) }
+        compose.onNodeWithTag("lan-device-list").performScrollToNode(hasText(label(R.string.lan_details)))
         compose.onNodeWithText(label(R.string.lan_details)).performScrollTo().performClick()
         compose.onNodeWithText(label(R.string.lan_edit)).performScrollTo().assertIsDisplayed()
         screenshot("devices")
@@ -108,6 +134,92 @@ class LanToolsNavigationTest {
         compose.waitUntil(10_000) { model().state.value.devices.size == 1 }
         compose.onNodeWithTag("lan-tab-DIAGNOSTICS").performClick()
         compose.onNodeWithTag("lan-tcp-port").performScrollTo().assertIsDisplayed()
+    }
+
+    /** Real local V2 chat/files and HTTP continue while the secondary surface opens, checks and closes. */
+    @Test fun toolChecksPreserveActiveHostingChatAndQuickShare() {
+        if (android.os.Build.VERSION.SDK_INT <= 28) {
+            // The real Downloads receiver needs the same legacy grants as an explicit file-receive flow.
+            val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+            listOf(android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE).forEach { permission ->
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("pm grant ${compose.activity.packageName} $permission")).use {
+                    assertEquals("", it.bufferedReader().readText().trim())
+                }
+            }
+        }
+        val (chatPort, filePort) = ServerSocket(0).use { chat -> ServerSocket(0).use { chat.localPort to it.localPort } }
+        lateinit var room: MainViewModel
+        val keys = ConcurrentHashMap<String, String>()
+        val client = DefaultChatClientService(ChatEventPublisher { event ->
+            if (event is ChatUserJoinedEvent) event.nickname?.let { keys[it] = event.capabilities.identityKey() }
+        })
+        val source = java.io.File.createTempFile("lan-tools-payload-", ".bin", compose.activity.cacheDir)
+        val payload = ByteArray(256 * 1024) { (it % 251).toByte() }
+        source.writeBytes(payload)
+        try {
+            compose.runOnIdle {
+                room = ViewModelProvider(compose.activity)[MainViewModel::class.java]
+                room.updateSessionPassword("lan-tools-local-test")
+                room.setHostDiscoverable(false)
+                room.startHosting(chatPort.toString(), filePort.toString())
+            }
+            compose.waitUntil(15_000) { room.uiState.value.hosting && room.uiState.value.connected && room.uiState.value.fileReceiverRunning }
+            assertTrue(runBlocking(Dispatchers.IO) { client.connect(ChatClientConnectRequest("127.0.0.1", chatPort, "LocalToolProbe", "lan-tools-local-test")) })
+            // Host summaries intentionally omit loopback participants; the authenticated chat presence does not.
+            compose.waitUntil(10_000) { room.uiState.value.peers.any { it.nickname == "LocalToolProbe" } && !keys[room.uiState.value.nickname].isNullOrBlank() }
+            compose.runOnIdle { room.updateInputMessage("Keep this draft"); room.createQuickShareText("local share content", 1, null) }
+            compose.waitUntil(10_000) { room.quickShares.value.isNotEmpty() }
+            val selected = room.uiState.value.selectedPeer
+            val transfers = room.transferQueue.value
+            val roomId = AndroidChatHostService.state.value.roomInstanceId
+            val share = room.quickShares.value.single()
+            compose.onNode(hasText(label(R.string.nav_devices)) and hasClickAction()).performClick()
+            open()
+            compose.runOnIdle {
+                model().editInput { it.copy(host = "127.0.0.1", port = chatPort.toString()) }
+                model().tcp()
+            }
+            compose.waitUntil(10_000) { model().state.value.outcome(LanOperation.TCP).phase == LanPhase.SUCCESS }
+            assertEquals(ChatSendOutcome.WRITTEN, runBlocking(Dispatchers.IO) { client.sendMessage("message while tools open") })
+            compose.waitUntil(10_000) { room.uiState.value.messages.any { it.text == "message while tools open" } }
+            runBlocking(Dispatchers.IO) {
+                val authentication = FileTransferPeerAuthentication("LocalToolProbe", client.fileIdentity()) { keys[it] }
+                DefaultFileTransferClientService({}, timeouts = FileTransferTimeouts(3000, 5000, 5000, 5000)).sendFile(
+                    FileTransferClientRequest("127.0.0.1", filePort, "LocalToolProbe", room.uiState.value.nickname,
+                        "lan-tools-local-test", source.toPath(), authentication))
+            }
+            compose.waitUntil(10_000) { room.uiState.value.recentTransfers.any { it.fileName == source.name && it.contentUri != null } }
+            val received = room.uiState.value.recentTransfers.first { it.fileName == source.name }
+            compose.activity.contentResolver.openInputStream(requireNotNull(received.contentUri))!!.use { assertArrayEquals(payload, it.readBytes()) }
+            val response = runBlocking { withContext(Dispatchers.IO) {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress("127.0.0.1", URI(share.url).port), 3000); socket.soTimeout = 3000
+                    socket.getOutputStream().write("GET /s/${share.id}/text HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".toByteArray())
+                    socket.getInputStream().bufferedReader().readText()
+                }
+            } }
+            assertTrue(response.startsWith("HTTP/1.1 200 OK")); assertTrue(response.endsWith("local share content"))
+            compose.onNodeWithTag("lan-back").performClick()
+            assertEquals(ChatSendOutcome.WRITTEN, runBlocking(Dispatchers.IO) { client.sendMessage("message after tools close") })
+            compose.waitUntil(10_000) { room.uiState.value.messages.any { it.text == "message after tools close" } }
+            compose.runOnIdle {
+                assertEquals("Keep this draft", room.uiState.value.inputMessage)
+                assertEquals(selected, room.uiState.value.selectedPeer); assertEquals(transfers, room.transferQueue.value)
+                assertTrue(room.uiState.value.fileReceiverRunning); assertTrue(client.isConnected())
+                assertEquals(roomId, AndroidChatHostService.state.value.roomInstanceId)
+            }
+        } finally {
+            runBlocking(Dispatchers.IO) { client.disconnect() }
+            source.delete()
+            compose.runOnIdle {
+                room.uiState.value.recentTransfers.filter { it.fileName == source.name }.forEach { record ->
+                    record.contentUri?.let { compose.activity.contentResolver.delete(it, null, null) }
+                }
+                room.quickShares.value.forEach { room.stopQuickShare(it.id) }
+                room.stopHosting()
+            }
+            compose.waitUntil(10_000) { !AndroidChatHostService.state.value.running && !AndroidChatHostService.state.value.starting }
+        }
     }
 
     private fun screenshot(name: String) {

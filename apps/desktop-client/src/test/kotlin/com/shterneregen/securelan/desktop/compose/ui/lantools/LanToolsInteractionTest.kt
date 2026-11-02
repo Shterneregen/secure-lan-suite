@@ -53,10 +53,11 @@ class LanToolsInteractionTest {
     private var discoveryCalls = 0
     private var blockDiscovery = false
     private var discovered = LanDiscoverySnapshot()
+    private var interfaces: List<LanInterfaceSnapshot>? = null
     private val network = LanInterfaceSnapshot(NetworkBinding("eth0:192.168.1.42", "eth0", IpLiteral.parse("192.168.1.42")!!, 24),
         "Ethernet", true, IpLiteral.parse("192.168.1.255"))
     private val controller = DesktopLanToolsController(store,
-        LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(network), "eth0")) },
+        LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(interfaces ?: listOf(network), "eth0")) },
         object : WakeOnLanService {
             override suspend fun send(request: WakeRequest): LanResult<WakeReceipt> {
                 sends++
@@ -117,6 +118,17 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Delete device").performScrollTo().performClick()
         compose.onNodeWithText("Confirm delete").performClick()
         compose.onNodeWithText("No saved devices yet.").assertExists()
+    }
+
+    @Test fun vanishedInterfaceIsShownAsUnavailableUntilUserChoosesAnotherRoute() {
+        val device = SavedLanDevice(UUID.randomUUID(), "Saved PC", wake = WakeConfiguration(MacAddress.parse("02:11:22:33:44:55")!!))
+        store.devices = listOf(device)
+        content()
+        compose.runOnIdle { controller.selectDevice(device.id); controller.selectBinding(network.binding.key); interfaces = emptyList(); controller.refreshInterfaces() }
+        compose.onNodeWithText("Selected interface unavailable — choose an interface").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Selected interface unavailable — choose an interface").performClick()
+        compose.onNodeWithText("Automatic / saved preference").performClick()
+        compose.runOnIdle { assertNull(controller.state.value.bindingKey) }
     }
 
     @Test fun toolsMenuOpensUtilityAndEscapePreservesFormAndTab() {

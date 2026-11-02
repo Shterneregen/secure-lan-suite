@@ -95,6 +95,31 @@ class DesktopLanDeviceDiscoveryTest {
         assertEquals(LanError.NETWORK_UNAVAILABLE, (service.browse {} as LanResult.Failure).code)
     }
 
+    @Test fun finalSnapshotRemovesLostNetworkBeforeNextTopologyPollAndReportsFailure() = runTest {
+        var bindings = listOf(source)
+        val browser = Browser(listOf(resolved()))
+        val service = DesktopLanDeviceDiscovery({ bindings }, { browser }, StandardTestDispatcher(testScheduler),
+            nanoTime = { testScheduler.currentTime * 1_000_000 }, durationMillis = 500)
+        var latest = LanDiscoverySnapshot()
+        val result = service.browse {
+            latest = it
+            if (it.devices.isNotEmpty()) bindings = emptyList()
+        }
+        assertEquals(LanError.NETWORK_CHANGED, (result as LanResult.Failure).code)
+        assertTrue(latest.devices.isEmpty()); assertTrue(latest.partial)
+        assertEquals(1, browser.closed)
+    }
+
+    @Test fun oneLostNetworkLeavesOnlyOtherNetworkResultsMarkedPartial() = runTest {
+        val second = source.copy(key = "other:192.168.1.2", interfaceKey = "other")
+        var bindings = listOf(source, second)
+        val service = DesktopLanDeviceDiscovery({ bindings }, { Browser(listOf(resolved())) }, StandardTestDispatcher(testScheduler),
+            nanoTime = { testScheduler.currentTime * 1_000_000 }, durationMillis = 500)
+        val result = service.browse { if (it.devices.size == 2) bindings = listOf(second) } as LanResult.Success
+        assertEquals(second.key, result.value.devices.single().scope)
+        assertTrue(result.value.partial)
+    }
+
     @Test fun rejectsExternalBroadcastAndMalformedRecordsAndReportsSourceFailure() = runTest {
         val browser = Browser(listOf(resolved(address = "203.0.113.4"), resolved(address = "192.168.1.255"),
             resolved(name = "a\nb"), resolved(host = "external.example"), DnsSdEvent.Limited))

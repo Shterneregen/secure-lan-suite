@@ -95,7 +95,13 @@ and retained chat drafts. API 26 and 35 should both be exercised for legacy and
 modern NSD. The UI tests save screenshots on API 29+ in
 `/sdcard/Download/SecureLanLanTools/`; pull them with adb to an ignored build
 report directory for review. These tests do not establish physical WoL,
-multicast behavior of third-party routers/OEMs or live room/file/call coexistence.
+multicast behavior of third-party routers/OEMs or two-machine room/file/call
+coexistence. The LAN navigation suite additionally runs the real Android host,
+local shared V2 client, encrypted file receipt and temporary Quick Share HTTP
+while tools are open, verifying continued chat after closing. It uses only
+local endpoints and checks the received file bytes.
+See the [validation matrix](quality/lantools-validation.md) for tested layouts,
+runtime probes, retained limitations and the remaining hardware checklist.
 
 Desktop integration and UI checks:
 

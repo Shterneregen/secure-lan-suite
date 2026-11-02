@@ -65,6 +65,7 @@ class PropertiesSavedLanDeviceStore(
     override fun save(devices: List<SavedLanDevice>) {
         if (!loaded || !writable) throw IOException("Store requires a valid reload")
         require(devices.size <= MAX_DEVICES && devices.map { it.id }.distinct().size == devices.size)
+        devices.forEach(::validate)
         // Refuse stale writes even if another process edited a syntactically valid file.
         if (read()?.let(::digest) != fingerprint) throw IOException("Store changed externally")
         val properties = Properties().apply {
@@ -77,8 +78,6 @@ class PropertiesSavedLanDeviceStore(
                 device.addressHint?.let { setProperty(prefix + "address", it.value) }
                 device.hostnameHint?.let { setProperty(prefix + "hostname", it) }
                 device.wake?.let { wake ->
-                    require(wake.mac.isWakeTarget && wake.port in 1..65535 && wake.broadcast?.isIpv4 != false)
-                    require(wake.preferredInterfaceKey?.let { it.isNotBlank() && it.length <= 256 } != false)
                     setProperty(prefix + "mac", wake.mac.value)
                     setProperty(prefix + "port", wake.port.toString())
                     wake.broadcast?.let { setProperty(prefix + "broadcast", it.value) }
@@ -117,7 +116,16 @@ class PropertiesSavedLanDeviceStore(
             WakeConfiguration(it, broadcast, preferred, port)
         }
         val hint = address("address").also { require(it == null || it.isUnicast) }
-        return SavedLanDevice(UUID.fromString(field("id")), requireNotNull(field("name")), hint, field("hostname"), wake)
+        return SavedLanDevice(UUID.fromString(field("id")), requireNotNull(field("name")), hint, field("hostname"), wake).also(::validate)
+    }
+
+    /** Apply the same scalar rules on both sides of storage; never write data that a reload rejects. */
+    private fun validate(device: SavedLanDevice) {
+        require(device.addressHint?.isUnicast != false)
+        device.wake?.let { wake ->
+            require(wake.mac.isWakeTarget && wake.port in 1..65535 && wake.broadcast?.isIpv4 != false)
+            require(wake.preferredInterfaceKey?.let { it.isNotBlank() && it.length <= 256 && it.none(Char::isISOControl) } != false)
+        }
     }
 
     private fun damaged(devices: List<SavedLanDevice> = emptyList()) = SavedDevicesLoad(devices,

@@ -155,8 +155,8 @@ class DesktopLanToolsController(
                 val result = withTimeoutOrNull(10_000) { networks.snapshot() }
                 if (token != generation) return@launch
                 when (result) {
-                    is LanResult.Success -> update { it.copy(networks = result.value, networkLoading = false,
-                        bindingKey = it.bindingKey?.takeIf { key -> result.value.interfaces.any { entry -> entry.binding.key == key } }) }
+                    // Retain an explicit selection after interface loss; only the user may opt into another route.
+                    is LanResult.Success -> update { it.copy(networks = result.value, networkLoading = false) }
                     else -> update { it.copy(networkLoading = false, networkError = "Network interfaces are unavailable. Check your LAN connection and refresh.") }
                 }
             } catch (cancel: CancellationException) { throw cancel }

@@ -50,6 +50,7 @@ class DesktopExplorerController(
                     else when ((result as? LanResult.Failure)?.code) {
                         LanError.RESOURCE_LIMIT -> "The previous browser is still closing. Wait and try Refresh devices again."
                         LanError.PERMISSION_DENIED -> "The OS denied multicast access. Check network permissions and refresh."
+                        LanError.NETWORK_CHANGED -> "The LAN changed during discovery. Refresh devices on the current network."
                         LanError.NETWORK_UNAVAILABLE -> "No usable multicast LAN interface was opened. Check Wi-Fi/Ethernet, VPN/firewall restrictions and refresh."
                         else -> "Device discovery failed or timed out. Check your LAN connection and try Refresh devices."
                     })

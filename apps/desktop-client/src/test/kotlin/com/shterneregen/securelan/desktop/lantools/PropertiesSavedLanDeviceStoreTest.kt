@@ -73,4 +73,22 @@ class PropertiesSavedLanDeviceStoreTest {
         store.load(); store.save(emptyList())
         assertTrue(store.load().devices.isEmpty())
     }
+
+    @Test fun invalidScalarDataCannotReplaceAValidFileOrBecomeWritableOnLoad() {
+        val path = directory.resolve("devices.properties")
+        val store = PropertiesSavedLanDeviceStore(path)
+        val saved = device
+        store.load(); store.save(listOf(saved))
+        val original = Files.readAllBytes(path)
+        for (invalid in listOf(saved.copy(addressHint = IpLiteral.parse("224.0.0.1")),
+            saved.copy(wake = saved.wake!!.copy(preferredInterfaceKey = "eth0\ninvalid")))) {
+            assertThrows(IllegalArgumentException::class.java) { store.save(listOf(invalid)) }
+            assertArrayEquals(original, Files.readAllBytes(path))
+        }
+        Files.writeString(path, Files.readString(path).replace("device.0.interface=eth0", "device.0.interface=eth0\\ninvalid"))
+        val damaged = Files.readAllBytes(path)
+        assertNotNull(store.load().warning)
+        assertThrows(IOException::class.java) { store.save(emptyList()) }
+        assertArrayEquals(damaged, Files.readAllBytes(path))
+    }
 }

@@ -25,12 +25,13 @@ class LanToolsViewModelTest {
         var released = false
         var tcpCalls = mutableListOf<TcpCheckRequest>()
         var tcp: suspend (TcpCheckRequest) -> LanResult<TcpCheckReceipt> = { LanResult.Success(TcpCheckReceipt(ip(it.host), it.port, null, 1_000_000)) }
+        var lookup: suspend (DnsLookupRequest) -> LanResult<DnsLookupReceipt> = { LanResult.Failure(LanError.RESOLUTION_FAILED) }
         var browse: suspend (suspend (LanDiscoverySnapshot) -> Unit) -> LanResult<LanDiscoverySnapshot> = { awaitCancellation() }
         val model = LanToolsViewModel(LanToolsServices(platform, DiagnosticsNetworkInfoProvider { LanResult.Success(platform.snapshot()) },
             object : WakeOnLanService { override suspend fun send(request: WakeRequest): LanResult<WakeReceipt> { wakes++; return LanResult.Failure(LanError.INTERFACE_UNAVAILABLE) } },
             object : NetworkDiagnosticsService {
                 override suspend fun tcp(request: TcpCheckRequest): LanResult<TcpCheckReceipt> { tcpCalls += request; return this@Fixture.tcp(request) }
-                override suspend fun lookup(request: DnsLookupRequest): LanResult<DnsLookupReceipt> = LanResult.Failure(LanError.RESOLUTION_FAILED)
+                override suspend fun lookup(request: DnsLookupRequest): LanResult<DnsLookupReceipt> = this@Fixture.lookup(request)
             }, AndroidDeviceBrowser { _, update -> browses++; browse(update) }, { released = true }), store,
             StandardTestDispatcher(test.testScheduler), StandardTestDispatcher(test.testScheduler))
         val owner = ViewModelStore().apply { put("lan", model) }
@@ -110,6 +111,7 @@ class LanToolsViewModelTest {
             val check = f.model.state.value.checks["saved:${device.id}"]!!
             assertEquals("192.168.1.20", check.host); assertEquals(443, check.port)
             assertEquals(LanPhase.FAILURE, check.outcome.phase)
+            assertEquals(listOf("192.168.1.20", "443"), f.model.state.value.outcome(LanOperation.TCP).subject!!.args)
         } finally { pending.complete(Unit); f.close() }
     }
     @Test fun backgroundAndDeadlineCancelTcpAndReleaseItsResources() = runTest {
@@ -120,8 +122,10 @@ class LanToolsViewModelTest {
             f.open(); f.model.editInput { it.copy(host = "192.168.1.20", port = "443", timeout = "100") }
             f.model.tcp(); runCurrent(); advanceTimeBy(101); runCurrent()
             assertEquals(1, closed); assertEquals(LanPhase.FAILURE, f.model.state.value.outcome(LanOperation.TCP).phase)
+            assertEquals(listOf("192.168.1.20", "443"), f.model.state.value.outcome(LanOperation.TCP).subject!!.args)
             f.model.tcp(); runCurrent(); f.model.setActive(false); runCurrent()
             assertEquals(2, closed); assertEquals(LanPhase.CANCELLED, f.model.state.value.outcome(LanOperation.TCP).phase)
+            assertEquals(listOf("192.168.1.20", "443"), f.model.state.value.outcome(LanOperation.TCP).subject!!.args)
         } finally { f.close() }
     }
     @Test fun gatewayMustStillBeReportedBySameInterface() = runTest {
@@ -133,6 +137,7 @@ class LanToolsViewModelTest {
             f.model.gateway(); runCurrent()
             assertTrue(f.tcpCalls.isEmpty())
             assertEquals(LanPhase.FAILURE, f.model.state.value.outcome(LanOperation.GATEWAY).phase)
+            assertEquals(listOf("192.168.1.1", "443"), f.model.state.value.outcome(LanOperation.GATEWAY).subject!!.args)
         } finally { f.close() }
     }
     @Test fun failedDiscoveryDoesNotLeaveObservedRowsCurrent() = runTest {
@@ -145,6 +150,21 @@ class LanToolsViewModelTest {
             f.open(); f.model.permission(true); f.model.discover(); runCurrent()
             assertEquals(LanPhase.FAILURE, f.model.state.value.outcome(LanOperation.DISCOVERY).phase)
             assertTrue(f.model.state.value.found.devices.single().stale)
+        } finally { f.close() }
+    }
+
+    @Test fun dnsFailureAndCancellationRetainSubmittedNameWhenInputChanges() = runTest {
+        val f = Fixture(this)
+        f.lookup = { delay(100); LanResult.Failure(LanError.RESOLUTION_FAILED) }
+        try {
+            f.open(); f.model.editInput { it.copy(dns = "old.local") }; f.model.dns(); runCurrent()
+            assertEquals(listOf("old.local"), f.model.state.value.outcome(LanOperation.DNS).subject!!.args)
+            f.model.editInput { it.copy(dns = "new.local") }; advanceTimeBy(101); runCurrent()
+            assertEquals(LanPhase.FAILURE, f.model.state.value.outcome(LanOperation.DNS).phase)
+            assertEquals(listOf("old.local"), f.model.state.value.outcome(LanOperation.DNS).subject!!.args)
+            f.model.dns(); runCurrent(); f.model.editInput { it.copy(dns = "third.local") }; f.model.cancel(LanOperation.DNS)
+            assertEquals(LanPhase.CANCELLED, f.model.state.value.outcome(LanOperation.DNS).phase)
+            assertEquals(listOf("new.local"), f.model.state.value.outcome(LanOperation.DNS).subject!!.args)
         } finally { f.close() }
     }
 }
