@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.common.net.transport
 
 import java.net.Socket
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
@@ -12,9 +13,13 @@ object SocketDeadlines {
 
     /** Streaming inactivity budget is renewed after each completed read/write chunk. */
     fun copyWithProgress(socket: Socket, input: java.io.InputStream, output: java.io.OutputStream, millis: Long = 60_000) {
+        copyWithProgress(socket, input, output, millis, scheduler)
+    }
+
+    internal fun copyWithProgress(socket: Socket, input: java.io.InputStream, output: java.io.OutputStream, millis: Long, scheduler: ScheduledExecutorService) {
         val buffer = ByteArray(16 * 1024)
         while (true) {
-            val count = within(socket, millis) {
+            val count = within(socket, millis, scheduler) {
                 var read: Int
                 do { read = input.read(buffer) } while (read == 0)
                 if (read > 0) { output.write(buffer, 0, read); output.flush() }
@@ -25,6 +30,10 @@ object SocketDeadlines {
     }
 
     fun <T> within(socket: Socket, millis: Long, action: () -> T): T {
+        return within(socket, millis, scheduler, action)
+    }
+
+    private fun <T> within(socket: Socket, millis: Long, scheduler: ScheduledExecutorService, action: () -> T): T {
         val timeout = scheduler.schedule({ runCatching { socket.close() } }, millis, TimeUnit.MILLISECONDS)
         return try { action() } finally { timeout.cancel(false) }
     }
