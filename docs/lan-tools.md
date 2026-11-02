@@ -1,10 +1,10 @@
 # LAN Tools
 
-`modules/lan-tools-core` provides room-independent Wake-on-LAN and diagnostics APIs. It is a
+`modules/lan-tools-core` provides room-independent Wake-on-LAN, diagnostics and discovery APIs. It is a
 Kotlin/JVM module targeting Java 17, using `common-net` IP/interface values and
 coroutines. It has no Compose, Android SDK, chat, file-transfer or crypto dependency.
-Desktop exposes saved-device management, Wake-on-LAN and diagnostics in a standalone dialog.
-Android integration and device browsing are not implemented. ICMP has no qualified backend.
+Desktop exposes saved devices, Wake-on-LAN, diagnostics and an advertised-device browser in a standalone dialog.
+Android integration is not implemented. ICMP has no qualified backend.
 See the [implementation plan](lantools-implementation-plan.md).
 
 ## Desktop workflow
@@ -38,6 +38,103 @@ delete confirmation. **Cancel editing** explicitly discards a form. On returning
 to the tool, the form remains; after a process restart only successfully saved
 devices are restored. A save already in progress may finish after the dialog
 closes; it is owned by the application, not by the temporary dialog.
+
+### Device Explorer
+
+Choose **Refresh devices** in Devices to browse supported mDNS/DNS-SD services
+for up to thirty seconds. Opening the app/dialog does not start browsing.
+**Cancel discovery**, Close and Escape cancel the current run. There is no
+automatic restart or background inventory. Discovery can miss silent devices,
+sleeping devices, unsupported services and networks that filter multicast;
+an empty list does not prove an empty LAN or an offline device.
+
+The fixed browse types are `_http._tcp.local.`, `_https._tcp.local.`,
+`_ipp._tcp.local.`, `_ipps._tcp.local.`, `_ssh._tcp.local.` and `_smb._tcp.local.`.
+These describe advertised services, not hardware types. **Type: Unknown** is
+intentional; even an IPP advertisement does not establish a trusted printer
+identity. No SSDP, ARP sweep, subnet scan, port scan or service-type enumeration
+is performed. The existing SecureLan UDP room discovery and `_securelan._tcp`
+codec/lifecycle are unchanged and are not used to classify arbitrary devices.
+See the [DNS-SD naming model](https://www.rfc-editor.org/rfc/rfc6763.html).
+
+**Show: all/saved/discovered** filters the list. Search matches names, hostname
+and addresses; discovered records also match advertised service types and
+network binding. **Details** shows source, exact service endpoints, hostname
+when validated, all accepted IPv4 addresses and the last observation time.
+Unconfirmed fields stay Unknown. Observations are untrusted, including any
+name that resembles a product, user or room name.
+
+Records from different network bindings never merge. Services on one binding
+are grouped only when their advertised SRV target hostname matches and their
+address sets overlap (including transitive overlaps). Conflicting disjoint
+claims stay separate; missing hostnames do not cause IP-only merging. This is
+an ephemeral grouping, not identity validation. Row IDs belong to one browse
+session and are never saved as device identities. Another refresh creates a
+new session and reconciles observations rather than retaining old rows as
+current. Source loss retires that source's observations and ignores its late
+callbacks, even if the replacement binding has the same key.
+
+Goodbyes remove observations immediately when delivered by JmDNS. A thirty-second
+monotonic application lease limits records whose removal was missed; this is
+a conservative local observation lifetime, not the DNS record's wire TTL.
+**Last observed** is callback receipt time, not time of successful connectivity.
+Completed, cancelled and failed runs retain only explicitly historical results.
+Saved devices survive refresh, expiry and service/network loss.
+
+**Save as new device** copies a name, one address and hostname into an editable
+form. Review and Save explicitly to create a new local UUID. The application
+does not merge with existing saved records by IP, overwrite their names, infer
+a MAC or import TXT data. Add a valid MAC yourself to enable Wake-on-LAN on the
+saved device. No discovered device is an authorized room participant.
+
+**Diagnostics** opens a prefilled TCP form; it does not connect immediately.
+For a discovered service it uses that exact advertised address/port and source
+binding. Saved devices prefill their address/hostname and require an explicit
+port. **Check TCP** then performs one check. Last completed results retain the
+submitted endpoint and timestamp; changing a form cannot relabel an older
+result. Manually changing the target/source clears its row association. At
+most 256 row check results are kept in memory, with no persisted online flag.
+
+### Explorer resources and platform limits
+
+Core owns `LanDeviceDiscovery`, observation/snapshot models and the single-owner
+`LanDeviceRegistry`; Desktop owns `DesktopLanDeviceDiscovery`, `LanDnsSdBrowser`
+and `DesktopExplorerController`. The existing JmDNS library is reused with new
+independently owned handles, without changing the room facade or introducing
+core dependencies on JmDNS/chat/UI. The
+[JmDNS API](https://jmdns.sourceforge.net/apidocs/javax/jmdns/JmDNS.html) binds an
+instance to one interface address and supports service-type listeners.
+
+One run admits at most four up, multicast-capable LAN IPv4 interfaces, one
+binding per interface, six fixed types, 512 service observations and 256 device
+groups. VPN/virtual interfaces are excluded by existing classification
+heuristics; these heuristics are not an OS routing guarantee. Additional
+bindings and source failures produce **Partial results**. Accepted records have
+at most sixteen local-subnet unicast addresses and a 63-byte instance name;
+external/broadcast/unsupported addresses are excluded. Hostnames are validated
+local names. TXT is limited to 4 KiB at the callback boundary, then discarded
+without parsing, logging or displaying it, including malformed binary TXT.
+
+Callback delivery uses a 256-entry queue, drops excess events and marks results
+partial. Topology is rechecked every two seconds and updates are processed in
+bounded batches. There are no application per-device resolve workers or blocking
+`requestServiceInfo` calls: JmDNS's own collector resolves its subscribed types.
+JmDNS internally owns its packet cache, resolver tasks and callback executor;
+their internal allocation is not capped by these application-level limits.
+The implementation therefore bounds subscriptions/handles, accepted data,
+event queue and active run duration; it does not claim a hard memory bound on
+third-party mDNS internals under hostile LAN traffic.
+
+Library open/close calls run on IO, never Compose's UI thread. Logical browse
+duration is at most thirty seconds; cleanup may take additional library timeout
+time per handle. Cancellation invalidates UI callbacks immediately, but the
+single service permit is released only after cleanup actually finishes. Refresh
+during cleanup returns a busy/resource-limit result rather than opening more
+handles. Short synchronous OS/library calls cannot promise forced kernel
+interruption. A binding change detected by the monitor retires old data; a
+network replacement with identical interface/address/prefix is not distinguishable
+by this JVM snapshot. No topology cache or room-level identity is used to fill
+that gap. Scoped IPv6 browsing and Android NSD are not implemented here.
 
 ### Diagnostics workflow
 
@@ -304,6 +401,7 @@ For the complete core and Desktop checks (including compilation and Kotlin lint)
 ```powershell
 .\gradlew.bat :modules:lan-tools-core:check :apps:desktop-client:check
 .\gradlew.bat :apps:desktop-client:lanToolsWindowSmoke
+.\gradlew.bat :apps:desktop-client:lanExplorerMdnsSmoke
 ```
 
 Diagnostics tests use a controlled loopback TCP server, injected resolver and
@@ -321,3 +419,13 @@ doubles; it does not perform remote checks. Screenshots are under
 Real gateway/firewall behavior, Wi-Fi loss, multi-platform runtime, screen-reader
 and OS scaling behavior, physical WoL and simultaneous real chat/file/call traffic
 still need manual qualification. Local/fake checks do not qualify those scenarios.
+
+Explorer adds deterministic registry, fake-browser multi-NIC/topology/race/queue/
+cleanup tests, binary/oversized TXT boundary tests, separate-room lifecycle tests,
+and Compose filtering/details/save/diagnostics-history/cancel tests. The explicit
+`lanExplorerMdnsSmoke` additionally uses real JmDNS on one eligible LAN binding:
+it publishes local HTTP/SSH fixtures, verifies their resolution/grouping and
+goodbye removal, then verifies a separate SecureLan room advertisement still
+updates after Explorer closes. It never opens TCP connections or authenticates
+a room. This controlled multicast probe is opt-in, separate from `check`, and
+is not physical third-party-device or live chat/file/call qualification.

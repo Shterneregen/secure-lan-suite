@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.net.address.IpLiteral
 import com.shterneregen.securelan.common.net.interfaces.NetworkBinding
@@ -20,10 +21,12 @@ import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsCon
 import com.shterneregen.securelan.desktop.compose.ui.shell.AppToolButtons
 import com.shterneregen.securelan.desktop.compose.ui.shell.LiveComposeShellContent
 import com.shterneregen.securelan.desktop.lantools.DesktopDiagnosticsController
+import com.shterneregen.securelan.desktop.lantools.DesktopExplorerController
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 import com.shterneregen.securelan.desktop.lantools.LanToolsNativeWindowProbe
 import com.shterneregen.securelan.desktop.lantools.MemoryLanStore
 import com.shterneregen.securelan.lantools.diagnostics.*
+import com.shterneregen.securelan.lantools.discovery.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.*
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +50,9 @@ class LanToolsInteractionTest {
     private var sentBinding: String? = null
     private var blockDns = false
     private var metadata = MetadataAvailability.AVAILABLE
+    private var discoveryCalls = 0
+    private var blockDiscovery = false
+    private var discovered = LanDiscoverySnapshot()
     private val network = LanInterfaceSnapshot(NetworkBinding("eth0:192.168.1.42", "eth0", IpLiteral.parse("192.168.1.42")!!, 24),
         "Ethernet", true, IpLiteral.parse("192.168.1.255"))
     private val controller = DesktopLanToolsController(store,
@@ -63,7 +69,13 @@ class LanToolsInteractionTest {
                 if (blockDns) awaitCancellation() else LanResult.Success(listOf(network.binding.address))
             }, LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(network))) }, TcpConnector { _, _, _ -> }),
             DiagnosticsNetworkInfoProvider { LanResult.Success(DiagnosticsNetworkSnapshot(listOf(DiagnosticInterface(network,
-                listOf(IpLiteral.parse("192.168.1.1")!!), listOf("192.168.1.1"), metadata)), "controlled fixture")) }, Dispatchers.Unconfined))
+                listOf(IpLiteral.parse("192.168.1.1")!!), listOf("192.168.1.1"), metadata)), "controlled fixture")) }, Dispatchers.Unconfined),
+        explorer = DesktopExplorerController(LanDeviceDiscovery { update ->
+            discoveryCalls++
+            update(discovered)
+            if (blockDiscovery) awaitCancellation()
+            LanResult.Success(discovered)
+        }, Dispatchers.Unconfined, Dispatchers.Unconfined))
 
     @After fun close() { compose.runOnIdle { controller.close() } }
 
@@ -88,21 +100,21 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Enter a valid nonzero unicast MAC address.").assertExists()
         compose.onNodeWithTag("lan-mac").performScrollTo().performTextReplacement("02:ab:cd:ef:12:34")
         compose.onNodeWithText("Save device").performScrollTo().performClick()
-        compose.onNodeWithText("Automatic / saved preference").performClick()
+        compose.onNodeWithText("Automatic / saved preference").performScrollTo().performClick()
         compose.onNodeWithText("Ethernet · 192.168.1.42 · Recommended").performClick()
         compose.waitUntil(2_000) { compose.onAllNodesWithText("Ethernet · 192.168.1.42 · Recommended").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("wake-details").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(1, sends); assertEquals(1, store.devices.size); assertEquals(network.binding.key, sentBinding) }
         compose.onAllNodesWithText("Device wake-up is not confirmed.", substring = true)[0].assertExists()
-        compose.onNodeWithText("Edit device").performClick()
+        compose.onNodeWithText("Edit device").performScrollTo().performClick()
         compose.onNodeWithTag("lan-name").performTextReplacement("Renamed")
         compose.onNodeWithText("Save device").performScrollTo().performClick()
-        compose.onNodeWithText("Delete device").performClick()
+        compose.onNodeWithText("Delete device").performScrollTo().performClick()
         compose.onNodeWithText("Delete device").performKeyInput { pressKey(Key.Escape) }
         compose.onNodeWithText("Confirm delete").assertDoesNotExist()
         compose.runOnIdle { assertTrue(controller.state.value.visible) }
         compose.runOnIdle { assertEquals("Renamed", store.devices.single().displayName) }
-        compose.onNodeWithText("Delete device").performClick()
+        compose.onNodeWithText("Delete device").performScrollTo().performClick()
         compose.onNodeWithText("Confirm delete").performClick()
         compose.onNodeWithText("No saved devices yet.").assertExists()
     }
@@ -226,6 +238,75 @@ class LanToolsInteractionTest {
         screenshot("diagnostics-cancel-wide-dark.png")
         compose.onNodeWithText("Network information").performScrollTo()
         screenshot("diagnostics-wide-dark.png")
+    }
+
+    @Test fun discoveryShowsRealSourceFactsAndCopiesOnlyReviewedSettingsWithoutMergingSavedRows() {
+        val ip = IpLiteral.parse("192.168.1.77")!!
+        val row = DiscoveredLanDevice("printer-row", network.binding.key, "Advertised printer", "printer.local", listOf(ip),
+            listOf(LanAdvertisedService("Printer", "_ipp._tcp.local.", 631, listOf(ip))), setOf("mDNS/DNS-SD"), Instant.EPOCH)
+        discovered = LanDiscoverySnapshot(listOf(row))
+        store.devices = listOf(SavedLanDevice(UUID.randomUUID(), "Saved user label", ip))
+        content()
+        compose.runOnIdle { assertEquals(0, discoveryCalls) }
+        compose.onNodeWithText("Refresh devices").performClick()
+        compose.onNodeWithTag("found-row-printer-row").assertExists()
+        compose.runOnIdle { assertEquals(1, store.devices.size); assertEquals(1, discoveryCalls) }
+        compose.onNodeWithText("Show: all").performClick()
+        compose.onNodeWithText("Discovered", substring = false).performClick()
+        compose.onNodeWithTag("lan-search").performTextInput("IPP")
+        compose.onNodeWithText("Details", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Type: Unknown").assertExists()
+        compose.onNodeWithText("Source: mDNS/DNS-SD").assertExists()
+        screenshot("explorer-wide-dark.png")
+        compose.onNodeWithText("Diagnostics 192.168.1.77:631").performScrollTo().performClick()
+        compose.onNodeWithTag("diag-tcp-host").performScrollTo().assertTextContains("192.168.1.77")
+        compose.onNodeWithTag("diag-tcp-port").performScrollTo().assertTextContains("631")
+        compose.onNodeWithText("Check TCP", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Devices", substring = false).performClick()
+        compose.onAllNodesWithText("Last TCP check", substring = true)[0].assertExists()
+        compose.onNodeWithText("Save as new device").performScrollTo().performClick()
+        compose.onNodeWithTag("lan-name").assertTextContains("Advertised printer")
+        compose.onNodeWithTag("lan-mac").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithText("Save device").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(2, store.devices.size)
+            assertEquals("printer.local", store.devices.last().hostnameHint)
+            assertNull(store.devices.last().wake)
+            assertEquals("Saved user label", store.devices.first().displayName)
+        }
+    }
+
+    @Test fun cancellingDiscoveryKeepsHistoricalRowsAndSearchSurvivesCloseInNarrowLightLayout() {
+        val ip = IpLiteral.parse("192.168.1.77")!!
+        discovered = LanDiscoverySnapshot(listOf(DiscoveredLanDevice("row", network.binding.key, "Workstation", null, listOf(ip),
+            listOf(LanAdvertisedService("Workstation", "_ssh._tcp.local.", 22, listOf(ip))), setOf("mDNS/DNS-SD"), Instant.EPOCH)), partial = true)
+        blockDiscovery = true
+        content(740, 520, SecureLanThemeMode.LIGHT)
+        compose.onNodeWithText("Refresh devices").performClick()
+        compose.onNodeWithText("Cancel discovery").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Partial results:", substring = true).assertExists()
+        compose.onNodeWithText("Discovered · Historical snapshot").performScrollTo().assertIsDisplayed()
+        screenshot("explorer-narrow-light.png")
+        compose.onNodeWithTag("lan-search").performTextInput("no-match")
+        compose.onNodeWithText("No matching devices.").assertExists()
+        compose.runOnIdle { controller.dismiss(); controller.open() }
+        compose.onNodeWithTag("lan-search").assertTextContains("no-match")
+        compose.runOnIdle { assertEquals(1, discoveryCalls) }
+    }
+
+    @Test fun minimumWindowKeepsDiscoveryControlsAndDeviceActionsReachableByScrolling() {
+        val ip = IpLiteral.parse("192.168.1.77")!!
+        store.devices = listOf(SavedLanDevice(UUID.randomUUID(), "Saved"))
+        discovered = LanDiscoverySnapshot(listOf(DiscoveredLanDevice("small", network.binding.key, "Workstation", null, listOf(ip),
+            listOf(LanAdvertisedService("Workstation", "_ssh._tcp.local.", 22, listOf(ip))), setOf("mDNS/DNS-SD"), Instant.EPOCH)))
+        content(400, 320, SecureLanThemeMode.LIGHT)
+        compose.onNodeWithText("Refresh devices").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithTag("lan-device-list").performScrollToNode(hasTestTag("found-row-small"))
+        compose.onNode(hasText("Details") and hasAnyAncestor(hasTestTag("found-row-small"))).performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("Save as new device").performScrollTo().assertIsDisplayed()
+        screenshot("explorer-minimum-light.png")
+        compose.onNodeWithTag("lan-device-list").performScrollToIndex(0)
+        compose.onNodeWithTag("lan-search").performScrollTo().assertIsDisplayed()
     }
 
     private fun screenshot(name: String) {

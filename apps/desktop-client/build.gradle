@@ -98,6 +98,15 @@ tasks.register('lanToolsWindowSmoke', JavaExec) {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
+tasks.register('lanExplorerMdnsSmoke', JavaExec) {
+    group = 'verification'
+    description = 'Explicit multicast Explorer/room coexistence probe with local DNS-SD advertisers.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.shterneregen.securelan.desktop.lantools.discovery.LanExplorerMdnsProbe'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+
 apply from: rootProject.file('gradle/notices.gradle')
 distributions.main.contents { from(thirdPartyNotices) }
 

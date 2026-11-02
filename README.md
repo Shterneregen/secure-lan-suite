@@ -18,7 +18,9 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 - Open **Tools → LAN Tools** on desktop to save LAN devices and send Wake-on-LAN
   packets without joining a room. Diagnostics provides local IPv4 information,
   TCP checks and system DNS lookup; Windows also supplies gateway/DNS metadata
-  and explicit gateway TCP checks. ICMP and device discovery are unavailable.
+  and explicit gateway TCP checks. Manual mDNS/DNS-SD browsing finds devices
+  advertising supported HTTP(S), IPP(S), SSH and SMB services, separately from
+  secure-room participants. ICMP is unavailable.
   See [LAN Tools](docs/lan-tools.md).
 - Persist desktop profile, appearance, network, media, download, window, and diagnostics settings.
 - Build and use the experimental Android client for room hosting/joining, encrypted chat, and file transfer. Android supports adaptive layouts, light/dark themes, and English/Russian/system UI languages.
@@ -35,6 +37,7 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 | Saved LAN devices / Wake-on-LAN | Implemented | Unavailable |
 | LAN TCP checks / system DNS lookup | Implemented | Unavailable |
 | LAN gateway / DNS metadata | Windows only | Unavailable |
+| LAN advertised-device browser | Implemented (IPv4 mDNS/DNS-SD) | Unavailable |
 | Screen sharing | Unavailable | Unavailable |
 
 Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
@@ -76,7 +79,7 @@ documented in the [development guide](docs/development.md).
 ### Core modules
 
 - `modules/common-model` and `modules/common-net` - shared models and networking utilities
-- `modules/lan-tools-core` - UI-independent saved-device, Wake-on-LAN and diagnostics APIs;
+- `modules/lan-tools-core` - UI-independent saved-device, Wake-on-LAN, diagnostics and discovery APIs;
   used by the desktop LAN Tools dialog. See [LAN Tools](docs/lan-tools.md).
 - `modules/crypto-core` - encryption, hashing, signatures, key and file-crypto workflows
 - `modules/chat-core` - secure rooms, handshake, messaging, signaling, and peer discovery

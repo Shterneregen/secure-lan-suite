@@ -92,6 +92,43 @@ class DesktopDiagnosticsControllerTest {
         controller.close()
     }
 
+    @Test fun deviceHistoryCapturesTheSubmittedEndpointAndDoesNotFollowSubsequentEdits() = runTest {
+        val service = object : NetworkDiagnosticsService by success {
+            override suspend fun tcp(request: TcpCheckRequest): LanResult<TcpCheckReceipt> {
+                delay(100)
+                return success.tcp(request)
+            }
+        }
+        val controller = DesktopDiagnosticsController(service, provider, StandardTestDispatcher(testScheduler))
+        controller.open(); runCurrent()
+        controller.prepareTcp("192.168.1.42", 631, source.binding.key, "found:printer")
+        assertTrue(controller.state.value.deviceChecks.isEmpty())
+        controller.checkTcp(); runCurrent()
+        controller.prepareTcp("192.168.1.50", 80, null, "found:other")
+        advanceUntilIdle()
+        val history = controller.state.value.deviceChecks.getValue("found:printer")
+        assertEquals("192.168.1.42", history.host)
+        assertEquals(631, history.port)
+        assertFalse(controller.state.value.deviceChecks.containsKey("found:other"))
+        controller.edit { it.copy(tcpHost = "192.168.1.60") }
+        assertNull(controller.state.value.inputs.deviceKey)
+        controller.close()
+    }
+
+    @Test fun aSavedDeviceCanChooseAPortAndItsHistoryRemainsBounded() = runTest {
+        val controller = DesktopDiagnosticsController(success, provider, StandardTestDispatcher(testScheduler))
+        controller.open(); runCurrent()
+        repeat(260) { index ->
+            controller.prepareTcp("192.168.1.42", null, null, "saved:$index")
+            controller.edit { it.copy(tcpPort = "1234") }
+            controller.checkTcp(); runCurrent()
+        }
+        assertEquals(256, controller.state.value.deviceChecks.size)
+        assertFalse(controller.state.value.deviceChecks.containsKey("saved:0"))
+        assertEquals(1234, controller.state.value.deviceChecks.getValue("saved:259").port)
+        controller.close()
+    }
+
     @Test fun failureAndTimeoutStatesAreRecoverableAndDoNotBlockOtherChecks() = runTest {
         var slow = true
         val service = object : NetworkDiagnosticsService by success {
