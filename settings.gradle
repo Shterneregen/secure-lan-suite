@@ -24,6 +24,7 @@ include ':apps:android-client'
 
 include ':modules:common-model'
 include ':modules:common-net'
+include ':modules:lan-tools-core'
 include ':modules:crypto-core'
 include ':modules:chat-core'
 include ':modules:file-transfer-core'
@@ -37,6 +38,7 @@ project(':apps:android-client').projectDir = file('apps/android-client')
 
 project(':modules:common-model').projectDir = file('modules/common-model')
 project(':modules:common-net').projectDir = file('modules/common-net')
+project(':modules:lan-tools-core').projectDir = file('modules/lan-tools-core')
 project(':modules:crypto-core').projectDir = file('modules/crypto-core')
 project(':modules:chat-core').projectDir = file('modules/chat-core')
 project(':modules:file-transfer-core').projectDir = file('modules/file-transfer-core')

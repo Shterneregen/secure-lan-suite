@@ -38,7 +38,7 @@ subprojects {
 
         def androidSharedModules = [
                 ':modules:common-model', ':modules:common-net', ':modules:crypto-core',
-                ':modules:chat-core', ':modules:file-transfer-core'
+                ':modules:chat-core', ':modules:file-transfer-core', ':modules:lan-tools-core'
         ]
         def targetJavaVersion = path in androidSharedModules ? 17 : 25
 
