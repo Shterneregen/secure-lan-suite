@@ -34,9 +34,11 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     settings = (root / 'settings.gradle').read_text()
+    wrapper = (root / 'gradle/wrapper/gradle-wrapper.properties').read_text()
     result = {'java17': jdk(args.jdk17), 'java25': jdk(args.jdk25),
               'os': platform.platform(), 'architecture': platform.machine(), 'python': platform.python_version(),
-              'gradle': '9.4.1', 'kotlin': re.search(r"id 'org.jetbrains.kotlin.jvm' version '([^']+)'", settings)[1],
+              'gradle': re.search(r'distributionUrl=.*gradle-([^/]+)-(?:bin|all)\.zip', wrapper)[1],
+              'kotlin': re.search(r"id 'org.jetbrains.kotlin.jvm' version '([^']+)'", settings)[1],
               'agp': re.search(r"id 'com.android.application' version '([^']+)'", settings)[1],
               'compose': re.search(r"id 'org.jetbrains.compose' version '([^']+)'", settings)[1],
               'compileSdk': 35, 'buildTools': '36.0.0'}

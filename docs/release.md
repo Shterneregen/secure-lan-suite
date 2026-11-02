@@ -32,6 +32,8 @@ the Temurin versions use Adoptium's SemVer identifiers `17.0.20+101` and
 `25.0.4+101.0.LTS`, respectively. The four-component runtime versions are not
 valid `java-version` inputs; keep them in the release runtime verification.
 Wrapper/plugin versions remain in their owning configuration files.
+Buildscript Guava is pinned to 33.7.2-jre in the root build to avoid
+GHSA-xxph-c9ww-hj94 in the Android plugin's transitive dependencies.
 `writeToolchainManifest`
 records the actual JDK vendors/runtime versions, OS/architecture, Gradle,
 Kotlin, AGP, Compose, SDK selection and WiX/extensions. The signing job sets

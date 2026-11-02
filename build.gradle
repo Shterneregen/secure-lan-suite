@@ -2,6 +2,7 @@ buildscript {
     // Build tools have their own dependency graph; these do not change application crypto.
     configurations.classpath {
         resolutionStrategy.eachDependency {
+            if (requested.group == 'com.google.guava' && requested.name == 'guava') useVersion '33.7.2-jre'
             if (requested.group == 'org.bouncycastle') useVersion '1.86'
             if (requested.group == 'org.apache.commons' && requested.name == 'commons-lang3') useVersion '3.18.0'
             if (requested.group == 'org.bitbucket.b_c' && requested.name == 'jose4j') useVersion '0.9.6'
