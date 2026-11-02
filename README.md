@@ -68,6 +68,8 @@ documented in the [development guide](docs/development.md).
 ### Core modules
 
 - `modules/common-model` and `modules/common-net` - shared models and networking utilities
+- `modules/lan-tools-core` - UI-independent saved-device models and Wake-on-LAN API;
+  application UI integration is pending. See [LAN Tools core](docs/lan-tools.md).
 - `modules/crypto-core` - encryption, hashing, signatures, key and file-crypto workflows
 - `modules/chat-core` - secure rooms, handshake, messaging, signaling, and peer discovery
 - `modules/file-transfer-core` - encrypted V2 file transfer, stream contracts, and shared Quick Share models/HTML; HTTP backends belong to the applications

@@ -61,6 +61,18 @@ builds portable images and checks package startup. Local `buildPortable`,
 `buildExe` and `assembleRelease` remain fast packaging tasks and do not establish
 production readiness. See [Release and qualification](release.md).
 
+### LAN Tools core checks
+
+For the independent LAN Tools core (no UI integration required), run:
+
+```powershell
+.\gradlew.bat :modules:lan-tools-core:check :modules:common-net:test
+```
+
+The module targets Java 17 for future Android reuse. Its tests use fakes and
+loopback UDP, without physical LAN broadcasts. See [LAN Tools core](lan-tools.md)
+for API, routing and hardware qualification limits.
+
 ### Dependency locking during IDE sync
 
 JVM projects use strict dependency locking. Android uses `LockMode.DEFAULT`:
