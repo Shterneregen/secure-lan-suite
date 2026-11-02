@@ -120,4 +120,24 @@ class AndroidLanDeviceDiscoveryTest {
         assertTrue(discovery.browse(null) {} is LanResult.Success)
         assertEquals(12, opened)
     }
+
+    @Test fun discoveryStopAloneCannotAdmitNewRunWhileServiceCallbacksAreRetiring() = runTest {
+        val lifetimes = mutableListOf<NsdBrowserTeardown>()
+        val registration = Any()
+        val browser = LanNsdBrowser { _, _, _, _, _ ->
+            val lifetime = NsdBrowserTeardown().also { it.registered(registration); lifetimes += it }
+            object : NsdFacade.Browser {
+                override fun close() { lifetime.closeRequested(); lifetime.discoveryStopped() }
+                override suspend fun awaitClosed() { lifetime.awaitClosed() }
+            }
+        }
+        val discovery = AndroidLanDeviceDiscovery(FakeLanPlatform(), browser, Lease(), NsdApiCapabilities(true, true),
+            StandardTestDispatcher(testScheduler), durationMillis = 1)
+        assertTrue(discovery.browse(null) {} is LanResult.Success)
+        assertEquals(LanError.RESOURCE_LIMIT, (discovery.browse(null) {} as LanResult.Failure).code)
+        assertEquals(6, lifetimes.size)
+        lifetimes.forEach { it.unregistered(registration) }
+        assertTrue(discovery.browse(null) {} is LanResult.Success)
+        assertEquals(12, lifetimes.size)
+    }
 }

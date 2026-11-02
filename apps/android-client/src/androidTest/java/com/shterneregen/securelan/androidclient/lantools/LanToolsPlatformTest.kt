@@ -77,6 +77,10 @@ class LanToolsPlatformTest {
                 resolved = { if (it.name == name) found.complete(it) }, lost = {}, failed = {})
             val value = withTimeout(20_000) { found.await() }
             assertTrue(value.addresses.isNotEmpty()); assertEquals(18080, value.port); assertTrue(value.txt.isEmpty())
+            val active = requireNotNull(browser)
+            active.close()
+            // A successful discovery stop alone is insufficient while service-info callbacks retire.
+            withTimeout(5_000) { active.awaitClosed() }
         } finally {
             browser?.close()
             withContext(NonCancellable) { withTimeoutOrNull(2000) { browser?.awaitClosed() } }

@@ -57,6 +57,29 @@ class LanDeviceStoreTest {
         assertThrows(IOException::class.java) { store.save(emptyList()) }
         assertEquals(listOf(device), store.load())
     }
+    @Test fun failedCommitRestoresMemoryAndRequiresConfirmedRecoveryBeforeReload() {
+        for (original in listOf(null, SavedLanDeviceCodec.encode(listOf(device)))) {
+            var cached = original
+            var persisted = original
+            var succeeds = false
+            val replacement = device.copy(displayName = "Changed")
+            val store = PreferencesSavedLanDeviceStore({ cached }, {
+                // SharedPreferences changes its process cache before the disk commit result arrives.
+                cached = it
+                if (succeeds) persisted = it
+                succeeds
+            })
+            store.load()
+            assertThrows(IOException::class.java) { store.save(listOf(replacement)) }
+            assertEquals(original, cached)
+            assertEquals(original, persisted)
+            assertThrows(IOException::class.java) { store.load() }
+            succeeds = true
+            assertEquals(if (original == null) emptyList<SavedLanDevice>() else listOf(device), store.load())
+            store.save(listOf(replacement))
+            assertEquals(listOf(replacement), SavedLanDeviceCodec.decode(requireNotNull(persisted)))
+        }
+    }
     @Test fun invalidMacIsRejectedAndBlankMacRemovesWakeConfiguration() {
         assertThrows(InvalidLanForm::class.java) { LanDeviceForm(name = "PC", mac = "invalid").device() }
         assertNull(LanDeviceForm.from(device).copy(mac = "").device().wake)

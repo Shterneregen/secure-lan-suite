@@ -145,4 +145,36 @@ class DesktopDiagnosticsControllerTest {
         assertTrue(controller.state.value.outcome(DiagnosticKind.TCP).message.contains("may still be running"))
         controller.close()
     }
+
+    @Test fun failureTimeoutAndCancellationIdentifySubmittedTargetsAfterFormEdits() = runTest {
+        var fail = true
+        val service = object : NetworkDiagnosticsService by success {
+            override suspend fun lookup(request: DnsLookupRequest): LanResult<DnsLookupReceipt> {
+                delay(10)
+                return LanResult.Failure(LanError.RESOLUTION_FAILED)
+            }
+            override suspend fun tcp(request: TcpCheckRequest): LanResult<TcpCheckReceipt> {
+                if (fail) awaitCancellation()
+                return success.tcp(request)
+            }
+        }
+        val controller = DesktopDiagnosticsController(service, provider, StandardTestDispatcher(testScheduler))
+        controller.open(); runCurrent()
+        controller.edit { it.copy(tcpHost = "submitted.local", tcpPort = "443", dnsHost = "submitted.local", timeoutMillis = "50") }
+        controller.checkTcp(); controller.lookupDns(); runCurrent()
+        controller.edit { it.copy(tcpHost = "edited.local", dnsHost = "edited.local") }
+        advanceUntilIdle()
+        assertTrue(controller.state.value.outcome(DiagnosticKind.DNS).message.contains("submitted.local"))
+        assertTrue(controller.state.value.outcome(DiagnosticKind.TCP).message.contains("submitted.local:443"))
+        controller.selectInterface(source.binding.key)
+        controller.edit { it.copy(gateway = gateway.value, gatewayPort = "80") }
+        controller.checkGateway(); runCurrent()
+        controller.edit { it.copy(gatewayPort = "443") }
+        controller.cancel(DiagnosticKind.GATEWAY)
+        assertTrue(controller.state.value.outcome(DiagnosticKind.GATEWAY).message.contains("${gateway.value}:80"))
+        fail = false
+        controller.checkTcp(); runCurrent()
+        assertTrue(controller.state.value.outcome(DiagnosticKind.TCP).message.contains("edited.local:443"))
+        controller.close()
+    }
 }

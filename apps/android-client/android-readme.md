@@ -88,7 +88,7 @@ The [realtime architecture](../../docs/webrtc-architecture.md) and this guide de
 
 ### Minimum requirements
 
-- Android Studio Panda 2 or newer with Android Gradle Plugin 9.1 support, or the
+- An Android IDE whose Android plugin supports AGP 9.5, or the
   command-line Android SDK. Check the official [Android Gradle Plugin
   compatibility table](https://developer.android.com/build/releases/about-agp)
   before changing either tool.
@@ -104,9 +104,14 @@ The [realtime architecture](../../docs/webrtc-architecture.md) and this guide de
 
 Exact Android Gradle Plugin and Kotlin versions are defined in `settings.gradle`;
 the Compose BOM is defined in `apps/android-client/build.gradle`. The current
-Android Gradle Plugin is pinned to 9.1.0 for IDEs supporting the AGP 9.1 line.
-Before upgrading AGP, check the installed IDE's Android plugin compatibility;
-command-line Gradle build success alone does not establish IDE sync support.
+Android Gradle Plugin follows the master baseline, currently 9.5.0. LAN Tools
+does not require a different plugin version. An IDE reporting a maximum of
+AGP 9.1 cannot sync this baseline: update its Android plugin/IDE to a compatible
+version or use command-line builds. The official compatibility table lists
+Android Studio Rabbit 2 (2026.2.2) for AGP 9.5; IntelliJ Android plugin support
+must be checked separately. Command-line Gradle success does not establish IDE
+sync support. The temporary LAN Tools downgrade to 9.1.0 addressed that local
+IDE limitation and was removed during pre-merge review.
 
 ### When building the whole monorepo
 

@@ -25,6 +25,7 @@ class DesktopDiagnosticsController(
     val state = mutable.asStateFlow()
     private val jobs = mutableMapOf<DiagnosticKind, Job>()
     private val generations = DiagnosticKind.entries.associateWith { 0L }.toMutableMap()
+    private val subjects = mutableMapOf<DiagnosticKind, String>()
     private var visible = false
     private var closed = false
 
@@ -118,11 +119,11 @@ class DesktopDiagnosticsController(
         generations[kind] = generations.getValue(kind) + 1
         jobs.remove(kind)?.cancel()
         if (state.value.outcome(kind).phase == DiagnosticPhase.RUNNING) outcome(kind,
-            DiagnosticOutcome(DiagnosticPhase.CANCELLED, when (kind) {
+            identified(DiagnosticOutcome(DiagnosticPhase.CANCELLED, when (kind) {
                 DiagnosticKind.NETWORK -> "Network information refresh cancelled."
                 DiagnosticKind.DNS -> "Lookup cancelled. The OS resolver may still be finishing."
                 else -> "Cancelled. A connection attempt may already have reached the endpoint."
-            }))
+            }), subjects[kind]))
     }
 
     fun dismiss() { visible = false; DiagnosticKind.entries.forEach(::cancel) }
@@ -135,16 +136,25 @@ class DesktopDiagnosticsController(
         if (closed || !visible || state.value.outcome(kind).phase == DiagnosticPhase.RUNNING) return
         val token = generations.getValue(kind) + 1
         generations[kind] = token
-        outcome(kind, DiagnosticOutcome(DiagnosticPhase.RUNNING, "Running…"))
+        // Capture before launch: editing a form must not relabel failure, timeout or cancellation.
+        val input = state.value.inputs
+        val subject = when (kind) {
+            DiagnosticKind.NETWORK -> null
+            DiagnosticKind.TCP -> "TCP ${input.tcpHost.trim()}:${input.tcpPort}"
+            DiagnosticKind.DNS -> "DNS ${input.dnsHost.trim()}"
+            DiagnosticKind.GATEWAY -> "Gateway TCP ${input.gateway}:${input.gatewayPort}"
+        }
+        if (subject != null) subjects[kind] = subject
+        outcome(kind, identified(DiagnosticOutcome(DiagnosticPhase.RUNNING, "Running…"), subject))
         jobs[kind] = scope.launch {
             try {
                 // Includes metadata refresh for a gateway, as well as the service's own deadline.
                 val result = withTimeoutOrNull(timeout) { operation() }
                     ?: DiagnosticOutcome(DiagnosticPhase.FAILURE, "Operation timed out.")
-                if (visible && generations[kind] == token) complete(kind, result, check)
+                if (visible && generations[kind] == token) complete(kind, identified(result, subject), check)
             } catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { if (visible && generations[kind] == token) complete(kind,
-                DiagnosticOutcome(DiagnosticPhase.FAILURE, "Could not complete the check. Refresh network information and try again."), check) }
+                identified(DiagnosticOutcome(DiagnosticPhase.FAILURE, "Could not complete the check. Refresh network information and try again."), subject), check) }
         }
     }
 
@@ -174,6 +184,8 @@ class DesktopDiagnosticsController(
     }
 
     private fun milliseconds(nanos: Long): String = java.lang.String.format(java.util.Locale.ROOT, "%.2f", nanos / 1_000_000.0)
+    private fun identified(value: DiagnosticOutcome, subject: String?): DiagnosticOutcome =
+        if (subject == null || value.message.startsWith("$subject:")) value else value.copy(message = "$subject: ${value.message}")
     private fun complete(kind: DiagnosticKind, value: DiagnosticOutcome, input: DiagnosticInputs?) {
         outcome(kind, value)
         if (!closed && input?.deviceKey != null) {
