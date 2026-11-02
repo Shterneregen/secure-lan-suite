@@ -27,4 +27,6 @@ enum class LanError {
     TIMEOUT,
     RESOURCE_LIMIT,
     IO,
+    RESOLUTION_FAILED,
+    CONNECTION_FAILED,
 }

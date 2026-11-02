@@ -23,12 +23,16 @@ import com.shterneregen.securelan.desktop.compose.tray.DesktopCloseOutcome
 import com.shterneregen.securelan.desktop.compose.tray.DesktopTrayMenuState
 import com.shterneregen.securelan.desktop.compose.tray.SecureLanTray
 import com.shterneregen.securelan.desktop.compose.tray.desktopCloseOutcome
+import com.shterneregen.securelan.desktop.lantools.DesktopDiagnosticsController
+import com.shterneregen.securelan.desktop.lantools.DesktopHostResolver
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
+import com.shterneregen.securelan.desktop.lantools.DesktopNetworkInfoProvider
 import com.shterneregen.securelan.desktop.lantools.PropertiesSavedLanDeviceStore
 import com.shterneregen.securelan.desktop.network.discovery.LinuxDefaultRouteHintProvider
 import com.shterneregen.securelan.desktop.quickshare.DefaultQuickShareService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferClientService
 import com.shterneregen.securelan.filetransfer.service.impl.DefaultFileTransferServerService
+import com.shterneregen.securelan.lantools.diagnostics.DefaultNetworkDiagnosticsService
 import com.shterneregen.securelan.lantools.wol.DefaultWakeOnLanService
 import com.shterneregen.securelan.lantools.wol.JvmLanNetworkInfoProvider
 import com.shterneregen.securelan.webrtc.event.RtcEvent
@@ -59,7 +63,10 @@ fun main() {
         val lanToolsController = remember {
             val hint = LinuxDefaultRouteHintProvider()
             val networks = JvmLanNetworkInfoProvider(defaultRouteInterfaceKey = hint::interfaceKey)
-            DesktopLanToolsController(PropertiesSavedLanDeviceStore(), networks, DefaultWakeOnLanService(networks))
+            val resolver = DesktopHostResolver()
+            val diagnostics = DesktopDiagnosticsController(DefaultNetworkDiagnosticsService(resolver, networks),
+                DesktopNetworkInfoProvider(networks), release = resolver::close)
+            DesktopLanToolsController(PropertiesSavedLanDeviceStore(), networks, DefaultWakeOnLanService(networks), diagnostics = diagnostics)
         }
         DisposableEffect(lanToolsController) { onDispose { lanToolsController.close() } }
         val chatNotificationChannel = remember { Channel<DesktopChatTrayNotification>(Channel.UNLIMITED) }

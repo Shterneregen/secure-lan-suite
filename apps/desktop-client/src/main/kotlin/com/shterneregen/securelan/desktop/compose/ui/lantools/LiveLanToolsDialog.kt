@@ -67,10 +67,9 @@ internal fun LanToolsContent(controller: DesktopLanToolsController, onClose: () 
         if (state.tab == LanToolsTab.DEVICES) {
             LanDevicesPane(state, controller, Modifier.weight(1f))
         } else {
-            Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                Text("Network diagnostics are not available yet.", style = MaterialTheme.typography.subtitle1)
-                Text("You can manage saved devices and send Wake-on-LAN packets in Devices. No connectivity checks are performed here.")
-            }
+            val diagnostics = controller.diagnostics
+            if (diagnostics != null) LanDiagnosticsPane(diagnostics, Modifier.weight(1f))
+            else Text("Diagnostics unavailable in this environment.", modifier = Modifier.weight(1f))
         }
     }
 }

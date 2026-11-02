@@ -12,13 +12,20 @@ import com.shterneregen.securelan.chat.service.ChatServerService
 import com.shterneregen.securelan.chat.service.RandomNicknameService
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.SecureLanComposeApp
+import com.shterneregen.securelan.desktop.compose.state.lantools.DiagnosticKind
+import com.shterneregen.securelan.desktop.compose.state.lantools.DiagnosticPhase
+import com.shterneregen.securelan.desktop.compose.state.lantools.LanToolsTab
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
+import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.model.LanNetworkInfoProvider
 import com.shterneregen.securelan.lantools.model.LanNetworkSnapshot
 import com.shterneregen.securelan.lantools.model.LanResult
 import com.shterneregen.securelan.lantools.wol.DatagramSender
 import com.shterneregen.securelan.lantools.wol.DefaultWakeOnLanService
+import com.shterneregen.securelan.lantools.wol.JvmLanNetworkInfoProvider
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.*
 import java.awt.Component
 import java.awt.Container
@@ -35,16 +42,22 @@ import javax.swing.SwingUtilities
 object LanToolsNativeWindowProbe {
     @JvmStatic
     fun main(args: Array<String>) {
-        utilityClosesWithEscapeAndLeavesHostingAndWorkspaceServicesRunning()
+        val info = runBlocking { withTimeout(12_000) { DesktopNetworkInfoProvider(JvmLanNetworkInfoProvider()).snapshot() } }
+        check(info is LanResult.Success) { "Local interface snapshot failed" }
+        val snapshot = info.value
+        println("Local metadata: interfaces=${snapshot.interfaces.size}, gateways=${snapshot.interfaces.sumOf { it.gateways.size }}, DNS=${snapshot.interfaces.sumOf { it.dnsServers.size }}, availability=${snapshot.interfaces.map { it.metadata }.distinct()}")
+        utilityClosesWithEscapeAndLeavesHostingAndWorkspaceServicesRunning(snapshot)
         println("LAN Tools native window, Escape and workspace service preservation: passed")
     }
 
-    private fun utilityClosesWithEscapeAndLeavesHostingAndWorkspaceServicesRunning() {
+    private fun utilityClosesWithEscapeAndLeavesHostingAndWorkspaceServicesRunning(snapshot: DiagnosticsNetworkSnapshot) {
         val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
         val host = workspaceHost(calls)
         val networks = LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(emptyList())) }
         val controller = DesktopLanToolsController(MemoryLanStore(), networks,
-            DefaultWakeOnLanService(networks, DatagramSender { _, _ -> error("Native UI smoke must not broadcast") }))
+            DefaultWakeOnLanService(networks, DatagramSender { _, _ -> error("Native UI smoke must not broadcast") }),
+            diagnostics = DesktopDiagnosticsController(DefaultNetworkDiagnosticsService(HostResolver { error("No DNS in native UI smoke") }, networks,
+                TcpConnector { _, _, _ -> error("No TCP in native UI smoke") }), DiagnosticsNetworkInfoProvider { LanResult.Success(snapshot) }))
         val exit = AtomicReference<(() -> Unit)?>(null)
         val failure = AtomicReference<Throwable?>(null)
         val worker = Executors.newSingleThreadExecutor()
@@ -57,9 +70,11 @@ object LanToolsNativeWindowProbe {
                     baseline = listOf(host.statusState, host.currentRoomPassword, host.transferEntries, host.mediaVoiceState, host.experimentalVideoState, host.discoveredPeers)
                     serviceCalls = calls.toList()
                     controller.open()
+                    controller.selectTab(LanToolsTab.DIAGNOSTICS)
                 }
                 await { java.awt.Window.getWindows().filterIsInstance<Dialog>().any { it.isShowing && it.title.endsWith("LAN Tools") } }
                 val dialog = java.awt.Window.getWindows().filterIsInstance<Dialog>().first { it.isShowing && it.title.endsWith("LAN Tools") }
+                await { controller.diagnostics!!.state.value.outcome(DiagnosticKind.NETWORK).phase == DiagnosticPhase.SUCCESS }
                 // Dispatch only into this test's AWT listeners; do not steal global keyboard focus.
                 SwingUtilities.invokeAndWait { escape(dialog) }
                 await { !controller.state.value.visible }

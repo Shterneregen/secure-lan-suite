@@ -21,6 +21,7 @@ class DesktopLanToolsController(
     private val wake: WakeOnLanService,
     dispatcher: CoroutineDispatcher = LanToolsUiDispatcher,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    val diagnostics: DesktopDiagnosticsController? = null,
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val mutable = MutableStateFlow(LanToolsUiState())
@@ -36,17 +37,22 @@ class DesktopLanToolsController(
         update { it.copy(visible = true) }
         if (!state.value.loaded) reload()
         refreshInterfaces()
+        if (state.value.tab == LanToolsTab.DIAGNOSTICS) diagnostics?.open()
     }
 
     /** Keeps drafts/selection but cancels the dialog's network work and rejects late completions. */
     fun dismiss() {
+        diagnostics?.dismiss()
         generation++
         networkJob?.cancel(); wakeJob?.cancel()
         update { value -> value.copy(visible = false, networkLoading = false, wakingId = null,
             lastResults = value.wakingId?.let { value.lastResults + (it to "Send cancelled; a packet may already have been submitted.") } ?: value.lastResults) }
     }
 
-    fun selectTab(tab: LanToolsTab) = update { it.copy(tab = tab) }
+    fun selectTab(tab: LanToolsTab) {
+        update { it.copy(tab = tab) }
+        if (state.value.visible && tab == LanToolsTab.DIAGNOSTICS) diagnostics?.open()
+    }
     fun selectDevice(id: UUID) = update { it.copy(selectedId = id, bindingKey = if (it.selectedId == id) it.bindingKey else null) }
     fun selectBinding(key: String?) = update { it.copy(bindingKey = key) }
     fun editDraft(draft: LanDeviceDraft) { if (!state.value.saving) update { it.copy(editor = draft, editorError = null) } }
@@ -158,15 +164,16 @@ class DesktopLanToolsController(
         LanError.UNSUPPORTED -> "This network does not support the required broadcast operation."
         LanError.RESOURCE_LIMIT -> "The network tool is busy. Wait and try again."
         LanError.IO -> "Could not send the packet. Check the interface and network configuration."
+        LanError.CONNECTION_FAILED, LanError.RESOLUTION_FAILED -> "Could not complete the network operation."
     }
 
     private fun update(change: (LanToolsUiState) -> LanToolsUiState) { if (!closed) mutable.value = change(mutable.value) }
 
-    override fun close() { dismiss(); closed = true; scope.cancel() }
+    override fun close() { dismiss(); closed = true; scope.cancel(); diagnostics?.close() }
 }
 
 /** Matches existing desktop state owners: UI mutations belong to Swing EDT, without a Main provider. */
-private object LanToolsUiDispatcher : CoroutineDispatcher() {
+internal object LanToolsUiDispatcher : CoroutineDispatcher() {
     override fun isDispatchNeeded(context: CoroutineContext): Boolean = !SwingUtilities.isEventDispatchThread()
     override fun dispatch(context: CoroutineContext, block: Runnable) = SwingUtilities.invokeLater(block)
 }

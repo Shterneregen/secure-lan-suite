@@ -70,7 +70,7 @@ For the independent LAN Tools core (no UI integration required), run:
 ```
 
 The module targets Java 17 for future Android reuse. Its tests use fakes and
-loopback UDP, without physical LAN broadcasts. See [LAN Tools core](lan-tools.md)
+loopback UDP/TCP, without physical LAN broadcasts or external endpoints. See [LAN Tools core](lan-tools.md)
 for API, routing and hardware qualification limits.
 
 Desktop integration and UI checks:
@@ -85,12 +85,16 @@ For an explicit native-window smoke in a graphical desktop session:
 .\gradlew.bat :apps:desktop-client:lanToolsWindowSmoke
 ```
 
-The probe opens the production shell/dialog with local service doubles, sends
-Escape only into its own AWT listeners and verifies workspace services were not
-restarted or stopped. It never broadcasts or opens a real room. It runs separately
+The probe reads bounded local JVM/Windows network metadata, opens the production
+shell/dialog and Diagnostics with service doubles, sends Escape only into its
+own AWT listeners and verifies workspace services were not restarted or stopped.
+It never connects to remote endpoints, broadcasts or opens a real room. It runs separately
 from `check`/`qualityGate` so headless CI does not require a window manager.
-Compose tests exercise CRUD, validation, interface selection, keyboard, drafts,
-peer selection and layout; screenshots are written to
+Compose tests exercise CRUD, diagnostics validation/TCP/DNS/gateway/cancellation,
+unavailable metadata, interface selection, keyboard, drafts, peer selection and
+layout. Service tests cover resolver saturation, native-lookup cancellation,
+process output/deadline/cleanup and nonblocking connection cleanup; DNS failures
+use injected resolvers, with no external DNS dependency. Screenshots are written to
 `apps/desktop-client/build/reports/lan-tools-ui/`. Physical WoL and simultaneous
 real chat/file/media traffic remain manual qualification checks.
 
