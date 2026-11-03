@@ -106,7 +106,7 @@ class DesktopLanToolsControllerTest {
         assertTrue(cleaned)
         assertEquals(device.id, controller.state.value.selectedId)
         assertEquals("Unfinished", controller.state.value.editor!!.name)
-        assertFalse(controller.state.value.lastResults.getValue(device.id).contains("Packet sent"))
+        assertFalse(controller.state.value.lastResults.getValue(device.id).contains("Wake packet sent"))
         controller.open(); runCurrent()
         assertEquals("Unfinished", controller.state.value.editor!!.name)
         controller.close()

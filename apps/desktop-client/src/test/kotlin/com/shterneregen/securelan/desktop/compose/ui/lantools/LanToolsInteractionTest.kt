@@ -49,6 +49,7 @@ class LanToolsInteractionTest {
     private var sends = 0
     private var sentBinding: String? = null
     private var blockDns = false
+    private var diagnosticInterfaces: List<DiagnosticInterface>? = null
     private var metadata = MetadataAvailability.AVAILABLE
     private var discoveryCalls = 0
     private var blockDiscovery = false
@@ -69,7 +70,7 @@ class LanToolsInteractionTest {
             DefaultNetworkDiagnosticsService(HostResolver {
                 if (blockDns) awaitCancellation() else LanResult.Success(listOf(network.binding.address))
             }, LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(network))) }, TcpConnector { _, _, _ -> }),
-            DiagnosticsNetworkInfoProvider { LanResult.Success(DiagnosticsNetworkSnapshot(listOf(DiagnosticInterface(network,
+            DiagnosticsNetworkInfoProvider { LanResult.Success(DiagnosticsNetworkSnapshot(diagnosticInterfaces ?: listOf(DiagnosticInterface(network,
                 listOf(IpLiteral.parse("192.168.1.1")!!), listOf("192.168.1.1"), metadata)), "controlled fixture")) }, Dispatchers.Unconfined),
         explorer = DesktopExplorerController(LanDeviceDiscovery { update ->
             discoveryCalls++
@@ -91,8 +92,8 @@ class LanToolsInteractionTest {
 
     @Test fun addValidateWakeEditAndConfirmDeleteWithoutAnyRoom() {
         content()
-        compose.onNodeWithText("No saved devices yet.").assertExists()
-        compose.onNodeWithText("Add device").performClick()
+        compose.onNodeWithText("No devices yet").assertExists()
+        compose.onAllNodesWithText("Add device")[0].performClick()
         compose.onNodeWithTag("lan-name").assertIsFocused().performTextInput("Desktop")
         compose.onNodeWithTag("lan-name").performKeyInput { pressKey(Key.Tab) }
         compose.onNodeWithTag("lan-address").assertIsFocused()
@@ -117,7 +118,7 @@ class LanToolsInteractionTest {
         compose.runOnIdle { assertEquals("Renamed", store.devices.single().displayName) }
         compose.onNodeWithText("Delete device").performScrollTo().performClick()
         compose.onNodeWithText("Confirm delete").performClick()
-        compose.onNodeWithText("No saved devices yet.").assertExists()
+        compose.onNodeWithText("No devices yet").assertExists()
     }
 
     @Test fun vanishedInterfaceIsShownAsUnavailableUntilUserChoosesAnotherRoute() {
@@ -146,9 +147,9 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Tools").performClick()
         compose.onNodeWithText("LAN Tools", substring = false).performClick()
         compose.onNodeWithText("Diagnostics").performClick()
-        compose.onNodeWithText("Network information").assertExists()
+        compose.onNodeWithText("Network overview").assertExists()
         compose.onNodeWithText("Devices", substring = false).performClick()
-        compose.onNodeWithText("Add device").performClick()
+        compose.onAllNodesWithText("Add device")[0].performClick()
         compose.onNodeWithTag("lan-name").performTextInput("Unfinished")
         compose.onNodeWithTag("lan-name").performKeyInput { pressKey(Key.Escape) }
         compose.waitUntil(5_000) { !controller.state.value.visible }
@@ -228,7 +229,7 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Gateway TCP 192.168.1.1:1234", substring = true).assertExists()
         compose.onNodeWithText("Gateway TCP 192.168.1.1:1234", substring = true).performScrollTo()
         screenshot("diagnostics-gateway-narrow-light.png")
-        compose.onNodeWithText("Network information").performScrollTo()
+        compose.onNodeWithText("Network overview").performScrollTo()
         screenshot("diagnostics-narrow-light.png")
         compose.onNodeWithText("Devices", substring = false).performClick()
         compose.onNodeWithText("Diagnostics", substring = false).performClick()
@@ -246,9 +247,10 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Cancel dns").performScrollTo().performClick()
         compose.onNodeWithText("Lookup cancelled.", substring = true).assertExists()
         compose.onNodeWithText("Check gateway TCP", substring = false).assertDoesNotExist()
+        compose.onNodeWithText("Advanced settings").performScrollTo().performClick()
         compose.onNodeWithText("ICMP ping: unavailable", substring = true).performScrollTo().assertIsDisplayed()
         screenshot("diagnostics-cancel-wide-dark.png")
-        compose.onNodeWithText("Network information").performScrollTo()
+        compose.onNodeWithText("Network overview").performScrollTo()
         screenshot("diagnostics-wide-dark.png")
     }
 
@@ -260,10 +262,10 @@ class LanToolsInteractionTest {
         store.devices = listOf(SavedLanDevice(UUID.randomUUID(), "Saved user label", ip))
         content()
         compose.runOnIdle { assertEquals(0, discoveryCalls) }
-        compose.onNodeWithText("Refresh devices").performClick()
+        compose.onAllNodesWithText("Refresh devices")[0].performClick()
         compose.onNodeWithTag("found-row-printer-row").assertExists()
         compose.runOnIdle { assertEquals(1, store.devices.size); assertEquals(1, discoveryCalls) }
-        compose.onNodeWithText("Show: all").performClick()
+        compose.onNodeWithText("Show: All").performClick()
         compose.onNodeWithText("Discovered", substring = false).performClick()
         compose.onNodeWithTag("lan-search").performTextInput("IPP")
         compose.onNodeWithText("Details", substring = false).performScrollTo().performClick()
@@ -294,13 +296,13 @@ class LanToolsInteractionTest {
             listOf(LanAdvertisedService("Workstation", "_ssh._tcp.local.", 22, listOf(ip))), setOf("mDNS/DNS-SD"), Instant.EPOCH)), partial = true)
         blockDiscovery = true
         content(740, 520, SecureLanThemeMode.LIGHT)
-        compose.onNodeWithText("Refresh devices").performClick()
+        compose.onAllNodesWithText("Refresh devices")[0].performClick()
         compose.onNodeWithText("Cancel discovery").assertIsDisplayed().performClick()
         compose.onNodeWithText("Partial results:", substring = true).assertExists()
         compose.onNodeWithText("Discovered · Historical snapshot").performScrollTo().assertIsDisplayed()
         screenshot("explorer-narrow-light.png")
         compose.onNodeWithTag("lan-search").performTextInput("no-match")
-        compose.onNodeWithText("No matching devices.").assertExists()
+        compose.onNodeWithText("No matching devices").assertExists()
         compose.runOnIdle { controller.dismiss(); controller.open() }
         compose.onNodeWithTag("lan-search").assertTextContains("no-match")
         compose.runOnIdle { assertEquals(1, discoveryCalls) }
@@ -312,13 +314,84 @@ class LanToolsInteractionTest {
         discovered = LanDiscoverySnapshot(listOf(DiscoveredLanDevice("small", network.binding.key, "Workstation", null, listOf(ip),
             listOf(LanAdvertisedService("Workstation", "_ssh._tcp.local.", 22, listOf(ip))), setOf("mDNS/DNS-SD"), Instant.EPOCH)))
         content(400, 320, SecureLanThemeMode.LIGHT)
-        compose.onNodeWithText("Refresh devices").performScrollTo().assertIsDisplayed().performClick()
+        compose.onAllNodesWithText("Refresh devices")[0].performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("lan-device-list").performScrollToNode(hasTestTag("found-row-small"))
         compose.onNode(hasText("Details") and hasAnyAncestor(hasTestTag("found-row-small"))).performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithText("Save as new device").performScrollTo().assertIsDisplayed()
         screenshot("explorer-minimum-light.png")
         compose.onNodeWithTag("lan-device-list").performScrollToIndex(0)
         compose.onNodeWithTag("lan-search").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun defaultEmptyAndWideDiagnosticsExposeUsefulActionsAndPartialMetadata() {
+        metadata = MetadataAvailability.TIMEOUT
+        content(1000, 760, SecureLanThemeMode.LIGHT)
+        compose.onNodeWithText("No devices yet").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, discoveryCalls) }
+        screenshot("redesign-empty-default-light.png")
+        compose.onAllNodesWithText("Refresh devices")[1].performClick()
+        compose.onNodeWithText("No services found").assertIsDisplayed()
+        compose.onNodeWithText("Diagnostics").performClick()
+        compose.onNodeWithTag("diag-tcp-host").assertIsDisplayed()
+        compose.onNodeWithTag("diag-dns-host").assertIsDisplayed()
+        compose.onNodeWithText("Partial: loaded interface data.", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Gateway / DNS: OS query timed out", substring = true).assertIsDisplayed()
+        screenshot("redesign-diagnostics-default-light.png")
+    }
+
+    @Test fun wideEmptyAndRunningResultsDoNotDuplicatePhaseLabels() = runDesktopComposeUiTest(width = 1360, height = 860) {
+        controller.open()
+        setContent { SecureLanTheme(themeMode = SecureLanThemeMode.DARK) {
+            Surface(color = MaterialTheme.colors.background) {
+                LanToolsContent(controller, controller::dismiss, Modifier.fillMaxSize().testTag("wide-content"))
+            }
+        } }
+        fun capture(name: String) {
+            val bitmap = onNodeWithTag("wide-content").captureToImage().asSkiaBitmap()
+            assertEquals(1360, bitmap.width)
+            assertEquals(860, bitmap.height)
+            val directory = Path.of("build/reports/lan-tools-ui")
+            Files.createDirectories(directory)
+            Image.makeFromBitmap(bitmap).use { image -> image.encodeToData()!!.use { Files.write(directory.resolve(name), it.bytes) } }
+        }
+        onNodeWithText("Close").assertIsDisplayed()
+        onNodeWithTag("lan-search").assertIsDisplayed()
+        capture("redesign-empty-wide-dark.png")
+        blockDns = true
+        onNodeWithText("Diagnostics").performClick()
+        onNodeWithTag("diag-dns-host").performTextInput("pending.local")
+        onNodeWithText("Look up DNS").performClick()
+        onNodeWithText("Running: Running", substring = true).assertDoesNotExist()
+        onNodeWithText("DNS pending.local:", substring = true).assertIsDisplayed()
+        capture("redesign-diagnostics-running-wide-dark.png")
+        onNodeWithText("Cancel dns").performClick()
+    }
+
+    @Test fun minimumDiagnosticsReachesFormsAndAdvancedTimeout() {
+        content(400, 320, SecureLanThemeMode.LIGHT)
+        compose.onNodeWithText("Diagnostics").performClick()
+        compose.onNodeWithTag("diag-tcp-host").performScrollTo().performTextInput("host.local")
+        compose.onNodeWithTag("diag-tcp-port").performTextInput("80")
+        compose.onNodeWithText("Check TCP", substring = false).performScrollTo().performClick()
+        compose.onNodeWithText("Only this TCP port accepted", substring = true).assertExists()
+        screenshot("redesign-diagnostics-minimum-light.png")
+        compose.onNodeWithText("Advanced settings").performScrollTo().performClick()
+        compose.onNodeWithTag("diag-timeout").performScrollTo().performTextReplacement("1000")
+        compose.runOnIdle { assertEquals("1000", controller.diagnostics!!.state.value.inputs.timeoutMillis) }
+        compose.onNodeWithTag("diag-dns-host").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun overviewPrioritizesLanAndKeepsOtherInterfacesInspectableWithoutChangingRouting() {
+        val other = network.copy(binding = network.binding.copy(key = "virtual", interfaceKey = "virtual0", up = false), displayName = "Virtual adapter")
+        diagnosticInterfaces = listOf(DiagnosticInterface(other), DiagnosticInterface(network))
+        content(1000, 760)
+        compose.onNodeWithText("Diagnostics").performClick()
+        compose.onNodeWithText("Ethernet (eth0)").assertIsDisplayed()
+        compose.onNodeWithText("Virtual adapter (virtual0)").assertDoesNotExist()
+        compose.onNodeWithText("Other interfaces (1)").performClick()
+        compose.onNodeWithText("Virtual adapter (virtual0)").assertIsDisplayed()
+        compose.runOnIdle { assertNull(controller.diagnostics!!.state.value.inputs.bindingKey) }
+        screenshot("redesign-other-interfaces-dark.png")
     }
 
     private fun screenshot(name: String) {

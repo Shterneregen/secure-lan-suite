@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.lantools.LanToolsUiState
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
@@ -23,7 +24,7 @@ internal fun LanDeviceEditor(state: LanToolsUiState, controller: DesktopLanTools
     val tokens = LocalSecureLanDesignTokens.current
     val nameFocus = remember { FocusRequester() }
     LaunchedEffect(draft.id) { nameFocus.requestFocus() }
-    Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+    Column(modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
         Text(if (state.devices.any { it.id == draft.id }) "Edit saved device" else "Add saved device", style = MaterialTheme.typography.h6)
         OutlinedTextField(draft.name, { controller.editDraft(draft.copy(name = it)) }, label = { Text("Device name") }, singleLine = true,
             enabled = !state.saving, modifier = Modifier.fillMaxWidth().focusRequester(nameFocus).testTag("lan-name"))

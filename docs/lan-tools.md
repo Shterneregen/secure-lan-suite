@@ -16,6 +16,23 @@ Open **Tools → LAN Tools** in the top bar. Quick Share stays alongside Tools;
 Steganography is another item in that menu. LAN Tools works while disconnected
 and preserves the existing room, selected peer, chat draft, transfers and calls.
 
+The compact toolbar groups search, **Show**, manual Refresh/Cancel and **Add device**.
+An empty inventory offers Add and Refresh; filtered-empty, searching, no-services,
+partial and error results remain distinct. Saved and discovered categories stay
+separate. The editor has a bounded content width and keeps its existing validation.
+
+**Diagnostics** starts with a network overview. The explicitly selected interface,
+or otherwise the first active LAN interface, is shown first; **Other interfaces**
+expands every remaining adapter. This display ordering never selects a route.
+TCP and DNS forms share a row at wide sizes and stack below 760 dp of pane width.
+TCP host and port stay adjacent; all sections use one scroll surface. Source
+selection remains in the gateway group and applies to TCP/gateway; timeout and
+ICMP/system-routing explanations are available through **Advanced settings**.
+Incomplete OS gateway/DNS metadata is labelled Partial with its actual reason and
+Refresh recovery. Windows metadata timeouts remain a backend limitation, not a
+successful metadata query. Running results retain their submitted target without
+a duplicated phase prefix.
+
 In **Devices**, choose **Add device**, enter a name and optionally an IP hint and
 MAC address, then **Save device**. Without a MAC the device can be saved but Wake
 up is unavailable. With a MAC you may override the broadcast and UDP port or
@@ -63,7 +80,7 @@ is performed. The existing SecureLan UDP room discovery and `_securelan._tcp`
 codec/lifecycle are unchanged and are not used to classify arbitrary devices.
 See the [DNS-SD naming model](https://www.rfc-editor.org/rfc/rfc6763.html).
 
-**Show: all/saved/discovered** filters the list. Search matches names, hostname
+**Show: All/Saved/Discovered** filters the list. Search matches names, hostname
 and addresses; discovered records also match advertised service types and
 network binding. **Details** shows source, exact service endpoints, hostname
 when validated, all accepted IPv4 addresses and the last observation time.
