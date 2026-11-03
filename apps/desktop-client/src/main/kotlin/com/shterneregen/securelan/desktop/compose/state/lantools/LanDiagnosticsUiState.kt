@@ -5,7 +5,7 @@ import com.shterneregen.securelan.lantools.diagnostics.DiagnosticsNetworkSnapsho
 import java.time.Instant
 
 enum class DiagnosticKind { NETWORK, TCP, DNS, GATEWAY }
-enum class DiagnosticPhase { IDLE, RUNNING, SUCCESS, FAILURE, CANCELLED }
+enum class DiagnosticPhase { IDLE, RUNNING, SUCCESS, PARTIAL, FAILURE, CANCELLED }
 
 /** An operation retains its captured endpoint/result even when the next request's form is edited. */
 data class DiagnosticOutcome(val phase: DiagnosticPhase = DiagnosticPhase.IDLE, val message: String = "Not run")

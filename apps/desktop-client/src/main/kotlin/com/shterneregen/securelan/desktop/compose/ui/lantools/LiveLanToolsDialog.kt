@@ -3,6 +3,7 @@ package com.shterneregen.securelan.desktop.compose.ui.lantools
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -46,12 +47,12 @@ internal fun LanToolsContent(controller: DesktopLanToolsController, onClose: () 
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (state.editor == null) initialFocus.requestFocus() }
     Column(modifier.fillMaxSize().onPreviewKeyEvent { handleLanToolsKey(it, controller, onClose) }
-        .padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        .padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("LAN Tools", style = MaterialTheme.typography.h6)
             TextButton(onClick = onClose, modifier = Modifier.focusRequester(initialFocus)) { Text("Close") }
         }
-        TabRow(selectedTabIndex = state.tab.ordinal) {
+        TabRow(selectedTabIndex = state.tab.ordinal, backgroundColor = MaterialTheme.colors.surface, contentColor = MaterialTheme.colors.primary) {
             LanToolsTab.entries.forEach { tab ->
                 Tab(selected = state.tab == tab, onClick = { controller.selectTab(tab) }, text = {
                     Text(if (tab == LanToolsTab.DEVICES) "Devices" else "Diagnostics")

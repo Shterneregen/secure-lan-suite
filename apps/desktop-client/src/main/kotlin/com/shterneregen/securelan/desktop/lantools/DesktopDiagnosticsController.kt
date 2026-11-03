@@ -58,7 +58,10 @@ class DesktopDiagnosticsController(
             is LanResult.Success -> {
                 currentCoroutineContext().ensureActive()
                 mutable.value = state.value.copy(network = result.value)
-                DiagnosticOutcome(DiagnosticPhase.SUCCESS, "Local network information refreshed. ${result.value.provenance}")
+                val incomplete = result.value.interfaces.any { it.metadata != MetadataAvailability.AVAILABLE }
+                DiagnosticOutcome(if (incomplete) DiagnosticPhase.PARTIAL else DiagnosticPhase.SUCCESS,
+                    if (incomplete) "Partial: loaded interface data. Gateway/DNS metadata is incomplete; refresh to retry."
+                    else "Loaded interface data, gateway and DNS metadata.")
             }
             is LanResult.Failure -> failure(result, "Local network information")
             else -> DiagnosticOutcome(DiagnosticPhase.FAILURE, "Reading network information timed out. Try Refresh network information.")

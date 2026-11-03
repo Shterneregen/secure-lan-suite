@@ -177,7 +177,7 @@ class DesktopLanToolsController(
                 val result = wake.send(WakeRequest(config, binding))
                 if (token != generation) return@launch
                 val message = when (result) {
-                    is LanResult.Success -> "Packet sent to ${result.value.route.target.value}:${result.value.route.port}. Device wake-up is not confirmed."
+                    is LanResult.Success -> "Wake packet sent to ${result.value.route.target.value}:${result.value.route.port}. Device wake-up is not confirmed."
                     is LanResult.Failure -> failureMessage(result.code)
                 }
                 update { it.copy(wakingId = null, lastResults = it.lastResults + (id to message)) }

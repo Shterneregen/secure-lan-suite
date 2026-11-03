@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -22,26 +23,29 @@ import com.shterneregen.securelan.lantools.discovery.DiscoveredLanDevice
 
 /** Explicit local browse controls. No effect or automatic discovery is launched from composition. */
 @Composable
-internal fun LanExplorerControls(state: LanExplorerUiState, controller: DesktopExplorerController) {
+internal fun LanExplorerControls(state: LanExplorerUiState, controller: DesktopExplorerController, onAdd: () -> Unit, canAdd: Boolean) {
     val tokens = LocalSecureLanDesignTokens.current
     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-            CompactButton(onClick = controller::refresh, enabled = !state.running) { Text("Refresh devices") }
-            if (state.running) TextButton(onClick = controller::cancel) { Text("Cancel discovery") }
+            OutlinedTextField(state.query, controller::query, placeholder = { Text("Search devices or services") }, singleLine = true,
+                modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag("lan-search").semantics {
+                    contentDescription = "Search devices or services"
+                })
             var expanded by remember { mutableStateOf(false) }
             Box {
-                OutlinedButton(onClick = { expanded = true }) { Text("Show: ${state.filter.name.lowercase()}") }
+                OutlinedButton(onClick = { expanded = true }) { Text("Show: ${state.filter.name.lowercase().replaceFirstChar(Char::uppercase)}") }
                 DropdownMenu(expanded, { expanded = false }) {
                     LanDeviceFilter.entries.forEach { filter -> DropdownMenuItem(onClick = {
                         controller.filter(filter); expanded = false
                     }) { Text(filter.name.lowercase().replaceFirstChar(Char::uppercase)) } }
                 }
             }
+            if (state.running) OutlinedButton(onClick = controller::cancel) { Text("Cancel discovery") }
+            else OutlinedButton(onClick = controller::refresh) { Text("Refresh devices") }
+            Button(onClick = onAdd, enabled = canAdd) { Text("Add device") }
         }
-        OutlinedTextField(state.query, controller::query, label = { Text("Search devices or services") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag("lan-search"))
         if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
-        Text(state.message, style = MaterialTheme.typography.caption,
+        if (state.phase != DiagnosticPhase.IDLE) Text(if (state.running) "Searching advertised services..." else state.message, style = MaterialTheme.typography.caption,
             color = if (state.phase == DiagnosticPhase.FAILURE) MaterialTheme.colors.error else LocalContentColor.current,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         if (state.snapshot.partial) Text("Partial results: interface, metadata or event limits were reached, or a network source failed.", style = MaterialTheme.typography.caption)
@@ -57,8 +61,9 @@ internal fun DiscoveredDeviceRow(device: DiscoveredLanDevice, state: LanExplorer
             Text(device.displayName ?: "Unknown", style = MaterialTheme.typography.subtitle1)
             Text(device.addresses.joinToString { it.value }.ifEmpty { "Unknown" })
             Text("Discovered · ${if (device.stale) "Historical snapshot" else "Observed during this browse"}", style = MaterialTheme.typography.caption)
+            Text(device.services.joinToString { it.type }, style = MaterialTheme.typography.caption)
             DeviceCheckText(check)
-            Row {
+            FlowRow {
                 TextButton(onClick = { controller.explorer?.select(device.id) }) { Text("Details") }
                 val service = device.services.firstOrNull()
                 if (service != null && controller.diagnostics != null) TextButton(onClick = {
