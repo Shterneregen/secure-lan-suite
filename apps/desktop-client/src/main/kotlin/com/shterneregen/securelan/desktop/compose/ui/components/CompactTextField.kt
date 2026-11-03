@@ -35,6 +35,8 @@ internal fun CompactTextField(
     onSubmit: (() -> Unit)? = null,
     placeholder: String? = null,
     trailingContent: @Composable (() -> Unit)? = null,
+    // Keep focus/semantics on the editable node, independently of optional trailing actions.
+    inputModifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val hovered by interactionSource.collectIsHoveredAsState()
@@ -68,6 +70,7 @@ internal fun CompactTextField(
                 interactionSource = interactionSource,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(inputModifier)
                     .then(
                         if (onSubmit == null) {
                             Modifier

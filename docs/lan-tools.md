@@ -40,6 +40,15 @@ store a preferred platform interface key. Broadcast must belong to the source
 subnet; leave it empty to use the subnet default. The IP hint is descriptive and
 does not choose the WoL destination.
 
+The device editor groups **Basics** and **Wake-on-LAN** settings. Fields pair on
+wide windows and stack on narrow ones, with one scrolling surface. Compact fields
+and inline group headings keep the action row visible at the reference desktop
+size (1336x720 dp, density 1); smaller windows scroll intentionally. The preferred
+interface field accepts a manually entered key or one copied from the current
+interface list; picking a key does not select a route or send a packet. **Cancel
+editing** and **Back to devices** discard the unsaved form, as stated in the
+editor. Closing LAN Tools preserves the unfinished form for the current session.
+
 **Details** selects a saved device. Use **Edit device** to change its settings;
 **Delete device** asks for confirmation and removes only saved settings. Choose
 the current **Network interface** before **Wake up** if several source bindings

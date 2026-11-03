@@ -365,6 +365,10 @@ class LanToolsInteractionTest {
         onNodeWithText("DNS pending.local:", substring = true).assertIsDisplayed()
         capture("redesign-diagnostics-running-wide-dark.png")
         onNodeWithText("Cancel dns").performClick()
+        onNodeWithText("Devices", substring = false).performClick()
+        onAllNodesWithText("Add device")[0].performClick()
+        onNodeWithTag("lan-name").assertIsFocused()
+        capture("reference-editor-wide-dark.png")
     }
 
     @Test fun minimumDiagnosticsReachesFormsAndAdvancedTimeout() {
@@ -392,6 +396,58 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Virtual adapter (virtual0)").assertIsDisplayed()
         compose.runOnIdle { assertNull(controller.diagnostics!!.state.value.inputs.bindingKey) }
         screenshot("redesign-other-interfaces-dark.png")
+    }
+
+    @Test fun editorPickerKeepsManualInputAndOptionalWakeConfiguration() {
+        content(1000, 760, SecureLanThemeMode.LIGHT)
+        compose.onAllNodesWithText("Add device")[0].performClick()
+        compose.onNodeWithTag("lan-name").assertIsFocused().performTextInput("Saved printer")
+        compose.onNodeWithTag("lan-preferred-picker").performScrollTo().performClick()
+        compose.onNodeWithText("Ethernet (eth0)").performClick()
+        compose.onNodeWithTag("lan-preferred-interface").assertTextContains("eth0").performTextReplacement("custom0")
+        compose.onNodeWithTag("lan-preferred-interface").assertTextContains("custom0")
+        screenshot("reference-editor-light.png")
+        compose.onNodeWithText("Save device").performScrollTo().performClick()
+        compose.onNodeWithText("Enter a MAC address before configuring Wake-on-LAN.").assertExists()
+        compose.onNodeWithTag("lan-preferred-picker").performScrollTo().performClick()
+        compose.onNodeWithText("No preferred interface").performClick()
+        compose.onNodeWithText("Save device").performScrollTo().performClick()
+        compose.runOnIdle { assertNull(store.devices.single().wake); assertEquals("Saved printer", store.devices.single().displayName) }
+    }
+
+    @Test fun minimumEditorScrollsToEveryFieldAndBackCancelsUnsavedDraft() {
+        content(400, 320, SecureLanThemeMode.LIGHT)
+        compose.onAllNodesWithText("Add device")[0].performScrollTo().performClick()
+        compose.onNodeWithTag("lan-name").performScrollTo().performTextInput("Unsaved")
+        for (tag in listOf("lan-address", "lan-mac", "lan-broadcast", "lan-port", "lan-preferred-interface")) {
+            compose.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        screenshot("reference-editor-minimum-light.png")
+        compose.onNodeWithText("Back to devices").performScrollTo().performClick()
+        compose.runOnIdle { assertNull(controller.state.value.editor); assertTrue(store.devices.isEmpty()) }
+        compose.onNodeWithText("No devices yet").assertExists()
+    }
+
+    @Test fun referenceEditorKeepsFooterVisibleWithoutScrollingAtReferenceSize() = runDesktopComposeUiTest(width = 1336, height = 720) {
+        controller.open()
+        controller.beginAdd()
+        setContent { SecureLanTheme(themeMode = SecureLanThemeMode.DARK) {
+            Surface(color = MaterialTheme.colors.background) {
+                LanToolsContent(controller, controller::dismiss, Modifier.fillMaxSize().testTag("reference-content"))
+            }
+        } }
+        onNodeWithTag("lan-name").assertIsFocused()
+        onNodeWithTag("lan-mac").assertIsDisplayed()
+        onNodeWithTag("lan-preferred-interface").assertIsDisplayed()
+        onNodeWithText("Save device").assertIsDisplayed()
+        onNodeWithText("Cancel editing").assertIsDisplayed()
+        onNodeWithText("Back to devices").assertIsDisplayed()
+        val bitmap = onNodeWithTag("reference-content").captureToImage().asSkiaBitmap()
+        assertEquals(1336, bitmap.width)
+        assertEquals(720, bitmap.height)
+        val directory = Path.of("build/reports/lan-tools-ui")
+        Files.createDirectories(directory)
+        Image.makeFromBitmap(bitmap).use { image -> image.encodeToData()!!.use { Files.write(directory.resolve("fidelity-editor-reference-dark.png"), it.bytes) } }
     }
 
     private fun screenshot(name: String) {
