@@ -84,7 +84,11 @@ object LanToolsNativeWindowProbe {
                 }
                 await { java.awt.Window.getWindows().filterIsInstance<Dialog>().any { it.isShowing && it.title.endsWith("LAN Tools") } }
                 val dialog = java.awt.Window.getWindows().filterIsInstance<Dialog>().first { it.isShowing && it.title.endsWith("LAN Tools") }
-                await { controller.diagnostics!!.state.value.outcome(DiagnosticKind.NETWORK).phase == DiagnosticPhase.SUCCESS }
+                // A completed interface snapshot may legitimately have unavailable OS gateway/DNS metadata.
+                val expectedPhase = if (snapshot.interfaces.any {
+                    it.metadata != com.shterneregen.securelan.lantools.diagnostics.MetadataAvailability.AVAILABLE
+                }) DiagnosticPhase.PARTIAL else DiagnosticPhase.SUCCESS
+                await { controller.diagnostics!!.state.value.outcome(DiagnosticKind.NETWORK).phase == expectedPhase }
                 assertTrue(browseStarted.await(3, TimeUnit.SECONDS))
                 // Dispatch only into this test's AWT listeners; do not steal global keyboard focus.
                 SwingUtilities.invokeAndWait { escape(dialog) }
