@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.net.interfaces.NetworkKind
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.lantools.*
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.lantools.DesktopDiagnosticsController
 import com.shterneregen.securelan.lantools.diagnostics.AddressFamily
 import com.shterneregen.securelan.lantools.diagnostics.DiagnosticInterface
@@ -29,8 +29,11 @@ internal fun LanDiagnosticsPane(controller: DesktopDiagnosticsController, modifi
         val wide = maxWidth >= 760.dp
         Column(Modifier.widthIn(max = 1120.dp).fillMaxWidth().verticalScroll(rememberScrollState()).testTag("diagnostics-pane"),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-            LanToolCard("Network overview") {
-                OperationButton("Refresh network information", DiagnosticKind.NETWORK, state, controller, controller::refresh)
+            LanToolCard("Network overview", icon = SecureLanIcons.Network,
+                headerAction = if (wide) {{ OperationButton("Refresh network information", DiagnosticKind.NETWORK,
+                    state, controller, controller::refresh, prominent = false) }} else null) {
+                if (!wide) OperationButton("Refresh network information", DiagnosticKind.NETWORK,
+                    state, controller, controller::refresh, prominent = false)
                 Outcome(state.outcome(DiagnosticKind.NETWORK))
                 val entries = state.network?.interfaces.orEmpty()
                 val primary = state.selectedInterface ?: entries.firstOrNull { it.source.binding.up && it.source.binding.kind == NetworkKind.LAN }
@@ -43,23 +46,23 @@ internal fun LanDiagnosticsPane(controller: DesktopDiagnosticsController, modifi
                 if (state.network != null && entries.isEmpty()) Text("No local IPv4 interfaces reported.")
             }
             if (wide) Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                LanToolCard("TCP connection", Modifier.weight(1f)) { TcpForm(state, controller) }
-                LanToolCard("DNS lookup", Modifier.weight(1f)) { DnsForm(state, controller) }
+                LanToolCard("TCP connection", Modifier.weight(1f), SecureLanIcons.Tcp) { TcpForm(state, controller) }
+                LanToolCard("DNS lookup", Modifier.weight(1f), SecureLanIcons.Dns) { DnsForm(state, controller) }
             } else {
-                LanToolCard("TCP connection") { TcpForm(state, controller) }
-                LanToolCard("DNS lookup") { DnsForm(state, controller) }
+                LanToolCard("TCP connection", icon = SecureLanIcons.Tcp) { TcpForm(state, controller) }
+                LanToolCard("DNS lookup", icon = SecureLanIcons.Dns) { DnsForm(state, controller) }
             }
-            LanToolCard("Gateway TCP check") {
+            LanToolCard("Gateway TCP check", icon = SecureLanIcons.Gateway) {
                 SourcePicker(state, controller)
                 GatewayForm(state, controller)
             }
-            LanDisclosure("Advanced settings") {
+            LanToolCard("") { LanDisclosure("Advanced settings", SecureLanIcons.Settings) {
                 OutlinedTextField(state.inputs.timeoutMillis, { value -> controller.edit { it.copy(timeoutMillis = value) } },
                     label = { Text("Timeout (ms, 1-30000)") }, singleLine = true,
                     modifier = Modifier.widthIn(max = 280.dp).fillMaxWidth().testTag("diag-timeout"))
                 Text("The source selector above applies to TCP and gateway checks. DNS uses system routing.", style = MaterialTheme.typography.caption)
                 Text("ICMP ping: unavailable on this platform. TCP connection time is not ICMP RTT.", style = MaterialTheme.typography.caption)
-            }
+            } }
         }
     }
 }
@@ -67,12 +70,40 @@ internal fun LanDiagnosticsPane(controller: DesktopDiagnosticsController, modifi
 @Composable
 private fun NetworkSummary(entry: DiagnosticInterface) {
     val binding = entry.source.binding
-    Text("${entry.source.displayName} (${binding.interfaceKey})", style = MaterialTheme.typography.subtitle2)
-    Text("IPv4: ${binding.address.value}/${binding.prefixLength} - ${if (binding.up) "Up" else "Down"} - ${binding.kind}", style = MaterialTheme.typography.body2)
-    if (entry.metadata == MetadataAvailability.AVAILABLE) {
-        Text("Gateway: ${entry.gateways.joinToString { it.value }.ifEmpty { "None reported" }}", style = MaterialTheme.typography.body2)
-        Text("DNS servers: ${entry.dnsServers.joinToString().ifEmpty { "None reported" }}", style = MaterialTheme.typography.body2)
-    } else Text("Gateway / DNS: ${metadataLabel(entry.metadata)}", style = MaterialTheme.typography.body2)
+    val tokens = LocalSecureLanDesignTokens.current
+    Card(Modifier.fillMaxWidth(), elevation = 0.dp, backgroundColor = tokens.colors.surfaceLevel1,
+        border = androidx.compose.foundation.BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+        Column(Modifier.padding(tokens.spacing.sm), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Icon(if (binding.up) SecureLanIcons.Network else SecureLanIcons.Devices, contentDescription = null,
+                    tint = if (binding.up) tokens.colors.success else tokens.colors.textSecondary,
+                    modifier = Modifier.size(18.dp))
+                Text("${entry.source.displayName} (${binding.interfaceKey})", style = MaterialTheme.typography.subtitle2)
+                Text(if (binding.up) "Up" else "Down", style = MaterialTheme.typography.caption,
+                    color = tokens.colors.textSecondary)
+            }
+            BoxWithConstraints {
+                val gateway = entry.gateways.joinToString { it.value }.ifEmpty { "None reported" }
+                val dns = entry.dnsServers.joinToString().ifEmpty { "None reported" }
+                val spacious = maxWidth >= 620.dp
+                Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                if (spacious && entry.metadata == MetadataAvailability.AVAILABLE) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                        Text("IPv4: ${binding.address.value}/${binding.prefixLength}", style = MaterialTheme.typography.body2, modifier = Modifier.weight(1f))
+                        Text("Gateway: $gateway", style = MaterialTheme.typography.body2, modifier = Modifier.weight(1f))
+                        Text("DNS servers: $dns", style = MaterialTheme.typography.body2, modifier = Modifier.weight(1f))
+                    }
+                } else {
+                    Text("IPv4: ${binding.address.value}/${binding.prefixLength} - ${if (binding.up) "Up" else "Down"} - ${binding.kind}", style = MaterialTheme.typography.body2)
+                    if (entry.metadata == MetadataAvailability.AVAILABLE) {
+                        Text("Gateway: $gateway", style = MaterialTheme.typography.body2)
+                        Text("DNS servers: $dns", style = MaterialTheme.typography.body2)
+                    } else Text("Gateway / DNS: ${metadataLabel(entry.metadata)}", style = MaterialTheme.typography.body2)
+                }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -153,10 +184,16 @@ private fun SourcePicker(state: LanDiagnosticsUiState, controller: DesktopDiagno
 }
 
 @Composable
-private fun OperationButton(label: String, kind: DiagnosticKind, state: LanDiagnosticsUiState, controller: DesktopDiagnosticsController, action: () -> Unit) {
+private fun OperationButton(label: String, kind: DiagnosticKind, state: LanDiagnosticsUiState,
+    controller: DesktopDiagnosticsController, action: () -> Unit, prominent: Boolean = true) {
     val running = state.outcome(kind).phase == DiagnosticPhase.RUNNING
     FlowRow {
-        CompactButton(onClick = action, enabled = !running) { Text(label) }
+        if (prominent) Button(onClick = action, enabled = !running) { Text(label) }
+        else OutlinedButton(onClick = action, enabled = !running) {
+            Icon(SecureLanIcons.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(LocalSecureLanDesignTokens.current.spacing.xs))
+            Text(label)
+        }
         if (running) TextButton(onClick = { controller.cancel(kind) }) { Text("Cancel ${if (kind == DiagnosticKind.NETWORK) "refresh" else kind.name.lowercase()}") }
     }
 }

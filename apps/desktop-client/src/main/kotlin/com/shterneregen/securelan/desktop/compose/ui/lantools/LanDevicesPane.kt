@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
@@ -61,12 +62,20 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
         if (draft != null) {
             LanDeviceEditor(state, controller, Modifier.weight(1f))
         } else if (saved.isEmpty() && discovered.isEmpty() && explorer.selectedId == null) {
-            BoxWithConstraints(Modifier.weight(1f)) {
+            Surface(Modifier.weight(1f), shape = RoundedCornerShape(tokens.radius.medium),
+                color = tokens.colors.surfaceLevel1, border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight), verticalArrangement = Arrangement.Center) {
                     if (compact) controller.explorer?.let { LanExplorerControls(explorer, it, controller::beginAdd, state.canModify) }
                     Column(Modifier.fillMaxWidth().heightIn(min = 260.dp).padding(tokens.spacing.xl),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.CenterVertically)) {
-                        Icon(SecureLanIcons.Devices, contentDescription = null, tint = tokens.colors.textSecondary)
+                        Surface(shape = RoundedCornerShape(tokens.radius.large), color = tokens.colors.accent.copy(alpha = 0.12f),
+                            border = BorderStroke(tokens.border.subtle, tokens.colors.accent.copy(alpha = 0.40f))) {
+                            Box(Modifier.size(88.dp), contentAlignment = Alignment.Center) {
+                                Icon(SecureLanIcons.Network, contentDescription = null, tint = tokens.colors.accent,
+                                    modifier = Modifier.size(48.dp))
+                            }
+                        }
                         val inventoryEmpty = state.devices.isEmpty() && explorer.snapshot.devices.isEmpty()
                         val headline = when {
                             state.loading -> "Loading saved devices..."
@@ -78,18 +87,28 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
                             explorer.phase == DiagnosticPhase.CANCELLED -> "Discovery cancelled"
                             else -> "No devices yet"
                         }
-                        Text(headline, style = MaterialTheme.typography.h6)
+                        Text(headline, style = MaterialTheme.typography.h5)
                         Text(if (!inventoryEmpty) "Try another search or choose Show: All." else "Save a device or find services on your local network.", style = MaterialTheme.typography.body2)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                            Button(onClick = controller::beginAdd, enabled = state.canModify) { Text("Add device") }
+                            Button(onClick = controller::beginAdd, enabled = state.canModify,
+                                contentPadding = PaddingValues(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs)) {
+                                Icon(SecureLanIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(tokens.spacing.xs))
+                                Text("Add device")
+                            }
                             controller.explorer?.let { browser ->
-                                OutlinedButton(onClick = browser::refresh, enabled = !explorer.running) { Text("Refresh devices") }
+                                OutlinedButton(onClick = browser::refresh, enabled = !explorer.running) {
+                                    Icon(SecureLanIcons.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(tokens.spacing.xs))
+                                    Text("Refresh devices")
+                                }
                             }
                         }
                         Text("Only advertised services are discovered. A room connection is not required.", style = MaterialTheme.typography.caption)
                     }
 
                 }
+            }
             }
         } else {
             BoxWithConstraints(Modifier.weight(1f)) {

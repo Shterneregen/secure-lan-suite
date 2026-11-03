@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.lantools.*
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.lantools.DesktopExplorerController
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 import com.shterneregen.securelan.lantools.discovery.DiscoveredLanDevice
@@ -27,13 +28,18 @@ internal fun LanExplorerControls(state: LanExplorerUiState, controller: DesktopE
     val tokens = LocalSecureLanDesignTokens.current
     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-            OutlinedTextField(state.query, controller::query, placeholder = { Text("Search devices or services") }, singleLine = true,
+            OutlinedTextField(state.query, controller::query, placeholder = { Text("Search devices or services") },
+                leadingIcon = { Icon(SecureLanIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp)) }, singleLine = true,
                 modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag("lan-search").semantics {
                     contentDescription = "Search devices or services"
                 })
             var expanded by remember { mutableStateOf(false) }
             Box {
-                OutlinedButton(onClick = { expanded = true }) { Text("Show: ${state.filter.name.lowercase().replaceFirstChar(Char::uppercase)}") }
+                OutlinedButton(onClick = { expanded = true }) {
+                    Icon(SecureLanIcons.Filter, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(tokens.spacing.xxs))
+                    Text("Show: ${state.filter.name.lowercase().replaceFirstChar(Char::uppercase)}")
+                }
                 DropdownMenu(expanded, { expanded = false }) {
                     LanDeviceFilter.entries.forEach { filter -> DropdownMenuItem(onClick = {
                         controller.filter(filter); expanded = false
@@ -41,8 +47,16 @@ internal fun LanExplorerControls(state: LanExplorerUiState, controller: DesktopE
                 }
             }
             if (state.running) OutlinedButton(onClick = controller::cancel) { Text("Cancel discovery") }
-            else OutlinedButton(onClick = controller::refresh) { Text("Refresh devices") }
-            Button(onClick = onAdd, enabled = canAdd) { Text("Add device") }
+            else OutlinedButton(onClick = controller::refresh) {
+                Icon(SecureLanIcons.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(tokens.spacing.xxs))
+                Text("Refresh devices")
+            }
+            Button(onClick = onAdd, enabled = canAdd) {
+                Icon(SecureLanIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(tokens.spacing.xxs))
+                Text("Add device")
+            }
         }
         if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.phase != DiagnosticPhase.IDLE) Text(if (state.running) "Searching advertised services..." else state.message, style = MaterialTheme.typography.caption,
