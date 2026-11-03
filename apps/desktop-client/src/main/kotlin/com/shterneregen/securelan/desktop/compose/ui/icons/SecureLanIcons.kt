@@ -36,6 +36,14 @@ object SecureLanIcons {
     val Close: ImageVector = Icons.Outlined.Close
     val Notifications: ImageVector = Icons.Outlined.NotificationsNone
     val Network: ImageVector = Icons.Outlined.Lan
+    val Search: ImageVector = Icons.Outlined.Search
+    val Filter: ImageVector = Icons.Outlined.Settings
+    val Refresh: ImageVector = Icons.Outlined.Refresh
+    val Add: ImageVector = Icons.Outlined.Add
+    val Diagnose: ImageVector = Icons.Outlined.MonitorHeart
+    val Tcp: ImageVector = Icons.Outlined.Lan
+    val Dns: ImageVector = Icons.Outlined.Description
+    val Gateway: ImageVector = Icons.Outlined.SettingsInputHdmi
     val LightTheme: ImageVector = Icons.Outlined.LightMode
     val IntermediateTheme: ImageVector = Icons.Outlined.Brightness6
     val DarkTheme: ImageVector = Icons.Outlined.DarkMode

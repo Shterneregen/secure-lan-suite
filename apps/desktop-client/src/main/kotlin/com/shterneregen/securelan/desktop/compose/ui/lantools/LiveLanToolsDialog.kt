@@ -1,6 +1,8 @@
 package com.shterneregen.securelan.desktop.compose.ui.lantools
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +21,7 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.lantools.LanToolsTab
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
 
 /** Resizable modal utility; the underlying messenger remains composed and its services keep running. */
@@ -49,14 +52,23 @@ internal fun LanToolsContent(controller: DesktopLanToolsController, onClose: () 
     Column(modifier.fillMaxSize().onPreviewKeyEvent { handleLanToolsKey(it, controller, onClose) }
         .padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("LAN Tools", style = MaterialTheme.typography.h6)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                Icon(SecureLanIcons.Network, contentDescription = null, tint = tokens.colors.accent, modifier = Modifier.size(28.dp))
+                Text("LAN Tools", style = MaterialTheme.typography.h5)
+            }
             TextButton(onClick = onClose, modifier = Modifier.focusRequester(initialFocus)) { Text("Close") }
         }
-        TabRow(selectedTabIndex = state.tab.ordinal, backgroundColor = MaterialTheme.colors.surface, contentColor = MaterialTheme.colors.primary) {
-            LanToolsTab.entries.forEach { tab ->
-                Tab(selected = state.tab == tab, onClick = { controller.selectTab(tab) }, text = {
-                    Text(if (tab == LanToolsTab.DEVICES) "Devices" else "Diagnostics")
-                })
+        Surface(shape = RoundedCornerShape(tokens.radius.medium), border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+            TabRow(selectedTabIndex = state.tab.ordinal, backgroundColor = tokens.colors.surfaceLevel2, contentColor = tokens.colors.accent) {
+                LanToolsTab.entries.forEach { tab ->
+                    Tab(selected = state.tab == tab, onClick = { controller.selectTab(tab) }, text = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                            Icon(if (tab == LanToolsTab.DEVICES) SecureLanIcons.Devices else SecureLanIcons.Diagnose,
+                                contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(if (tab == LanToolsTab.DEVICES) "Devices" else "Diagnostics")
+                        }
+                    })
+                }
             }
         }
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
