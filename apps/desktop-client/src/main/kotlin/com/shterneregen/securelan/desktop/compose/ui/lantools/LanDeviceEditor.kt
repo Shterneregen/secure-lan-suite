@@ -49,7 +49,7 @@ internal fun LanDeviceEditor(state: LanToolsUiState, controller: DesktopLanTools
                     }
                 }
                 if (sideNote) Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md)) {
-                    EditorBasics(draft, state, controller, nameFocus, paired, Modifier.weight(3f))
+                    EditorBasics(draft, state, controller, nameFocus, paired, Modifier.weight(2.9f))
                     MacRequirement(Modifier.weight(1f))
                 } else {
                     EditorBasics(draft, state, controller, nameFocus, paired)
@@ -98,8 +98,6 @@ internal fun LanDeviceEditor(state: LanToolsUiState, controller: DesktopLanTools
                         Spacer(Modifier.width(tokens.spacing.xs)); Text("Back to devices")
                     }
                 }
-                Text("Cancel editing or Back to devices discards this unsaved form.", style = MaterialTheme.typography.caption,
-                    color = tokens.colors.textSecondary)
             }
         }
     }
@@ -194,7 +192,7 @@ private fun EditorField(value: String, change: (String) -> Unit, label: String, 
     if (focus != null) LaunchedEffect(focus) { focus.requestFocus() }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(LocalSecureLanDesignTokens.current.spacing.xxs)) {
         Text(label, style = MaterialTheme.typography.subtitle2)
-        CompactTextField(value, change, label = "", enabled = enabled,
+        CompactTextField(value, change, outlined = true, label = "", enabled = enabled,
             placeholder = placeholder, trailingContent = trailingIcon,
             modifier = Modifier.fillMaxWidth(),
             inputModifier = Modifier.then(if (focus != null) Modifier.focusRequester(focus) else Modifier).testTag(tag).semantics {
@@ -215,11 +213,11 @@ private fun EditorSection(title: String, subtitle: String, icon: ImageVector, mo
             Surface(color = tokens.colors.surfaceLevel2) {
                 FlowRow(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
                     horizontalArrangement = Arrangement.spacedBy(tokens.spacing.lg), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                    Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
                         Icon(icon, contentDescription = null, tint = tokens.colors.accent, modifier = Modifier.size(22.dp))
                         Text(title, style = MaterialTheme.typography.h6)
                     }
-                    Text(subtitle, style = MaterialTheme.typography.body2, color = tokens.colors.textSecondary)
+                    Text(subtitle, modifier = Modifier.align(Alignment.CenterVertically), style = MaterialTheme.typography.body2, color = tokens.colors.textSecondary)
                 }
             }
             Divider()

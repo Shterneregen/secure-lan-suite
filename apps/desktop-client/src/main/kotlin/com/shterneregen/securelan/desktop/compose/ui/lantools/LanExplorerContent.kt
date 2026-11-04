@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -17,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.lantools.*
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.lantools.DesktopExplorerController
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
@@ -27,12 +29,13 @@ import com.shterneregen.securelan.lantools.discovery.DiscoveredLanDevice
 internal fun LanExplorerControls(state: LanExplorerUiState, controller: DesktopExplorerController, onAdd: () -> Unit, canAdd: Boolean) {
     val tokens = LocalSecureLanDesignTokens.current
     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-            OutlinedTextField(state.query, controller::query, placeholder = { Text("Search devices or services") },
-                leadingIcon = { Icon(SecureLanIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp)) }, singleLine = true,
-                modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth().testTag("lan-search").semantics {
-                    contentDescription = "Search devices or services"
-                })
+        val search: @Composable (Modifier) -> Unit = { fieldModifier ->
+            CompactTextField(state.query, controller::query, outlined = true, label = "", placeholder = "Search devices or services",
+                modifier = fieldModifier,
+                inputModifier = Modifier.testTag("lan-search").semantics { contentDescription = "Search devices or services" },
+                leadingContent = { Icon(SecureLanIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp)) })
+        }
+        val actions: @Composable () -> Unit = {
             var expanded by remember { mutableStateOf(false) }
             Box {
                 OutlinedButton(onClick = { expanded = true }) {
@@ -56,6 +59,17 @@ internal fun LanExplorerControls(state: LanExplorerUiState, controller: DesktopE
                 Icon(SecureLanIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(tokens.spacing.xxs))
                 Text("Add device")
+            }
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth >= 680.dp) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                search(Modifier.weight(1f))
+                actions()
+            } else FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                search(Modifier.fillMaxWidth())
+                actions()
             }
         }
         if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())

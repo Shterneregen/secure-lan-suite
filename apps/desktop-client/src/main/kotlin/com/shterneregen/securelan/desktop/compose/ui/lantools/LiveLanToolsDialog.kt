@@ -49,40 +49,42 @@ internal fun LanToolsContent(controller: DesktopLanToolsController, onClose: () 
     val tokens = LocalSecureLanDesignTokens.current
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (state.editor == null) initialFocus.requestFocus() }
-    Column(modifier.fillMaxSize().onPreviewKeyEvent { handleLanToolsKey(it, controller, onClose) }
-        .padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                Icon(SecureLanIcons.Network, contentDescription = null, tint = tokens.colors.accent, modifier = Modifier.size(28.dp))
-                Text("LAN Tools", style = MaterialTheme.typography.h5)
+    MaterialTheme(shapes = MaterialTheme.shapes.copy(small = RoundedCornerShape(tokens.radius.small))) {
+        Column(modifier.fillMaxSize().onPreviewKeyEvent { handleLanToolsKey(it, controller, onClose) }
+            .padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                    Icon(SecureLanIcons.Network, contentDescription = null, tint = tokens.colors.accent, modifier = Modifier.size(28.dp))
+                    Text("LAN Tools", style = MaterialTheme.typography.h5)
+                }
+                TextButton(onClick = onClose, modifier = Modifier.focusRequester(initialFocus)) { Text("Close") }
             }
-            TextButton(onClick = onClose, modifier = Modifier.focusRequester(initialFocus)) { Text("Close") }
-        }
-        Surface(shape = RoundedCornerShape(tokens.radius.medium), border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
-            TabRow(selectedTabIndex = state.tab.ordinal, backgroundColor = tokens.colors.surfaceLevel2, contentColor = tokens.colors.accent) {
-                LanToolsTab.entries.forEach { tab ->
-                    Tab(selected = state.tab == tab, onClick = { controller.selectTab(tab) }, text = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-                            Icon(if (tab == LanToolsTab.DEVICES) SecureLanIcons.Devices else SecureLanIcons.Diagnose,
-                                contentDescription = null, modifier = Modifier.size(18.dp))
-                            Text(if (tab == LanToolsTab.DEVICES) "Devices" else "Diagnostics")
-                        }
-                    })
+            Surface(shape = RoundedCornerShape(tokens.radius.medium), border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+                TabRow(selectedTabIndex = state.tab.ordinal, backgroundColor = tokens.colors.surfaceLevel2, contentColor = tokens.colors.accent) {
+                    LanToolsTab.entries.forEach { tab ->
+                        Tab(selected = state.tab == tab, onClick = { controller.selectTab(tab) }, text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+                                Icon(if (tab == LanToolsTab.DEVICES) SecureLanIcons.Devices else SecureLanIcons.Diagnose,
+                                    contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text(if (tab == LanToolsTab.DEVICES) "Devices" else "Diagnostics")
+                            }
+                        })
+                    }
                 }
             }
-        }
-        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        state.notice?.let { Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
-        (state.storageError ?: state.storageWarning)?.let { message ->
-            Text(message, color = MaterialTheme.colors.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-            TextButton(onClick = controller::reload, enabled = !state.saving && !state.loading) { Text("Reload saved devices") }
-        }
-        if (state.tab == LanToolsTab.DEVICES) {
-            LanDevicesPane(state, controller, Modifier.weight(1f))
-        } else {
-            val diagnostics = controller.diagnostics
-            if (diagnostics != null) LanDiagnosticsPane(diagnostics, Modifier.weight(1f))
-            else Text("Diagnostics unavailable in this environment.", modifier = Modifier.weight(1f))
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            state.notice?.let { Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+            (state.storageError ?: state.storageWarning)?.let { message ->
+                Text(message, color = MaterialTheme.colors.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                TextButton(onClick = controller::reload, enabled = !state.saving && !state.loading) { Text("Reload saved devices") }
+            }
+            if (state.tab == LanToolsTab.DEVICES) {
+                LanDevicesPane(state, controller, Modifier.weight(1f))
+            } else {
+                val diagnostics = controller.diagnostics
+                if (diagnostics != null) LanDiagnosticsPane(diagnostics, Modifier.weight(1f))
+                else Text("Diagnostics unavailable in this environment.", modifier = Modifier.weight(1f))
+            }
         }
     }
 }

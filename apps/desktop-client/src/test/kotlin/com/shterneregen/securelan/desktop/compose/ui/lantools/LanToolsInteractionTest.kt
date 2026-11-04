@@ -205,7 +205,7 @@ class LanToolsInteractionTest {
     @Test fun diagnosticsValidatesChecksTcpDnsAndGatewayWithHonestResults() {
         content(740, 520, SecureLanThemeMode.LIGHT)
         compose.onNodeWithText("Diagnostics").performClick()
-        compose.onNodeWithText("IPv4: 192.168.1.42/24", substring = true).assertExists()
+        compose.onNodeWithText("192.168.1.42/24", substring = false).assertExists()
         compose.onNodeWithTag("diag-tcp-host").performScrollTo().performTextInput("host.local")
         compose.onNodeWithTag("diag-tcp-host").performKeyInput { pressKey(Key.Tab) }
         compose.onNodeWithTag("diag-tcp-port").assertIsFocused()
@@ -223,7 +223,7 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("eth0 · 192.168.1.42", substring = false).performClick()
         compose.waitUntil(2_000) { compose.onAllNodesWithText("eth0 · 192.168.1.42", substring = false).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText("Choose gateway").performScrollTo().performClick()
-        compose.onNodeWithText("192.168.1.1", substring = false).performClick()
+        compose.onNode(hasText("192.168.1.1", substring = false) and hasClickAction()).performClick()
         compose.onNodeWithTag("diag-gateway-port").performScrollTo().performTextInput("1234")
         compose.onNodeWithText("Check gateway TCP", substring = false).performScrollTo().performClick()
         compose.onNodeWithText("Gateway TCP 192.168.1.1:1234", substring = true).assertExists()
@@ -448,6 +448,51 @@ class LanToolsInteractionTest {
         val directory = Path.of("build/reports/lan-tools-ui")
         Files.createDirectories(directory)
         Image.makeFromBitmap(bitmap).use { image -> image.encodeToData()!!.use { Files.write(directory.resolve("fidelity-editor-reference-dark.png"), it.bytes) } }
+    }
+
+    @Test fun referenceCompactWindowKeepsDiagnosticsAndEditorActionsReachable() = runDesktopComposeUiTest(width = 800, height = 820) {
+        val primary = network.copy(displayName = "Intel(R) Wi-Fi 6E AX211 160MHz")
+        val other = network.copy(displayName = "Virtual adapter", binding = network.binding.copy(key = "virtual", interfaceKey = "virtual0", up = false))
+        diagnosticInterfaces = listOf(
+            DiagnosticInterface(primary, listOf(IpLiteral.parse("192.168.1.1")!!), listOf("192.168.1.1"), MetadataAvailability.AVAILABLE),
+            DiagnosticInterface(other, metadata = MetadataAvailability.AVAILABLE),
+        )
+        controller.open()
+        var theme by mutableStateOf(SecureLanThemeMode.DARK)
+        setContent { SecureLanTheme(themeMode = theme) {
+            Surface(color = MaterialTheme.colors.background) {
+                LanToolsContent(controller, controller::dismiss, Modifier.fillMaxSize().testTag("reference-compact"))
+            }
+        } }
+        fun capture(name: String) {
+            val bitmap = onNodeWithTag("reference-compact").captureToImage().asSkiaBitmap()
+            assertEquals(800, bitmap.width)
+            assertEquals(820, bitmap.height)
+            val directory = Path.of("build/reports/lan-tools-ui")
+            Files.createDirectories(directory)
+            Image.makeFromBitmap(bitmap).use { image -> image.encodeToData()!!.use { Files.write(directory.resolve(name), it.bytes) } }
+        }
+        onNodeWithTag("lan-search").assertIsDisplayed()
+        capture("fidelity-empty-compact-dark.png")
+        onNodeWithText("Diagnostics").performClick()
+        onNodeWithTag("diag-tcp-host").assertIsDisplayed()
+        onNodeWithTag("diag-dns-host").assertIsDisplayed()
+        onNodeWithText("Advanced settings").assertIsDisplayed().performClick()
+        onNodeWithTag("diag-timeout").assertIsDisplayed()
+        val timeoutBounds = onNodeWithTag("diag-timeout-field").fetchSemanticsNode().boundsInRoot
+        val surfaceBounds = onNodeWithTag("reference-compact").fetchSemanticsNode().boundsInRoot
+        assertTrue("Timeout must be fully visible without scrolling", timeoutBounds.bottom <= surfaceBounds.bottom - 16f)
+        capture("fidelity-diagnostics-compact-dark.png")
+        theme = SecureLanThemeMode.INTERMEDIATE
+        capture("fidelity-diagnostics-compact-intermediate.png")
+        theme = SecureLanThemeMode.LIGHT
+        capture("fidelity-diagnostics-compact-light.png")
+        theme = SecureLanThemeMode.DARK
+        onNodeWithText("Devices", substring = false).performClick()
+        onAllNodesWithText("Add device")[0].performClick()
+        onNodeWithTag("lan-name").assertIsFocused()
+        onNodeWithText("Save device").performScrollTo().assertIsDisplayed()
+        capture("fidelity-editor-compact-dark.png")
     }
 
     private fun screenshot(name: String) {

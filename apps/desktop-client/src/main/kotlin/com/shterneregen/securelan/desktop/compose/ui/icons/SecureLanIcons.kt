@@ -40,13 +40,32 @@ object SecureLanIcons {
     val Notifications: ImageVector = Icons.Outlined.NotificationsNone
     val Network: ImageVector = Icons.Outlined.Lan
     val Search: ImageVector = Icons.Outlined.Search
-    val Filter: ImageVector = Icons.Outlined.Settings
+    val Filter: ImageVector = outlinedUtilityIcon("Filter") {
+        moveTo(3f, 3f); lineTo(21f, 3f); lineTo(14f, 11f); lineTo(14f, 21f); lineTo(10f, 18f); lineTo(10f, 11f); close()
+    }
     val Refresh: ImageVector = Icons.Outlined.Refresh
     val Add: ImageVector = Icons.Outlined.Add
     val Diagnose: ImageVector = Icons.Outlined.MonitorHeart
-    val Tcp: ImageVector = Icons.Outlined.Lan
-    val Dns: ImageVector = Icons.Outlined.Description
-    val Gateway: ImageVector = Icons.Outlined.SettingsInputHdmi
+    val Tcp: ImageVector = Icons.Outlined.Share
+    val Dns: ImageVector get() = Layers
+    val Gateway: ImageVector = outlinedUtilityIcon("Gateway") {
+        moveTo(3f, 16f); lineTo(21f, 16f); lineTo(21f, 22f); lineTo(3f, 22f); close()
+        moveTo(6f, 16f); lineTo(6f, 4f); moveTo(18f, 16f); lineTo(18f, 4f)
+        moveTo(6f, 3f); lineTo(6f, 2f); moveTo(18f, 3f); lineTo(18f, 2f)
+        moveTo(7f, 19f); lineTo(9f, 19f)
+    }
+    val RunCheck: ImageVector = outlinedUtilityIcon("RunCheck") {
+        moveTo(6f, 3f); lineTo(21f, 12f); lineTo(6f, 21f); close()
+    }
+    val DeviceNetwork: ImageVector = outlinedUtilityIcon("DeviceNetwork", strokeWidth = 0.85f) {
+        moveTo(2f, 2f); lineTo(22f, 2f); lineTo(22f, 19f); lineTo(2f, 19f); close()
+        moveTo(9f, 19f); lineTo(9f, 22f); moveTo(15f, 19f); lineTo(15f, 22f)
+        moveTo(0f, 22f); lineTo(24f, 22f)
+        moveTo(10f, 5f); lineTo(14f, 5f); lineTo(14f, 9f); lineTo(10f, 9f); close()
+        moveTo(12f, 9f); lineTo(12f, 12f); moveTo(6f, 14f); lineTo(6f, 12f); lineTo(18f, 12f); lineTo(18f, 14f)
+        moveTo(4f, 14f); lineTo(8f, 14f); lineTo(8f, 17f); lineTo(4f, 17f); close()
+        moveTo(16f, 14f); lineTo(20f, 14f); lineTo(20f, 17f); lineTo(16f, 17f); close()
+    }
     val LightTheme: ImageVector = Icons.Outlined.LightMode
     val IntermediateTheme: ImageVector = Icons.Outlined.Brightness6
     val DarkTheme: ImageVector = Icons.Outlined.DarkMode
@@ -109,9 +128,9 @@ object SecureLanIcons {
 }
 
 /** Small outlined utility symbols use the same tintable vector pipeline as the canonical icons. */
-private fun outlinedUtilityIcon(name: String, draw: PathBuilder.() -> Unit): ImageVector =
+private fun outlinedUtilityIcon(name: String, strokeWidth: Float = 1.7f, draw: PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.7f,
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = strokeWidth,
             strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round, pathBuilder = draw)
     }.build()
 
