@@ -73,10 +73,13 @@ import com.shterneregen.securelan.androidclient.transfer.BatchStatus
 import com.shterneregen.securelan.androidclient.transfer.TransferItem
 import com.shterneregen.securelan.androidclient.transfer.TransferPhase
 import com.shterneregen.securelan.androidclient.transfer.TransferQueueState
+import com.shterneregen.securelan.androidclient.ui.ActionLabel
 import com.shterneregen.securelan.androidclient.ui.AndroidClipboard
 import com.shterneregen.securelan.androidclient.ui.AndroidUiFormatters
+import com.shterneregen.securelan.androidclient.ui.IconTile
 import com.shterneregen.securelan.androidclient.ui.LocalAppResources
 import com.shterneregen.securelan.androidclient.ui.QuickShareScreen
+import com.shterneregen.securelan.androidclient.ui.SectionCard
 import kotlinx.coroutines.launch
 import java.util.*
 
@@ -634,7 +637,7 @@ private fun RedesignedAppHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 76.dp)
+                .heightIn(min = 68.dp)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -642,10 +645,11 @@ private fun RedesignedAppHeader(
             if (!settingsVisible) {
                 Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Icon(Icons.Outlined.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(12.dp).size(24.dp))
+                        modifier = Modifier.padding(10.dp).size(22.dp))
                 }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.product_name), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
@@ -694,7 +698,10 @@ private fun RedesignedNavigationBar(selected: PrimaryDestination, onSelected: (P
                 selected = selected == destination,
                 onClick = { onSelected(destination) },
                 icon = { Icon(destination.icon, contentDescription = null) },
-                label = { Text(stringResource(destination.labelRes)) },
+                label = {
+                    val label = stringResource(destination.labelRes)
+                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = if (label.any(Char::isWhitespace)) 2 else 1, overflow = TextOverflow.Ellipsis)
+                },
                 alwaysShowLabel = true,
             )
         }
@@ -746,11 +753,8 @@ private fun RedesignedDevicesScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (state.connected || state.hosting) CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect)
-                RoomEntryCard(state, roomTools)
+                RoomEntryCard(state, roomTools, onHostRoom, onConnectManual)
                 com.shterneregen.securelan.androidclient.ui.lantools.NetworkUtilitiesEntry(onOpenLanTools)
-                if (!state.connected && !state.hosting) {
-                    OtherConnectionOptions(state, onHostRoom, onConnectManual)
-                }
             }
             Column(
                 Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState()),
@@ -768,11 +772,11 @@ private fun RedesignedDevicesScreen(
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(layoutSpec.horizontalPadding, 16.dp),
+            contentPadding = PaddingValues(layoutSpec.horizontalPadding, 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (state.connected || state.hosting) item { CurrentDeviceCard(state, onOpenChat, if (state.hosting) onStopHosting else onDisconnect) }
-            item { RoomEntryCard(state, roomTools) }
+            item { RoomEntryCard(state, roomTools, onHostRoom, onConnectManual) }
             item { com.shterneregen.securelan.androidclient.ui.lantools.NetworkUtilitiesEntry(onOpenLanTools) }
             item { DiscoveryStateCard(state, onRequestNearbyPermission, onRetryDiscovery, onStopDiscovery, onAutoDiscoveryChange) }
             if (serverPeers.isNotEmpty()) {
@@ -781,9 +785,6 @@ private fun RedesignedDevicesScreen(
                     val connected = state.connected && state.connectionPeer?.peerId == peer.peerId
                     DeviceCard(peer, connected) { selected -> if (connected) onOpenChat() else onPeerClick(selected) }
                 }
-            }
-            if (!state.connected && !state.hosting) {
-                item { OtherConnectionOptions(state, onHostRoom, onConnectManual) }
             }
             if (state.hosting) {
                 item { Text(stringResource(R.string.room_participants), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
@@ -799,26 +800,28 @@ private fun RedesignedDevicesScreen(
 }
 
 @Composable
-private fun RoomEntryCard(state: MainUiState, roomTools: @Composable () -> Unit) {
+private fun RoomEntryCard(state: MainUiState, roomTools: @Composable () -> Unit, onHostRoom: () -> Unit, onConnectManual: () -> Unit) {
     if (!state.connected && !state.hosting) {
-        RedesignedCard {
-            Text(stringResource(R.string.join_room), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.join_room_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionCard {
+            Text(stringResource(R.string.connect_room_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.connect_room_hint), style = MaterialTheme.typography.bodySmall)
+            HostRoomButton(state, onHostRoom)
             roomTools()
+            TextButton(onClick = onConnectManual, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                ActionLabel(stringResource(R.string.connect_by_ip), Icons.Outlined.Computer)
+            }
         }
     } else if (state.hosting) {
-        RedesignedCard { roomTools() }
+        SectionCard {
+            Text(stringResource(R.string.room_share_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            roomTools()
+        }
     } else {
-        roomTools()
-    }
-}
-
-@Composable
-private fun OtherConnectionOptions(state: MainUiState, onHostRoom: () -> Unit, onConnectManual: () -> Unit) {
-    RedesignedCard {
-        Text(stringResource(R.string.other_connection_options), style = MaterialTheme.typography.titleSmall)
-        HostRoomButton(state, onHostRoom)
-        ManualConnectionButton(onConnectManual)
+        var expanded by rememberSaveable { mutableStateOf(false) }
+        SectionCard {
+            com.shterneregen.securelan.androidclient.ui.lantools.Disclosure(stringResource(R.string.other_connection_options), expanded, { expanded = !expanded })
+            if (expanded) roomTools()
+        }
     }
 }
 
@@ -826,43 +829,30 @@ private fun OtherConnectionOptions(state: MainUiState, onHostRoom: () -> Unit, o
 @OptIn(ExperimentalLayoutApi::class)
 private fun CurrentDeviceCard(state: MainUiState, onOpenChat: () -> Unit, onDisconnect: () -> Unit) {
     val peer = state.connectionPeer ?: return
-    RedesignedCard {
+    SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Outlined.Computer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            IconTile(Icons.Outlined.Computer)
             Column(Modifier.weight(1f)) {
-                Text(stringResource(if (state.hosting) R.string.hosted_room else R.string.current_device), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(peer.nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                if (state.hosting) {
-                    Text(
-                        stringResource(R.string.room_address),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (state.localRoomAddresses.isEmpty()) {
-                        Text(
-                            stringResource(R.string.local_room_address_unavailable),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    } else {
-                        state.localRoomAddresses.forEach { address ->
-                            Text(
-                                AndroidUiFormatters.roomEndpoint(address, state.hostChatPort),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                } else {
-                    Text(peer.host, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(stringResource(if (state.hosting) R.string.hosted_room else R.string.current_device),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
             }
             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = SuccessGreen)
         }
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onOpenChat, enabled = state.connected) { Text(stringResource(R.string.open_chat)) }
-            OutlinedButton(onClick = onDisconnect) {
-                Text(stringResource(if (state.hosting) R.string.stop_hosting else R.string.disconnect))
+        if (state.hosting) {
+            Text(stringResource(R.string.room_address), style = MaterialTheme.typography.labelMedium)
+            Text(if (state.localRoomAddresses.isEmpty()) stringResource(R.string.local_room_address_unavailable)
+                else state.localRoomAddresses.joinToString("  ·  ") { AndroidUiFormatters.roomEndpoint(it, state.hostChatPort) },
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else Text(peer.host, style = MaterialTheme.typography.bodyMedium)
+        HorizontalDivider()
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onOpenChat, enabled = state.connected, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                ActionLabel(stringResource(R.string.open_chat), Icons.AutoMirrored.Outlined.Chat)
+            }
+            OutlinedButton(onClick = onDisconnect, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                ActionLabel(stringResource(if (state.hosting) R.string.stop_hosting else R.string.disconnect), Icons.Outlined.Stop)
             }
         }
     }
@@ -897,41 +887,37 @@ private fun DiscoveryStateCard(
         state.connected || state.hosting -> R.string.search_preserves_room
         else -> R.string.no_devices_message
     }
-    RedesignedCard {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+    var details by rememberSaveable { mutableStateOf(false) }
+    SectionCard {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (state.discoveryRunning) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             else Icon(Icons.Outlined.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.nearby_rooms), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(stringResource(message), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.nearby_rooms), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(title), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            IconButton(onClick = { details = !details }) { Icon(Icons.Outlined.Info, stringResource(R.string.lan_details)) }
         }
-        if (permissionNeeded && state.networkAvailable) {
-            FilledTonalButton(onClick = onRequestPermission) { Text(stringResource(R.string.allow)) }
+        if (details || permissionNeeded || !state.networkAvailable) {
+            Text(stringResource(message), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = onRetry, enabled = state.networkAvailable && !permissionNeeded && !state.discoveryRunning) {
-                Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.search_again))
+            if (permissionNeeded && state.networkAvailable) {
+                FilledTonalButton(onClick = onRequestPermission) { Text(stringResource(R.string.allow)) }
+            } else FilledTonalButton(onClick = onRetry, enabled = state.networkAvailable && !state.discoveryRunning) {
+                ActionLabel(stringResource(R.string.search_again), Icons.Outlined.Refresh)
             }
             if (state.discoveryRunning && !state.autoDiscoveryEnabled) {
                 TextButton(onClick = onStop) { Text(stringResource(R.string.stop_search)) }
             }
         }
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                .toggleable(state.autoDiscoveryEnabled, role = Role.Checkbox, onValueChange = onAutoDiscoveryChange),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .toggleable(state.autoDiscoveryEnabled, role = Role.Checkbox, onValueChange = onAutoDiscoveryChange), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(state.autoDiscoveryEnabled, onCheckedChange = null)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-                Text(stringResource(R.string.automatic_search), style = MaterialTheme.typography.bodyMedium)
-                Text(stringResource(R.string.automatic_search_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.automatic_search), style = MaterialTheme.typography.bodyMedium)
         }
+        if (details) Text(stringResource(R.string.automatic_search_hint), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -2176,7 +2162,7 @@ private const val UrlAnnotationTag = "URL"
 
 private val UrlRegex = Regex("""(?i)\b((?:https?://|www\.)[^\s<>()]+|[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+[^\s<>()]*)""")
 
-private val SecureLanDarkColors = darkColorScheme(
+internal val SecureLanDarkColors = darkColorScheme(
     primary = Color(0xFF8AB4FF),
     onPrimary = Color(0xFF082F6B),
     primaryContainer = Color(0xFF1B304D),
@@ -2203,7 +2189,7 @@ private val SecureLanDarkColors = darkColorScheme(
     onErrorContainer = Color(0xFFFFDAD6),
 )
 
-private val SecureLanLightColors = lightColorScheme(
+internal val SecureLanLightColors = lightColorScheme(
     primary = Color(0xFF2864C7),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFDCE8FF),

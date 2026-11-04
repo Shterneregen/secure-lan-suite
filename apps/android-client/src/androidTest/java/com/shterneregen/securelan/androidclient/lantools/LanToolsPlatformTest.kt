@@ -24,7 +24,7 @@ class LanToolsPlatformTest {
         platform.start {}
         val resolver = AndroidHostResolver()
         try {
-            val link = withTimeout(10_000) { while (platform.links().isEmpty()) delay(50); platform.links().first() }
+            val link = awaitLink(platform)
             val provider = AndroidLanNetworkInfoProvider(platform)
             val metadata = provider.diagnostics() as LanResult.Success
             assertTrue(metadata.value.interfaces.any { it.source.binding == link.binding })
@@ -68,7 +68,7 @@ class LanToolsPlatformTest {
         var browser: NsdFacade.Browser? = null
         var registrationStarted = false
         try {
-            val link = withTimeout(10_000) { while (platform.links().isEmpty()) delay(50); platform.links().first() }
+            val link = awaitLink(platform)
             val name = "SecureLanToolsTest-${System.nanoTime()}"
             val info = android.net.nsd.NsdServiceInfo().apply { serviceName = name; serviceType = "_http._tcp."; port = 18080; setAttribute("untrusted", "discard-me") }
             manager.registerService(info, android.net.nsd.NsdManager.PROTOCOL_DNS_SD, registration); registrationStarted = true
@@ -87,5 +87,16 @@ class LanToolsPlatformTest {
             if (registrationStarted) runCatching { manager.unregisterService(registration) }
             facade.close(); platform.close()
         }
+    }
+
+    private suspend fun awaitLink(platform: AndroidLanPlatform): AndroidLanLink = withTimeout(10_000) {
+        // Network callbacks can replace the snapshot between reads. Select from the same
+        // snapshot that established availability instead of querying again before first().
+        var link = platform.links().firstOrNull()
+        while (link == null) {
+            delay(50)
+            link = platform.links().firstOrNull()
+        }
+        link
     }
 }

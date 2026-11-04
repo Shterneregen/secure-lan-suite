@@ -59,14 +59,41 @@ SSDP, subnet/port scans and ICMP are unavailable. DNS uses the system network,
 independently of the TCP source picker; API 26–28 native lookups have bounded
 workers and may finish after caller cancellation.
 
-Phone layout is one scrollable column; at 840 dp the device list and details
-sit side by side. English/Russian strings follow the app language and existing
-light/dark themes. Physical Wi-Fi switching, OEM permission/multicast behavior,
-WoL equipment and concurrent room/file/media traffic still require device
-qualification; emulator tests do not establish those guarantees.
+The Devices entry screen groups Host, Paste link, Scan QR and Connect by IP
+at the top. Nearby-room recovery keeps longer discovery guidance under Details.
+Main navigation remains Devices, Chat, Files and Quick Share.
 
-The [LAN Tools validation matrix](../../docs/quality/lantools-validation.md)
-records automated checks and outstanding device work. A local API 35 integration
+LAN Tools has a list-first Devices page. Saved records and untrusted DNS-SD
+observations open separate details screens, with no inline duplication of the
+list. Back restores the list position. Last TCP checks remain historical,
+endpoint-specific observations; time is formatted in the device locale/time zone.
+Results and unfinished forms survive Activity recreation, but are not persisted
+through process death. Back suspends an editor draft; Resume unfinished edit
+reopens it, and Cancel explicitly discards it. Saving opens saved-device details.
+MAC is optional for saving and required for Wake-on-LAN. Broadcast override,
+UDP port and a real current-interface picker are under Advanced WoL settings;
+manual binding-key entry is available for explicit configuration.
+
+Diagnostics opens a compact overview with separate TCP, DNS, gateway and
+advanced-settings pages. Opening a check does not execute it. Each submitted
+result retains its endpoint, time, timeout and requested source even when inputs
+change. Run again repeats that original request; Check TCP/Look up DNS submits
+the current fields and network choice. TCP requires an explicit known service
+port, with no default port or inferred online/offline state. With OS routing,
+Android owns route selection; choosing a current source binds only that socket.
+Gateway/DNS metadata that is unavailable or timed out is reported as partial.
+DNS uses system routing/cache independently of the TCP source picker.
+
+LAN Tools limits its content to 840 dp on wide displays to keep forms readable.
+Phone forms stack and scroll at small widths or enlarged fonts; editor actions
+stay outside the scrolling body and respect IME/system insets. English/Russian
+strings follow the app language and existing light/dark themes. Physical Wi-Fi
+switching, OEM permission/multicast behavior, WoL equipment and concurrent
+room/file/media traffic still require device qualification; emulator tests do
+not establish those guarantees.
+
+See [LAN Tools verification](../../docs/lan-tools.md#verification) for automated
+coverage and physical-device limits. A local API 35 integration
 test verifies actual V2 hosting/chat, an encrypted file received into Downloads
 and Quick Share HTTP while the tools are open, then chat after closing them.
 It does not qualify two physical clients or simultaneous media traffic.

@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.androidclient.lantools
 
 import android.content.pm.PackageManager
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -36,6 +37,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Uses a dedicated test device: Orchestrator clears the app's preferences after every test. */
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalTestApi::class)
 class LanToolsNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun label(id: Int) = compose.activity.getString(id)
@@ -54,7 +56,7 @@ class LanToolsNavigationTest {
         compose.runOnIdle { room = ViewModelProvider(compose.activity)[MainViewModel::class.java]; room.updateInputMessage("Retained draft") }
         open()
         compose.waitUntil(10_000) { model().state.value.loaded }
-        compose.onNodeWithText(label(R.string.lan_add)).performClick()
+        compose.onAllNodesWithText(label(R.string.lan_add)).filter(hasClickAction()).onFirst().performClick()
         compose.onNodeWithTag("lan-name").performTextInput("Retained device")
         Espresso.closeSoftKeyboard()
         compose.activityRule.scenario.recreate()
@@ -69,26 +71,30 @@ class LanToolsNavigationTest {
             assertSame(room, ViewModelProvider(compose.activity)[MainViewModel::class.java])
             assertEquals("Retained draft", room.uiState.value.inputMessage)
         }
-        Espresso.pressBack()
-        compose.onNodeWithTag("lan-open").assertExists()
+        Espresso.closeSoftKeyboard() // Recreation restores field focus and may reopen the IME.
+        Espresso.pressBack() // Suspend the editor, preserving the draft.
+        compose.onNodeWithTag("lan-device-list").assertExists()
+        Espresso.pressBack() // Leave LAN Tools.
         open()
+        compose.onNodeWithTag("lan-resume").performScrollTo().performClick()
         compose.onNodeWithTag("lan-name").assertTextContains("Retained device")
+        compose.onNodeWithTag("lan-back").performClick()
         compose.onNodeWithTag("lan-back").performClick()
         compose.runOnIdle { assertEquals("Retained draft", room.uiState.value.inputMessage) }
     }
 
     @Test fun savedDeviceCrudHasRealPersistenceAndDeleteConfirmation() {
         open(); compose.waitUntil(10_000) { model().state.value.loaded }
-        compose.onNodeWithText(label(R.string.lan_add)).performClick()
+        compose.onAllNodesWithText(label(R.string.lan_add)).filter(hasClickAction()).onFirst().performClick()
         compose.onNodeWithTag("lan-name").performTextInput("Test workstation")
         Espresso.closeSoftKeyboard()
         compose.onNodeWithTag("lan-address").performTextInput("192.168.1.20")
         Espresso.closeSoftKeyboard()
-        compose.onNodeWithTag("lan-save").performScrollTo().performClick()
+        compose.onNodeWithTag("lan-save").performClick()
         compose.waitUntil(10_000) { model().state.value.devices.size == 1 }
         compose.runOnIdle { assertEquals("Test workstation", PreferencesSavedLanDeviceStore(compose.activity).load().single().displayName) }
-        compose.onNodeWithTag("lan-device-list").performScrollToNode(hasText(label(R.string.lan_details)))
-        compose.onNodeWithText(label(R.string.lan_details)).performScrollTo().performClick()
+        compose.onNodeWithTag("lan-device-details").assertIsDisplayed()
+        compose.onNodeWithTag("lan-device-list").assertDoesNotExist()
         compose.onNodeWithText(label(R.string.lan_edit)).performScrollTo().assertIsDisplayed()
         screenshot("devices")
         compose.onNodeWithText(label(R.string.lan_delete)).performScrollTo().performClick()
@@ -106,13 +112,18 @@ class LanToolsNavigationTest {
         compose.runOnIdle {
             assertEquals(LanPhase.IDLE, model().state.value.outcome(LanOperation.DISCOVERY).phase)
             assertEquals(permissionBefore, compose.activity.checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES))
-            if (permissionBefore != PackageManager.PERMISSION_GRANTED) {
+            // Nearby Wi-Fi is a runtime permission only on API 33+. Older devices can browse
+            // explicitly even though checkSelfPermission denies this unknown permission name.
+            if (android.os.Build.VERSION.SDK_INT >= 33 && permissionBefore != PackageManager.PERMISSION_GRANTED) {
                 model().discover()
                 assertEquals(LanPhase.FAILURE, model().state.value.outcome(LanOperation.DISCOVERY).phase)
+            } else {
+                assertTrue(model().state.value.nearbyGranted)
             }
         }
         compose.onNodeWithText(label(R.string.lan_diagnostics)).performClick()
         compose.waitUntil(10_000) { model().state.value.outcome(LanOperation.NETWORK).phase != LanPhase.RUNNING }
+        compose.onNodeWithText(label(R.string.lan_advanced)).performScrollTo().performClick()
         compose.onNodeWithText(label(R.string.lan_icmp)).performScrollTo()
         screenshot("diagnostics")
         compose.onNodeWithText(label(R.string.lan_icmp)).assertIsDisplayed()
@@ -125,14 +136,16 @@ class LanToolsNavigationTest {
             room.updateAppLanguage(AppLanguage.RUSSIAN); room.updateThemeMode(ThemeMode.DARK)
         }
         open(); compose.waitUntil(10_000) { model().state.value.loaded }
-        compose.onNodeWithText("Добавить устройство").performClick()
+        compose.onNodeWithTag("lan-add").performClick()
         compose.onNodeWithTag("lan-name").performTextInput("Домашний компьютер с длинным названием")
         Espresso.closeSoftKeyboard()
-        compose.onNodeWithTag("lan-save").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("lan-save").assertIsDisplayed()
         screenshot("russian-dark-form")
         compose.onNodeWithTag("lan-save").performClick()
         compose.waitUntil(10_000) { model().state.value.devices.size == 1 }
+        compose.onNodeWithTag("lan-back").performClick()
         compose.onNodeWithTag("lan-tab-DIAGNOSTICS").performClick()
+        compose.onNodeWithTag("lan-open-tcp").performScrollTo().performClick()
         compose.onNodeWithTag("lan-tcp-port").performScrollTo().assertIsDisplayed()
     }
 
@@ -159,6 +172,8 @@ class LanToolsNavigationTest {
         try {
             compose.runOnIdle {
                 room = ViewModelProvider(compose.activity)[MainViewModel::class.java]
+                room.updateThemeMode(ThemeMode.DARK)
+                room.updateAppLanguage(AppLanguage.ENGLISH)
                 room.updateSessionPassword("lan-tools-local-test")
                 room.setHostDiscoverable(false)
                 room.startHosting(chatPort.toString(), filePort.toString())
@@ -174,6 +189,7 @@ class LanToolsNavigationTest {
             val roomId = AndroidChatHostService.state.value.roomInstanceId
             val share = room.quickShares.value.single()
             compose.onNode(hasText(label(R.string.nav_devices)) and hasClickAction()).performClick()
+            screenshot("uiux-hosting-dark")
             open()
             compose.runOnIdle {
                 model().editInput { it.copy(host = "127.0.0.1", port = chatPort.toString()) }
@@ -222,15 +238,66 @@ class LanToolsNavigationTest {
         }
     }
 
+    @Test fun referenceLayoutKeepsEditorActionsVisibleAndEmptyDiscoveryTruthful() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+                .grantRuntimePermission(compose.activity.packageName, android.Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+        compose.runOnIdle {
+            val room = ViewModelProvider(compose.activity)[MainViewModel::class.java]
+            room.updateAppLanguage(AppLanguage.ENGLISH)
+            room.updateThemeMode(ThemeMode.DARK)
+            room.updateNearbyPermission(com.shterneregen.securelan.androidclient.model.NearbyPermissionState.GRANTED)
+        }
+        compose.onNodeWithText(label(R.string.host_room)).assertIsDisplayed()
+        screenshot("uiux-devices-dark")
+        open(); compose.waitUntil(10_000) { model().state.value.loaded }
+        compose.onNodeWithTag("lan-device-list").performScrollToNode(hasText(label(R.string.lan_empty_saved_title)))
+        compose.onNodeWithText(label(R.string.lan_empty_saved_title)).assertIsDisplayed()
+        compose.onNodeWithTag("lan-device-list").performScrollToNode(hasText(label(R.string.lan_not_searched)))
+        compose.onNodeWithText(label(R.string.lan_not_searched)).assertIsDisplayed()
+        screenshot("uiux-empty-bottom-dark")
+        compose.onNodeWithTag("lan-device-list").performScrollToIndex(0)
+        screenshot("uiux-empty-dark")
+        compose.onAllNodesWithText(label(R.string.lan_add)).filter(hasClickAction()).onFirst().performClick()
+        compose.onNodeWithTag("lan-name").assertIsFocused().performTextInput("Workstation")
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("lan-save").assertIsDisplayed()
+        screenshot("uiux-editor-dark")
+        compose.onNodeWithTag("lan-mac").performScrollTo().performTextInput("invalid")
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("lan-save").assertIsDisplayed().performClick()
+        compose.onAllNodesWithText(label(R.string.lan_invalid_mac)).onLast().assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.lan_cancel)).performClick()
+        compose.onNodeWithTag("lan-tab-DIAGNOSTICS").performClick()
+        compose.onNodeWithText(label(R.string.lan_overview)).assertIsDisplayed()
+        screenshot("uiux-diagnostics-dark")
+        compose.onNodeWithTag("lan-open-tcp").performScrollTo().performClick()
+        compose.onNodeWithTag("lan-tcp-host").performScrollTo().performClick()
+        compose.onNodeWithTag("lan-tcp-host").performKeyInput { pressKey(androidx.compose.ui.input.key.Key.Tab) }
+        compose.onNodeWithTag("lan-tcp-port").assertIsFocused()
+        Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("lan-back").performClick()
+        compose.onNodeWithText(label(R.string.lan_advanced)).performScrollTo().performClick()
+        compose.onNodeWithTag("lan-timeout").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("lan-gateway-port").assertDoesNotExist()
+        compose.onNodeWithTag("lan-back").performClick()
+        compose.runOnIdle { ViewModelProvider(compose.activity)[MainViewModel::class.java].updateThemeMode(ThemeMode.LIGHT) }
+        compose.onNodeWithText(label(R.string.lan_overview)).performScrollTo()
+        screenshot("uiux-diagnostics-light")
+    }
+
     private fun screenshot(name: String) {
         if (android.os.Build.VERSION.SDK_INT < 29) return
+        compose.waitForIdle()
         val resolver = compose.activity.contentResolver
         val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, android.content.ContentValues().apply {
             put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "lan-tools-$name.png")
             put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
             put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Download/SecureLanLanTools")
         }) ?: error("Screenshot output unavailable")
-        val bitmap = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        val toolsVisible = compose.onAllNodesWithTag("lan-tools").fetchSemanticsNodes().isNotEmpty()
+        val bitmap = (if (toolsVisible) compose.onNodeWithTag("lan-tools") else compose.onRoot()).captureToImage().asAndroidBitmap()
         resolver.openOutputStream(uri)!!.use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }

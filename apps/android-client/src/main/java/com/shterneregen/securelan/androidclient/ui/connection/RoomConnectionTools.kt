@@ -50,31 +50,38 @@ fun RoomConnectionTools(viewModel: MainViewModel, state: MainUiState) {
     var details by remember { mutableStateOf(false) }
     val calls by viewModel.callState.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!state.connected && !state.hosting) {
-                OutlinedButton(onClick = { paste = true }) {
+                OutlinedButton(onClick = { paste = true }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                     Icon(Icons.Outlined.ContentPaste, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.room_paste))
+                    Text(stringResource(R.string.room_paste_short))
                 }
-                OutlinedButton(onClick = { scan = true }, enabled = calls.phase in setOf(CallPhase.IDLE, CallPhase.ENDED)) {
+                OutlinedButton(onClick = { scan = true }, enabled = calls.phase in setOf(CallPhase.IDLE, CallPhase.ENDED), modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                     Icon(Icons.Outlined.QrCodeScanner, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.room_scan))
                 }
             } else {
-                TextButton(onClick = { paste = true }) { Text(stringResource(R.string.room_paste)) }
+                OutlinedButton(onClick = { paste = true }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Icon(Icons.Outlined.ContentPaste, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.room_paste_short))
+                }
             }
-            if (state.hosting) FilledTonalButton(onClick = { invite = true }) {
+            if (state.hosting) OutlinedButton(onClick = { invite = true }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Icon(Icons.Outlined.QrCode, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.room_invite))
             }
         }
+        if (state.hosting) HorizontalDivider()
         if (state.hosting) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             val visibilityLabel = stringResource(R.string.room_discoverable)
             Switch(state.hostDiscoverable, viewModel::setHostDiscoverable, modifier = Modifier.semantics { contentDescription = visibilityLabel })
-            Text(stringResource(R.string.room_discoverable))
+            Column {
+                Text(stringResource(R.string.room_discoverable), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.room_discoverable_hint), style = MaterialTheme.typography.bodySmall)
+            }
         }
         if (state.hosting && state.hostLegacyNsdScopeUnavailable) {
             TextButton(onClick = { details = !details }) { Text(stringResource(R.string.room_network_details)) }

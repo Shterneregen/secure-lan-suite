@@ -12,11 +12,16 @@ enum class LanTab { DEVICES, DIAGNOSTICS }
 enum class LanFilter { ALL, SAVED, DISCOVERED }
 enum class LanOperation { NETWORK, DISCOVERY, TCP, DNS, GATEWAY, WAKE }
 enum class LanPhase { IDLE, RUNNING, SUCCESS, FAILURE, CANCELLED }
+enum class LanDiagnosticPage { OVERVIEW, TCP, DNS, GATEWAY, ADVANCED }
 
 /** Resource identifiers stay local to the application; shared services return only typed data/errors. */
 data class LanMessage(val resource: Int, val args: List<String> = emptyList())
 /** Captured request label remains attached to an outcome even when the form is edited or cancelled. */
-data class LanOutcome(val phase: LanPhase = LanPhase.IDLE, val message: LanMessage? = null, val subject: LanMessage? = null)
+data class LanOutcome(val phase: LanPhase = LanPhase.IDLE, val message: LanMessage? = null, val subject: LanMessage? = null,
+    val startedAt: Instant? = null, val at: Instant? = null, val source: LanMessage? = null, val timeoutMillis: Long? = null)
+
+/** Immutable submission used by Run again; editing inputs cannot change a historical check. */
+data class LanSubmission(val input: LanDiagnosticInput, val binding: String?)
 data class LanCheck(val host: String, val port: Int, val binding: String?, val at: Instant, val outcome: LanOutcome)
 data class LanDiagnosticInput(val host: String = "", val port: String = "", val dns: String = "", val timeout: String = "5000",
     val family: AddressFamily = AddressFamily.ALL, val gateway: String? = null, val gatewayPort: String = "", val origin: String? = null)
@@ -32,7 +37,7 @@ data class LanDeviceForm(val id: UUID = UUID.randomUUID(), val name: String = ""
             IpLiteral.parse(it)?.takeIf { value -> value.isUnicast } ?: throw InvalidLanForm(R.string.lan_invalid_address)
         }
         val host = hostname.trim().takeIf { it.isNotEmpty() }?.let {
-            DiagnosticHost.parse(it) ?: throw InvalidLanForm(R.string.lan_invalid_address)
+            DiagnosticHost.parse(it) ?: throw InvalidLanForm(R.string.lan_invalid_hostname)
         }
         val wake = mac.trim().takeIf { it.isNotEmpty() }?.let { raw ->
             val parsed = MacAddress.parse(raw)?.takeIf { it.isWakeTarget } ?: throw InvalidLanForm(R.string.lan_invalid_mac)
@@ -60,11 +65,14 @@ data class LanToolsState(
     val devices: List<SavedLanDevice> = emptyList(), val found: LanDiscoverySnapshot = LanDiscoverySnapshot(),
     val query: String = "", val filter: LanFilter = LanFilter.ALL,
     val selectedSaved: UUID? = null, val selectedFound: String? = null,
+    val detailsOpen: Boolean = false, val editorOpen: Boolean = false,
+    val diagnosticPage: LanDiagnosticPage = LanDiagnosticPage.OVERVIEW, val diagnosticReturnToDetails: Boolean = false,
     val form: LanDeviceForm? = null, val formError: LanMessage? = null, val deleting: UUID? = null,
     val storeError: LanMessage? = null, val notice: LanMessage? = null,
     val network: DiagnosticsNetworkSnapshot? = null, val binding: String? = null,
     val input: LanDiagnosticInput = LanDiagnosticInput(), val nearbyGranted: Boolean = false,
     val outcomes: Map<LanOperation, LanOutcome> = emptyMap(), val checks: Map<String, LanCheck> = emptyMap(),
+    val submissions: Map<LanOperation, LanSubmission> = emptyMap(),
 ) {
     val canModify get() = loaded && !loading && !saving
     val selectedInterface get() = network?.interfaces?.firstOrNull { it.source.binding.key == binding }

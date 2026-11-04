@@ -4,7 +4,6 @@
     <string name="lan_utilities">Network utilities</string>
     <string name="lan_devices">Devices</string>
     <string name="lan_diagnostics">Diagnostics</string>
-    <string name="lan_back">Back to Devices</string>
     <string name="lan_cancel">Cancel</string>
     <string name="lan_unknown">Unknown</string>
     <string name="lan_all">All</string>
@@ -20,7 +19,6 @@
     <string name="lan_delete_confirm">Delete these saved settings? The observed LAN service will not be affected.</string>
     <string name="lan_details">Details</string>
     <string name="lan_wake">Wake up</string>
-    <string name="lan_refresh_devices">Refresh devices</string>
     <string name="lan_refresh_network">Refresh network information</string>
     <string name="lan_reload">Reload saved devices</string>
     <string name="lan_saved_devices">Saved devices (%1$s)</string>
@@ -38,7 +36,6 @@
     <string name="lan_services">Advertised services</string>
     <string name="lan_endpoint_diagnostics">Diagnostics %1$s:%2$s</string>
     <string name="lan_review_copy">Review copied settings before saving. MAC and Wake-on-LAN are never inferred; saved and discovered records stay separate.</string>
-    <string name="lan_choose_device">Choose Details on a device to view its settings or advertised services.</string>
     <string name="lan_record_gone">This record has left the current snapshot. Saved settings are unchanged.</string>
     <string name="lan_name">Device name</string>
     <string name="lan_address">IP address (optional)</string>
@@ -49,7 +46,7 @@
     <string name="lan_preferred">Preferred binding key (optional)</string>
     <string name="lan_mac_help">Enter a MAC manually to enable Wake-on-LAN. An empty MAC removes WoL configuration. Android does not expose other devices’ MAC addresses.</string>
     <string name="lan_source_picker">Source network: %1$s</string>
-    <string name="lan_os_routing">OS routing / automatic WoL selection</string>
+    <string name="lan_os_routing">OS routing</string>
     <string name="lan_stale_binding">Selected network unavailable</string>
     <string name="lan_no_network">No LAN IPv4 interfaces reported. Refresh after connecting Wi-Fi or Ethernet.</string>
     <string name="lan_no_broadcast">Broadcast capability is unknown or unavailable; WoL may be unsupported on this binding.</string>
@@ -76,10 +73,7 @@
     <string name="lan_gateway_check">Check gateway TCP</string>
     <string name="lan_gateway_help">Select a reported gateway and enter one TCP port. A working router may refuse this port; no ports are scanned.</string>
     <string name="lan_select_gateway">Choose an OS-reported gateway.</string>
-    <string name="lan_no_gateway">Select an interface with an available IPv4 gateway to enable this check.</string>
     <string name="lan_icmp">ICMP ping is unavailable. TCP, DNS and device power state are different observations.</string>
-    <string name="lan_no_check">No connectivity check performed</string>
-    <string name="lan_last_check">Last TCP check: %1$s:%2$s at %3$s</string>
     <string name="lan_loading">Loading saved devices…</string>
     <string name="lan_saving">Saving settings…</string>
     <string name="lan_saved">Device settings saved.</string>
@@ -94,7 +88,7 @@
     <string name="lan_invalid_device">Invalid network/device settings. Check the address, MAC, broadcast, port and source selection.</string>
     <string name="lan_select_network">Select a source network explicitly when several LANs are available.</string>
     <string name="lan_network_changed">The selected network changed or is unavailable. Refresh and choose a current interface.</string>
-    <string name="lan_network_unavailable">No usable LAN route is available. Check Wi-Fi/Ethernet and refresh.</string>
+    <string name="lan_network_unavailable">Android reported no route to this endpoint. Check the active network or choose a source network, then check a known service port.</string>
     <string name="lan_permission_error">The OS denied network access. Check permissions and retry.</string>
     <string name="lan_timeout_error">The operation timed out; this does not establish device reachability or power state.</string>
     <string name="lan_tcp_failure">This TCP port did not accept a connection. The device may still be running.</string>
@@ -106,12 +100,30 @@
     <string name="lan_network_refreshed">Local network information refreshed.</string>
     <string name="lan_browse_completed">Browse completed; retained observations are historical, not online status.</string>
     <string name="lan_packet_sent">Magic packet submitted to %1$s:%2$s. Delivery and physical wake-up are not confirmed.</string>
-    <string name="lan_tcp_result">TCP %1$s:%2$s accepted a connection in %3$s ms. This is not ICMP RTT or proof of power state.</string>
-    <string name="lan_dns_result">Addresses for %1$s: %2$s. Lookup time: %3$s ms; system/cache answer, not connectivity evidence.</string>
-    <string name="lan_dns_numeric">Numeric input %1$s: %2$s (%3$s ms). No DNS query was needed; connectivity was not checked.</string>
+    <string name="lan_tcp_result">TCP %1$s:%2$s accepted a connection. Connect time: %3$s ms.</string>
+    <string name="lan_dns_result">%1$s → %2$s. Lookup: %3$s ms (system/cache).</string>
+    <string name="lan_dns_numeric">%1$s → %2$s (%3$s ms). Numeric input; no DNS query.</string>
     <string name="lan_running">Running…</string>
     <string name="lan_cancelled">Cancelled. A network attempt may already have reached its target; native lookup/NSD cleanup may still be finishing.</string>
     <string name="lan_phase_success">Completed</string>
-    <string name="lan_phase_failure">Failed</string>
     <string name="lan_phase_cancelled">Cancelled</string>
+    <string name="lan_utilities_hint">Local devices, Wake-on-LAN and diagnostics</string>
+    <string name="lan_basics">Basics</string>
+    <string name="lan_wol">Wake-on-LAN</string>
+    <string name="lan_mac_requirement">MAC address is required only for Wake-on-LAN.</string>
+    <string name="lan_overview">Network overview</string>
+    <string name="lan_overview_hint">Current local network details.</string>
+    <string name="lan_advanced">Advanced settings</string>
+    <string name="lan_timeout_summary">Timeout: %1$s ms</string>
+    <string name="lan_tcp_hint">Test if a TCP port is reachable.</string>
+    <string name="lan_dns_hint">Resolve a hostname to IP addresses.</string>
+    <string name="lan_empty_saved_title">No saved devices yet</string>
+    <string name="lan_empty_found_title">No devices found</string>
+    <string name="lan_empty_found_hint">Try refreshing to look for supported services on your network.</string>
+    <string name="lan_not_searched">Discovery has not started</string>
+    <string name="lan_empty_cancelled">Discovery cancelled</string>
+    <string name="lan_empty_failed">Discovery unavailable</string>
+    <string name="lan_empty_filtered">No matching devices</string>
+    <string name="room_share_title">Share this room</string>
+    <string name="room_discoverable_hint">Let nearby devices find and join this room.</string>
 </resources>

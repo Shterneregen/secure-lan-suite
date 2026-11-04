@@ -45,7 +45,7 @@ internal fun LanToolsHost(content: @Composable (open: () -> Unit) -> Unit) {
         onDispose { lifecycle.removeObserver(observer); tools.setActive(false) }
     }
     content { visible = true }
-    if (visible) Dialog(onDismissRequest = { visible = false }, properties = DialogProperties(decorFitsSystemWindows = false)) {
+    if (visible) Dialog(onDismissRequest = { if (!tools.back()) visible = false }, properties = DialogProperties(decorFitsSystemWindows = false)) {
         val window = (LocalView.current.parent as DialogWindowProvider).window
         DisposableEffect(window) {
             // Let Android measure the real window/IME area. Compose 1.7's non-default-width dialog

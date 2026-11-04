@@ -194,12 +194,24 @@ class LanToolsInteractionTest {
             compose.onNode(hasText("Other room") and hasClickAction()).performClick()
             compose.onNode(hasText("Other room") and selected).assertExists()
             compose.runOnIdle { controller.open() }
-            compose.waitUntil(5_000) { java.awt.Window.getWindows().filterIsInstance<java.awt.Dialog>().any { it.isShowing && it.title.endsWith("LAN Tools") } }
+            waitForLanToolsWindow(showing = true)
             compose.runOnIdle { controller.dismiss() }
-            compose.waitUntil(5_000) { java.awt.Window.getWindows().filterIsInstance<java.awt.Dialog>().none { it.isShowing && it.title.endsWith("LAN Tools") } }
+            waitForLanToolsWindow(showing = false)
             compose.onNode(hasSetTextAction()).assertTextContains("Keep this chat draft")
             compose.onNode(hasText("Other room") and selected).assertExists()
         } finally { compose.runOnIdle { host.shutdown(); settings.close() } }
+    }
+
+    private fun waitForLanToolsWindow(showing: Boolean) {
+        compose.waitForIdle()
+        // Native window creation runs on AWT, outside the test scene's frame clock. Allow a
+        // cold CI runner to initialize it, and inspect AWT state on its owning event thread.
+        compose.waitUntil(15_000) {
+            compose.runOnUiThread {
+                java.awt.Window.getWindows().filterIsInstance<java.awt.Dialog>()
+                    .any { it.isShowing && it.title.endsWith("LAN Tools") } == showing
+            }
+        }
     }
 
     @Test fun diagnosticsValidatesChecksTcpDnsAndGatewayWithHonestResults() {

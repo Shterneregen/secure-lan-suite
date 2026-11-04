@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lan_save_short">Сохранить</string>
+    <string name="lan_gateway_hint">Проверка шлюза на одном TCP-порту.</string>
+    <string name="lan_advanced_hint">Тайм-аут и исходная сеть.</string>
+    <string name="lan_network_short">Сеть: %1$s</string>
+    <string name="lan_expanded">Развёрнуто</string>
+    <string name="lan_collapsed">Свёрнуто</string>
+    <string name="lan_invalid_hostname">Введите корректное имя узла или оставьте поле пустым.</string>
+    <string name="connect_room_title">Подключение к комнате</string>
+    <string name="connect_room_hint">Создайте комнату или присоединитесь к существующей.</string>
+    <string name="room_paste_short">Вставить ссылку</string>
+    <string name="lan_refresh_short">Обновить</string>
+    <string name="lan_device_details">Об устройстве</string>
+    <string name="lan_run_diagnostics">Запустить диагностику</string>
+    <string name="lan_run_again">Повторить проверку</string>
+    <string name="lan_choose_network">Выбрать сеть</string>
+    <string name="lan_checked_at">Проверено: %1$s</string>
+    <string name="lan_started_at">Начало: %1$s</string>
+    <string name="lan_check_history">Последняя TCP-проверка · %1$s</string>
+    <string name="lan_not_checked">Не проверялось</string>
+    <string name="lan_check_failed">Проверка не удалась</string>
+    <string name="lan_wol_not_configured">Wake-on-LAN не настроен</string>
+    <string name="lan_wol_advanced">Расширенные настройки WoL</string>
+    <string name="lan_enter_host">Введите имя узла или IP-адрес.</string>
+    <string name="lan_known_port">Укажите порт заведомо работающей службы. Неудачная проверка не означает, что устройство выключено.</string>
+    <string name="lan_system_dns">Системный DNS и кеш</string>
+    <string name="lan_network_label">%1$s: %2$s</string>
+    <string name="lan_network_partial">Сведения об интерфейсах обновлены; часть данных о шлюзах или DNS недоступна.</string>
+    <string name="lan_resume_draft">Продолжить редактирование</string>
+    <string name="lan_manual_binding">Ввести ключ привязки вручную</string>
+    <string name="lan_default_binding">Автоматический выбор для WoL</string>
+    <string name="lan_no_saved_brief">Добавьте устройство кнопкой выше.</string>
+    <string name="lan_no_matches_brief">Измените поиск или фильтр.</string>
+    <string name="lan_discovery_help">Поиск объявленных служб, а не всех устройств. Наблюдения не подтверждают доверие.</string>
+    <string name="lan_gateway_select_hint">Выберите исходную сеть, чтобы увидеть шлюзы, сообщённые ОС.</string>
+    <string name="lan_gateway_unreported">ОС не сообщила IPv4-шлюз для этой сети. Обновите сведения или выберите другую сеть.</string>
+    <string name="lan_idle">Готово к проверке</string>
+    <string name="lan_metadata_available">Метаданные шлюзов и DNS доступны</string>
+    <string name="lan_metadata_timeout">Истекло время получения метаданных шлюзов и DNS</string>
+    <string name="lan_metadata_denied">Нет разрешения на метаданные шлюзов и DNS</string>
+    <string name="lan_metadata_limit">Достигнут лимит ресурсов при получении метаданных</string>
+    <string name="lan_metadata_unsupported">Метаданные шлюзов и DNS не поддерживаются</string>
+</resources>
