@@ -100,8 +100,9 @@ coexistence. The LAN navigation suite additionally runs the real Android host,
 local shared V2 client, encrypted file receipt and temporary Quick Share HTTP
 while tools are open, verifying continued chat after closing. It uses only
 local endpoints and checks the received file bytes.
-See the [validation matrix](quality/lantools-validation.md) for tested layouts,
-runtime probes, retained limitations and the remaining hardware checklist.
+See [LAN Tools verification](lan-tools.md#verification) for coverage and runtime
+probe limits, and [Release and qualification](release.md) for candidate evidence
+requirements.
 
 Desktop integration and UI checks:
 

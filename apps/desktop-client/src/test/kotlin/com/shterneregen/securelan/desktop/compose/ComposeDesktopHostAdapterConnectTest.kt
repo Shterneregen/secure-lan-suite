@@ -37,7 +37,6 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Path
 import java.time.Instant
 import java.util.Optional
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -360,18 +359,22 @@ class ComposeDesktopHostAdapterConnectTest {
             uiStateDispatcher = { action -> action() },
         )
 
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
-            CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS).execute { releaseConnect.countDown() }
-            val elapsedMillis = measureTimeMillis {
+            val action = caller.submit {
                 adapter.connect("127.0.0.1", "desktop-test", "secret", 50_050, 50_051)
             }
 
-            assertTrue(connectEntered.await(500, TimeUnit.MILLISECONDS), "The IO connection task should start")
-            assertTrue(elapsedMillis < 500, "connect() blocked its caller for ${elapsedMillis}ms")
+            assertTrue(connectEntered.await(5, TimeUnit.SECONDS), "The IO connection task should start")
+            // The action must return while the client is still blocked, independently of runner speed.
+            action.get(5, TimeUnit.SECONDS)
+            assertTrue(adapter.statusState.operationInProgress)
+            releaseConnect.countDown()
             assertTrue(awaitConnectFailure(adapter), "The asynchronous failure should be published")
         } finally {
             releaseConnect.countDown()
             adapter.shutdown()
+            caller.shutdownNow()
         }
     }
 
@@ -472,7 +475,7 @@ class ComposeDesktopHostAdapterConnectTest {
         override fun fileIdentity() = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
         override fun connect(request: ChatClientConnectRequest): Boolean {
             entered.countDown()
-            release.await(2, TimeUnit.SECONDS)
+            release.await()
             return false
         }
 

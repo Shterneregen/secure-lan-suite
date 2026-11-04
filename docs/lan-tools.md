@@ -6,9 +6,8 @@ coroutines. It has no Compose, Android SDK, chat, file-transfer or crypto depend
 Desktop exposes saved devices, Wake-on-LAN, diagnostics and an advertised-device browser in a standalone dialog.
 Android exposes the same core operations through platform socket/NSD adapters and
 a separate Material 3 screen. ICMP has no qualified backend.
-See the [implementation plan](lantools-implementation-plan.md).
-The [validation matrix](quality/lantools-validation.md) distinguishes automated
-coverage, local runtime probes and physical scenarios awaiting qualification.
+The [Verification](#verification) section describes automated coverage, local
+runtime probes and physical scenarios awaiting qualification.
 
 ## Desktop workflow
 
@@ -559,5 +558,5 @@ closes, transfers and verifies an encrypted 256 KiB file into Android Downloads,
 and fetches a temporary Quick Share text over local HTTP. It verifies that draft,
 peer selection, outgoing queue, receiver and room instance remain intact. This
 is one-emulator service integration, separate from two-machine Desktop/Android
-interoperability or physical call/Wi-Fi qualification. Current results and the
-remaining manual matrix are in [LAN Tools validation](quality/lantools-validation.md).
+interoperability or physical call/Wi-Fi qualification. See
+[Release and qualification](release.md) for candidate evidence requirements.

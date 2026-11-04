@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lan_save_short">Save</string>
+    <string name="lan_gateway_hint">Test a reported gateway on one TCP port.</string>
+    <string name="lan_advanced_hint">Timeout and source network.</string>
+    <string name="lan_network_short">Network: %1$s</string>
+    <string name="lan_expanded">Expanded</string>
+    <string name="lan_collapsed">Collapsed</string>
+    <string name="lan_invalid_hostname">Enter a valid hostname or leave it empty.</string>
+    <string name="connect_room_title">Connect to a room</string>
+    <string name="connect_room_hint">Create a room or join an existing one.</string>
+    <string name="room_paste_short">Paste link</string>
+    <string name="lan_refresh_short">Refresh</string>
+    <string name="lan_device_details">Device details</string>
+    <string name="lan_run_diagnostics">Run diagnostics</string>
+    <string name="lan_run_again">Run again</string>
+    <string name="lan_choose_network">Choose a network</string>
+    <string name="lan_checked_at">Checked: %1$s</string>
+    <string name="lan_started_at">Started: %1$s</string>
+    <string name="lan_check_history">Last TCP check · %1$s</string>
+    <string name="lan_not_checked">Not checked</string>
+    <string name="lan_check_failed">Check failed</string>
+    <string name="lan_wol_not_configured">Wake-on-LAN not configured</string>
+    <string name="lan_wol_advanced">Advanced WoL settings</string>
+    <string name="lan_enter_host">Enter a hostname or IP address.</string>
+    <string name="lan_known_port">Enter the port of a known active service. A failed check does not mean the device is offline.</string>
+    <string name="lan_system_dns">System DNS and cache</string>
+    <string name="lan_network_label">%1$s: %2$s</string>
+    <string name="lan_network_partial">Local interfaces refreshed; some gateway or DNS metadata is unavailable.</string>
+    <string name="lan_resume_draft">Resume unfinished edit</string>
+    <string name="lan_manual_binding">Enter a binding key manually</string>
+    <string name="lan_default_binding">Automatic WoL selection</string>
+    <string name="lan_no_saved_brief">Add a device using the button above.</string>
+    <string name="lan_no_matches_brief">Change the search or filter.</string>
+    <string name="lan_discovery_help">Find supported advertised services, not every device. Observations are untrusted.</string>
+    <string name="lan_gateway_select_hint">Choose a source network to see its OS-reported gateways.</string>
+    <string name="lan_gateway_unreported">No IPv4 gateway was reported for this network. Refresh network information or choose another source.</string>
+    <string name="lan_idle">Ready to check</string>
+    <string name="lan_metadata_available">Gateway/DNS metadata available</string>
+    <string name="lan_metadata_timeout">Gateway/DNS metadata timed out</string>
+    <string name="lan_metadata_denied">Gateway/DNS metadata permission denied</string>
+    <string name="lan_metadata_limit">Gateway/DNS metadata resource limit reached</string>
+    <string name="lan_metadata_unsupported">Gateway/DNS metadata unsupported</string>
+</resources>

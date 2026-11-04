@@ -45,8 +45,8 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
 
 Implementation does not imply device qualification. See the [Android guide](apps/android-client/android-readme.md)
 and [realtime architecture](docs/webrtc-architecture.md) for platform owners and remaining hardware checks.
-LAN Tools verification and the remaining physical-network checks are recorded in
-[LAN Tools validation](docs/quality/lantools-validation.md).
+LAN Tools checks and physical-network qualification limits are described in
+[LAN Tools verification](docs/lan-tools.md#verification).
 Build checks, production signing and artifact qualification are described in
 [Release and qualification](docs/release.md).
 

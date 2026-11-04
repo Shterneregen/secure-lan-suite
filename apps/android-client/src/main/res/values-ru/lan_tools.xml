@@ -4,7 +4,6 @@
     <string name="lan_utilities">Сетевые утилиты</string>
     <string name="lan_devices">Устройства</string>
     <string name="lan_diagnostics">Диагностика</string>
-    <string name="lan_back">Назад к устройствам</string>
     <string name="lan_cancel">Отмена</string>
     <string name="lan_unknown">Неизвестно</string>
     <string name="lan_all">Все</string>
@@ -20,7 +19,6 @@
     <string name="lan_delete_confirm">Удалить сохранённые настройки? На объявление сервиса в сети это не повлияет.</string>
     <string name="lan_details">Подробности</string>
     <string name="lan_wake">Разбудить</string>
-    <string name="lan_refresh_devices">Обновить устройства</string>
     <string name="lan_refresh_network">Обновить сведения о сети</string>
     <string name="lan_reload">Перечитать устройства</string>
     <string name="lan_saved_devices">Сохранённые устройства (%1$s)</string>
@@ -38,7 +36,6 @@
     <string name="lan_services">Объявленные сервисы</string>
     <string name="lan_endpoint_diagnostics">Диагностика %1$s:%2$s</string>
     <string name="lan_review_copy">Проверьте скопированные настройки. MAC и Wake-on-LAN не определяются автоматически; сохранённые и обнаруженные записи независимы.</string>
-    <string name="lan_choose_device">Выберите «Подробности», чтобы увидеть настройки или объявленные сервисы.</string>
     <string name="lan_record_gone">Этой записи больше нет в текущем снимке. Сохранённые настройки не изменены.</string>
     <string name="lan_name">Имя устройства</string>
     <string name="lan_address">IP-адрес (необязательно)</string>
@@ -49,7 +46,7 @@
     <string name="lan_preferred">Ключ предпочтительной сети (необязательно)</string>
     <string name="lan_mac_help">Введите MAC вручную для Wake-on-LAN. Пустой MAC удаляет настройки WoL. Android не предоставляет MAC-адреса других устройств.</string>
     <string name="lan_source_picker">Исходная сеть: %1$s</string>
-    <string name="lan_os_routing">Маршрутизация ОС / автовыбор для WoL</string>
+    <string name="lan_os_routing">Маршрутизация ОС</string>
     <string name="lan_stale_binding">Выбранная сеть недоступна</string>
     <string name="lan_no_network">IPv4-интерфейсы LAN не найдены. Подключите Wi-Fi или Ethernet и обновите сведения.</string>
     <string name="lan_no_broadcast">Поддержка broadcast неизвестна или недоступна; WoL для этой сети может не поддерживаться.</string>
@@ -76,10 +73,7 @@
     <string name="lan_gateway_check">Проверить TCP шлюза</string>
     <string name="lan_gateway_help">Выберите сообщённый шлюз и один TCP-порт. Работающий роутер может отклонять этот порт; сканирование не выполняется.</string>
     <string name="lan_select_gateway">Выберите шлюз из сведений ОС.</string>
-    <string name="lan_no_gateway">Для проверки выберите интерфейс с доступным IPv4-шлюзом.</string>
     <string name="lan_icmp">ICMP ping недоступен. TCP, DNS и состояние питания устройства — разные наблюдения.</string>
-    <string name="lan_no_check">Проверка доступности не выполнялась</string>
-    <string name="lan_last_check">Последняя TCP-проверка: %1$s:%2$s, %3$s</string>
     <string name="lan_loading">Чтение сохранённых устройств…</string>
     <string name="lan_saving">Сохранение настроек…</string>
     <string name="lan_saved">Настройки устройств сохранены.</string>
@@ -94,7 +88,7 @@
     <string name="lan_invalid_device">Некорректные настройки сети или устройства. Проверьте адрес, MAC, broadcast, порт и исходную сеть.</string>
     <string name="lan_select_network">При наличии нескольких LAN явно выберите исходную сеть.</string>
     <string name="lan_network_changed">Выбранная сеть изменилась или недоступна. Обновите сведения и выберите текущий интерфейс.</string>
-    <string name="lan_network_unavailable">Подходящий LAN-маршрут недоступен. Проверьте Wi-Fi/Ethernet и обновите сведения.</string>
+    <string name="lan_network_unavailable">Android сообщил об отсутствии маршрута к этому адресу. Проверьте активную сеть или выберите исходную сеть, затем проверьте порт известной службы.</string>
     <string name="lan_permission_error">ОС запретила доступ к сети. Проверьте разрешения и повторите попытку.</string>
     <string name="lan_timeout_error">Время операции истекло; доступность и состояние питания устройства не установлены.</string>
     <string name="lan_tcp_failure">Этот TCP-порт не принял соединение. Устройство может продолжать работать.</string>
@@ -106,12 +100,30 @@
     <string name="lan_network_refreshed">Локальные сведения о сети обновлены.</string>
     <string name="lan_browse_completed">Поиск завершён; сохранённые наблюдения являются историческими, а не статусом online.</string>
     <string name="lan_packet_sent">Magic packet передан ОС для %1$s:%2$s. Доставка и физическое включение не подтверждены.</string>
-    <string name="lan_tcp_result">TCP %1$s:%2$s принял соединение за %3$s мс. Это не ICMP RTT и не доказательство состояния питания.</string>
-    <string name="lan_dns_result">Адреса для %1$s: %2$s. Время lookup: %3$s мс; системный/кэшированный ответ, а не проверка доступности.</string>
-    <string name="lan_dns_numeric">Числовой ввод %1$s: %2$s (%3$s мс). DNS-запрос не требовался; доступность не проверялась.</string>
+    <string name="lan_tcp_result">TCP %1$s:%2$s принял соединение. Время подключения: %3$s мс.</string>
+    <string name="lan_dns_result">%1$s → %2$s. Поиск: %3$s мс (система/кеш).</string>
+    <string name="lan_dns_numeric">%1$s → %2$s (%3$s мс). Числовой ввод; без DNS-запроса.</string>
     <string name="lan_running">Выполняется…</string>
     <string name="lan_cancelled">Отменено. Сетевой запрос уже мог достичь цели; нативный lookup или завершение NSD могут ещё выполняться.</string>
     <string name="lan_phase_success">Завершено</string>
-    <string name="lan_phase_failure">Ошибка</string>
     <string name="lan_phase_cancelled">Отменено</string>
+    <string name="lan_utilities_hint">Устройства в сети, Wake-on-LAN и диагностика</string>
+    <string name="lan_basics">Основное</string>
+    <string name="lan_wol">Wake-on-LAN</string>
+    <string name="lan_mac_requirement">MAC-адрес нужен только для Wake-on-LAN.</string>
+    <string name="lan_overview">Обзор сети</string>
+    <string name="lan_overview_hint">Сведения о текущей локальной сети.</string>
+    <string name="lan_advanced">Дополнительные настройки</string>
+    <string name="lan_timeout_summary">Тайм-аут: %1$s мс</string>
+    <string name="lan_tcp_hint">Проверить доступность TCP-порта.</string>
+    <string name="lan_dns_hint">Определить IP-адреса по имени узла.</string>
+    <string name="lan_empty_saved_title">Нет сохранённых устройств</string>
+    <string name="lan_empty_found_title">Устройства не найдены</string>
+    <string name="lan_empty_found_hint">Обновите список для поиска поддерживаемых сервисов в сети.</string>
+    <string name="lan_not_searched">Поиск ещё не запускался</string>
+    <string name="lan_empty_cancelled">Поиск отменён</string>
+    <string name="lan_empty_failed">Поиск недоступен</string>
+    <string name="lan_empty_filtered">Нет подходящих устройств</string>
+    <string name="room_share_title">Пригласить в комнату</string>
+    <string name="room_discoverable_hint">Разрешить устройствам поблизости находить эту комнату.</string>
 </resources>

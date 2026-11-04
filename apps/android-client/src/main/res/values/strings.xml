@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="product_name" translatable="false">SecureLanSuite</string>
     <string name="quick_share_qr_title">Quick Share QR code</string>
     <string name="quick_share_intro">Create temporary links for people on your local network. Links use unencrypted HTTP without authentication. Anyone with a link can access it. Use only on trusted networks.</string>
     <string name="quick_share_address">LAN address: %1$s</string>

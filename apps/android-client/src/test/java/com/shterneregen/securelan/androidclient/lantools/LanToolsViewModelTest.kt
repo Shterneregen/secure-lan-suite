@@ -167,4 +167,65 @@ class LanToolsViewModelTest {
             assertEquals(listOf("new.local"), f.model.state.value.outcome(LanOperation.DNS).subject!!.args)
         } finally { f.close() }
     }
+    @Test fun dnsEmptyInputHasSpecificValidationBeforeServiceIo() = runTest {
+        val f = Fixture(this)
+        f.lookup = { error("validation must happen first") }
+        try {
+            f.open(); f.model.dns(); runCurrent()
+            assertEquals(R.string.lan_enter_host, f.model.state.value.outcome(LanOperation.DNS).message?.resource)
+        } finally { f.close() }
+    }
+
+    @Test fun choosingSourceForSavedEndpointRetainsItsHistoricalCheck() = runTest {
+        val f = Fixture(this)
+        val device = SavedLanDevice(UUID.randomUUID(), "NAS", ip("192.168.31.138"))
+        f.store.devices = listOf(device)
+        try {
+            f.open(); f.model.diagnoseSaved(device.id)
+            f.model.editInput { it.copy(port = "443") }
+            val key = f.platform.entries.single().binding.key
+            f.model.binding(key); f.model.tcp(); runCurrent()
+            val check = f.model.state.value.checks["saved:${device.id}"]!!
+            assertEquals(device.addressHint?.value, check.host)
+            assertEquals(key, check.binding)
+            assertEquals(443, check.port)
+        } finally { f.close() }
+    }
+
+    @Test fun detailsBackAndSuspendedEditorRetainSelectionAndDraft() = runTest {
+        val f = Fixture(this)
+        val device = SavedLanDevice(UUID.randomUUID(), "NAS", ip("192.168.31.138"))
+        f.store.devices = listOf(device)
+        try {
+            f.open(); f.model.selectSaved(device.id); f.model.edit(device.id)
+            f.model.changeForm(f.model.state.value.form!!.copy(name = "Unfinished"))
+            assertTrue(f.model.back()); assertFalse(f.model.state.value.editorOpen)
+            assertTrue(f.model.state.value.detailsOpen)
+            f.model.edit(device.id); assertEquals("Unfinished", f.model.state.value.form!!.name)
+            f.model.cancelForm(); assertNull(f.model.state.value.form)
+            f.model.diagnoseSaved(device.id); assertEquals("", f.model.state.value.input.port)
+            assertTrue(f.model.back()); assertEquals(LanTab.DEVICES, f.model.state.value.tab)
+            assertTrue(f.model.state.value.detailsOpen)
+            assertTrue(f.model.back()); assertFalse(f.model.state.value.detailsOpen)
+            assertEquals(device.id, f.model.state.value.selectedSaved)
+        } finally { f.close() }
+    }
+
+    @Test fun retryUsesOriginalEndpointAndSourceAfterFieldsAndSourceAreEdited() = runTest {
+        val f = Fixture(this)
+        f.tcp = { LanResult.Failure(LanError.NETWORK_UNAVAILABLE) }
+        try {
+            f.open(); f.model.binding("old-key")
+            f.model.editInput { it.copy(host = "192.168.31.138", port = "443") }; f.model.tcp(); runCurrent()
+            val historical = f.model.state.value.outcome(LanOperation.TCP)
+            assertNotNull(historical.at); assertNotNull(historical.startedAt)
+            f.model.binding("new-key"); f.model.editInput { it.copy(host = "10.0.0.2", port = "80") }
+            f.model.retry(LanOperation.TCP); runCurrent()
+            assertEquals(f.tcpCalls.first(), f.tcpCalls.last())
+            assertEquals("10.0.0.2", f.model.state.value.input.host)
+            assertEquals("new-key", f.model.state.value.binding)
+            assertEquals(R.string.lan_network_unavailable, historical.message?.resource)
+        } finally { f.close() }
+    }
+
 }
