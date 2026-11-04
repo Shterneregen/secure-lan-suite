@@ -63,18 +63,15 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
             LanDeviceEditor(state, controller, Modifier.weight(1f))
         } else if (saved.isEmpty() && discovered.isEmpty() && explorer.selectedId == null) {
             Surface(Modifier.weight(1f), shape = RoundedCornerShape(tokens.radius.medium),
-                color = tokens.colors.surfaceLevel1, border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+                color = tokens.colors.background) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight), verticalArrangement = Arrangement.Center) {
                     if (compact) controller.explorer?.let { LanExplorerControls(explorer, it, controller::beginAdd, state.canModify) }
                     Column(Modifier.fillMaxWidth().heightIn(min = 260.dp).padding(tokens.spacing.xl),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm, Alignment.CenterVertically)) {
-                        Surface(shape = RoundedCornerShape(tokens.radius.large), color = tokens.colors.accent.copy(alpha = 0.12f),
-                            border = BorderStroke(tokens.border.subtle, tokens.colors.accent.copy(alpha = 0.40f))) {
-                            Box(Modifier.size(88.dp), contentAlignment = Alignment.Center) {
-                                Icon(SecureLanIcons.Network, contentDescription = null, tint = tokens.colors.accent,
-                                    modifier = Modifier.size(48.dp))
-                            }
+                        Box(Modifier.size(128.dp, 104.dp), contentAlignment = Alignment.Center) {
+                            Icon(SecureLanIcons.DeviceNetwork, contentDescription = null, tint = tokens.colors.accent,
+                                modifier = Modifier.size(104.dp))
                         }
                         val inventoryEmpty = state.devices.isEmpty() && explorer.snapshot.devices.isEmpty()
                         val headline = when {
@@ -104,7 +101,10 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
                                 }
                             }
                         }
-                        Text("Only advertised services are discovered. A room connection is not required.", style = MaterialTheme.typography.caption)
+                        Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(SecureLanIcons.Information, contentDescription = null, tint = tokens.colors.textSecondary, modifier = Modifier.size(18.dp))
+                            Text("Only advertised services are discovered. A room connection is not required.", style = MaterialTheme.typography.caption)
+                        }
                     }
 
                 }

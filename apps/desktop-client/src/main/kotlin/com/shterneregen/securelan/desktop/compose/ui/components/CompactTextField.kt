@@ -35,6 +35,8 @@ internal fun CompactTextField(
     onSubmit: (() -> Unit)? = null,
     placeholder: String? = null,
     trailingContent: @Composable (() -> Unit)? = null,
+    leadingContent: @Composable (() -> Unit)? = null,
+    outlined: Boolean = false,
     // Keep focus/semantics on the editable node, independently of optional trailing actions.
     inputModifier: Modifier = Modifier,
 ) {
@@ -61,8 +63,11 @@ internal fun CompactTextField(
                 .heightIn(min = 34.dp)
                 .calmFocusRing(interactive.focused, fieldRadius, FocusRingEmphasis.CONTROL),
             shape = RoundedCornerShape(fieldRadius),
-            border = interactiveSurfaceBorder(interactive),
-            color = interactive.backgroundColor,
+            border = if (outlined) androidx.compose.foundation.BorderStroke(
+                LocalSecureLanDesignTokens.current.border.subtle,
+                if (interactive.focused) MaterialTheme.colors.primary else LocalSecureLanDesignTokens.current.colors.textSecondary.copy(alpha = if (enabled) 0.65f else 0.3f),
+            ) else interactiveSurfaceBorder(interactive),
+            color = if (outlined && !interactive.hovered) LocalSecureLanDesignTokens.current.colors.surfaceLevel1 else interactive.backgroundColor,
         ) {
             BasicTextField(
                 value = value,
@@ -96,6 +101,7 @@ internal fun CompactTextField(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        leadingContent?.invoke()
                         Box(modifier = Modifier.weight(1f)) {
                             if (value.isEmpty() && !placeholder.isNullOrBlank()) {
                                 Text(
