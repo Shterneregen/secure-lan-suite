@@ -53,7 +53,7 @@ configurations {
 }
 
 dependencies {
-    kotlinLint 'com.pinterest.ktlint:ktlint-cli:1.7.1'
+    kotlinLint 'com.pinterest.ktlint:ktlint-cli:1.8.0'
     implementation project(':modules:common-model')
     implementation project(':modules:common-net')
     implementation project(':modules:lan-tools-core')
