@@ -75,7 +75,7 @@ dependencies {
     implementation 'org.jetbrains.compose.material:material-icons-core-desktop:1.7.3'
     testImplementation compose.desktop.uiTestJUnit4
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
-    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.10.2'
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:6.1.3'
     constraints {
         testImplementation('com.google.guava:guava:33.7.2-android') {
             because 'Compose test tooling brings an older Guava with insecure temporary-directory handling.'
