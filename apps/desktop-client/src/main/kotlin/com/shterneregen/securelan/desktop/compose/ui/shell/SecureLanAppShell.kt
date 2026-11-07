@@ -50,22 +50,25 @@ internal fun SecureLanAppShell(
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = topBarLabel,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.subtitle2,
-                    )
-                    if (topBarStatus.isNotBlank()) {
-                        if (localNetworkAddresses.isEmpty()) {
-                            StatusChip(topBarStatus)
-                        } else {
-                            NetworkStatusChip(text = topBarStatus, addresses = localNetworkAddresses)
+                BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                    val showBrand = maxWidth >= 440.dp
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (showBrand) Text("SecureLanSuite", style = MaterialTheme.typography.subtitle2)
+                        Text(
+                            text = topBarLabel,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.subtitle2,
+                        )
+                        if (topBarStatus.isNotBlank()) {
+                            if (localNetworkAddresses.isEmpty()) {
+                                StatusChip(topBarStatus)
+                            } else {
+                                NetworkStatusChip(text = topBarStatus, addresses = localNetworkAddresses)
+                            }
                         }
                     }
                 }

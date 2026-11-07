@@ -159,6 +159,41 @@ class ComposeDesktopHostAdapterConnectTest {
         uiStateDispatcher = { action -> action() },
     )
 
+    @Test fun stoppingHostRestartsDiscoveryWithoutAdvertisingARoom() {
+        val listening = CountDownLatch(1)
+        val configurations = java.util.concurrent.CopyOnWriteArrayList<PeerDiscoveryConfig>()
+        val server = object : ChatServerService {
+            @Volatile var running = true
+            override fun start(config: ChatServerConfig) { running = true }
+            override fun stop() { running = false }
+            override fun isRunning() = running
+            override fun connectedUsers() = 0
+        }
+        val discovery = object : PeerDiscoveryService {
+            @Volatile var running = false
+            override fun start(config: PeerDiscoveryConfig, listener: PeerDiscoveryListener) {
+                configurations += config
+                running = true
+                if (!config.announceEnabled) listening.countDown()
+            }
+            override fun stop() { running = false }
+            override fun isRunning() = running
+            override fun snapshot() = emptyList<DiscoveredPeer>()
+            override fun setAnnounceEnabled(announceEnabled: Boolean) = Unit
+        }
+        val client = ConnectedChatClient().apply { connect(ChatClientConnectRequest("127.0.0.1", 5050, "host", "password")) }
+        val adapter = connectedAdapter(client, IdleFileTransferServer(), server = server, discovery = discovery)
+        try {
+            assertEquals(1, configurations.size)
+            adapter.stopHosting()
+            assertTrue(listening.await(2, TimeUnit.SECONDS), "Room search must restart after Stop hosting")
+            assertTrue(discovery.isRunning())
+            assertFalse(configurations.last().announceEnabled)
+            assertFalse(server.isRunning())
+            assertFalse(client.isConnected())
+        } finally { adapter.shutdown() }
+    }
+
     @Test fun detailedRoomsWithSameNameStaySeparateFromAuthenticatedPresence() {
         val discovery = object : com.shterneregen.securelan.chat.discovery.RoomDiscoveryService {
             lateinit var publish: (com.shterneregen.securelan.chat.discovery.DiscoverySnapshot) -> Unit

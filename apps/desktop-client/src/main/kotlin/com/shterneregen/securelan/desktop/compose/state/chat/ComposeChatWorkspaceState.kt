@@ -22,19 +22,15 @@ public data class ComposeChatWorkspaceState(
     val transcriptSummary: String =
         if (messages.isEmpty()) "No chat messages yet." else "Preview transcript lines: ${messages.size}"
     val transcriptEmptyTitle: String = when {
-        !statusState.clientConnected -> "Room not open yet"
-        peerListState.selectedPeer == null -> "Choose someone to start"
-        else -> "Start the conversation"
+        statusState.localServerRunning || statusState.clientConnected -> "No messages yet"
+        else -> "Room not open yet"
     }
-    val transcriptEmptyDetailConnected: String = if (peerListState.selectedPeer == null) {
-        "You are in the shared room chat. Select a person on the left to chat, send files, or start a call."
-    } else {
-        "You are chatting with ${peerListState.selectedPeer.nickname}. Say hello to the room and your messages will appear here."
-    }
+    val transcriptEmptyDetailConnected: String =
+        "Messages appear here for everyone in the room. Select a participant only when sending files or starting a call."
     val transcriptEmptyDetailDisconnected: String =
         "You are in the shared room chat, but it is not active. Host or join a trusted LAN room to start messaging."
     val transcriptEmptySituation: String = transcriptEmptyTitle
-    val transcriptEmptyExplanation: String = if (statusState.clientConnected) transcriptEmptyDetailConnected else transcriptEmptyDetailDisconnected
+    val transcriptEmptyExplanation: String = if (statusState.clientConnected || statusState.localServerRunning) transcriptEmptyDetailConnected else transcriptEmptyDetailDisconnected
     val transcriptEmptyStructuredCopy: List<String> = listOf(transcriptEmptySituation, transcriptEmptyExplanation)
     val transcriptEmptyVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.PRIMARY_GUIDANCE
     val draftValid: Boolean = draftMessage.trim().isNotEmpty()

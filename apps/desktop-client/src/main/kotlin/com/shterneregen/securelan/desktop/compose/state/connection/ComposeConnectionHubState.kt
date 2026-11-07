@@ -20,11 +20,11 @@ data class ComposeConnectionHubState(
     val roomNameLabel: String = "Room name"
     val displayNameLabel: String = "Your display name"
     val passwordLabel: String = "Room password"
-    val visibilityToggleLabel: String = "Visible to nearby trusted devices"
+    val visibilityToggleLabel: String = "Show room on local network"
     val hostChoiceSubtitle: String = if (statusState.localServerRunning) {
-        if (statusState.discoverable) "Visible to nearby trusted devices" else "Only people with an invite can join"
+        if (statusState.discoverable) "Show room on local network" else "Join by address or invitation"
     } else {
-        "People nearby can join this trusted room."
+        "Create a password-protected room on this device."
     }
     val joinChoiceSubtitle: String = when {
         statusState.clientConnected -> "Joined ${statusState.manualHost.trim()}"
@@ -68,14 +68,14 @@ data class ComposeConnectionHubState(
     }
 
     val joinTargetSummary: String = when {
-        mode != ComposeConnectionHubMode.JOIN -> "Nearby trusted peers can see this room when it is open and visible."
+        mode != ComposeConnectionHubMode.JOIN -> "Nearby devices can discover this room when it is open and visible."
         !statusState.manualHostValid -> "Choose a nearby room, or open Advanced connection."
         statusState.clientChatPort != null && statusState.clientFilePort != null ->
             "Join ${statusState.manualHost.trim()}:${statusState.clientChatPortText.trim()} · files ${statusState.clientFilePortText.trim()}"
         else -> "Manual connection is set; enter valid chat and file ports."
     }
 
-    val discoverableCompactLabel: String = "Visible to nearby trusted devices"
+    val discoverableCompactLabel: String = "Show room on local network"
     val setupCompactSummary: String = when (mode) {
         ComposeConnectionHubMode.HOST -> "Set your name and password, then start the room."
         ComposeConnectionHubMode.JOIN -> "Set your name and password, then join a nearby or hidden room."

@@ -72,17 +72,16 @@ internal fun AudioVideoDevicesCardContent(
     diagnostics: List<String>,
     previewOnly: Boolean = false,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colors.background) {
+        Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Audio & video setup", style = MaterialTheme.typography.h6)
                     Text(
-                        text = "Choose and test the devices used for calls.",
+                        text = "Device selections apply to the next call; active calls are preserved.",
                         style = MaterialTheme.typography.body2,
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
                     )
@@ -93,13 +92,6 @@ internal fun AudioVideoDevicesCardContent(
                 ) {
                     Text("Refresh devices")
                 }
-            }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StatusPill(voiceState.permissionStatusLabel)
-                StatusPill(videoState.permissionStatusLabel)
             }
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 if (maxWidth >= 620.dp) {
@@ -140,10 +132,11 @@ internal fun AudioVideoDevicesCardContent(
                 }
             }
             DeviceSettingsSection(
-                title = "Camera",
+                title = "Camera · Experimental",
                 description = "Choose a camera and use the preview to check framing and lighting.",
             ) {
                 DeviceChoiceDropdown(
+                    inline = true,
                     label = "Choose camera",
                     choices = videoState.cameras,
                     selected = videoState.selectedCamera,
@@ -178,10 +171,13 @@ internal fun AudioVideoDevicesCardContent(
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
                 )
             }
-            HelpNotice(
-                title = "If access is blocked",
-                body = "Allow camera and microphone access in browser or operating-system privacy settings, close other apps that may be using the device, then refresh this list.",
-            )
+            ComposeAdvancedPane("Device access and troubleshooting") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(voiceState.permissionStatusLabel, style = MaterialTheme.typography.caption)
+                    Text(videoState.permissionStatusLabel, style = MaterialTheme.typography.caption)
+                    HelpNotice("If access is blocked", "Allow camera and microphone access in operating-system privacy settings, close other apps using the device, then refresh devices.")
+                }
+            }
             diagnostics.takeLast(3).forEach {
                 Text(
                     "• $it",
@@ -207,6 +203,7 @@ private fun MicrophoneSettingsSection(
         modifier = modifier,
     ) {
         DeviceChoiceDropdown(
+                    inline = true,
             label = "Input device",
             choices = voiceState.microphones,
             selected = voiceState.selectedMicrophone,
@@ -249,6 +246,7 @@ private fun SpeakerSettingsSection(
         modifier = modifier,
     ) {
         DeviceChoiceDropdown(
+                    inline = true,
             label = "Output device",
             choices = voiceState.outputDevices,
             selected = voiceState.selectedOutputDevice,
@@ -285,16 +283,12 @@ private fun DeviceSettingsSection(
 ) {
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colors.onSurface.copy(alpha = 0.04f),
+        color = LocalSecureLanDesignTokens.current.colors.surfaceLevel2,
+        border = androidx.compose.foundation.BorderStroke(1.dp, LocalSecureLanDesignTokens.current.colors.borderSubtle),
         shape = RoundedCornerShape(LocalSecureLanDesignTokens.current.radius.medium)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.subtitle1)
-            Text(
-                description,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
-            )
             content()
         }
     }
@@ -328,27 +322,23 @@ internal fun CameraPreviewStatus(state: ComposeExperimentalVideoState) {
                 Image(
                     bitmap = previewImage,
                     contentDescription = "Live camera preview from ${state.selectedCamera}",
-                    modifier = Modifier.fillMaxWidth().height(260.dp),
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
                     contentScale = ContentScale.Fit,
                 )
             } else {
                 VideoSurfacePlaceholder(
                     title = state.previewStateLabel,
                     body = state.previewActionHint,
-                    modifier = Modifier.fillMaxWidth().height(240.dp),
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
                 )
             }
-            Text(state.previewStatus, style = MaterialTheme.typography.body2)
-            Text(
-                state.frameCaption,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
-            )
-            Text(
-                state.previewConfigurationLabel,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.58f)
-            )
+            ComposeAdvancedPane("Preview details") {
+                Column {
+                    Text(state.previewStatus, style = MaterialTheme.typography.caption)
+                    Text(state.frameCaption, style = MaterialTheme.typography.caption)
+                    Text(state.previewConfigurationLabel, style = MaterialTheme.typography.caption)
+                }
+            }
         }
     }
 }

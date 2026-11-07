@@ -632,7 +632,7 @@ class ComposeDesktopHostAdapter(
 
     /** Stop the room, discovery, and client if connected. */
     fun stopHosting() {
-        roomCommandGeneration.incrementAndGet()
+        val stopCommand = roomCommandGeneration.incrementAndGet()
         roomSession.invalidate()
         fileRoomEpoch.incrementAndGet()
         hostedPeerEndpoints.clear()
@@ -656,6 +656,11 @@ class ComposeDesktopHostAdapter(
                 statusState = statusState.copy(operationInProgress = false)
                 publish(ComposeConnectionEventKind.SUCCESS, "Room stopped.")
                 publishEventKind(ComposeAdapterEventKind.HOST_STOPPED, "Host stopped.")
+                if (!shuttingDown.get() && roomCommandGeneration.get() == stopCommand) {
+                    runCatching { startPeerDiscoveryListenOnly(statusState.nickname) }.onFailure {
+                        publish(ComposeConnectionEventKind.ERROR, "Room closed, but room search could not restart.")
+                    }
+                }
                 refreshState()
             }
         }

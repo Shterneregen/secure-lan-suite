@@ -249,7 +249,7 @@ The connected workspace keeps peers on the left, conversation in the center,
 and contextual actions or activity on the right or in a drawer. Media device
 selection and tests are in **Settings → Audio & Video**.
 
-The **Actions** panel keeps active file transfers and incoming approval requests
+The **Activity** panel keeps active file transfers and incoming approval requests
 expanded. Completed or failed transfers are under **Recent files**, collapsed by
 default; **Auto-save: on/off** expands to explain and change the receive setting.
 Start a new file transfer with **Attach** in chat after selecting its recipient.
@@ -409,3 +409,13 @@ Quick Share HTTP backends live in `apps/desktop-client` and `apps/android-client
 `file-transfer-core` contains only shared models/HTML and V2 transport. Desktop JDK
 provider limits are configured at application startup before creating HTTP servers.
 Quick Share remains temporary unauthenticated plain HTTP for trusted LANs.
+
+### Desktop target UI checks
+
+`TargetUiInteractionTest` renders the production desktop shell and all five
+settings pages using local service doubles (no remote network/media operations).
+Run `:apps:desktop-client:test --tests '*TargetUiInteractionTest'` for connection
+form draft retention, host/join action differences, room-details chat draft
+retention, live discoverability, keyboard tabs and responsive captures.
+Screenshots are written to `apps/desktop-client/build/reports/target-ui/`.
+These captures do not qualify physical file transfers, native calls or screen readers.

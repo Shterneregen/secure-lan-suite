@@ -3,11 +3,9 @@ package com.shterneregen.securelan.desktop.compose.ui.shell
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeWorkspaceLayout
-import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 
 @Composable
 internal fun MainWorkspaceRow(
@@ -29,7 +27,7 @@ internal fun MainWorkspaceRow(
     chatTooltip: String? = null,
     rightColumnTitle: String = layout.actionsColumn.title,
     peersColumn: @Composable () -> Unit,
-    chatColumn: @Composable (@Composable RowScope.() -> Unit) -> Unit,
+    chatColumn: @Composable (@Composable () -> Unit) -> Unit,
     actionsColumn: @Composable (ComposeContextPanelResponsiveState) -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
@@ -61,12 +59,14 @@ internal fun MainWorkspaceRow(
                 content = {
                     chatColumn {
                         if (responsiveState.drawerEntryVisible) {
-                            CompactButton(
+                            RoomHeaderAction(
+                                label = "Context",
+                                icon = SecureLanIcons.Layers,
                                 onClick = { contextDrawerOpen = true },
                                 modifier = Modifier.semantics {
                                     contentDescription = responsiveState.drawerOpenContentDescription
                                 },
-                            ) { Text("Context") }
+                            )
                         }
                     }
                 },

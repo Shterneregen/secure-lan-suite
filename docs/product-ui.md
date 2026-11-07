@@ -65,21 +65,44 @@ column widths.
 
 ### Host or join
 
-- Keep hosting and joining separate from the connected workspace.
+- Keep hosting and joining separate from the connected workspace. The entry
+  shows Host / Join choices before revealing the existing connection form;
+  returning to the choices preserves the form draft. Nearby rooms update
+  automatically; recent endpoints open a connection draft, never an implicit join.
+- The active shared-room header offers Invite only to hosts. Room details exposes
+  immediate discoverability and Stop hosting for hosts, or Leave room for joined
+  participants. Changing credentials or ports requires leaving/recreating the room.
 - Prefer nearby-room discovery; place manual addresses and ports in advanced
   controls.
 - Ask only for information required by the selected mode.
+- Host / Join forms use labelled credential fields and a single primary action.
+  Join keeps the selected room and endpoint visible before connecting. Change
+  room reveals an editable address without discarding credentials; endpoint edits
+  clear invitation provenance and any discovery route. Import provenance does
+  not mean the room owner has been authenticated. Manual addresses remain outside
+  Advanced; ports remain inside it, with inline validation and automatic reveal
+  of invalid values. On narrow windows fields stack and the form scrolls.
+- Hosting visibility means advertising the room on the LAN, not selecting trusted
+  devices. Hidden rooms can still be joined by address or invitation. Show room
+  exit controls only for an active room. Keep repeated submission and form edits
+  disabled during a connection operation; failures retain the draft for retry.
 - After connection, make communication the obvious next action.
 - Room-link paste/scan opens a confirmation draft, prefilling the password only
   from that link. Passwordless links start with an empty password. Whitespace is
   filtered from password entry. An existing room is preserved until explicitly
   left. Hosted-room Invite is a compact temporary QR/copy dialog independent of
   Discoverable; explain that its QR and link include the room password.
+- Desktop link import previews actual URI fields automatically and keeps Cancel
+  and Use for Join outside its scrollable content. Conceal the raw link initially
+  with an explicit show/hide action. Preview hints do not authenticate the sender;
+  changing the invitation or chosen address requires fresh external confirmation.
 - Explain failures in user language and offer recovery before technical detail.
 
 ### Conversation
 
-- Keep the selected conversation and composer easy to find.
+- Keep the shared room chat and composer easy to find. Selecting a peer targets
+  files and calls; messages remain visible to the whole room. Do not imply private
+  messaging through a per-person Message action.
 - Preserve drafts, selection, and scroll position when adjacent UI opens.
 - Give immediate send feedback and restore composer focus where appropriate.
 - Use empty states to explain how to begin.
@@ -147,8 +170,12 @@ messenger mounted and its services running underneath.
 ### Settings
 
 - Open settings without disconnecting, stopping hosting, or discarding drafts.
-- Follow the current persistence behavior; do not add a fake Save action when
-  changes apply automatically.
+- Use horizontal categories with keyboard navigation and overflow at narrow
+  widths. Supplementary explanations may be omitted before constraining controls.
+- Follow the current persistence behavior; show saving/error/retry honestly and
+  do not add a Save action when changes apply automatically.
+- Network distinguishes immediate hosted-room visibility (also persisted for
+  future rooms) from port defaults for future connections.
 - Keep network details on the Network settings page.
 - Label experimental and platform-dependent choices clearly.
 

@@ -26,6 +26,13 @@ object SecureLanIcons {
     val Voice: ImageVector = Icons.Outlined.Mic
     val Video: ImageVector = Icons.Outlined.Videocam
     val File: ImageVector = Icons.Outlined.Description
+    val Link: ImageVector = outlinedUtilityIcon("Link") {
+        moveTo(10f, 13f); curveTo(8f, 11f, 8f, 8f, 10f, 6f)
+        lineTo(13f, 3f); curveTo(18f, -1f, 25f, 6f, 21f, 11f); lineTo(18f, 14f)
+        moveTo(14f, 11f); curveTo(16f, 13f, 16f, 16f, 14f, 18f)
+        lineTo(11f, 21f); curveTo(6f, 25f, -1f, 18f, 3f, 13f); lineTo(6f, 10f)
+        moveTo(8f, 16f); lineTo(16f, 8f)
+    }
     val QuickShare: ImageVector = Icons.Outlined.Share
     val QrCode: ImageVector = secureLanQrCodeIcon
     val Copy: ImageVector = secureLanCopyIcon

@@ -28,6 +28,7 @@ internal fun ConnectionModeSelector(
     tooltip: String? = null,
     hostEnabled: Boolean = true,
     joinEnabled: Boolean = true,
+    prominent: Boolean = false,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     val selector: @Composable (Modifier) -> Unit = { surfaceModifier ->
@@ -40,6 +41,8 @@ internal fun ConnectionModeSelector(
             Row(modifier = Modifier.padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 ConnectionModeSegment(
                     label = hostLabel,
+                    prominent = prominent,
+                    icon = com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons.DeviceNetwork,
                     selected = mode == ComposeConnectionHubMode.HOST,
                     enabled = hostEnabled,
                     onClick = { onModeChange(ComposeConnectionHubMode.HOST) },
@@ -47,6 +50,8 @@ internal fun ConnectionModeSelector(
                 )
                 ConnectionModeSegment(
                     label = joinLabel,
+                    prominent = prominent,
+                    icon = com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons.Person,
                     selected = mode == ComposeConnectionHubMode.JOIN,
                     enabled = joinEnabled,
                     onClick = { onModeChange(ComposeConnectionHubMode.JOIN) },

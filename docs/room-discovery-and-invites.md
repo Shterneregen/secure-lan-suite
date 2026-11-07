@@ -5,6 +5,13 @@ with DNS-SD/mDNS (`_securelan._tcp.local.`, multicast UDP 5353). Only an active
 room host advertises. Joined participants do not register room services.
 Desktop uses JmDNS 3.6.4; Android uses the platform NSD service.
 
+Desktop starts room discovery when the application opens and resumes listen-only
+search after stopping a hosted room or leaving a joined room. Host visibility
+controls advertising, not whether the desktop searches for other rooms. Nearby
+rooms are shown on the connection-options screen; **Back to connection options**
+returns there from a Host / Join form. Empty Peers is not a discovery failure:
+that column represents authenticated room participants.
+
 The room list reconciles observations by source and endpoint. Losing a UDP
 observation does not remove an independently live DNS-SD observation. UDP has a
 45-second monotonic lease. Modern DNS-SD records are removed by the platform
@@ -37,7 +44,14 @@ password and fill it in on the joining device. Share them only with trusted
 recipients: percent encoding does not encrypt the password. Invitations work
 with discovery unavailable or the room Hidden.
 
-Desktop supports **Paste room link** in the connection form. Android supports
+Desktop supports **Join via room link** in the connection form and **Paste room
+link** on the connection-options screen. The import window previews the room,
+destination, ports and whether a password is included. The raw link is concealed
+initially, with a labelled show/hide action, because it may carry credentials.
+The preview updates automatically; **Use for Join** fills the draft and the later
+**Join Room** action connects. Changing the invitation or selected address clears
+external-address confirmation. Cancel / Escape leaves the existing draft intact.
+Android supports
 paste, an offline CameraX 1.5.3/ZXing scanner, and `securelan` VIEW intents.
 Scanning requests CAMERA only; it requires no Google Play Services, Internet,
 downloadable model, microphone or storage permission. Camera denial/unavailable

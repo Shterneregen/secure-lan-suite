@@ -1,10 +1,8 @@
 package com.shterneregen.securelan.desktop.compose.ui.settings
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -12,10 +10,12 @@ import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,9 +34,7 @@ import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.compose.ui.media.AudioVideoDevicesPreviewCard
 import com.shterneregen.securelan.desktop.compose.ui.media.LiveAudioVideoDevicesCard
-import com.shterneregen.securelan.desktop.compose.util.calmFocusRing
 import com.shterneregen.securelan.desktop.compose.util.openComposeDirectoryChooser
-import com.shterneregen.securelan.desktop.compose.util.rememberInteractiveSurfaceState
 import java.awt.Dimension
 import java.nio.file.Path
 import kotlin.math.roundToInt
@@ -61,19 +59,34 @@ internal fun LiveSettingsDialog(
 ) {
     SettingsDialog(
         pages = SettingsPage.entries,
+        persistenceStatus = when {
+            settingsController.persistenceError != null -> "Changes could not be saved"
+            settingsController.saving -> "Saving changes..."
+            else -> "Changes saved automatically"
+        },
         onClose = onClose,
     ) { page ->
-        settingsController.persistenceError?.let { message ->
-            Text(message, color = MaterialTheme.colors.error)
-            CompactButton(onClick = settingsController::retryPersistence, enabled = !settingsController.saving) { Text("Retry saving settings") }
-        }
-        when (page) {
-            SettingsPage.GENERAL -> GeneralSettingsContent(hostAdapter, settingsController)
-            SettingsPage.AUDIO_VIDEO -> LiveAudioVideoDevicesCard(hostAdapter = hostAdapter, peerState = peerState)
-            SettingsPage.NOTIFICATIONS -> NotificationSettingsContent(settingsController)
-            SettingsPage.FILES -> FileSettingsContent(hostAdapter, settingsController)
-            SettingsPage.NETWORK -> NetworkSettingsContent(hostAdapter, settingsController)
-        }
+        LiveSettingsPageContent(hostAdapter, peerState, settingsController, page)
+    }
+}
+
+@Composable
+internal fun LiveSettingsPageContent(
+    hostAdapter: ComposeDesktopHostAdapter,
+    peerState: ComposePeerListState,
+    settingsController: DesktopAppSettingsController,
+    page: SettingsPage,
+) {
+    settingsController.persistenceError?.let { message ->
+        Text(message, color = MaterialTheme.colors.error)
+        CompactButton(onClick = settingsController::retryPersistence, enabled = !settingsController.saving) { Text("Retry saving settings") }
+    }
+    when (page) {
+        SettingsPage.GENERAL -> GeneralSettingsContent(hostAdapter, settingsController)
+        SettingsPage.AUDIO_VIDEO -> LiveAudioVideoDevicesCard(hostAdapter = hostAdapter, peerState = peerState)
+        SettingsPage.NOTIFICATIONS -> NotificationSettingsContent(settingsController)
+        SettingsPage.FILES -> FileSettingsContent(hostAdapter, settingsController)
+        SettingsPage.NETWORK -> NetworkSettingsContent(hostAdapter, settingsController)
     }
 }
 
@@ -93,11 +106,12 @@ private fun SettingsDialog(
     pages: List<SettingsPage>,
     initialPage: SettingsPage = pages.first(),
     onClose: () -> Unit,
+    persistenceStatus: String = "Preview",
     content: @Composable (SettingsPage) -> Unit,
 ) {
     DialogWindow(
         onCloseRequest = onClose,
-        state = rememberDialogState(size = DpSize(980.dp, 780.dp)),
+        state = rememberDialogState(size = DpSize(1200.dp, 800.dp)),
         title = "SecureLanSuite · Settings",
         resizable = true,
         onPreviewKeyEvent = { event ->
@@ -119,6 +133,7 @@ private fun SettingsDialog(
             SettingsWindowContent(
                 pages = pages,
                 initialPage = initialPage,
+                persistenceStatus = persistenceStatus,
                 content = content,
             )
         }
@@ -126,57 +141,47 @@ private fun SettingsDialog(
 }
 
 @Composable
-private fun SettingsWindowContent(
+internal fun SettingsWindowContent(
     pages: List<SettingsPage>,
-    initialPage: SettingsPage,
+    initialPage: SettingsPage = pages.first(),
+    persistenceStatus: String = "Changes saved automatically",
     content: @Composable (SettingsPage) -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     var selectedPage by remember(pages, initialPage) { mutableStateOf(initialPage) }
-    Column(
-        modifier = Modifier.fillMaxSize().padding(tokens.spacing.md),
-        verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = SecureLanIcons.Settings,
-                contentDescription = null,
-                modifier = Modifier.size(26.dp),
-                tint = MaterialTheme.colors.primary,
-            )
-            Column(modifier = Modifier.weight(1f)) {
+    Column(Modifier.fillMaxSize().padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md)) {
+            Column(Modifier.weight(1f)) {
+                Text("PREFERENCES", style = MaterialTheme.typography.overline, color = tokens.colors.textSecondary)
                 Text("Settings", style = MaterialTheme.typography.h5)
-                Text(
-                    "Configure SecureLanSuite for calls and everyday use.",
-                    style = MaterialTheme.typography.body2,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-                )
+                Text("SecureLanSuite · App preferences", style = MaterialTheme.typography.caption, color = tokens.colors.textSecondary)
             }
+            Text(persistenceStatus, style = MaterialTheme.typography.caption)
         }
         Divider(color = tokens.colors.borderSubtle)
-        Row(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
-        ) {
-            SettingsNavigation(
-                pages = pages,
-                selectedPage = selectedPage,
-                onPageSelected = { selectedPage = it },
-                modifier = Modifier.width(218.dp).fillMaxHeight(),
-            )
-            key(selectedPage) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState())
-                        .padding(end = tokens.spacing.xs, bottom = tokens.spacing.md),
-                ) {
-                    content(selectedPage)
+        SettingsNavigation(pages, selectedPage, { selectedPage = it })
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val showAside = maxWidth >= 1100.dp
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md)) {
+                key(selectedPage) {
+                    Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                        Text(selectedPage.title, style = MaterialTheme.typography.h6)
+                        Text(selectedPage.description, style = MaterialTheme.typography.body2, color = tokens.colors.textSecondary)
+                        content(selectedPage)
+                    }
+                }
+                if (showAside) Surface(Modifier.width(260.dp), shape = RoundedCornerShape(tokens.radius.medium), color = tokens.colors.surfaceLevel2,
+                    border = BorderStroke(1.dp, tokens.colors.borderSubtle)) {
+                    Column(Modifier.padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                        Text("About these settings", style = MaterialTheme.typography.subtitle2)
+                        Text(when (selectedPage) {
+                            SettingsPage.GENERAL -> "Your display name identifies you, not the room. Profile changes apply to your next connection."
+                            SettingsPage.AUDIO_VIDEO -> "Device selections apply to the next call. Your active call is preserved. Video and camera preview are experimental."
+                            SettingsPage.NOTIFICATIONS -> "Disabling notifications leaves chat and file transfers running. Message previews follow your notification preferences."
+                            SettingsPage.FILES -> "Automatic acceptance applies only to known online room peers. Quick Share uses separate temporary local HTTP links."
+                            SettingsPage.NETWORK -> "Room visibility changes immediately while hosting. Ports are defaults for future connections. Discovery does not authenticate a room."
+                        }, style = MaterialTheme.typography.body2, color = tokens.colors.textSecondary)
+                    }
                 }
             }
         }
@@ -193,31 +198,43 @@ private fun GeneralSettingsContent(
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName.orEmpty()) }
 
     Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-        SettingsSection("Profile & appearance", "Identity and visual behavior restored at startup.") {
-            CompactTextField(
-                value = displayName,
-                onValueChange = {
-                    displayName = it
-                    hostAdapter.updatePreferredNickname(it)
-                },
-                label = "Display name",
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text("Theme", style = MaterialTheme.typography.subtitle2)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SecureLanThemeMode.entries.forEach { mode ->
-                    CompactButton(
-                        onClick = { controller.update { it.copy(themeMode = mode) } },
-                        tone = if (settings.themeMode == mode) CompactButtonTone.SECONDARY else CompactButtonTone.TERTIARY,
-                    ) { Text(mode.displayName.replaceFirstChar(Char::uppercase)) }
+        BoxWithConstraints {
+            val profile: @Composable () -> Unit = {
+                SettingsSection("Your profile", "Your participant label; applied to the next connection.") {
+                    CompactTextField(
+                        value = displayName,
+                        onValueChange = {
+                            displayName = it
+                            hostAdapter.updatePreferredNickname(it)
+                        },
+                        label = "Display name",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
-            PreferenceSwitch(
-                title = "Reduce motion",
-                description = "Disable non-essential UI animation.",
-                checked = settings.reducedMotion,
-                onCheckedChange = { enabled -> controller.update { it.copy(reducedMotion = enabled) } },
-            )
+            val appearance: @Composable () -> Unit = {
+                SettingsSection("Appearance", "Choose the application appearance.") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Theme", Modifier.weight(1f), style = MaterialTheme.typography.subtitle2)
+                        SecureLanThemeMode.entries.forEach { mode ->
+                            CompactButton(
+                                onClick = { controller.update { it.copy(themeMode = mode) } },
+                                tone = if (settings.themeMode == mode) CompactButtonTone.SECONDARY else CompactButtonTone.TERTIARY,
+                            ) { Text(mode.displayName.replaceFirstChar(Char::uppercase)) }
+                        }
+                    }
+                    PreferenceSwitch(
+                        title = "Reduce motion",
+                        description = "Disable non-essential UI animation.",
+                        checked = settings.reducedMotion,
+                        onCheckedChange = { enabled -> controller.update { it.copy(reducedMotion = enabled) } },
+                    )
+                }
+            }
+            if (maxWidth >= 800.dp) Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                Box(Modifier.weight(1f)) { profile() }
+                Box(Modifier.weight(1f)) { appearance() }
+            } else Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) { profile(); appearance() }
         }
         SettingsSection("Window behavior", "Choose what the main-window close button does.") {
             PreferenceSwitch(
@@ -291,7 +308,7 @@ private fun FileSettingsContent(
     val settings = controller.settings
 
     Column {
-        SettingsSection("Files & confirmations", "Choose where received files go and how trusted transfers are handled.") {
+        SettingsSection("Download location", "Choose where received files are stored.") {
             Text("Downloads directory", style = MaterialTheme.typography.subtitle2)
             DirectoryPreference(
                 path = settings.downloadsDirectory,
@@ -300,6 +317,9 @@ private fun FileSettingsContent(
                         ?.let(hostAdapter::updateDownloadsDirectory)
                 },
             )
+        }
+        Spacer(Modifier.height(12.dp))
+        SettingsSection("Transfer confirmations", "Control incoming file decisions and completion feedback.") {
             PreferenceSwitch(
                 "Automatically accept files",
                 "Only files from known online peers are accepted automatically.",
@@ -330,10 +350,10 @@ private fun NetworkSettingsContent(
             }
             Text("mDNS prefers physical LAN interfaces. Legacy UDP and TCP listeners retain their existing interface scope.", style = MaterialTheme.typography.caption)
         }
-        SettingsSection("Network defaults", "Defaults used the next time a room is hosted or joined.") {
+        SettingsSection("Room visibility", "Choose whether hosted rooms are advertised on the LAN.") {
             PreferenceSwitch(
-                "Discoverable room",
-                "Advertise hosted rooms to peers on the LAN.",
+                if (hostAdapter.statusState.localServerRunning) "Current room discoverable" else "Advertise future hosted rooms",
+                if (hostAdapter.statusState.localServerRunning) "Applies immediately and is saved for future rooms." else "Used when you create a room.",
                 settings.network.discoverable,
             ) { enabled ->
                 if (hostAdapter.statusState.localServerRunning) {
@@ -342,6 +362,9 @@ private fun NetworkSettingsContent(
                     hostAdapter.updateNetworkDefaults(settings.network.copy(discoverable = enabled))
                 }
             }
+        }
+        Spacer(Modifier.height(12.dp))
+        SettingsSection("Defaults for future connections", "These ports do not change the active room.") {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PortPreference("Host chat port", settings.network.serverChatPort, Modifier.weight(1f)) { port ->
                     hostAdapter.updateNetworkDefaults(controller.settings.network.copy(serverChatPort = port))
@@ -358,6 +381,9 @@ private fun NetworkSettingsContent(
                     hostAdapter.updateNetworkDefaults(controller.settings.network.copy(clientFilePort = port))
                 }
             }
+        }
+        Spacer(Modifier.height(12.dp))
+        SettingsSection("Connection history", "Saved endpoints contain no room passwords.") {
             Text(
                 "Last mode: ${settings.network.lastConnectionMode.name.lowercase().replaceFirstChar(Char::uppercase)}",
                 style = MaterialTheme.typography.body2,
@@ -426,12 +452,12 @@ private fun SettingsSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
-    Card(modifier = Modifier.fillMaxWidth(), elevation = 0.dp) {
+    Card(modifier = Modifier.fillMaxWidth(), elevation = 0.dp, shape = RoundedCornerShape(tokens.radius.medium), border = BorderStroke(1.dp, tokens.colors.borderSubtle), backgroundColor = tokens.colors.surfaceLevel2) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(tokens.spacing.md),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
         ) {
-            Text(title, style = MaterialTheme.typography.h6)
+            Text(title, style = MaterialTheme.typography.subtitle2)
             Text(
                 description,
                 style = MaterialTheme.typography.body2,
@@ -495,112 +521,22 @@ private fun PortPreference(
 }
 
 @Composable
-private fun SettingsNavigation(
-    pages: List<SettingsPage>,
-    selectedPage: SettingsPage,
-    onPageSelected: (SettingsPage) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val tokens = LocalSecureLanDesignTokens.current
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(tokens.radius.large),
-        border = BorderStroke(1.dp, tokens.colors.borderSubtle),
-        color = tokens.colors.surfaceLevel1,
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(tokens.spacing.xs),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-        ) {
-            Text(
-                "SETTINGS",
-                modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
-                style = MaterialTheme.typography.overline,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.56f),
+private fun SettingsNavigation(pages: List<SettingsPage>, selectedPage: SettingsPage, onPageSelected: (SettingsPage) -> Unit) {
+    val focus = remember(pages) { pages.map { FocusRequester() } }
+    ScrollableTabRow(selectedTabIndex = pages.indexOf(selectedPage), edgePadding = 0.dp, backgroundColor = MaterialTheme.colors.background) {
+        pages.forEachIndexed { index, page ->
+            Tab(selected = selectedPage == page, onClick = { onPageSelected(page) },
+                modifier = Modifier.focusRequester(focus[index]).onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && (event.key == Key.DirectionLeft || event.key == Key.DirectionRight)) {
+                        val next = (index + if (event.key == Key.DirectionRight) 1 else pages.size - 1) % pages.size
+                        onPageSelected(pages[next]); focus[next].requestFocus(); true
+                    } else false
+                },
+                text = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(page.icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(page.title, maxLines = 1)
+                } },
             )
-            pages.forEach { page ->
-                SettingsNavigationItem(
-                    page = page,
-                    selected = selectedPage == page,
-                    onClick = { onPageSelected(page) },
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Changes are saved automatically.",
-                modifier = Modifier.padding(tokens.spacing.xs),
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.52f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsNavigationItem(
-    page: SettingsPage,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val tokens = LocalSecureLanDesignTokens.current
-    val (interactionSource, interactive) = rememberInteractiveSurfaceState(selected = selected)
-    val background = when {
-        selected -> MaterialTheme.colors.primary.copy(alpha = 0.14f)
-        interactive.hovered || interactive.focused -> interactive.backgroundColor
-        else -> Color.Transparent
-    }
-    val contentColor = if (selected) {
-        MaterialTheme.colors.primary
-    } else {
-        MaterialTheme.colors.onSurface.copy(alpha = 0.76f)
-    }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .calmFocusRing(interactive.focused, tokens.radius.medium)
-            .selectable(
-                selected = selected,
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                role = Role.Tab,
-                onClick = onClick,
-            ),
-        shape = RoundedCornerShape(tokens.radius.medium),
-        color = background,
-        border = if (selected) {
-            BorderStroke(1.dp, MaterialTheme.colors.primary.copy(alpha = 0.32f))
-        } else {
-            null
-        },
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = page.icon,
-                contentDescription = null,
-                modifier = Modifier.size(19.dp),
-                tint = contentColor,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    page.title,
-                    style = MaterialTheme.typography.subtitle2,
-                    color = contentColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    page.description,
-                    style = MaterialTheme.typography.caption,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = if (selected) 0.62f else 0.48f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }

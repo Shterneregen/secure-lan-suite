@@ -30,6 +30,7 @@ internal fun DeviceChoiceDropdown(
     enabled: Boolean,
     onSelected: (String?) -> Unit,
     helperText: String? = null,
+    inline: Boolean = false,
 ) {
     var expanded by remember(label, selected.deviceId) { mutableStateOf(false) }
     var fieldWidth by remember { mutableStateOf(0.dp) }
@@ -37,13 +38,12 @@ internal fun DeviceChoiceDropdown(
     val tokens = LocalSecureLanDesignTokens.current
     val canOpen = enabled && choices.isNotEmpty()
 
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            label,
-            style = MaterialTheme.typography.caption,
-            color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
-        )
-        Box(modifier = Modifier.fillMaxWidth()) {
+    val labelContent: @Composable () -> Unit = {
+        Text(label, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f))
+        helperText?.let { Text(it, style = MaterialTheme.typography.caption, color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)) }
+    }
+    val picker: @Composable (Modifier) -> Unit = { modifier ->
+        Box(modifier = modifier) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -106,12 +106,14 @@ internal fun DeviceChoiceDropdown(
                 }
             }
         }
-        helperText?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.64f)
-            )
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (inline && maxWidth >= 420.dp) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) { labelContent() }
+            picker(Modifier.width(240.dp))
+        } else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            labelContent()
+            picker(Modifier.fillMaxWidth())
         }
     }
 }

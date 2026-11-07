@@ -7,10 +7,13 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.Icon
@@ -73,7 +76,7 @@ internal fun ChatTranscriptLine(message: ComposeChatMessage, localNickname: Stri
                 CompactSystemTranscriptEvent(presentation, tokens)
             } else if (style.framed) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(style.width),
+                    modifier = if (presentation.kind == ComposeChatTranscriptLineKind.USER_LOCAL || presentation.kind == ComposeChatTranscriptLineKind.USER_REMOTE) Modifier.widthIn(max = 520.dp).width(IntrinsicSize.Max) else Modifier.fillMaxWidth(style.width),
                     shape = bubbleShape,
                     color = style.backgroundColor,
                 ) {

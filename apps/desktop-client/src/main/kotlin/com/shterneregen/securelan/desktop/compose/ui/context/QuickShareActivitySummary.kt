@@ -26,8 +26,6 @@ internal fun QuickShareActivitySummary(
     activeLinkCount: Int,
     onManage: () -> Unit,
 ) {
-    if (!running && activeLinkCount == 0) return
-
     val tokens = LocalSecureLanDesignTokens.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -47,7 +45,7 @@ internal fun QuickShareActivitySummary(
                 tint = tokens.colors.success,
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
-                Text("Quick Share active", style = MaterialTheme.typography.subtitle2)
+                Text(if (running) "Quick Share active" else "Quick Share", style = MaterialTheme.typography.subtitle2)
                 Text(
                     "$activeLinkCount active ${if (activeLinkCount == 1) "link" else "links"}",
                     style = MaterialTheme.typography.caption,

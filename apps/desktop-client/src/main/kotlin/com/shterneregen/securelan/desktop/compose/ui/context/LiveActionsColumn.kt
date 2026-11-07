@@ -3,6 +3,7 @@ package com.shterneregen.securelan.desktop.compose.ui.context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -15,6 +16,8 @@ import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPane
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelResponsiveState
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeContextPanelState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.ui.components.CompactButton
+import com.shterneregen.securelan.desktop.compose.ui.connection.EntryCard
 import com.shterneregen.securelan.desktop.compose.ui.transfer.LiveFileTransferCard
 
 @Composable
@@ -23,6 +26,7 @@ internal fun LiveActionsColumn(
     peerState: ComposePeerListState,
     responsiveState: ComposeContextPanelResponsiveState,
     onOpenQuickShare: () -> Unit,
+    onOpenLanTools: (() -> Unit)? = null,
 ) {
     val tokens = LocalSecureLanDesignTokens.current
     val panelScrollState = rememberScrollState()
@@ -37,6 +41,14 @@ internal fun LiveActionsColumn(
                 .verticalScroll(panelScrollState),
             verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
+            if (!hostAdapter.statusState.localServerRunning && !hostAdapter.statusState.clientConnected) {
+                EntryCard("Quick Share", "Temporary local HTTP link without authentication. Use only on a trusted LAN. No room required.") {
+                    CompactButton(onClick = onOpenQuickShare) { Text("Open Quick Share") }
+                }
+                if (onOpenLanTools != null) EntryCard("LAN Tools", "Saved devices, Wake-on-LAN and network diagnostics.") {
+                    CompactButton(onClick = onOpenLanTools) { Text("Open LAN Tools") }
+                }
+            }
             val transferState = ComposeFileTransferState(
                 statusState = hostAdapter.statusState,
                 peerListState = peerState,
@@ -84,7 +96,7 @@ internal fun LiveActionsColumn(
                         )
                     }
                 }
-                QuickShareActivitySummary(
+                if (hostAdapter.statusState.localServerRunning || hostAdapter.statusState.clientConnected) QuickShareActivitySummary(
                     running = hostAdapter.quickShareRunning,
                     activeLinkCount = hostAdapter.quickShareEntries.count { it.active() },
                     onManage = onOpenQuickShare,

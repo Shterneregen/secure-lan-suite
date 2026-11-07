@@ -27,12 +27,13 @@ class ConnectionInteractionTest {
     fun hostJoinRetainsCredentialsAndValidatesThePrimaryAction() {
         var opened = 0
         var joined = 0
+        var busy by mutableStateOf(false)
         compose.setContent {
             SecureLanTheme {
                 var mode by remember { mutableStateOf(ComposeConnectionHubMode.HOST) }
                 var nickname by remember { mutableStateOf("") }
                 var password by remember { mutableStateOf("") }
-                val status = ComposeStatusConnectionState(nickname = nickname, roomPasswordPlaceholder = password)
+                val status = ComposeStatusConnectionState(nickname = nickname, roomPasswordPlaceholder = password, operationInProgress = busy)
                 Column(Modifier.width(900.dp)) {
                     ConnectionModeSelector(mode, "Host", "Join", { mode = it })
                     ConnectionHubContent(
@@ -52,14 +53,19 @@ class ConnectionInteractionTest {
             }
         }
         compose.onNodeWithText("Start secure room").assertIsNotEnabled()
-        compose.onAllNodes(hasSetTextAction())[0].performTextInput("Alice")
-        compose.onAllNodes(hasSetTextAction())[0].assertIsFocused()
-        compose.onAllNodes(hasSetTextAction())[1].performTextInput("room-secret")
+        compose.onNodeWithTag("connection-Your name").performTextInput("Alice")
+        compose.onNodeWithTag("connection-Your name").assertIsFocused()
+        compose.onNodeWithText("Start secure room").assertIsNotEnabled()
+        compose.onNodeWithTag("connection-Room password").performTextInput("room-secret")
         compose.onNodeWithText("Start secure room").assertIsEnabled().performClick()
+        compose.runOnIdle { busy = true }
+        compose.onNodeWithText("Opening room...").assertIsNotEnabled()
+        compose.onNodeWithTag("connection-Your name").assertIsNotEnabled()
+        compose.runOnIdle { busy = false }
         compose.onNodeWithText("Join", substring = false).performClick()
-        compose.onAllNodes(hasSetTextAction())[0].assertTextContains("Alice")
+        compose.onNodeWithTag("connection-Your name").assertTextContains("Alice")
         compose.onNodeWithText("Join", substring = false).assertIsSelected()
-        compose.onAllNodes(hasSetTextAction())[1].assertTextContains("room-secret")
+        compose.onNodeWithTag("connection-Room password").assertTextContains("room-secret")
         compose.onNodeWithText("Join Room", substring = false).assertIsEnabled().performClick()
         compose.runOnIdle {
             org.junit.Assert.assertEquals(1, opened)

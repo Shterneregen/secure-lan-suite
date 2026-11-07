@@ -67,8 +67,8 @@ internal fun LiveComposeShellContent(
         selectedJoinTarget = resolveSelectedJoinTarget(hostAdapter, peerState.selectedPeer)
     }
     val hubTooltip =
-        peerState.selectedPeer?.let { "Actions on the right will target \"${it.nickname}\". Text chat remains shared for now." }
-            ?: "Connect to chat, then select a peer on the left for voice, video, and file actions."
+        peerState.selectedPeer?.let { "Files and calls target \"${it.nickname}\". Messages go to everyone in the room. Video is experimental." }
+            ?: "Files and calls become available when a participant joins. Messages are shared with the room."
 
     val transferState = ComposeFileTransferState(
         statusState = hostAdapter.statusState,
@@ -100,17 +100,11 @@ internal fun LiveComposeShellContent(
     )
     val topBarLabel = hostAdapter.statusState.nickname.ifBlank { "SecureLanSuite" }
     val roomConnectionStatus = when {
-        hostAdapter.statusState.clientConnected ->
-            "Secure room · Connected · ${peerState.onlinePeers.size} online"
-
-        hostAdapter.statusState.localServerRunning ->
-            "Secure room · Hosting · ${peerState.onlinePeers.size} online"
-
-        else -> "Secure room · Offline"
+        hostAdapter.statusState.localServerRunning -> "Hosting room - ${peerState.onlinePeers.size} online"
+        hostAdapter.statusState.clientConnected -> "Connected - ${peerState.onlinePeers.size} online"
+        else -> "No active room"
     }
-    val topBarStatus = compactRoomNetworkStatus(hostAdapter.localNetworkInfo)?.let { address ->
-        "$roomConnectionStatus · $address"
-    } ?: roomConnectionStatus
+    val topBarStatus = roomConnectionStatus
     SecureLanAppShell(
         shellState = ComposeAppShellState(
             productState = productState,
@@ -129,7 +123,7 @@ internal fun LiveComposeShellContent(
         onOpenLanTools = lanToolsController?.let { it::open },
         toolsFocusRequester = toolsFocus,
     ) {
-        val rightColumnTitle = ComposeShellMetadata.DEFAULT_CONTEXT_PANEL_STATE.title
+        val rightColumnTitle = "Activity"
         MainWorkspaceRow(
             layout = ComposeShellMetadata.DEFAULT_WORKSPACE_LAYOUT,
             peersTooltip = peerState.hint,
@@ -149,11 +143,12 @@ internal fun LiveComposeShellContent(
                     workspaceState = workspaceState,
                     selectedJoinTarget = selectedJoinTarget,
                     hubTooltip = hubTooltip,
+                    recentRooms = settingsController.settings.network.recentRooms,
                     headerActions = {
                         if (hostAdapter.statusState.localServerRunning) {
-                            androidx.compose.material.TextButton(onClick = { roomInvitationOpen = true }) { androidx.compose.material.Text("Invite") }
+                            RoomHeaderAction("Invite", com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons.QuickShare, onClick = { roomInvitationOpen = true })
                         }
-                        if (peerState.selectedPeer != null) {
+                        if (peerState.selectedPeer != null || voiceState.currentSession != null || videoState.currentSession != null) {
                             ChatCallActions(
                                 hostAdapter = hostAdapter,
                                 selectedPeer = peerState.selectedPeer,
@@ -180,6 +175,7 @@ internal fun LiveComposeShellContent(
                     peerState = peerState,
                     responsiveState = responsiveState,
                     onOpenQuickShare = { quickShareDialogOpen = true },
+                    onOpenLanTools = lanToolsController?.let { it::open },
                 )
             },
         )
