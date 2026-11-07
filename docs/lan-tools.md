@@ -3,6 +3,9 @@
 `modules/lan-tools-core` provides room-independent Wake-on-LAN, diagnostics and discovery APIs. It is a
 Kotlin/JVM module targeting Java 17, using `common-net` IP/interface values and
 coroutines. It has no Compose, Android SDK, chat, file-transfer or crypto dependency.
+`modules/neighbor-core` provides an optional desktop MAC suggestion from the
+operating system's IPv4 ARP/neighbor table; `lan-tools-core` remains free of
+native or JNA dependencies.
 Desktop exposes saved devices, Wake-on-LAN, diagnostics and an advertised-device browser in a standalone dialog.
 Android exposes the same core operations through platform socket/NSD adapters and
 a separate Material 3 screen. ICMP has no qualified backend.
@@ -42,14 +45,29 @@ does not choose the WoL destination.
 The device editor groups **Basics** and **Wake-on-LAN** settings. Fields pair on
 wide windows and stack on narrow ones, with one scrolling surface. Compact fields
 and inline group headings keep the action row visible at the reference desktop
-size (1336x720 dp, density 1); smaller windows scroll intentionally. The preferred
-interface field accepts a manually entered key or one copied from the current
-interface list; picking a key does not select a route or send a packet. **Cancel
+size (1336x720 dp, density 1); smaller windows scroll intentionally. The optional
+network interface field accepts a manually entered key or one copied from the
+current interface list; picking a key does not select a route or send a packet.
+It is used for MAC lookup and Wake up. Leave it empty to use the only matching
+interface; choose one when the IP exists on more than one network. **Cancel
 editing** and **Back to devices** discard the unsaved form, as stated in the
 editor. Closing LAN Tools preserves the unfinished form for the current session.
 
-**Details** selects a saved device. Use **Edit device** to change its settings;
-**Delete device** asks for confirmation and removes only saved settings. Choose
+The optional MAC field has an explicit lookup action for a valid unicast IPv4 hint
+on a current LAN subnet. If more than one interface contains the IP, lookup asks
+for an explicit network interface instead of choosing one. It reads the operating
+system's ARP/neighbor table and
+performs at most one local probe (a UDP datagram or an ARP request); it does not
+scan the LAN. The suggestion is
+labelled with its source and requires review before saving: it can be stale or
+randomized (for example private Wi-Fi addresses). Lookup never persists a MAC,
+does not run automatically and never establishes trusted identity. It is
+desktop-only; Android keeps manual MAC entry.
+
+Selecting a saved device row opens grouped details with its name, address and
+saved state kept visible while the settings scroll. Use **Edit device** to change
+its settings; **Delete device** asks for confirmation and removes only saved
+settings. Choose
 the current **Network interface** before **Wake up** if several source bindings
 exist. Linux default-route recommendations are marked, never selected in place
 of a user choice. **Refresh interfaces** reads current local metadata, not nearby
@@ -90,10 +108,12 @@ See the [DNS-SD naming model](https://www.rfc-editor.org/rfc/rfc6763.html).
 
 **Show: All/Saved/Discovered** filters the list. Search matches names, hostname
 and addresses; discovered records also match advertised service types and
-network binding. **Details** shows source, exact service endpoints, hostname
-when validated, all accepted IPv4 addresses and the last observation time.
-Unconfirmed fields stay Unknown. Observations are untrusted, including any
-name that resembles a product, user or room name.
+network binding. Selecting a row opens grouped details with source, exact
+service endpoints, hostname when validated, all accepted IPv4 addresses and a
+local observation time. A fixed header keeps the selected device, its status and
+**Save as new device** visible while details scroll. Unconfirmed fields stay
+Unknown. Observations are untrusted, including any name that resembles a
+product, user or room name.
 
 Records from different network bindings never merge. Services on one binding
 are grouped only when their advertised SRV target hostname matches and their
@@ -502,7 +522,7 @@ See the [Android guide](../apps/android-client/android-readme.md#lan-tools).
 ## Verification
 
 ```powershell
-.\gradlew.bat :modules:lan-tools-core:check :modules:common-net:test
+.\gradlew.bat :modules:lan-tools-core:check :modules:neighbor-core:test :modules:common-net:test
 .\gradlew.bat :apps:desktop-client:test --tests '*LinuxDefaultRouteHintProviderTest' :apps:desktop-client:lintKotlin
 ```
 
@@ -512,6 +532,11 @@ timeouts and cancellation cleanup. Fakes control failures/backpressure and use
 virtual time. One UDP test sends only to loopback and checks source-port release;
 tests never broadcast onto the physical LAN. Successful JVM tests do not qualify
 Android devices, operating-system broadcast routing or physical wake-up.
+
+MAC lookup tests parse synthetic `/proc/net/arp` and macOS `sysctl` fixtures and
+fake the Windows `SendARP` surface; they do not exercise a real neighbor table.
+The macOS backend has no runtime qualification, and randomized Wi-Fi MACs or
+DHCP address reuse can make any suggestion stale.
 
 Additional tests use local procfs fixtures for default-route metrics, ambiguity,
 malformed input, size limits and topology refresh. They do not require Linux or

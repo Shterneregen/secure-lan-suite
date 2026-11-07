@@ -1,6 +1,6 @@
 package com.shterneregen.securelan.lantools
 
-import com.shterneregen.securelan.lantools.model.MacAddress
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.lantools.wol.MagicPacket
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test

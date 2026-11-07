@@ -1,4 +1,4 @@
-package com.shterneregen.securelan.lantools.model
+package com.shterneregen.securelan.common.net.address
 
 /**
  * An immutable 48-bit MAC. Parsing is syntactic; [isWakeTarget] applies WoL target policy.
@@ -14,7 +14,9 @@ class MacAddress private constructor(val value: String) {
     fun bytes(): ByteArray = value.split(':').map { it.toInt(16).toByte() }.toByteArray()
 
     override fun toString(): String = value
+
     override fun equals(other: Any?): Boolean = other is MacAddress && value == other.value
+
     override fun hashCode(): Int = value.hashCode()
 
     companion object {
@@ -34,6 +36,12 @@ class MacAddress private constructor(val value: String) {
             if (raw.length !in 12..17 || !listOf(compact, colon, hyphen, dotted).any { it.matches(raw) }) return null
             val hex = raw.filter { it != ':' && it != '-' && it != '.' }.lowercase()
             return MacAddress(hex.chunked(2).joinToString(":"))
+        }
+
+        /** Builds the canonical value from exactly six bytes, or returns null for another length. */
+        fun fromBytes(bytes: ByteArray): MacAddress? {
+            if (bytes.size != 6) return null
+            return parse(bytes.joinToString(":") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') })
         }
     }
 }

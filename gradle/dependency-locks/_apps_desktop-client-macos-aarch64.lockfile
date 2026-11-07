@@ -1,6 +1,7 @@
 # This is a Gradle generated file for dependency locking.
 # Manual edits can break the build and are not advised.
 # This file is expected to be part of source control.
+# To regenerate this file, run: ./gradlew :apps:desktop-client:dependencies --write-locks
 androidx.annotation:annotation-jvm:1.9.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 androidx.annotation:annotation:1.9.1=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 androidx.arch.core:core-common:2.2.0=runtimeClasspath,testRuntimeClasspath
@@ -70,7 +71,9 @@ io.github.detekt.sarif4k:sarif4k-jvm:0.6.0=kotlinLint
 io.github.detekt.sarif4k:sarif4k:0.6.0=kotlinLint
 io.github.oshai:kotlin-logging-jvm:7.0.7=kotlinLint
 junit:junit:4.13.2=testCompileClasspath,testRuntimeClasspath
+net.java.dev.jna:jna-platform:5.17.0=runtimeClasspath,testRuntimeClasspath
 net.java.dev.jna:jna:5.14.0=kotlinLint
+net.java.dev.jna:jna:5.17.0=runtimeClasspath,testRuntimeClasspath
 org.apiguardian:apiguardian-api:1.1.2=testCompileClasspath
 org.bouncycastle:bcprov-jdk18on:1.86=runtimeClasspath,testRuntimeClasspath
 org.checkerframework:checker-compat-qual:2.5.5=testRuntimeClasspath

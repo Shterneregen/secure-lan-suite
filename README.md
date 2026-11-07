@@ -20,7 +20,9 @@ The repository is a Gradle multi-module monorepo. The primary desktop client is 
   TCP checks and system DNS lookup; Windows also supplies gateway/DNS metadata
   and explicit gateway TCP checks. Manual mDNS/DNS-SD browsing finds devices
   advertising supported HTTP(S), IPP(S), SSH and SMB services, separately from
-  secure-room participants. ICMP is unavailable.
+  secure-room participants. ICMP is unavailable. The device editor can suggest a
+  MAC from the operating system's ARP/neighbor table for an on-link IPv4 hint;
+  review the suggestion before saving.
   See [LAN Tools](docs/lan-tools.md).
 - On Android, open **Devices → Network utilities → LAN Tools** for saved devices,
   Wake-on-LAN, local network information, TCP/DNS checks and manual DNS-SD browsing.
@@ -86,6 +88,8 @@ documented in the [development guide](docs/development.md).
 - `modules/common-model` and `modules/common-net` - shared models and networking utilities
 - `modules/lan-tools-core` - UI-independent saved-device, Wake-on-LAN, diagnostics and discovery APIs;
   used by desktop and Android LAN Tools. See [LAN Tools](docs/lan-tools.md).
+- `modules/neighbor-core` - desktop-only MAC suggestion from the OS IPv4 ARP/neighbor table
+  through JNA; no Android dependency.
 - `modules/crypto-core` - encryption, hashing, signatures, key and file-crypto workflows
 - `modules/chat-core` - secure rooms, handshake, messaging, signaling, and peer discovery
 - `modules/file-transfer-core` - encrypted V2 file transfer, stream contracts, and shared Quick Share models/HTML; HTTP backends belong to the applications

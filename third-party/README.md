@@ -17,6 +17,9 @@ Checked-in upstream texts:
   <https://github.com/devopvoid/webrtc-java/tree/v0.14.0>.
 - Bouncy Castle 1.86 licence:
   <https://github.com/bcgit/bc-java/blob/r1rv86/LICENSE.html>.
+- JNA 5.17.0 is distributed under LGPL-2.1-or-later or Apache-2.0; this project
+  uses the Apache-2.0 option:
+  <https://github.com/java-native-access/jna/blob/5.17.0/LICENSE>.
 - Android WebRTC SDK 150.7871.01 LICENSE and complete upstream WebRTC notice list:
   <https://github.com/webrtc-sdk/android/tree/v150.7871.01/Licenses>.
 

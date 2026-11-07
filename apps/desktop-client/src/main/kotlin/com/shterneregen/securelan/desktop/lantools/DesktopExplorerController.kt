@@ -2,6 +2,7 @@ package com.shterneregen.securelan.desktop.lantools
 
 import com.shterneregen.securelan.desktop.compose.state.lantools.*
 import com.shterneregen.securelan.lantools.discovery.LanDeviceDiscovery
+import com.shterneregen.securelan.lantools.discovery.LanDiscoverySnapshot
 import com.shterneregen.securelan.lantools.model.LanError
 import com.shterneregen.securelan.lantools.model.LanResult
 import kotlinx.coroutines.*
@@ -27,6 +28,12 @@ class DesktopExplorerController(
     fun filter(value: LanDeviceFilter) { if (!closed) mutable.value = state.value.copy(filter = value) }
     fun select(id: String?) { if (!closed) mutable.value = state.value.copy(selectedId = id) }
 
+    private fun completedMessage(snapshot: LanDiscoverySnapshot): String {
+        val count = snapshot.devices.size
+        val found = if (count == 0) "No advertised devices found" else "$count ${if (count == 1) "device" else "devices"} found"
+        return "$found · historical, not online status"
+    }
+
     fun refresh() {
         if (closed || !visible || state.value.running) return
         val token = ++generation
@@ -46,7 +53,7 @@ class DesktopExplorerController(
                 mutable.value = state.value.copy(running = false,
                     snapshot = snapshot?.copy(devices = snapshot.devices.map { it.copy(stale = true) }) ?: stale(),
                     phase = if (snapshot != null) DiagnosticPhase.SUCCESS else DiagnosticPhase.FAILURE,
-                    message = if (snapshot != null) "Browse completed. ${snapshot.devices.size} device groups observed; results are historical, not online status."
+                    message = if (snapshot != null) completedMessage(snapshot)
                     else when ((result as? LanResult.Failure)?.code) {
                         LanError.RESOURCE_LIMIT -> "The previous browser is still closing. Wait and try Refresh devices again."
                         LanError.PERMISSION_DENIED -> "The OS denied multicast access. Check network permissions and refresh."

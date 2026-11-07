@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.lantools.model
 
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import java.util.UUID
 
 /**

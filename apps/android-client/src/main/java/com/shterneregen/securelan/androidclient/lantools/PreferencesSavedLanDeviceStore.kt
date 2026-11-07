@@ -3,6 +3,7 @@ package com.shterneregen.securelan.androidclient.lantools
 import android.annotation.SuppressLint
 import android.content.Context
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.lantools.model.*
 import java.io.IOException
 import java.io.StringReader

@@ -1,8 +1,8 @@
 package com.shterneregen.securelan.desktop.lantools
 
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppPaths
-import com.shterneregen.securelan.lantools.model.MacAddress
 import com.shterneregen.securelan.lantools.model.SavedLanDevice
 import com.shterneregen.securelan.lantools.model.WakeConfiguration
 import java.io.IOException

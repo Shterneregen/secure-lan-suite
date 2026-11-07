@@ -1,6 +1,6 @@
 package com.shterneregen.securelan.lantools.wol
 
-import com.shterneregen.securelan.lantools.model.MacAddress
+import com.shterneregen.securelan.common.net.address.MacAddress
 
 /** Standard WoL payload, without SecureOn or any SecureLanSuite credentials. */
 object MagicPacket {

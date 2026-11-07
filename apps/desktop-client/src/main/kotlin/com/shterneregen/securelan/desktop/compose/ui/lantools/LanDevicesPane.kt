@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.ui.lantools
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -113,15 +115,19 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
         } else {
             BoxWithConstraints(Modifier.weight(1f)) {
                 if (maxWidth >= 760.dp && !compact) {
+                    val hasDetails = explorer.selectedId != null || state.selectedId != null
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md)) {
-                        LazyColumn(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                        LazyColumn(if (hasDetails) Modifier.width(360.dp).fillMaxHeight() else Modifier.weight(1f).fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
                             if (saved.isNotEmpty()) item { Text("Saved devices (${saved.size})", style = MaterialTheme.typography.subtitle1) }
                             items(saved, key = { it.id }) { DeviceRow(it, state, controller, checks["saved:${it.id}"]) }
                             if (discovered.isNotEmpty()) item { Text("Discovered devices (${discovered.size})", style = MaterialTheme.typography.subtitle1) }
                             items(discovered, key = { it.id }) { DiscoveredDeviceRow(it, explorer, controller, checks["found:${it.id}"]) }
                         }
-                        if (explorer.selectedId != null) DiscoveredDeviceDetails(explorer, controller, checks["found:${explorer.selectedId}"], Modifier.weight(1f).fillMaxHeight())
-                        else DeviceDetails(state, controller, checks["saved:${state.selectedId}"], Modifier.weight(1f).fillMaxHeight())
+                        if (explorer.selectedId != null) DiscoveredDeviceDetails(explorer, controller, checks["found:${explorer.selectedId}"],
+                            state.networks, Modifier.weight(1f).fillMaxHeight())
+                        else if (state.selectedId != null) DeviceDetails(state, controller, checks["saved:${state.selectedId}"],
+                            Modifier.weight(1f).fillMaxHeight())
                     }
                 } else {
                     val listState = rememberLazyListState()
@@ -132,7 +138,8 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
                         // One scrollable surface on narrow windows avoids squeezing two columns.
                         LazyColumn(Modifier.fillMaxSize().testTag("lan-device-list"), state = listState, verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
                             if (compact) controller.explorer?.let { item { LanExplorerControls(explorer, it, controller::beginAdd, state.canModify) } }
-                            if (explorer.selectedId != null) item { DiscoveredDeviceDetails(explorer, controller, checks["found:${explorer.selectedId}"], Modifier.fillMaxWidth(), scroll = false) }
+                            if (explorer.selectedId != null) item { DiscoveredDeviceDetails(explorer, controller, checks["found:${explorer.selectedId}"],
+                                state.networks, Modifier.fillMaxWidth(), scroll = false) }
                             else if (state.selected != null) item { DeviceDetails(state, controller, checks["saved:${state.selectedId}"], Modifier.fillMaxWidth(), scroll = false) }
                             if (saved.isNotEmpty()) item { Text("Saved devices (${saved.size})", style = MaterialTheme.typography.subtitle1) }
                             items(saved, key = { it.id }) { DeviceRow(it, state, controller, checks["saved:${it.id}"]) }
@@ -149,16 +156,17 @@ private fun LanDevicesBody(state: LanToolsUiState, controller: DesktopLanToolsCo
 @Composable
 private fun DeviceRow(device: SavedLanDevice, state: LanToolsUiState, controller: DesktopLanToolsController, check: DeviceTcpCheck?) {
     val tokens = LocalSecureLanDesignTokens.current
-    Card(Modifier.fillMaxWidth().semantics { selected = device.id == state.selectedId }, elevation = 0.dp,
+    Card(Modifier.fillMaxWidth().testTag("saved-row-${device.id}")
+        .clickable(role = Role.Button) { controller.selectDevice(device.id) }
+        .semantics { selected = device.id == state.selectedId }, elevation = 0.dp,
         border = BorderStroke(1.dp, if (device.id == state.selectedId) MaterialTheme.colors.primary else tokens.colors.borderSubtle)) {
         Column(Modifier.padding(tokens.spacing.sm), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
             Text(device.displayName, style = MaterialTheme.typography.subtitle1)
             Text(device.addressHint?.value ?: "IP address unknown")
             Text("Saved device", style = MaterialTheme.typography.caption)
-            DeviceCheckText(check)
+            if (check != null) DeviceCheckText(check)
             state.lastResults[device.id]?.let { Text(it, style = MaterialTheme.typography.caption) }
             FlowRow {
-                TextButton(onClick = { controller.selectDevice(device.id) }) { Text("Details") }
                 if (controller.diagnostics != null) TextButton(onClick = { controller.diagnoseSaved(device.id) }, enabled = device.addressHint != null || device.hostnameHint != null) { Text("Diagnostics") }
                 TextButton(onClick = { controller.wakeDevice(device.id) },
                     enabled = state.canWake(device),
@@ -172,32 +180,89 @@ private fun DeviceRow(device: SavedLanDevice, state: LanToolsUiState, controller
 private fun DeviceDetails(state: LanToolsUiState, controller: DesktopLanToolsController, check: DeviceTcpCheck?, modifier: Modifier, scroll: Boolean = true) {
     val tokens = LocalSecureLanDesignTokens.current
     val selected = state.selected
-    Column(if (scroll) modifier.verticalScroll(rememberScrollState()) else modifier,
-        verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-        if (selected == null) {
-            Text("Choose a device to view its details and Wake-on-LAN settings.")
-        } else {
-            Text(selected.displayName, style = MaterialTheme.typography.h6)
-            Text("IP: ${selected.addressHint?.value ?: "Unknown"}")
-            Text("Hostname: ${selected.hostnameHint ?: "Unknown"}")
-            DeviceCheckText(check)
-            if (controller.diagnostics != null) TextButton(onClick = { controller.diagnoseSaved(selected.id) }, enabled = selected.addressHint != null || selected.hostnameHint != null) { Text("Open diagnostics") }
-            Text("MAC: ${selected.wake?.mac?.value ?: "Not configured"}")
-            Text("Broadcast: ${selected.wake?.broadcast?.value ?: "Selected subnet"}")
-            Text("Preferred interface: ${selected.wake?.preferredInterfaceKey ?: "None"}")
-            FlowRow {
-                TextButton(onClick = { controller.beginEdit(selected.id) }, enabled = state.canModify && state.wakingId == null) { Text("Edit device") }
-                TextButton(onClick = { controller.requestDelete(selected.id) }, enabled = state.canModify && state.wakingId == null) { Text("Delete device") }
-            }
-            if (selected.wake != null) {
-                InterfacePicker(state, controller)
-                if (!state.canWake(selected) && state.wakingId == null) Text("Choose an available broadcast interface before sending.", style = MaterialTheme.typography.caption)
-                CompactButton(onClick = { controller.wakeDevice(selected.id) }, enabled = state.canWake(selected),
-                    modifier = Modifier.testTag("wake-details")) { Text(if (state.wakingId == selected.id) "Sending…" else "Wake up") }
-            } else Text("Edit this device and add a MAC address to enable Wake-on-LAN.")
-            state.lastResults[selected.id]?.let { Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
-            Text("Sending a packet does not confirm that the device turned on.", style = MaterialTheme.typography.caption)
+    if (selected == null) {
+        Surface(modifier = modifier, shape = RoundedCornerShape(tokens.radius.medium), color = tokens.colors.surfaceLevel1,
+            border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+            Text("Choose a device to view its details and Wake-on-LAN settings.",
+                modifier = Modifier.padding(tokens.spacing.md))
         }
+        return
+    }
+    Surface(modifier = modifier, shape = RoundedCornerShape(tokens.radius.medium), color = tokens.colors.surfaceLevel1,
+        border = BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
+        if (scroll) {
+            Column(Modifier.fillMaxSize().padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                SavedDetailHeader(selected, check)
+                Divider(color = tokens.colors.borderSubtle)
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                    SavedDetailBody(selected, state, controller)
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth().padding(tokens.spacing.md), verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+                SavedDetailHeader(selected, check)
+                Divider(color = tokens.colors.borderSubtle)
+                SavedDetailBody(selected, state, controller)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedDetailHeader(device: SavedLanDevice, check: DeviceTcpCheck?) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+                Text(device.displayName, style = MaterialTheme.typography.h6)
+                Text(device.addressHint?.value ?: "IP address unknown", style = MaterialTheme.typography.body2,
+                    color = tokens.colors.textSecondary)
+            }
+            SavedDeviceBadge()
+        }
+        DeviceCheckText(check)
+    }
+}
+
+@Composable
+private fun SavedDeviceBadge() {
+    val tokens = LocalSecureLanDesignTokens.current
+    Surface(shape = RoundedCornerShape(tokens.radius.pill), color = tokens.colors.accent.copy(alpha = 0.12f),
+        border = BorderStroke(tokens.border.subtle, tokens.colors.accent.copy(alpha = 0.35f))) {
+        Text("Saved device", modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.caption, color = tokens.colors.textPrimary)
+    }
+}
+
+@Composable
+private fun SavedDetailBody(device: SavedLanDevice, state: LanToolsUiState, controller: DesktopLanToolsController) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+        Text("Overview", style = MaterialTheme.typography.subtitle1)
+        Column(verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+            LanDetailField("Hostname", device.hostnameHint ?: "Unknown")
+            LanDetailField("MAC", device.wake?.mac?.value ?: "Not configured")
+            LanDetailField("Broadcast", device.wake?.broadcast?.value ?: "Selected subnet")
+            LanDetailField("Preferred interface", device.wake?.preferredInterfaceKey ?: "None")
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
+            TextButton(onClick = { controller.beginEdit(device.id) }, enabled = state.canModify && state.wakingId == null) { Text("Edit device") }
+            TextButton(onClick = { controller.requestDelete(device.id) }, enabled = state.canModify && state.wakingId == null) { Text("Delete device") }
+            if (controller.diagnostics != null) TextButton(onClick = { controller.diagnoseSaved(device.id) },
+                enabled = device.addressHint != null || device.hostnameHint != null) { Text("Open diagnostics") }
+        }
+        Text("Wake-on-LAN", style = MaterialTheme.typography.subtitle1)
+        if (device.wake != null) {
+            InterfacePicker(state, controller)
+            if (!state.canWake(device) && state.wakingId == null) Text("Choose an available broadcast interface before sending.", style = MaterialTheme.typography.caption)
+            CompactButton(onClick = { controller.wakeDevice(device.id) }, enabled = state.canWake(device),
+                modifier = Modifier.testTag("wake-details")) { Text(if (state.wakingId == device.id) "Sending…" else "Wake up") }
+        } else Text("Edit this device and add a MAC address to enable Wake-on-LAN.")
+        state.lastResults[device.id]?.let { Text(it, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+        Text("Sending a packet does not confirm that the device turned on.", style = MaterialTheme.typography.caption,
+            color = tokens.colors.textSecondary)
     }
 }
 

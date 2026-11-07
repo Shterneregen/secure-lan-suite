@@ -2,6 +2,7 @@ package com.shterneregen.securelan.androidclient.lantools
 
 import com.shterneregen.securelan.androidclient.R
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.discovery.LanDiscoverySnapshot
 import com.shterneregen.securelan.lantools.model.*

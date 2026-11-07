@@ -1,10 +1,14 @@
 package com.shterneregen.securelan.desktop.lantools
 
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.common.net.interfaces.NetworkBinding
 import com.shterneregen.securelan.desktop.compose.state.lantools.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.*
+import com.shterneregen.securelan.neighbor.NeighborMacResolver
+import com.shterneregen.securelan.neighbor.NeighborMacResult
+import com.shterneregen.securelan.neighbor.NeighborQuery
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.junit.jupiter.api.Assertions.*
@@ -12,6 +16,8 @@ import org.junit.jupiter.api.Test
 import java.io.IOException
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 internal class MemoryLanStore(var devices: List<SavedLanDevice> = emptyList()) : SavedLanDeviceStore {
     var failedWrite = false
@@ -135,6 +141,139 @@ class DesktopLanToolsControllerTest {
         assertFalse(controller.state.value.networkLoading)
         controller.refreshInterfaces(); runCurrent(); controller.dismiss(); runCurrent()
         assertFalse(controller.state.value.networkLoading)
+        controller.close()
+    }
+
+    @Test fun macLookupIsAnExplicitOnLinkSuggestionThatIsNotSaved() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val mac = MacAddress.parse("02:11:22:33:44:55")!!
+        var query: NeighborQuery? = null
+        val resolver = NeighborMacResolver { requested -> query = requested; NeighborMacResult.Found(mac) }
+        val controller = DesktopLanToolsController(MemoryLanStore(), networks, successWake(), dispatcher, dispatcher,
+            neighbor = resolver)
+        controller.open(); runCurrent()
+        controller.beginAdd(); controller.editDraft(LanDeviceDraft(name = "Desktop", address = "192.168.1.20"))
+        assertTrue(controller.state.value.canLookupMac)
+        controller.resolveMac()
+        assertTrue(controller.state.value.macLookup is MacLookupStatus.Running)
+        runCurrent()
+        assertEquals(mac.value, controller.state.value.editor!!.mac)
+        assertEquals(MacLookupStatus.Found(mac.value), controller.state.value.macLookup)
+        val requested = requireNotNull(query)
+        assertEquals("192.168.1.20", requested.target.value)
+        assertEquals("eth0", requested.binding.interfaceKey)
+        assertTrue(controller.state.value.devices.isEmpty())
+        controller.close()
+    }
+
+    @Test fun ambiguousMacLookupExplainsHowToChooseTheInterface() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val second = network.copy(
+            binding = network.binding.copy(key = "wlan0:192.168.1.50", interfaceKey = "wlan0",
+                address = IpLiteral.parse("192.168.1.50")!!),
+            displayName = "Wi-Fi",
+        )
+        val ambiguous = LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(network, second))) }
+        var calls = 0
+        var requested: NeighborQuery? = null
+        val resolver = NeighborMacResolver { query -> calls++; requested = query; NeighborMacResult.NotFound }
+        val controller = DesktopLanToolsController(MemoryLanStore(), ambiguous, successWake(), dispatcher, dispatcher,
+            neighbor = resolver)
+        controller.open(); runCurrent()
+        controller.beginAdd(); controller.editDraft(LanDeviceDraft(name = "Desktop", address = "192.168.1.20"))
+        controller.resolveMac(); runCurrent()
+        assertEquals(0, calls)
+        val message = (controller.state.value.macLookup as MacLookupStatus.Unavailable).message
+        assertTrue(message.contains("matches more than one network interface"))
+        assertTrue(message.contains("Network interface below"))
+        controller.editDraft(controller.state.value.editor!!.copy(preferredInterface = "wlan0"))
+        controller.resolveMac(); runCurrent()
+        assertEquals(1, calls)
+        assertEquals("wlan0", requested?.binding?.interfaceKey)
+        controller.close()
+    }
+
+    @Test fun macLookupRejectsOffLinkTargetsAndReportsMissingCache() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var calls = 0
+        val resolver = NeighborMacResolver { calls++; NeighborMacResult.NotFound }
+        val controller = DesktopLanToolsController(MemoryLanStore(), networks, successWake(), dispatcher, dispatcher,
+            neighbor = resolver)
+        controller.open(); runCurrent()
+        controller.beginAdd(); controller.editDraft(LanDeviceDraft(name = "Desktop", address = "10.0.0.5"))
+        controller.resolveMac(); runCurrent()
+        assertEquals(0, calls)
+        assertTrue(controller.state.value.macLookup is MacLookupStatus.Unavailable)
+        controller.editDraft(controller.state.value.editor!!.copy(address = "192.168.1.20"))
+        controller.resolveMac(); runCurrent()
+        assertEquals(1, calls)
+        assertEquals("", controller.state.value.editor!!.mac)
+        assertTrue((controller.state.value.macLookup as MacLookupStatus.Unavailable).message.contains("neighbor cache"))
+        controller.close()
+    }
+
+    @Test fun macLookupWaitsForNetworkSnapshotAndFailsClosed() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var pending: CompletableDeferred<LanResult<LanNetworkSnapshot>>? = null
+        var result: LanResult<LanNetworkSnapshot> = LanResult.Success(LanNetworkSnapshot(listOf(network)))
+        var calls = 0
+        val controller = DesktopLanToolsController(MemoryLanStore(),
+            LanNetworkInfoProvider { pending?.await() ?: result }, successWake(), dispatcher, dispatcher,
+            neighbor = NeighborMacResolver { calls++; NeighborMacResult.NotFound })
+        controller.open(); runCurrent()
+        controller.beginAdd(); controller.editDraft(LanDeviceDraft(name = "Desktop", address = "192.168.1.20"))
+        assertTrue(controller.state.value.canLookupMac)
+        pending = CompletableDeferred()
+        controller.refreshInterfaces(); runCurrent()
+        assertTrue(controller.state.value.networkLoading)
+        assertFalse(controller.state.value.canLookupMac)
+        controller.resolveMac(); runCurrent()
+        assertEquals(0, calls)
+        pending.complete(LanResult.Success(LanNetworkSnapshot(listOf(network)))); pending = null
+        advanceUntilIdle()
+        assertTrue(controller.state.value.canLookupMac)
+        result = LanResult.Failure(LanError.NETWORK_UNAVAILABLE)
+        controller.refreshInterfaces(); runCurrent()
+        assertNotNull(controller.state.value.networkError)
+        assertFalse(controller.state.value.canLookupMac)
+        controller.resolveMac(); runCurrent()
+        assertEquals(0, calls)
+        controller.close()
+    }
+
+    @Test fun changingTheAddressDiscardsALateLookupResult() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val mac = MacAddress.parse("02:11:22:33:44:55")!!
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val returned = CountDownLatch(1)
+        var calls = 0
+        val resolver = NeighborMacResolver {
+            calls++
+            started.countDown()
+            check(release.await(5, TimeUnit.SECONDS)) { "lookup was not released" }
+            returned.countDown()
+            NeighborMacResult.Found(mac)
+        }
+        val controller = DesktopLanToolsController(MemoryLanStore(), networks, successWake(), dispatcher,
+            Dispatchers.IO, neighbor = resolver)
+        controller.open()
+        val readyBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while ((!controller.state.value.loaded || controller.state.value.networkLoading) && System.nanoTime() < readyBy) {
+            runCurrent()
+            Thread.sleep(5)
+        }
+        assertTrue(controller.state.value.loaded && !controller.state.value.networkLoading, "controller did not load")
+        controller.beginAdd(); controller.editDraft(LanDeviceDraft(name = "Desktop", address = "192.168.1.20"))
+        controller.resolveMac(); runCurrent()
+        assertTrue(started.await(2, TimeUnit.SECONDS), "lookup did not start")
+        controller.editDraft(controller.state.value.editor!!.copy(address = "192.168.1.21"))
+        release.countDown()
+        assertTrue(returned.await(2, TimeUnit.SECONDS), "lookup did not finish")
+        runCurrent()
+        assertEquals(1, calls)
+        assertEquals(MacLookupStatus.Idle, controller.state.value.macLookup)
+        assertEquals("", controller.state.value.editor!!.mac)
         controller.close()
     }
 

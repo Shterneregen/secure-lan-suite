@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
 import com.shterneregen.securelan.desktop.compose.state.lantools.LanDeviceDraft
 import com.shterneregen.securelan.desktop.compose.state.lantools.LanToolsUiState
+import com.shterneregen.securelan.desktop.compose.state.lantools.MacLookupStatus
 import com.shterneregen.securelan.desktop.compose.ui.components.CompactTextField
 import com.shterneregen.securelan.desktop.compose.ui.icons.SecureLanIcons
 import com.shterneregen.securelan.desktop.lantools.DesktopLanToolsController
@@ -135,9 +136,35 @@ private fun MacRequirement(modifier: Modifier = Modifier) {
 
 @Composable
 private fun EditorMac(draft: LanDeviceDraft, state: LanToolsUiState, controller: DesktopLanToolsController, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(LocalSecureLanDesignTokens.current.spacing.xxs)) {
-        EditorField(draft.mac, { controller.editDraft(draft.copy(mac = it)) }, "MAC address (optional)", "lan-mac", !state.saving)
-        Text("Device MAC, e.g. 02:11:22:33:44:55. Required for Wake-on-LAN.", style = MaterialTheme.typography.caption)
+    val tokens = LocalSecureLanDesignTokens.current
+    val running = state.macLookup is MacLookupStatus.Running
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
+        EditorField(draft.mac, { controller.editDraft(draft.copy(mac = it)) }, "MAC address (optional)", "lan-mac", !state.saving,
+            trailingIcon = {
+                IconButton(onClick = controller::resolveMac, enabled = state.canLookupMac,
+                    modifier = Modifier.size(24.dp).testTag("lan-mac-lookup").semantics {
+                        contentDescription = "Look up MAC address from IP"
+                    }) {
+                    if (running) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(SecureLanIcons.Search, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                    }
+                }
+            })
+        val status = state.macLookup
+        val caption = when (status) {
+            MacLookupStatus.Idle -> "Device MAC, e.g. 02:11:22:33:44:55. Required for Wake-on-LAN."
+            MacLookupStatus.Running -> "Looking up the MAC address…"
+            is MacLookupStatus.Found -> "MAC from the local neighbor cache. Verify it before saving; it may be stale or randomized."
+            is MacLookupStatus.Unavailable -> status.message
+        }
+        Text(caption, style = MaterialTheme.typography.caption,
+            color = if (status is MacLookupStatus.Unavailable) tokens.colors.error else tokens.colors.textSecondary,
+            modifier = if (status != MacLookupStatus.Idle) {
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+            } else Modifier)
     }
 }
 
@@ -163,15 +190,15 @@ private fun EditorPreferredInterface(draft: LanDeviceDraft, state: LanToolsUiSta
     Column(modifier, verticalArrangement = Arrangement.spacedBy(LocalSecureLanDesignTokens.current.spacing.xxs)) {
         Box {
             EditorField(draft.preferredInterface, { controller.editDraft(draft.copy(preferredInterface = it)) },
-                "Preferred interface key (optional)", "lan-preferred-interface", !state.saving,
-                placeholder = "Select or enter an interface key...",
+                "Network interface (optional)", "lan-preferred-interface", !state.saving,
+                placeholder = "Choose an interface or enter its key…",
                 trailingIcon = {
                     IconButton(onClick = { expanded = true }, enabled = !state.saving, modifier = Modifier.size(24.dp).testTag("lan-preferred-picker")) {
-                        Icon(SecureLanIcons.ExpandMore, contentDescription = "Choose preferred interface", modifier = Modifier.size(18.dp))
+                        Icon(SecureLanIcons.ExpandMore, contentDescription = "Choose network interface", modifier = Modifier.size(18.dp))
                     }
                 })
             DropdownMenu(expanded, { expanded = false }) {
-                DropdownMenuItem(onClick = { controller.editDraft(draft.copy(preferredInterface = "")); expanded = false }) { Text("No preferred interface") }
+                DropdownMenuItem(onClick = { controller.editDraft(draft.copy(preferredInterface = "")); expanded = false }) { Text("No saved interface") }
                 state.networks.interfaces.distinctBy { it.binding.interfaceKey }.forEach { entry ->
                     DropdownMenuItem(onClick = { controller.editDraft(draft.copy(preferredInterface = entry.binding.interfaceKey)); expanded = false }) {
                         Text("${entry.displayName} (${entry.binding.interfaceKey})")
@@ -179,7 +206,7 @@ private fun EditorPreferredInterface(draft: LanDeviceDraft, state: LanToolsUiSta
                 }
             }
         }
-        Text("Use a platform interface key, such as eth0, or choose a current interface. You can also choose one in device details before sending.",
+        Text("Used for MAC lookup and Wake up. Leave empty to use the only matching interface; choose one when this IP exists on more than one network.",
             style = MaterialTheme.typography.caption)
     }
 }

@@ -1,8 +1,11 @@
 package com.shterneregen.securelan.desktop.lantools
 
+import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.interfaces.NetworkBinding
 import com.shterneregen.securelan.desktop.compose.state.lantools.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.*
+import com.shterneregen.securelan.neighbor.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,12 +26,14 @@ class DesktopLanToolsController(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     val diagnostics: DesktopDiagnosticsController? = null,
     val explorer: DesktopExplorerController? = null,
+    private val neighbor: NeighborMacResolver = NeighborResolvers.forPlatform(),
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val mutable = MutableStateFlow(LanToolsUiState())
     val state = mutable.asStateFlow()
     private var networkJob: Job? = null
     private var wakeJob: Job? = null
+    private var macLookupJob: Job? = null
     private var generation = 0L
     private var closed = false
 
@@ -47,8 +52,8 @@ class DesktopLanToolsController(
         diagnostics?.dismiss()
         explorer?.dismiss()
         generation++
-        networkJob?.cancel(); wakeJob?.cancel()
-        update { value -> value.copy(visible = false, networkLoading = false, wakingId = null,
+        networkJob?.cancel(); wakeJob?.cancel(); macLookupJob?.cancel(); macLookupJob = null
+        update { value -> value.copy(visible = false, networkLoading = false, wakingId = null, macLookup = MacLookupStatus.Idle,
             lastResults = value.wakingId?.let { value.lastResults + (it to "Send cancelled; a packet may already have been submitted.") } ?: value.lastResults) }
     }
 
@@ -86,13 +91,147 @@ class DesktopLanToolsController(
         selectTab(LanToolsTab.DIAGNOSTICS)
     }
     fun selectBinding(key: String?) = update { it.copy(bindingKey = key) }
-    fun editDraft(draft: LanDeviceDraft) { if (!state.value.saving) update { it.copy(editor = draft, editorError = null) } }
-    fun beginAdd() { if (state.value.canModify) update { it.copy(editor = LanDeviceDraft(), editorError = null) } }
+    fun editDraft(draft: LanDeviceDraft) {
+        if (state.value.saving) return
+        val previous = state.value.editor
+        val invalidatesLookup = previous != null &&
+            (previous.address != draft.address || previous.preferredInterface != draft.preferredInterface || previous.mac != draft.mac)
+        if (invalidatesLookup) {
+            macLookupJob?.cancel(); macLookupJob = null
+        }
+        update {
+            it.copy(editor = draft, editorError = null,
+                macLookup = if (invalidatesLookup) MacLookupStatus.Idle else it.macLookup)
+        }
+    }
+
+    fun beginAdd() {
+        if (state.value.canModify) {
+            macLookupJob?.cancel(); macLookupJob = null
+            update { it.copy(editor = LanDeviceDraft(), editorError = null, macLookup = MacLookupStatus.Idle) }
+        }
+    }
+
     fun beginEdit(id: UUID) {
         val device = state.value.devices.firstOrNull { it.id == id } ?: return
-        if (state.value.canModify) update { it.copy(editor = LanDeviceDraft.from(device), editorError = null) }
+        if (state.value.canModify) {
+            macLookupJob?.cancel(); macLookupJob = null
+            update { it.copy(editor = LanDeviceDraft.from(device), editorError = null, macLookup = MacLookupStatus.Idle) }
+        }
     }
-    fun cancelEditor() { if (!state.value.saving) update { it.copy(editor = null, editorError = null) } }
+
+    fun cancelEditor() {
+        if (!state.value.saving) {
+            macLookupJob?.cancel(); macLookupJob = null
+            update { it.copy(editor = null, editorError = null, macLookup = MacLookupStatus.Idle) }
+        }
+    }
+    /** Explicit, on-demand suggestion from the OS neighbor cache; never saved or treated as identity. */
+    fun resolveMac() {
+        if (!state.value.canLookupMac) return
+        val draft = state.value.editor ?: return
+        val target = IpLiteral.parse(draft.address.trim())
+        if (target == null || !target.isIpv4 || !target.isUnicast) {
+            update { it.copy(macLookup = MacLookupStatus.Unavailable("Enter a valid unicast IPv4 address.")) }
+            return
+        }
+        val binding = when (val selection = selectBinding(target, draft)) {
+            is BindingSelection.Selected -> selection.binding
+            BindingSelection.None -> {
+                update { it.copy(macLookup = MacLookupStatus.Unavailable("The IP is outside every current LAN subnet.")) }
+                return
+            }
+            BindingSelection.Ambiguous -> {
+                update { it.copy(macLookup = MacLookupStatus.Unavailable(
+                    "The IP ${target.value} matches more than one network interface. Choose one in Network interface below, then try again.")) }
+                return
+            }
+        }
+        val token = generation
+        val draftId = draft.id
+        val address = draft.address.trim()
+        val preferredInterface = draft.preferredInterface
+        macLookupJob?.cancel()
+        update { it.copy(macLookup = MacLookupStatus.Running, editorError = null) }
+        macLookupJob = scope.launch {
+            try {
+                val result = withTimeoutOrNull(LOOKUP_TIMEOUT_MILLIS) {
+                    withContext(io) { neighbor.resolve(NeighborQuery(target, binding)) }
+                }
+                if (result == null) {
+                    if (token == generation) {
+                        update { it.copy(macLookup = MacLookupStatus.Unavailable(failureMessage(NeighborFailure.TIMEOUT))) }
+                    }
+                    return@launch
+                }
+                val editor = state.value.editor ?: return@launch
+                if (token != generation || editor.id != draftId || editor.address.trim() != address ||
+                    editor.preferredInterface != preferredInterface) return@launch
+                applyLookupResult(result)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                if (token == generation) {
+                    update { it.copy(macLookup = MacLookupStatus.Unavailable(
+                        "MAC lookup failed. Run Diagnostics → Check TCP, then retry.")) }
+                }
+            }
+        }
+    }
+
+    private fun applyLookupResult(result: NeighborMacResult) {
+        when (result) {
+            is NeighborMacResult.Found -> {
+                val editor = state.value.editor ?: return
+                update { it.copy(editor = editor.copy(mac = result.mac.value),
+                    macLookup = MacLookupStatus.Found(result.mac.value)) }
+            }
+            NeighborMacResult.NotFound -> update { it.copy(macLookup = MacLookupStatus.Unavailable(
+                "No MAC in the local neighbor cache. Run Diagnostics → Check TCP, then retry.")) }
+            NeighborMacResult.OffLink -> update { it.copy(macLookup = MacLookupStatus.Unavailable(
+                "The IP is outside the selected interface's subnet.")) }
+            NeighborMacResult.InvalidTarget -> update { it.copy(macLookup = MacLookupStatus.Unavailable(
+                "Enter a valid unicast IPv4 address.")) }
+            NeighborMacResult.Unsupported -> update { it.copy(macLookup = MacLookupStatus.Unavailable(
+                "MAC lookup is not supported on this platform.")) }
+            is NeighborMacResult.Failed -> update { it.copy(macLookup = MacLookupStatus.Unavailable(failureMessage(result.reason))) }
+        }
+    }
+
+    private fun failureMessage(reason: NeighborFailure): String = when (reason) {
+        NeighborFailure.PERMISSION_DENIED -> "The operating system denied access to the local neighbor table."
+        NeighborFailure.INTERFACE_UNAVAILABLE -> "The selected interface is unavailable or is not a LAN."
+        NeighborFailure.IO -> "Could not read the local neighbor table."
+        NeighborFailure.TIMEOUT -> "MAC lookup timed out."
+        NeighborFailure.UNEXPECTED -> "MAC lookup failed. Run Diagnostics → Check TCP, then retry."
+    }
+
+    private fun selectBinding(target: IpLiteral, draft: LanDeviceDraft): BindingSelection {
+        val interfaces = state.value.networks.interfaces
+        val preferred = draft.preferredInterface.trim().takeIf(String::isNotEmpty)
+        val exact = state.value.bindingKey.takeIf { state.value.selectedId == draft.id }
+        val candidates = when {
+            preferred != null -> interfaces.filter { it.binding.interfaceKey == preferred }
+            exact != null -> interfaces.filter { it.binding.key == exact }
+            else -> interfaces.filter { it.binding.address.isIpv4 && it.binding.prefix.contains(target) }
+        }
+        return when (candidates.size) {
+            0 -> BindingSelection.None
+            1 -> BindingSelection.Selected(candidates.single().binding)
+            else -> BindingSelection.Ambiguous
+        }
+    }
+
+    private sealed interface BindingSelection {
+        data class Selected(val binding: NetworkBinding) : BindingSelection
+        data object None : BindingSelection
+        data object Ambiguous : BindingSelection
+    }
+
+    private companion object {
+        const val LOOKUP_TIMEOUT_MILLIS = 10_000L
+    }
+
     fun requestDelete(id: UUID) { if (state.value.canModify) update { it.copy(deletingId = id) } }
     fun cancelDelete() { if (!state.value.saving) update { it.copy(deletingId = null) } }
 
@@ -112,6 +251,8 @@ class DesktopLanToolsController(
 
     fun saveEditor() {
         if (!state.value.canModify) return
+        macLookupJob?.cancel(); macLookupJob = null
+        update { it.copy(macLookup = MacLookupStatus.Idle) }
         val draft = state.value.editor ?: return
         val device = try { draft.validated() } catch (error: IllegalArgumentException) {
             update { it.copy(editorError = error.message) }; return
@@ -138,7 +279,7 @@ class DesktopLanToolsController(
                 explorer?.select(null)
                 // Publish only after replacement succeeds; failures retain both the old list and draft.
                 update { it.copy(saving = false, devices = devices, selectedId = selected,
-                    editor = null, deletingId = null, editorError = null, bindingKey = null,
+                    editor = null, deletingId = null, editorError = null, bindingKey = null, macLookup = MacLookupStatus.Idle,
                     notice = if (it.deletingId != null) "Device deleted." else "Device saved.",
                     lastResults = it.lastResults.filterKeys { id -> devices.any { device -> device.id == id } }) }
             } catch (cancel: CancellationException) { throw cancel }

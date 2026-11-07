@@ -9,11 +9,13 @@ import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.common.net.interfaces.NetworkBinding
 import com.shterneregen.securelan.desktop.compose.SecureLanTheme
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
@@ -29,6 +31,8 @@ import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.discovery.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.*
+import com.shterneregen.securelan.neighbor.NeighborMacResolver
+import com.shterneregen.securelan.neighbor.NeighborMacResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import org.jetbrains.skia.Image
@@ -77,7 +81,8 @@ class LanToolsInteractionTest {
             update(discovered)
             if (blockDiscovery) awaitCancellation()
             LanResult.Success(discovered)
-        }, Dispatchers.Unconfined, Dispatchers.Unconfined))
+        }, Dispatchers.Unconfined, Dispatchers.Unconfined),
+        neighbor = NeighborMacResolver { NeighborMacResult.Found(MacAddress.parse("02:11:22:33:44:55")!!) })
 
     @After fun close() { compose.runOnIdle { controller.close() } }
 
@@ -88,6 +93,21 @@ class LanToolsInteractionTest {
             LanToolsContent(controller, controller::dismiss, Modifier.requiredSize(width.dp, height.dp).testTag("lan-content"))
             }
         } }
+    }
+
+    @Test fun macLookupIconFillsAnEmptyMacWithoutSaving() {
+        content()
+        compose.onAllNodesWithText("Add device")[0].performClick()
+        compose.onNodeWithTag("lan-name").performTextInput("Desktop")
+        compose.onNodeWithTag("lan-address").performTextInput("192.168.1.20")
+        compose.onNodeWithTag("lan-mac-lookup").performScrollTo().assertIsDisplayed().assertIsEnabled()
+            .assertContentDescriptionEquals("Look up MAC address from IP").performClick()
+        compose.waitUntil(2_000) {
+            compose.onNodeWithTag("lan-mac").fetchSemanticsNode().config
+                .getOrNull(SemanticsProperties.EditableText)?.text == "02:11:22:33:44:55"
+        }
+        compose.onNodeWithText("MAC from the local neighbor cache", substring = true).assertExists()
+        compose.runOnIdle { assertEquals(0, store.devices.size) }
     }
 
     @Test fun addValidateWakeEditAndConfirmDeleteWithoutAnyRoom() {
@@ -160,10 +180,11 @@ class LanToolsInteractionTest {
     }
 
     @Test fun narrowLightLayoutRemainsScrollableAndCapturesScreenshot() {
-        store.devices = listOf(SavedLanDevice(UUID.randomUUID(), "Saved workstation with a long readable name", IpLiteral.parse("192.168.1.42"),
-            wake = WakeConfiguration(MacAddress.parse("02:ab:cd:ef:12:34")!!)))
+        val device = SavedLanDevice(UUID.randomUUID(), "Saved workstation with a long readable name", IpLiteral.parse("192.168.1.42"),
+            wake = WakeConfiguration(MacAddress.parse("02:ab:cd:ef:12:34")!!))
+        store.devices = listOf(device)
         content(740, 520, SecureLanThemeMode.LIGHT)
-        compose.onNodeWithText("Details").performScrollTo().performClick()
+        compose.onNodeWithTag("saved-row-${device.id}").performScrollTo().performClick()
         compose.onNodeWithTag("wake-details").performScrollTo().assertIsDisplayed()
         screenshot("narrow-light.png")
         compose.onNodeWithText("Edit device").performScrollTo().performClick()
@@ -174,7 +195,7 @@ class LanToolsInteractionTest {
         val device = SavedLanDevice(UUID.randomUUID(), "Printer")
         store.devices = listOf(device)
         content()
-        compose.onNodeWithText("Details").performClick()
+        compose.onNodeWithTag("saved-row-${device.id}").performClick()
         compose.onNodeWithTag("wake-row-${device.id}").assertIsNotEnabled()
         compose.onNodeWithText("Edit this device and add a MAC address to enable Wake-on-LAN.").assertExists()
         screenshot("wide-dark.png")
@@ -280,17 +301,17 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Show: All").performClick()
         compose.onNodeWithText("Discovered", substring = false).performClick()
         compose.onNodeWithTag("lan-search").performTextInput("IPP")
-        compose.onNodeWithText("Details", substring = false).performScrollTo().performClick()
-        compose.onNodeWithText("Type: Unknown").assertExists()
-        compose.onNodeWithText("Source: mDNS/DNS-SD").assertExists()
+        compose.onNodeWithTag("found-row-printer-row").performScrollTo().performClick()
+        compose.onNodeWithText("Unknown").assertExists()
+        compose.onNodeWithText("mDNS/DNS-SD").assertExists()
         screenshot("explorer-wide-dark.png")
-        compose.onNodeWithText("Diagnostics 192.168.1.77:631").performScrollTo().performClick()
+        compose.onNodeWithTag("check-service-printer-row-192.168.1.77-631").performScrollTo().performClick()
         compose.onNodeWithTag("diag-tcp-host").performScrollTo().assertTextContains("192.168.1.77")
         compose.onNodeWithTag("diag-tcp-port").performScrollTo().assertTextContains("631")
         compose.onNodeWithText("Check TCP", substring = false).performScrollTo().performClick()
         compose.onNodeWithText("Devices", substring = false).performClick()
         compose.onAllNodesWithText("Last TCP check", substring = true)[0].assertExists()
-        compose.onNodeWithText("Save as new device").performScrollTo().performClick()
+        compose.onNodeWithText("Save as new device").assertIsDisplayed().performClick()
         compose.onNodeWithTag("lan-name").assertTextContains("Advertised printer")
         compose.onNodeWithTag("lan-mac").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         compose.onNodeWithText("Save device").performScrollTo().performClick()
@@ -310,8 +331,8 @@ class LanToolsInteractionTest {
         content(740, 520, SecureLanThemeMode.LIGHT)
         compose.onAllNodesWithText("Refresh devices")[0].performClick()
         compose.onNodeWithText("Cancel discovery").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Partial results:", substring = true).assertExists()
-        compose.onNodeWithText("Discovered · Historical snapshot").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Partial results; some sources did not finish.").assertExists()
+        compose.onNodeWithText("Historical", substring = true).performScrollTo().assertIsDisplayed()
         screenshot("explorer-narrow-light.png")
         compose.onNodeWithTag("lan-search").performTextInput("no-match")
         compose.onNodeWithText("No matching devices").assertExists()
@@ -328,7 +349,7 @@ class LanToolsInteractionTest {
         content(400, 320, SecureLanThemeMode.LIGHT)
         compose.onAllNodesWithText("Refresh devices")[0].performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("lan-device-list").performScrollToNode(hasTestTag("found-row-small"))
-        compose.onNode(hasText("Details") and hasAnyAncestor(hasTestTag("found-row-small"))).performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithTag("found-row-small").performClick()
         compose.onNodeWithText("Save as new device").performScrollTo().assertIsDisplayed()
         screenshot("explorer-minimum-light.png")
         compose.onNodeWithTag("lan-device-list").performScrollToIndex(0)
@@ -422,7 +443,7 @@ class LanToolsInteractionTest {
         compose.onNodeWithText("Save device").performScrollTo().performClick()
         compose.onNodeWithText("Enter a MAC address before configuring Wake-on-LAN.").assertExists()
         compose.onNodeWithTag("lan-preferred-picker").performScrollTo().performClick()
-        compose.onNodeWithText("No preferred interface").performClick()
+        compose.onNodeWithText("No saved interface").performClick()
         compose.onNodeWithText("Save device").performScrollTo().performClick()
         compose.runOnIdle { assertNull(store.devices.single().wake); assertEquals("Saved printer", store.devices.single().displayName) }
     }

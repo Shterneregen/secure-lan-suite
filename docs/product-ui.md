@@ -143,7 +143,10 @@ DNS-SD browse, not a complete LAN inventory or an online-status check. Mark
 completed/cancelled results as historical and limited results as partial. Do not
 merge user settings with observations automatically or treat service declarations
 as authenticated peers. Unknown hostname/hardware type stays Unknown. Saving an
-observation opens an editable form; MAC/WoL settings are never inferred.
+observation opens an editable form; MAC/WoL settings are never inferred
+automatically. The MAC field offers an explicit desktop lookup from the OS
+neighbor table for a valid on-link IPv4 hint; show that it is a reviewable
+suggestion, not identity.
 
 Wake-on-LAN is a saved-device action. Device Diagnostics pre-fills an exact
 endpoint but requires Check TCP before connecting. Keep last-check results tied

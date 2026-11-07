@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.androidclient.lantools
 
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.lantools.model.*
 import org.junit.Assert.*
 import org.junit.Test

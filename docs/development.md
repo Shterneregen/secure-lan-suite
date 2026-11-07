@@ -66,10 +66,11 @@ production readiness. See [Release and qualification](release.md).
 For the independent LAN Tools core (no UI integration required), run:
 
 ```powershell
-.\gradlew.bat :modules:lan-tools-core:check :modules:common-net:test
+.\gradlew.bat :modules:lan-tools-core:check :modules:neighbor-core:test :modules:common-net:test
 ```
 
-The module targets Java 17 and is reused by Android. Its tests use fakes and
+`lan-tools-core` targets Java 17 and is reused by Android; the desktop-only
+`neighbor-core` uses JNA and is not part of the Android build. Its tests use fakes and
 loopback UDP/TCP, without physical LAN broadcasts or external endpoints. See [LAN Tools core](lan-tools.md)
 for API, routing and hardware qualification limits.
 
@@ -107,7 +108,7 @@ requirements.
 Desktop integration and UI checks:
 
 ```powershell
-.\gradlew.bat :modules:lan-tools-core:check :modules:chat-core:test :apps:desktop-client:check
+.\gradlew.bat :modules:lan-tools-core:check :modules:neighbor-core:test :modules:chat-core:test :apps:desktop-client:check
 ```
 
 For an explicit native-window smoke in a graphical desktop session:

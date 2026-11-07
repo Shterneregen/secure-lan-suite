@@ -42,6 +42,17 @@ internal fun LanToolCard(title: String, modifier: Modifier = Modifier, icon: Ima
     }
 }
 
+/** A compact label/value row for technical details; values wrap without stretching the label column. */
+@Composable
+internal fun LanDetailField(label: String, value: String) {
+    val tokens = LocalSecureLanDesignTokens.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
+        Text(label, modifier = Modifier.width(112.dp), style = MaterialTheme.typography.caption,
+            color = tokens.colors.textSecondary)
+        Text(value, modifier = Modifier.weight(1f), style = MaterialTheme.typography.body2)
+    }
+}
+
 /** Keeps optional technical detail reachable by keyboard without dominating the default view. */
 @Composable
 internal fun LanDisclosure(title: String, icon: ImageVector? = null,

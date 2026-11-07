@@ -1,6 +1,7 @@
 package com.shterneregen.securelan.desktop.compose.state.lantools
 
 import com.shterneregen.securelan.common.net.address.IpLiteral
+import com.shterneregen.securelan.common.net.address.MacAddress
 import com.shterneregen.securelan.lantools.model.*
 import java.util.UUID
 
@@ -46,6 +47,14 @@ data class LanDeviceDraft(
     }
 }
 
+/** User-triggered MAC suggestion; never persisted as an identity or applied automatically. */
+sealed interface MacLookupStatus {
+    data object Idle : MacLookupStatus
+    data object Running : MacLookupStatus
+    data class Found(val mac: String) : MacLookupStatus
+    data class Unavailable(val message: String) : MacLookupStatus
+}
+
 /** Immutable rendering snapshot. Mutations and jobs belong to DesktopLanToolsController. */
 data class LanToolsUiState(
     val visible: Boolean = false, val tab: LanToolsTab = LanToolsTab.DEVICES,
@@ -57,7 +66,16 @@ data class LanToolsUiState(
     val networks: LanNetworkSnapshot = LanNetworkSnapshot(emptyList()), val networkLoading: Boolean = false,
     val networkError: String? = null, val bindingKey: String? = null,
     val wakingId: UUID? = null, val lastResults: Map<UUID, String> = emptyMap(),
+    val macLookup: MacLookupStatus = MacLookupStatus.Idle,
 ) {
     val selected: SavedLanDevice? get() = devices.firstOrNull { it.id == selectedId }
     val canModify: Boolean get() = loaded && !loading && !saving && storageWarning == null
+
+    /** A resolvable request needs an editable draft and one locally valid IPv4 target. */
+    val canLookupMac: Boolean
+        get() {
+            if (!canModify || networkLoading || networkError != null || macLookup is MacLookupStatus.Running) return false
+            val parsed = editor?.address?.trim()?.let { IpLiteral.parse(it) } ?: return false
+            return parsed.isIpv4 && parsed.isUnicast
+        }
 }
