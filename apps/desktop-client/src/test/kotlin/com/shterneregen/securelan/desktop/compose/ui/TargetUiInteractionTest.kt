@@ -214,7 +214,7 @@ class TargetUiInteractionTest {
         Fixture().use { f ->
             shell(f)
             onNodeWithText("Review connection").performScrollTo().performClick()
-            onNodeWithText("Selected room: 192.168.31.123").assertIsDisplayed()
+            onNodeWithText("Selected room: 192.0.2.123").assertIsDisplayed()
             onNodeWithTag("connection-Room address").assertDoesNotExist()
             onNodeWithText("Disconnect").assertDoesNotExist()
             onNodeWithTag("connection-Your name").performTextReplacement("Atlas")
@@ -272,7 +272,7 @@ class TargetUiInteractionTest {
     private class Fixture(hosting: Boolean = false, joined: Boolean = false) : AutoCloseable {
         val calls = mutableListOf<String>()
         val settings = DesktopAppSettingsController(DesktopAppSettings(displayName = "Atlas", reducedMotion = true,
-            network = DesktopNetworkSettings(recentRooms = listOf(DesktopRecentRoom("192.168.31.123")))))
+            network = DesktopNetworkSettings(recentRooms = listOf(DesktopRecentRoom("192.0.2.123")))))
         val adapter = ComposeDesktopHostAdapter(
             proxy(ChatServerService::class.java, mapOf("isRunning" to hosting)),
             proxy(ChatClientService::class.java, mapOf("isConnected" to (hosting || joined))),

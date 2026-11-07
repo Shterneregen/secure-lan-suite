@@ -16,6 +16,11 @@ import com.shterneregen.securelan.common.model.TransferStatus
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeFileTransferState
+import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettings
+import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
+import com.shterneregen.securelan.desktop.compose.settings.DesktopNetworkSettings
+import com.shterneregen.securelan.desktop.compose.settings.DesktopRecentRoom
+import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferProgressEvent
@@ -46,6 +51,38 @@ import java.util.logging.Logger
 import kotlin.system.measureTimeMillis
 
 class ComposeDesktopHostAdapterConnectTest {
+    @Test
+    fun localConnectionsShouldNotEnterRecentRoomsButRemoteConnectionsShould() {
+        val settings = DesktopAppSettingsController()
+        val adapter = connectedAdapter(ConnectedChatClient(), TrackingFileTransferServer(), settings = settings)
+        try {
+            val localHosts = listOf("127.0.0.1", "LOCALHOST", "::1") + adapter.localNetworkAddresses.map { it.address }
+            for (host in localHosts) {
+                adapter.connect(host, "desktop-test", "password", 50_050, 50_051)
+                awaitConnected(adapter)
+                assertTrue(settings.settings.network.recentRooms.isEmpty(), "Local room $host must not enter history")
+                adapter.disconnect()
+            }
+            adapter.connect("192.0.2.42", "desktop-test", "password", 50_050, 50_051)
+            awaitConnected(adapter)
+            assertEquals(listOf(DesktopRecentRoom("192.0.2.42", 50_050, 50_051)), settings.settings.network.recentRooms)
+        } finally { adapter.shutdown() }
+    }
+
+    @Test
+    fun startupShouldRemovePreviouslySavedLocalRoomsAndRestoreRemoteDraft() {
+        val remote = DesktopRecentRoom("192.0.2.42")
+        val localLanRoom = DesktopMainViewHelpers.resolveLocalLanAddresses().firstOrNull()?.let { DesktopRecentRoom(it.address) }
+        val settings = DesktopAppSettingsController(DesktopAppSettings(network = DesktopNetworkSettings(
+            recentRooms = listOfNotNull(DesktopRecentRoom("127.0.0.1"), DesktopRecentRoom("LOCALHOST"), DesktopRecentRoom("::1"), localLanRoom, remote),
+        )))
+        val adapter = connectedAdapter(ConnectedChatClient(), IdleFileTransferServer(), settings = settings)
+        try {
+            assertEquals(listOf(remote), settings.settings.network.recentRooms)
+            assertEquals(remote.host, adapter.statusState.manualHost)
+        } finally { adapter.shutdown() }
+    }
+
     @Test
     fun reconnectShouldUseTheNewFilePortPasswordAndDownloadDirectory() {
         val client = ConnectedChatClient()
@@ -146,6 +183,7 @@ class ComposeDesktopHostAdapterConnectTest {
         rtc: com.shterneregen.securelan.webrtc.service.RtcSessionService? = null,
         server: ChatServerService = IdleChatServer(hosting),
         discovery: PeerDiscoveryService = IdlePeerDiscovery(),
+        settings: DesktopAppSettingsController = DesktopAppSettingsController(),
     ) = ComposeDesktopHostAdapter(
         chatServerService = server,
         chatClientService = client,
@@ -153,6 +191,7 @@ class ComposeDesktopHostAdapterConnectTest {
         quickShareService = quickShare,
         rtcSessionService = rtc,
         discoveryService = discovery,
+        settingsController = settings,
         randomNicknameService = object : RandomNicknameService {
             override fun generate(): String = "desktop-test"
         },

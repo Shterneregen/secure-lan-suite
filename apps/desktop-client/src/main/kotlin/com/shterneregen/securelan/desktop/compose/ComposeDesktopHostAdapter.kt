@@ -552,6 +552,14 @@ class ComposeDesktopHostAdapter(
 
     init {
         publishLocalNetworkInfo()
+        settingsController.update { settings ->
+            settings.copy(network = settings.network.copy(
+                recentRooms = settings.network.recentRooms.filterNot { isLocalRoomHost(it.host) },
+            ))
+        }
+        statusState = statusState.copy(
+            manualHost = settingsController.settings.network.recentRooms.firstOrNull()?.host ?: "127.0.0.1",
+        )
         startPeerDiscoveryListener()
         refreshState()
         // Device selectors must be useful as soon as the application opens; the manual refresh
@@ -689,7 +697,7 @@ class ComposeDesktopHostAdapter(
             publish(ComposeConnectionEventKind.WARNING, "Room address and nickname are required to connect.")
             return
         }
-        val localHost = trimmedHost in setOf("localhost", "127.0.0.1", "::1") || localNetworkAddresses.any { it.address == trimmedHost }
+        val localHost = isLocalRoomHost(trimmedHost)
         if (chatServerService.isRunning() && hostedRoomChatPort != null && (!localHost || chatPort != hostedRoomChatPort)) {
             publish(ComposeConnectionEventKind.WARNING, "Stop your hosted room before joining another room.")
             return
@@ -739,10 +747,12 @@ class ComposeDesktopHostAdapter(
                 if (roomCommandGeneration.get() != connectionToken) return@dispatchUiStateUpdate
                 result.onSuccess { connected ->
                     if (connected) {
-                        settingsController.update { settings ->
-                            settings.copy(
-                                network = settings.network.withRecentRoom(DesktopRecentRoom(trimmedHost, chatPort, filePort)),
-                            )
+                        if (!localHost) {
+                            settingsController.update { settings ->
+                                settings.copy(
+                                    network = settings.network.withRecentRoom(DesktopRecentRoom(trimmedHost, chatPort, filePort)),
+                                )
+                            }
                         }
                         if (!chatServerService.isRunning()) currentConfig = listenConfig
                         discoveredPeers = discoveryService.snapshot()
@@ -1575,6 +1585,10 @@ class ComposeDesktopHostAdapter(
             .replace(Regex("^\\[system]\\s*", RegexOption.IGNORE_CASE), "")
         return normalized
     }
+
+    private fun isLocalRoomHost(host: String): Boolean =
+        host.equals("localhost", ignoreCase = true) || host in setOf("127.0.0.1", "::1") ||
+            localNetworkAddresses.any { it.address == host }
 
     private fun publishLocalNetworkInfo() {
         localNetworkInfo = try {

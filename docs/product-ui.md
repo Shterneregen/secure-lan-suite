@@ -69,6 +69,8 @@ column widths.
   shows Host / Join choices before revealing the existing connection form;
   returning to the choices preserves the form draft. Nearby rooms update
   automatically; recent endpoints open a connection draft, never an implicit join.
+  Recent rooms retain successful joins to other devices; loopback and this
+  device's current LAN addresses are excluded, including from restored history.
 - The active shared-room header offers Invite only to hosts. Room details exposes
   immediate discoverability and Stop hosting for hosts, or Leave room for joined
   participants. Changing credentials or ports requires leaving/recreating the room.
