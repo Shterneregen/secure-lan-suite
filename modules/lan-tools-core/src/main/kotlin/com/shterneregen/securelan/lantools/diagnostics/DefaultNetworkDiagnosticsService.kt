@@ -11,6 +11,7 @@ import java.net.BindException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Bounded checks, sharing four permits with no waiting queue. Name resolution counts toward the
@@ -96,7 +97,7 @@ class DefaultNetworkDiagnosticsService(
         if (timeout !in 1..30_000) return LanResult.Failure(LanError.INVALID_INPUT, "timeout")
         if (!permits.tryAcquire()) return LanResult.Failure(LanError.RESOURCE_LIMIT)
         try {
-            return withTimeoutOrNull(timeout) {
+            return withTimeoutOrNull(timeout.milliseconds) {
                 try { block() }
                 catch (_: SecurityException) { currentCoroutineContext().ensureActive(); LanResult.Failure(LanError.PERMISSION_DENIED) }
                 catch (error: IOException) {

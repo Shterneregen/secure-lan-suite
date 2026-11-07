@@ -18,13 +18,4 @@ data class ChatConnectedEvent(
     val nickname: String?,
     val remoteAddress: String?,
     val capabilities: PeerCapabilities,
-) : ChatCoreEvent {
-
-    /**
-     * Convenience constructor that uses [PeerCapabilities.unknown] as the default capabilities.
-     *
-     * @param nickname      The nickname assigned by the server.
-     * @param remoteAddress The remote address of the server.
-     */
-    constructor(nickname: String?, remoteAddress: String?) : this(nickname, remoteAddress, PeerCapabilities.unknown())
-}
+) : ChatCoreEvent

@@ -84,8 +84,7 @@ class DefaultQuickShareService @JvmOverloads constructor(
             val createdServer = createHttpServer(config.port())
             val createdExecutor = java.util.concurrent.ThreadPoolExecutor(
                 8, 8, 0, TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(32),
-                { runnable -> Thread(runnable, "securelan-quick-share-http-${threadSequence.incrementAndGet()}").apply { isDaemon = true } },
-            )
+            ) { runnable -> Thread(runnable, "securelan-quick-share-http-${threadSequence.incrementAndGet()}").apply { isDaemon = true } }
             val createdExpiryExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
                 Thread(runnable, "securelan-quick-share-expiry").apply { isDaemon = true }
             }

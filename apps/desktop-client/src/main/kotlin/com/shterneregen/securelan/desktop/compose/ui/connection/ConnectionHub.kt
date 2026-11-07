@@ -82,7 +82,7 @@ internal fun ConnectionHub(
         localNetworkInfo = hostAdapter.localNetworkInfo,
     )
     var invitationTarget by remember { mutableStateOf<ComposeConnectionJoinTarget?>(null) }
-    var targetName by remember { mutableStateOf<String?>(selectedJoinTarget?.nickname) }
+    var targetName by remember { mutableStateOf(selectedJoinTarget?.nickname) }
     var targetSource by remember { mutableStateOf<String?>(null) }
     var showAddressEditor by remember { mutableStateOf(selectedJoinTarget == null) }
     var addressFocusRequest by remember { mutableStateOf(0) }

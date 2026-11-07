@@ -18,11 +18,9 @@ import com.shterneregen.securelan.desktop.compose.state.lantools.LanToolsTab
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import com.shterneregen.securelan.lantools.diagnostics.*
-import com.shterneregen.securelan.lantools.discovery.LanDeviceDiscovery
 import com.shterneregen.securelan.lantools.model.LanNetworkInfoProvider
 import com.shterneregen.securelan.lantools.model.LanNetworkSnapshot
 import com.shterneregen.securelan.lantools.model.LanResult
-import com.shterneregen.securelan.lantools.wol.DatagramSender
 import com.shterneregen.securelan.lantools.wol.DefaultWakeOnLanService
 import com.shterneregen.securelan.lantools.wol.JvmLanNetworkInfoProvider
 import kotlinx.coroutines.awaitCancellation
@@ -40,12 +38,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
+import kotlin.time.Duration.Companion.seconds
 
 /** Explicit graphical-session probe, isolated from headless checks and the single-scene test harness. */
 object LanToolsNativeWindowProbe {
     @JvmStatic
     fun main(args: Array<String>) {
-        val info = runBlocking { withTimeout(12_000) { DesktopNetworkInfoProvider(JvmLanNetworkInfoProvider()).snapshot() } }
+        val info = runBlocking { withTimeout(12.seconds) { DesktopNetworkInfoProvider(JvmLanNetworkInfoProvider()).snapshot() } }
         check(info is LanResult.Success) { "Local interface snapshot failed" }
         val snapshot = info.value
         println("Local metadata: interfaces=${snapshot.interfaces.size}, gateways=${snapshot.interfaces.sumOf { it.gateways.size }}, DNS=${snapshot.interfaces.sumOf { it.dnsServers.size }}, availability=${snapshot.interfaces.map { it.metadata }.distinct()}")
@@ -60,10 +59,10 @@ object LanToolsNativeWindowProbe {
         val browseStarted = CountDownLatch(1)
         val browseCancelled = CountDownLatch(1)
         val controller = DesktopLanToolsController(MemoryLanStore(), networks,
-            DefaultWakeOnLanService(networks, DatagramSender { _, _ -> error("Native UI smoke must not broadcast") }),
-            diagnostics = DesktopDiagnosticsController(DefaultNetworkDiagnosticsService(HostResolver { error("No DNS in native UI smoke") }, networks,
-                TcpConnector { _, _, _ -> error("No TCP in native UI smoke") }), DiagnosticsNetworkInfoProvider { LanResult.Success(snapshot) }),
-            explorer = DesktopExplorerController(LanDeviceDiscovery {
+            DefaultWakeOnLanService(networks, { _, _ -> error("Native UI smoke must not broadcast") }),
+            diagnostics = DesktopDiagnosticsController(DefaultNetworkDiagnosticsService({ error("No DNS in native UI smoke") }, networks,
+                { _, _, _ -> error("No TCP in native UI smoke") }), { LanResult.Success(snapshot) }),
+            explorer = DesktopExplorerController({
                 browseStarted.countDown()
                 try { awaitCancellation() } finally { browseCancelled.countDown() }
             }))
@@ -86,7 +85,7 @@ object LanToolsNativeWindowProbe {
                 val dialog = java.awt.Window.getWindows().filterIsInstance<Dialog>().first { it.isShowing && it.title.endsWith("LAN Tools") }
                 // A completed interface snapshot may legitimately have unavailable OS gateway/DNS metadata.
                 val expectedPhase = if (snapshot.interfaces.any {
-                    it.metadata != com.shterneregen.securelan.lantools.diagnostics.MetadataAvailability.AVAILABLE
+                    it.metadata != MetadataAvailability.AVAILABLE
                 }) DiagnosticPhase.PARTIAL else DiagnosticPhase.SUCCESS
                 await { controller.diagnostics!!.state.value.outcome(DiagnosticKind.NETWORK).phase == expectedPhase }
                 assertTrue(browseStarted.await(3, TimeUnit.SECONDS))

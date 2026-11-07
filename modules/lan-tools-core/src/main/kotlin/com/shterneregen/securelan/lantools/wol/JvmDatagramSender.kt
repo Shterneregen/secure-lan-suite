@@ -13,6 +13,7 @@ import java.net.StandardProtocolFamily
 import java.net.StandardSocketOptions
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Nonblocking IPv4 UDP. Backpressure suspends, allowing the service deadline to cancel and close.
@@ -37,7 +38,7 @@ class JvmDatagramSender internal constructor(
                 when (channel.send(payload, target)) {
                     payload.size -> break
                     // Zero means no datagram was submitted; retrying it does not duplicate a send.
-                    0 -> delay(10)
+                    0 -> delay(10.milliseconds)
                     else -> throw IOException("Incomplete UDP datagram")
                 }
             }

@@ -133,7 +133,6 @@ internal fun AudioVideoDevicesCardContent(
             }
             DeviceSettingsSection(
                 title = "Camera · Experimental",
-                description = "Choose a camera and use the preview to check framing and lighting.",
             ) {
                 DeviceChoiceDropdown(
                     inline = true,
@@ -199,7 +198,6 @@ private fun MicrophoneSettingsSection(
 ) {
     DeviceSettingsSection(
         title = "Microphone",
-        description = "Speak normally and confirm that the input meter reacts.",
         modifier = modifier,
     ) {
         DeviceChoiceDropdown(
@@ -242,7 +240,6 @@ private fun SpeakerSettingsSection(
 ) {
     DeviceSettingsSection(
         title = "Speakers",
-        description = "Play a short sound through the selected output.",
         modifier = modifier,
     ) {
         DeviceChoiceDropdown(
@@ -277,7 +274,6 @@ private fun SpeakerSettingsSection(
 @Composable
 private fun DeviceSettingsSection(
     title: String,
-    description: String,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {

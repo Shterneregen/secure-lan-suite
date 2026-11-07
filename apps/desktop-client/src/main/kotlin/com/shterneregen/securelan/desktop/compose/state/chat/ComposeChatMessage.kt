@@ -10,7 +10,7 @@ import java.time.Instant
  * @property actionPath Local received-file path exposed by a completed transfer's open action.
  * @property transcriptLine Preformatted runtime line, taking precedence over sender/text formatting.
  */
-public data class ComposeChatMessage(
+data class ComposeChatMessage(
     val sender: String,
     val text: String,
     val system: Boolean = false,
@@ -21,7 +21,6 @@ public data class ComposeChatMessage(
     val localEvent: LocalTranscriptEvent? = null,
 ) {
     val displayText: String = transcriptLine ?: if (system) "[$sender] $text" else "$sender: $text"
-    val displayTime: String = formatComposeChatTimestamp(timestamp)
 
     companion object {
         fun fromTranscriptLine(

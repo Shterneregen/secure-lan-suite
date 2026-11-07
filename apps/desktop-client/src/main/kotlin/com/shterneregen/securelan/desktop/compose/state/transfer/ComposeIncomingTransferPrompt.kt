@@ -4,7 +4,7 @@ import com.shterneregen.securelan.desktop.ui.DesktopTransferFormatters
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferMetadata
 
 /** Immutable per-file approval prompt; accepting it does not approve other files in a batch. */
-public data class ComposeIncomingTransferPrompt(
+data class ComposeIncomingTransferPrompt(
     val id: String,
     val senderId: String,
     val fileName: String,
@@ -16,7 +16,6 @@ public data class ComposeIncomingTransferPrompt(
     val header: String = DesktopTransferFormatters.incomingFileHeader(senderId)
     val content: String = DesktopTransferFormatters.incomingFileContent(fileName, fileSize, remoteAddress)
     val sizeLabel: String = DesktopTransferFormatters.formatMegabytes(fileSize)
-    val statusLabel: String = status.label
     val waitingForDecision: Boolean = status == ComposeIncomingTransferPromptStatus.WAITING
 
     fun withStatus(nextStatus: ComposeIncomingTransferPromptStatus): ComposeIncomingTransferPrompt = copy(status = nextStatus)

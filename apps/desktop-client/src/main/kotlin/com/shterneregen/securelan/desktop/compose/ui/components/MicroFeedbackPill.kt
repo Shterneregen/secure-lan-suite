@@ -53,7 +53,7 @@ internal fun MicroFeedbackPill(
 internal fun StatusDot(color: Color, loading: Boolean = false) {
     val alpha by animateFloatAsState(
         targetValue = if (loading) 0.48f else 1f,
-        animationSpec = motionTween<Float>(durationMillis = LocalSecureLanDesignTokens.current.motion.durationSlow),
+        animationSpec = motionTween(durationMillis = LocalSecureLanDesignTokens.current.motion.durationSlow),
         label = "StatusDotAlpha",
     )
     Canvas(modifier = Modifier.size(7.dp)) {

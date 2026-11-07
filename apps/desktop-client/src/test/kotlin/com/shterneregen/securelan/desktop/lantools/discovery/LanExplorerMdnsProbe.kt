@@ -10,6 +10,7 @@ import java.net.InetAddress
 import java.util.UUID
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Explicit integration entry point, excluded from unit/headless checks. Advertises local test
@@ -31,7 +32,7 @@ object LanExplorerMdnsProbe {
         var roomBrowser: RealJmDnsFacade? = null
         var run: Job? = null
         try {
-            withTimeout(90_000) {
+            withTimeout(90.seconds) {
                 val services = withContext(Dispatchers.IO) { JmDNS.create(InetAddress.getByAddress(binding.address.bytes()), "explorer-probe-$suffix") }
                 publisher = services
                 val host = withContext(Dispatchers.IO) { RealJmDnsFacade(binding) }
@@ -49,7 +50,7 @@ object LanExplorerMdnsProbe {
                     services.registerService(ServiceInfo.create("_http._tcp.local.", "Explorer HTTP $suffix", 18181, "probe=local"))
                     services.registerService(ServiceInfo.create("_ssh._tcp.local.", "Explorer SSH $suffix", 18182, "probe=local"))
                 }
-                withTimeout(20_000) { roomSeen.await() }
+                withTimeout(20.seconds) { roomSeen.await() }
                 println("Independent room advertisement resolved")
                 val discovery = DesktopLanDeviceDiscovery({ listOf(binding) })
                 val browsing = launch {
@@ -61,14 +62,14 @@ object LanExplorerMdnsProbe {
                     }
                 }
                 run = browsing
-                withTimeout(20_000) { advertised.await() }
+                withTimeout(20.seconds) { advertised.await() }
                 println("HTTP and SSH resolved and merged on one SRV target")
                 withContext(Dispatchers.IO) { services.unregisterAllServices() }
-                withTimeout(10_000) { withdrawn.await() }
+                withTimeout(10.seconds) { withdrawn.await() }
                 println("DNS-SD goodbyes removed Explorer observations")
                 browsing.cancelAndJoin()
                 withContext(Dispatchers.IO) { host.advertise(room.copy(displayName = "Explorer probe updated")) }
-                withTimeout(15_000) { roomUpdated.await() }
+                withTimeout(15.seconds) { roomUpdated.await() }
                 println("Room discovery still resolves updates after Explorer cleanup: passed")
             }
         } finally {

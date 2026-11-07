@@ -15,8 +15,6 @@ class FileTransferSession(private val socket: Socket) : Closeable {
     private var keys: SecureSessionKeys? = null
     fun writeUtf(value: String) = channel.writeUtf(value)
     fun readUtf(): String = channel.readUtf()
-    fun writeBytes(bytes: ByteArray) = channel.writeFrame(bytes)
-    fun readBytes(): ByteArray = channel.readFrame()
     fun writeEncryptedText(value: String) = writeEncryptedBytes(value.toByteArray(Charsets.UTF_8))
     fun readEncryptedText(timeoutMillis: Long = 60_000): String = readEncryptedBytes(timeoutMillis).toString(Charsets.UTF_8)
 

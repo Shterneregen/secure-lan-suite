@@ -10,6 +10,8 @@ import kotlinx.coroutines.sync.Mutex
 import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Android requires an explicit network when several LANs exist; no process-wide network is selected. */
 fun interface AndroidDeviceBrowser {
@@ -53,7 +55,7 @@ class AndroidLanDeviceDiscovery(
         try {
             // A timed-out stop acknowledgement must not permit another generation of native handles.
             if (retiring.isNotEmpty()) {
-                if (withTimeoutOrNull(1) { retiring.forEach { it.awaitClosed() }; true } != true) return@withContext LanResult.Failure(LanError.RESOURCE_LIMIT)
+                if (withTimeoutOrNull(1.milliseconds) { retiring.forEach { it.awaitClosed() }; true } != true) return@withContext LanResult.Failure(LanError.RESOURCE_LIMIT)
                 retiring = emptyList()
             }
             val links = platform.links().filter { it.binding.up && it.binding.address.isIpv4 && it.binding.address.isUnicast }
@@ -73,7 +75,7 @@ class AndroidLanDeviceDiscovery(
                     if (accepting.get() && queue.trySend(Incoming(type, null, name, clock.instant(), nanoTime())).isFailure) limited.set(true)
                 }, { failure -> if (accepting.get()) { limited.set(true); if (failure == NsdFailure.PERMISSION_DENIED) denied.set(true) } })
             }
-            withTimeoutOrNull(durationMillis) {
+            withTimeoutOrNull(durationMillis.milliseconds) {
                 while (true) {
                     currentCoroutineContext().ensureActive()
                     if (denied.get()) return@withTimeoutOrNull
@@ -99,7 +101,7 @@ class AndroidLanDeviceDiscovery(
                     }
                     if (limited.getAndSet(false)) registry.markPartial()
                     update(registry.snapshot(nanoTime()))
-                    delay(250)
+                    delay(250.milliseconds)
                 }
             }
             currentCoroutineContext().ensureActive()
@@ -123,7 +125,7 @@ class AndroidLanDeviceDiscovery(
             withContext(NonCancellable) {
                 handles.forEach { runCatching { it.close() } }
                 // Await all stop acknowledgements under one cleanup budget; late callbacks remain invalid.
-                if (handles.isNotEmpty() && runCatching { withTimeoutOrNull(2_000) { handles.forEach { it.awaitClosed() }; true } }.getOrNull() != true) retiring = handles.toList()
+                if (handles.isNotEmpty() && runCatching { withTimeoutOrNull(2.seconds) { handles.forEach { it.awaitClosed() }; true } }.getOrNull() != true) retiring = handles.toList()
                 runCatching { multicast.close() }
             }
             gate.unlock()

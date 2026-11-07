@@ -71,8 +71,7 @@ class TcpServer(
             createdExecutor = java.util.concurrent.ThreadPoolExecutor(
                 0, maxClients, 30, java.util.concurrent.TimeUnit.SECONDS,
                 java.util.concurrent.SynchronousQueue(),
-                { runnable -> Thread(runnable, "$threadNamePrefix-client").apply { isDaemon = true } },
-            )
+            ) { runnable -> Thread(runnable, "$threadNamePrefix-client").apply { isDaemon = true } }
             synchronized(lifecycleLock) {
                 if (generation != token || !running.get()) {
                     SocketClose.closeQuietly(createdSocket)

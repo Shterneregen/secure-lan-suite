@@ -12,6 +12,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WindowsNetworkInfoBackendTest {
@@ -46,7 +47,7 @@ class WindowsNetworkInfoBackendTest {
         val ip = IpLiteral.parse("192.168.1.42")!!
         val source = LanInterfaceSnapshot(NetworkBinding("eth0:$ip", "eth0", ip, 24), "Ethernet", true, IpLiteral.parse("192.168.1.255"))
         val base = LanNetworkSnapshot(listOf(source))
-        val provider = DesktopNetworkInfoProvider(LanNetworkInfoProvider { LanResult.Success(base) }, WindowsNetworkInfoBackend("Windows") { fixture })
+        val provider = DesktopNetworkInfoProvider({ LanResult.Success(base) }, WindowsNetworkInfoBackend("Windows") { fixture })
         val snapshot = (provider.snapshot() as LanResult.Success).value
         assertEquals(source, snapshot.interfaces.single().source)
         assertEquals(source, base.interfaces.single())
@@ -56,7 +57,7 @@ class WindowsNetworkInfoBackendTest {
     @Test fun boundedProcessIsDestroyedAndStreamsClosedOnCancelAndOutputLimit() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val waiting = FakeProcess(ByteArray(0), true)
-        assertNull(withTimeoutOrNull(50) { runBoundedPlatformProcess({ waiting }, dispatcher) })
+        assertNull(withTimeoutOrNull(50.milliseconds) { runBoundedPlatformProcess({ waiting }, dispatcher) })
         assertTrue(waiting.destroyed); assertTrue(waiting.inputClosed)
         val oversized = FakeProcess(ByteArray(131073) { 'x'.code.toByte() }, true)
         try { runBoundedPlatformProcess({ oversized }, dispatcher); fail("Expected output limit") } catch (_: java.io.IOException) { }

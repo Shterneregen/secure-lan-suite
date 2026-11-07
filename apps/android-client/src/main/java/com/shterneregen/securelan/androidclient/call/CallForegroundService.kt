@@ -11,6 +11,7 @@ import com.shterneregen.securelan.androidclient.MainActivity
 import com.shterneregen.securelan.androidclient.R
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
+import kotlin.time.Duration.Companion.seconds
 
 /** Promotion is acknowledged before the coordinator opens microphone/camera. Not restarted after process death. */
 class CallForegroundService : Service() {
@@ -34,7 +35,7 @@ class CallForegroundService : Service() {
                     if (wake == null) {
                         wake = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SecureLan:Call").apply { acquire(4 * 60 * 60 * 1000L) }
                         @Suppress("DEPRECATION")
-                        wifi = (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
+                        wifi = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager)
                             .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "SecureLan:Call").apply { acquire() }
                     }
                     request.ready.complete(Unit)
@@ -85,7 +86,7 @@ class CallForegroundService : Service() {
             pending = request
             try {
                 ContextCompat.startForegroundService(context, Intent(context, CallForegroundService::class.java).putExtra("id", id))
-                withTimeout(8_000) { request.ready.await() }
+                withTimeout(8.seconds) { request.ready.await() }
             } catch (error: Exception) { if (pending === request) stop(context); throw error }
         }
         fun stop(context: Context) {

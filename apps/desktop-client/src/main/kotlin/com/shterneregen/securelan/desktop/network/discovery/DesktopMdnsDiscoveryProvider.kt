@@ -17,7 +17,8 @@ class DesktopMdnsDiscoveryProvider(
     override val id = DiscoveryProviderId.MDNS
     private val generation = AtomicLong()
     private class Run(val token: Long, val emit: (DiscoveryEvent) -> Unit, var host: HostedRoomAdvertisement?) {
-        val owner = Executors.newSingleThreadScheduledExecutor { Thread(it, "desktop-mdns").apply { isDaemon = true } }
+        val owner: java.util.concurrent.ScheduledExecutorService =
+            Executors.newSingleThreadScheduledExecutor { Thread(it, "desktop-mdns").apply { isDaemon = true } }
         val handles = java.util.concurrent.ConcurrentHashMap<String, Pair<NetworkBinding, JmDnsFacade>>()
         val failures = mutableMapOf<String, Pair<Int, Long>>()
     }

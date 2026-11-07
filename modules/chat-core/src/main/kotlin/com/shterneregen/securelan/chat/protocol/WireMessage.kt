@@ -79,7 +79,7 @@ class WireMessage(
         @JvmStatic
         fun deserialize(line: String): WireMessage {
             Objects.requireNonNull(line, "line must not be null")
-            val parts = splitEscaped(line, SEPARATOR)
+            val parts = splitEscaped(line)
             if (parts.size != 3) {
                 throw IllegalArgumentException("Invalid wire message format: expected 3 parts, got ${parts.size}")
             }
@@ -96,7 +96,7 @@ class WireMessage(
          * An escape sequence `\<char>` is kept verbatim (both the backslash and the following
          * character) in the current part so that [unescape] can interpret it later.
          */
-        private fun splitEscaped(input: String, separator: Char): List<String> {
+        private fun splitEscaped(input: String): List<String> {
             val parts = ArrayList<String>()
             val current = StringBuilder()
             var escaping = false
@@ -111,7 +111,7 @@ class WireMessage(
                     escaping = true
                     continue
                 }
-                if (c == separator) {
+                if (c == SEPARATOR) {
                     parts.add(current.toString())
                     current.setLength(0)
                     continue

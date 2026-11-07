@@ -22,7 +22,6 @@ internal fun AppToolButtons(
     toolsFocusRequester: FocusRequester? = null,
 ) {
     AppToolButton(
-        label = "Quick Share",
         icon = SecureLanIcons.QuickShare,
         onClick = onOpenQuickShare,
     )
@@ -50,7 +49,6 @@ internal fun AppToolButtons(
 
 @Composable
 private fun AppToolButton(
-    label: String,
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
@@ -61,6 +59,6 @@ private fun AppToolButton(
             modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(6.dp))
-        Text(label)
+        Text("Quick Share")
     }
 }

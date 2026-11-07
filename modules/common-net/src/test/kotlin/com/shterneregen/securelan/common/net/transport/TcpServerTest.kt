@@ -26,7 +26,7 @@ class TcpServerTest {
                 }
             }
         }
-        val server = TcpServer("close-waits-for-accept", ServerSocketFactory { listener })
+        val server = TcpServer("close-waits-for-accept", { listener })
         val closer = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
             server.start(0, { it.close() }, { _, _ -> })
@@ -46,7 +46,7 @@ class TcpServerTest {
         val listener = object : java.net.ServerSocket(0) {
             override fun accept(): Socket = throw java.io.IOException("injected accept failure")
         }
-        val server = TcpServer("close-from-accept", ServerSocketFactory { listener })
+        val server = TcpServer("close-from-accept", { listener })
         server.use {
             server.start(0, { it.close() }, { _, _ -> server.close(); closed.countDown() })
             assertTrue(closed.await(5, TimeUnit.SECONDS))
@@ -61,7 +61,7 @@ class TcpServerTest {
         val listener = object : java.net.ServerSocket(0) {
             override fun accept(): Socket = throw java.io.IOException("injected accept failure")
         }
-        val server = TcpServer("close-during-error-callback", ServerSocketFactory { listener })
+        val server = TcpServer("close-during-error-callback", { listener })
         val closer = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
             server.start(0, { it.close() }, { _, _ -> callback.countDown(); check(release.await(5, TimeUnit.SECONDS)) })
@@ -77,7 +77,7 @@ class TcpServerTest {
         val release = CountDownLatch(1)
         val oldSocket = java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())
         val calls = java.util.concurrent.atomic.AtomicInteger()
-        val server = TcpServer("acquisition-race", ServerSocketFactory { port ->
+        val server = TcpServer("acquisition-race", { port ->
             if (calls.getAndIncrement() == 0) {
                 entered.countDown()
                 check(release.await(5, TimeUnit.SECONDS))

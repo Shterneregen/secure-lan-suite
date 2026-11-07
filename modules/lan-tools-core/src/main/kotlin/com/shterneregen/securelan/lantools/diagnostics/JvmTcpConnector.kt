@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.channels.SocketChannel
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Nonblocking connect with cooperative backpressure. No application data or credentials are sent. */
 class JvmTcpConnector internal constructor(
@@ -22,7 +23,7 @@ class JvmTcpConnector internal constructor(
                 while (true) {
                     currentCoroutineContext().ensureActive()
                     if (channel.finishConnect()) break
-                    delay(10)
+                    delay(10.milliseconds)
                 }
             }
         }

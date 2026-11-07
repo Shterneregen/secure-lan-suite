@@ -24,10 +24,9 @@ data class ComposeConnectionHubState(
         ComposeConnectionHubMode.JOIN -> statusState.canConnect
     }
 
-    val primaryActionLabel: String = when {
-        mode == ComposeConnectionHubMode.HOST -> "Start secure room"
-        mode == ComposeConnectionHubMode.JOIN -> "Join Room"
-        else -> "Join Room"
+    val primaryActionLabel: String = when (mode) {
+        ComposeConnectionHubMode.HOST -> "Start secure room"
+        ComposeConnectionHubMode.JOIN -> "Join Room"
     }
 
     val secondaryActionEnabled: Boolean = when (mode) {
@@ -36,8 +35,8 @@ data class ComposeConnectionHubState(
     }
 
     val secondaryActionLabel: String = when (mode) {
-        ComposeConnectionHubMode.HOST -> if (statusState.localServerRunning) "Stop hosting" else "Stop hosting"
-        ComposeConnectionHubMode.JOIN -> if (statusState.clientConnected) "Disconnect" else "Disconnect"
+        ComposeConnectionHubMode.HOST -> "Stop hosting"
+        ComposeConnectionHubMode.JOIN -> "Disconnect"
     }
 
     val blockedReason: String? = when {
@@ -50,7 +49,5 @@ data class ComposeConnectionHubState(
         else -> null
     }
 
-    val statusMessage: String? = blockedReason
-    val discoverableLabel: String = statusState.discoverableLabel
     val advancedSettingsTitle: String = "Advanced settings"
 }

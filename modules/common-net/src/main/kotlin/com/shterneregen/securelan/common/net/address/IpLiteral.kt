@@ -40,7 +40,11 @@ class IpLiteral private constructor(val value: String, private val octets: List<
             val right = if (compressed) groups(sides[1]) ?: return null else emptyList()
             if (compressed && left.size + right.size >= 8 || !compressed && left.size != 8) return null
             if ('.' in sides[0] && compressed) return null
-            val words = left + List(8 - left.size - right.size) { 0 } + right
+            val words = buildList {
+                addAll(left)
+                repeat(8 - left.size - right.size) { add(0) }
+                addAll(right)
+            }
             val bytes = words.flatMap { listOf(it shr 8, it and 255) }
             if (words.take(5).all { it == 0 } && words[5] == 65535) {
                 return IpLiteral(bytes.takeLast(4).joinToString("."), bytes.takeLast(4))

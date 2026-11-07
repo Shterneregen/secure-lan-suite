@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
 import javax.swing.SwingUtilities
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Application-owned utility state. Public actions run on the UI dispatcher; blocking storage uses
@@ -155,7 +157,7 @@ class DesktopLanToolsController(
         update { it.copy(macLookup = MacLookupStatus.Running, editorError = null) }
         macLookupJob = scope.launch {
             try {
-                val result = withTimeoutOrNull(LOOKUP_TIMEOUT_MILLIS) {
+                val result = withTimeoutOrNull(LOOKUP_TIMEOUT_MILLIS.milliseconds) {
                     withContext(io) { neighbor.resolve(NeighborQuery(target, binding)) }
                 }
                 if (result == null) {
@@ -293,7 +295,7 @@ class DesktopLanToolsController(
         update { it.copy(networkLoading = true, networkError = null) }
         networkJob = scope.launch {
             try {
-                val result = withTimeoutOrNull(10_000) { networks.snapshot() }
+                val result = withTimeoutOrNull(10.seconds) { networks.snapshot() }
                 if (token != generation) return@launch
                 when (result) {
                     // Retain an explicit selection after interface loss; only the user may opt into another route.

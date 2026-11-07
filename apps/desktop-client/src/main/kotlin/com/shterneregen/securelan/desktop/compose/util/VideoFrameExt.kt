@@ -29,7 +29,7 @@ internal fun RtcVideoFrameEvent.toPreviewImageBitmap(): ImageBitmap? = runCatchi
         raster.pixels, raster.width * 4).use { it.toComposeImageBitmap() }
 }.getOrNull()
 
-private data class PreviewRaster(val width: Int, val height: Int, val pixels: ByteArray)
+private class PreviewRaster(val width: Int, val height: Int, val pixels: ByteArray)
 
 private fun RtcVideoFrameEvent.previewRaster(): PreviewRaster {
     val rotation = Math.floorMod(rotation(), 360)

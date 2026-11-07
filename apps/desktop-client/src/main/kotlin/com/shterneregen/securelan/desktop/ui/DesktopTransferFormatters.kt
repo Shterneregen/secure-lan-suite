@@ -64,7 +64,7 @@ object DesktopTransferFormatters {
         append(entry.directionLabel())
         append(" — ")
         append(entry.status)
-        if (entry.percent > 0 && entry.percent < 100 && entry.active()) {
+        if (entry.percent in 1..99 && entry.active()) {
             append(" — ")
             append(entry.percent)
             append('%')

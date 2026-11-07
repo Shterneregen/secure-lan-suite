@@ -49,16 +49,16 @@ import java.util.*
 class PeerCapabilities @JvmOverloads constructor(
     platform: String?,
     appVersion: String?,
-    supportsFileReceive: Boolean,
+    private val supportsFileReceive: Boolean,
     fileReceivePort: Int,
-    supportsVoice: Boolean,
-    supportsVideo: Boolean,
+    private val supportsVoice: Boolean,
+    private val supportsVideo: Boolean,
     deviceName: String? = "",
     protocolVersion: Int = CURRENT_PROTOCOL_VERSION,
-    supportsFileSend: Boolean = true,
-    supportsQuickShare: Boolean = false,
-    supportsSteganography: Boolean = false,
-    supportsRtcDataChannel: Boolean = false,
+    private val supportsFileSend: Boolean = true,
+    private val supportsQuickShare: Boolean = false,
+    private val supportsSteganography: Boolean = false,
+    private val supportsRtcDataChannel: Boolean = false,
     clientId: String? = "",
     operatingSystem: String? = "",
     metadata: Map<String, String> = emptyMap(),
@@ -74,21 +74,11 @@ class PeerCapabilities @JvmOverloads constructor(
         .mapValues { normalizeText(it.value) }
         .toSortedMap()
 
-    private val supportsFileReceive: Boolean = supportsFileReceive
     private val fileReceivePort: Int = if (fileReceivePort in 1..65_535) fileReceivePort else 0
-    private val supportsVoice: Boolean = supportsVoice
-    private val supportsVideo: Boolean = supportsVideo
     private val protocolVersion: Int = protocolVersion.coerceAtLeast(1)
-    private val supportsFileSend: Boolean = supportsFileSend
-    private val supportsQuickShare: Boolean = supportsQuickShare
-    private val supportsSteganography: Boolean = supportsSteganography
-    private val supportsRtcDataChannel: Boolean = supportsRtcDataChannel
 
     /** Returns the normalized platform identifier. */
     fun platform(): String = platform
-
-    /** Returns the application version string. */
-    fun appVersion(): String = appVersion
 
     /** Returns `true` if the peer can accept incoming file transfers. */
     fun supportsFileReceive(): Boolean = supportsFileReceive
@@ -102,29 +92,8 @@ class PeerCapabilities @JvmOverloads constructor(
     /** Returns `true` if the peer supports video calls via WebRTC. */
     fun supportsVideo(): Boolean = supportsVideo
 
-    /** Returns the human-readable device name. */
-    fun deviceName(): String = deviceName
-
-    /** Returns the protocol version (always ≥ 1). */
-    fun protocolVersion(): Int = protocolVersion
-
-    /** Returns `true` if the peer can initiate file transfers. */
-    fun supportsFileSend(): Boolean = supportsFileSend
-
-    /** Returns `true` if the peer supports the quick-share feature. */
-    fun supportsQuickShare(): Boolean = supportsQuickShare
-
-    /** Returns `true` if the peer supports steganography features. */
-    fun supportsSteganography(): Boolean = supportsSteganography
-
     /** Returns `true` if the peer supports WebRTC data channels. */
     fun supportsRtcDataChannel(): Boolean = supportsRtcDataChannel
-
-    /** Returns the opaque client identifier. */
-    fun clientId(): String = clientId
-
-    /** Returns the operating system name. */
-    fun operatingSystem(): String = operatingSystem
 
     /** Returns the immutable extension metadata map. */
     fun metadata(): Map<String, String> = metadata
@@ -300,7 +269,14 @@ class PeerCapabilities @JvmOverloads constructor(
          * @return A [PeerCapabilities] with [PLATFORM_UNKNOWN] and all features disabled.
          */
         @JvmStatic
-        fun unknown(): PeerCapabilities = PeerCapabilities(PLATFORM_UNKNOWN, "", false, 0, false, false)
+        fun unknown(): PeerCapabilities = PeerCapabilities(
+            platform = PLATFORM_UNKNOWN,
+            appVersion = "",
+            supportsFileReceive = false,
+            fileReceivePort = 0,
+            supportsVoice = false,
+            supportsVideo = false,
+        )
 
         /**
          * Creates a [PeerCapabilities] instance pre-filled for a desktop (JVM/Compose) client.

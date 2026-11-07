@@ -12,6 +12,7 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import java.net.ConnectException
 import java.net.NoRouteToHostException
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NetworkDiagnosticsServiceTest {
@@ -20,13 +21,13 @@ class NetworkDiagnosticsServiceTest {
     @ParameterizedTest
     @ValueSource(strings = ["", "https://host", "host:80", "bad name", "1.2.3", "256.1.1.1", "01.2.3.4", "-host.local", "host..local", "[::1]", "fe80::1%2", "host/path", "host\n.local"])
     fun rejectsMalformedHostBeforeAnyNetworkOperation(raw: String) = runTest {
-        val service = DefaultNetworkDiagnosticsService(neverResolve, LanNetworkInfoProvider { error("snapshot") }, TcpConnector { _, _, _ -> error("connect") })
+        val service = DefaultNetworkDiagnosticsService({ error("snapshot") }, networks(), { _, _, _ -> error("connect") })
         assertEquals(LanError.INVALID_INPUT, (service.tcp(TcpCheckRequest(raw, 80)) as LanResult.Failure).code)
         assertEquals(LanError.INVALID_INPUT, (service.lookup(DnsLookupRequest(raw)) as LanResult.Failure).code)
     }
 
     @Test fun validatesScalarInputsAndRejectsNonUnicastTcpTargets() = runTest {
-        val service = DefaultNetworkDiagnosticsService(neverResolve, networks(), TcpConnector { _, _, _ -> error("connect") })
+        val service = DefaultNetworkDiagnosticsService(neverResolve, networks(), { _, _, _ -> error("connect") })
         for (port in listOf(0, -1, 65536)) assertEquals(LanResult.Failure(LanError.INVALID_INPUT, "port"), service.tcp(TcpCheckRequest("127.0.0.1", port)))
         for (timeout in listOf(0L, 30001L)) assertEquals(LanResult.Failure(LanError.INVALID_INPUT, "timeout"), service.lookup(DnsLookupRequest("localhost", timeoutMillis = timeout)))
         for (host in listOf("0.0.0.0", "224.0.0.1", "255.255.255.255", "::")) assertEquals(LanResult.Failure(LanError.INVALID_INPUT, "host"), service.tcp(TcpCheckRequest(host, 80)))
@@ -37,9 +38,9 @@ class NetworkDiagnosticsServiceTest {
         var time = 10L
         var connections = 0
         val resolver = HostResolver { assertEquals("host.local", it); time += 1000; LanResult.Success(listOf(ip("10.0.0.2"), ip("10.0.0.3"))) }
-        val service = DefaultNetworkDiagnosticsService(resolver, networks(), TcpConnector { address, port, source ->
+        val service = DefaultNetworkDiagnosticsService(resolver, networks(), { address, port, source ->
             assertEquals(ip("10.0.0.2"), address); assertEquals(1234, port); assertNull(source); connections++; time += 50
-        }, { time })
+        }) { time }
         val receipt = (service.tcp(TcpCheckRequest("HOST.local", 1234)) as LanResult.Success).value
         assertEquals(50, receipt.connectNanos)
         assertEquals(1, connections)
@@ -50,10 +51,10 @@ class NetworkDiagnosticsServiceTest {
 
     @Test fun filtersDnsAnswersWithoutSendingTcpOrMisclassifyingNoRecords() = runTest {
         val resolver = HostResolver { LanResult.Success(listOf(ip("10.0.0.2"), ip("::1"), ip("10.0.0.2"))) }
-        val service = DefaultNetworkDiagnosticsService(resolver, networks(), TcpConnector { _, _, _ -> error("connect") })
+        val service = DefaultNetworkDiagnosticsService(resolver, networks(), { _, _, _ -> error("connect") })
         val lookup = (service.lookup(DnsLookupRequest("host.local", AddressFamily.IPV6)) as LanResult.Success).value
         assertEquals(listOf(ip("::1")), lookup.addresses)
-        val empty = DefaultNetworkDiagnosticsService(HostResolver { LanResult.Success(emptyList()) }, networks())
+        val empty = DefaultNetworkDiagnosticsService({ LanResult.Success(emptyList()) }, networks())
         assertEquals(LanResult.Failure(LanError.RESOLUTION_FAILED), empty.lookup(DnsLookupRequest("host.local")))
         assertEquals(listOf(ip("127.0.0.1")), (service.lookup(DnsLookupRequest("127.0.0.1")) as LanResult.Success).value.addresses)
     }
@@ -75,14 +76,14 @@ class NetworkDiagnosticsServiceTest {
     @Test fun mapsRefusalRoutesAndPermissionsWithoutRawExceptions() = runTest {
         for ((error, expected) in listOf(ConnectException("private") to LanError.CONNECTION_FAILED,
             NoRouteToHostException("private") to LanError.NETWORK_UNAVAILABLE, SecurityException("private") to LanError.PERMISSION_DENIED)) {
-            val service = DefaultNetworkDiagnosticsService(neverResolve, networks(), TcpConnector { _, _, _ -> throw error })
+            val service = DefaultNetworkDiagnosticsService(neverResolve, networks(), { _, _, _ -> throw error })
             assertEquals(LanResult.Failure(expected), service.tcp(TcpCheckRequest("127.0.0.1", 1234)))
         }
     }
 
     @Test fun timeoutIncludesDnsAndCancellationReleasesCapacity() = runTest {
         val resolver = HostResolver { awaitCancellation() }
-        val service = DefaultNetworkDiagnosticsService(resolver, networks(), TcpConnector { _, _, _ -> error("connect") })
+        val service = DefaultNetworkDiagnosticsService(resolver, networks(), { _, _, _ -> error("connect") })
         assertEquals(LanResult.Failure(LanError.TIMEOUT), service.tcp(TcpCheckRequest("host.local", 80, timeoutMillis = 100)))
         assertEquals(100, testScheduler.currentTime)
         val jobs = List(4) { async { service.lookup(DnsLookupRequest("host.local")) } }
@@ -91,13 +92,13 @@ class NetworkDiagnosticsServiceTest {
         jobs.forEach { it.cancelAndJoin() }
         assertTrue(service.lookup(DnsLookupRequest("127.0.0.1")) is LanResult.Success)
         var propagated = false
-        try { withTimeout(10) { service.lookup(DnsLookupRequest("host.local")) } } catch (_: TimeoutCancellationException) { propagated = true }
+        try { withTimeout(10.milliseconds) { service.lookup(DnsLookupRequest("host.local")) } } catch (_: TimeoutCancellationException) { propagated = true }
         assertTrue(propagated)
     }
 
     @Test fun cancellationWinsOverConcurrentIoErrorAndRunsCleanup() = runTest {
         var closed = false
-        val service = DefaultNetworkDiagnosticsService(neverResolve, networks(), TcpConnector { _, _, _ ->
+        val service = DefaultNetworkDiagnosticsService(neverResolve, networks(), { _, _, _ ->
             try { currentCoroutineContext().cancel(); throw ConnectException() } finally { closed = true }
         })
         val job = async { service.tcp(TcpCheckRequest("127.0.0.1", 80)) }

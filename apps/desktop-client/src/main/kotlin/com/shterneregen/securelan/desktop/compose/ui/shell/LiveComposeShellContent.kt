@@ -5,7 +5,6 @@ import androidx.compose.ui.focus.FocusRequester
 import com.shterneregen.securelan.desktop.compose.ComposeDesktopHostAdapter
 import com.shterneregen.securelan.desktop.compose.SecureLanThemeMode
 import com.shterneregen.securelan.desktop.compose.settings.DesktopAppSettingsController
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionHubMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
@@ -95,7 +94,6 @@ internal fun LiveComposeShellContent(
     val productState = ComposeProductScreenState.from(
         statusState = hostAdapter.statusState,
         requestedAppMode = if (inMessengerMode) AppMode.MESSENGER else AppMode.WELCOME,
-        connectionHubMode = ComposeConnectionHubMode.HOST,
         selectedPeer = peerState.selectedPeer,
     )
     val topBarLabel = hostAdapter.statusState.nickname.ifBlank { "SecureLanSuite" }
@@ -104,7 +102,6 @@ internal fun LiveComposeShellContent(
         hostAdapter.statusState.clientConnected -> "Connected - ${peerState.onlinePeers.size} online"
         else -> "No active room"
     }
-    val topBarStatus = roomConnectionStatus
     SecureLanAppShell(
         shellState = ComposeAppShellState(
             productState = productState,
@@ -113,7 +110,7 @@ internal fun LiveComposeShellContent(
             workspaceState = workspaceState,
         ),
         topBarLabel = topBarLabel,
-        topBarStatus = topBarStatus,
+        topBarStatus = roomConnectionStatus,
         localNetworkAddresses = hostAdapter.localNetworkAddresses,
         themeMode = themeMode,
         onOpenQuickShare = { quickShareDialogOpen = true },

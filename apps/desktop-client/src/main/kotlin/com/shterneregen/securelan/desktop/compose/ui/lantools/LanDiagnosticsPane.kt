@@ -99,7 +99,7 @@ private fun NetworkSummary(entry: DiagnosticInterface) {
     Card(Modifier.fillMaxWidth(), elevation = 0.dp, backgroundColor = tokens.colors.surfaceLevel1,
         border = androidx.compose.foundation.BorderStroke(tokens.border.subtle, tokens.colors.borderSubtle)) {
         Column(Modifier.padding(tokens.spacing.sm), verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (binding.up) SecureLanIcons.PresenceOnline else SecureLanIcons.PresenceOffline, contentDescription = null,
                     tint = if (binding.up) tokens.colors.success else tokens.colors.textSecondary,
                     modifier = Modifier.size(18.dp))

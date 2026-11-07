@@ -117,12 +117,12 @@ internal fun rememberInteractiveSurfaceState(
     return InteractiveSurfaceState(
         backgroundColor = animateColorAsState(
             targetValue = targetColor,
-            animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+            animationSpec = motionTween(durationMillis = tokens.motion.durationFast),
             label = "InteractiveSurfaceBackground",
         ).value,
         borderColor = animateColorAsState(
             targetValue = targetBorder,
-            animationSpec = motionTween<Color>(durationMillis = tokens.motion.durationFast),
+            animationSpec = motionTween(durationMillis = tokens.motion.durationFast),
             label = "InteractiveSurfaceBorder",
         ).value,
         contentColor = if (enabled) tokens.colors.textPrimary else tokens.colors.textTertiary,

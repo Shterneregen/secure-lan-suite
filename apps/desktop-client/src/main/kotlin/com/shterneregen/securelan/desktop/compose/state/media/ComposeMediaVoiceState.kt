@@ -27,14 +27,13 @@ data class ComposeMediaVoiceState(
     val selectedPeer = peerListState.selectedPeer
     val selectedPeerName: String = selectedPeer?.nickname ?: "No peer selected"
     val selectedMicrophone: MediaDeviceChoice = microphones.firstOrNull { it.matches(selectedMicrophoneId) }
-        ?: if (selectedMicrophoneId.isNotBlank()) MediaDeviceChoice(selectedMicrophoneId, "Selected microphone unavailable", false, false)
+        ?: if (selectedMicrophoneId.isNotBlank()) MediaDeviceChoice(selectedMicrophoneId, "Selected microphone unavailable", systemDefault = false, defaultDevice = false)
         else MediaDeviceChoice.systemDefault("System default microphone")
     val selectedOutputDevice: MediaDeviceChoice = outputDevices.firstOrNull { it.matches(selectedOutputDeviceId) }
-        ?: if (selectedOutputDeviceId.isNotBlank()) MediaDeviceChoice(selectedOutputDeviceId, "Selected speaker unavailable", false, false)
+        ?: if (selectedOutputDeviceId.isNotBlank()) MediaDeviceChoice(selectedOutputDeviceId, "Selected speaker unavailable", systemDefault = false, defaultDevice = false)
         else MediaDeviceChoice.systemDefault("System default speaker")
     val physicalMicrophoneCount: Int = microphones.count { !it.systemDefault }
     val physicalOutputDeviceCount: Int = outputDevices.count { !it.systemDefault }
-    val runtimeLabel: String = DesktopRealtimeFormatters.formatRuntimeStatus(runtimeStatus)
     val permissionStatusLabel: String = when {
         runtimeStatus?.available == true -> "Microphone permission: ready to test"
         runtimeStatus == null -> "Microphone permission: not checked yet"
@@ -52,26 +51,10 @@ data class ComposeMediaVoiceState(
     }
     val voiceState: RtcSessionState = currentSession?.state ?: RtcSessionState.IDLE
     val voiceStatusText: String = DesktopRealtimeFormatters.voiceStatusText(voiceState, currentSession?.remotePeer ?: selectedPeer?.nickname)
-    val callTransitionLabel: String = when (voiceState) {
-        RtcSessionState.CONNECTED -> "Voice connected"
-        RtcSessionState.NEGOTIATING, RtcSessionState.CONNECTING -> "Connecting voice…"
-        RtcSessionState.CLOSING, RtcSessionState.CLOSED -> "Voice disconnected"
-        RtcSessionState.FAILED -> "Voice failed"
-        else -> "Voice idle"
-    }
     val localAudioLabel: String = DesktopRealtimeFormatters.formatAudioLevel(localAudioLevel > 0.01, true, selectedPeer?.nickname, localAudioLevel)
     val localAudioPercent: Int = (localAudioLevel.coerceIn(0.0, 1.0) * 100).toInt()
     val canRefreshDevices: Boolean = true
     val canTestMicrophone: Boolean = microphones.isNotEmpty()
     val canTestSpeaker: Boolean = outputDevices.isNotEmpty()
     val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state)
-    val blockedReasons: List<String> = buildList {
-        if (!statusState.clientConnected) add("Connect to chat before starting a voice call.")
-        if (selectedPeer == null) add("Select an online peer before starting voice.") else if (!selectedPeer.online) add("Selected peer is offline; voice must remain blocked.") else if (!selectedPeer.voiceCapable) add("Selected peer does not advertise voice support; voice must remain blocked.")
-    }
-    val readinessSummary: String = if (blockedReasons.isEmpty()) {
-        "Voice controls are ready."
-    } else {
-        blockedReasons.joinToString(" · ")
-    }
 }

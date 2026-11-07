@@ -7,6 +7,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * UI-thread owner of bounded diagnostic jobs. Forms survive temporary closure; jobs do not.
@@ -54,7 +56,7 @@ class DesktopDiagnosticsController(
     fun selectInterface(key: String?) = edit { it.copy(bindingKey = key, gateway = null) }
 
     fun refresh() = start(DiagnosticKind.NETWORK) {
-        when (val result = withTimeoutOrNull(10_000) { networks.snapshot() }) {
+        when (val result = withTimeoutOrNull(10.seconds) { networks.snapshot() }) {
             is LanResult.Success -> {
                 currentCoroutineContext().ensureActive()
                 mutable.value = state.value.copy(network = result.value)
@@ -152,7 +154,7 @@ class DesktopDiagnosticsController(
         jobs[kind] = scope.launch {
             try {
                 // Includes metadata refresh for a gateway, as well as the service's own deadline.
-                val result = withTimeoutOrNull(timeout) { operation() }
+                val result = withTimeoutOrNull(timeout.milliseconds) { operation() }
                     ?: DiagnosticOutcome(DiagnosticPhase.FAILURE, "Operation timed out.")
                 if (visible && generations[kind] == token) complete(kind, identified(result, subject), check)
             } catch (cancel: CancellationException) { throw cancel }

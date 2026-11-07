@@ -7,6 +7,8 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Validated numeric route/DNS metadata keyed by a local IPv4 address, never by a friendly alias. */
 data class PlatformNetworkRecord(val gateways: List<IpLiteral>, val dnsServers: List<String>)
@@ -24,7 +26,7 @@ class WindowsNetworkInfoBackend(
     suspend fun read(): PlatformNetworkInfo {
         if (!osName.startsWith("Windows", ignoreCase = true)) return PlatformNetworkInfo(MetadataAvailability.UNSUPPORTED)
         return try {
-            withTimeoutOrNull(5_000) { parse(run()) } ?: PlatformNetworkInfo(MetadataAvailability.TIMEOUT)
+            withTimeoutOrNull(5.seconds) { parse(run()) } ?: PlatformNetworkInfo(MetadataAvailability.TIMEOUT)
         } catch (cancel: CancellationException) { throw cancel }
         catch (_: SecurityException) { PlatformNetworkInfo(MetadataAvailability.PERMISSION_DENIED) }
         catch (_: Exception) { PlatformNetworkInfo(MetadataAvailability.UNAVAILABLE) }
@@ -88,7 +90,7 @@ internal suspend fun runBoundedPlatformProcess(start: () -> Process, dispatcher:
                 val read = process.inputStream.read(buffer, 0, minOf(buffer.size, available))
                 if (read > 0) output.write(buffer, 0, read)
                 if (output.size() > 131_072) throw IOException("Output limit")
-            } else if (!process.isAlive) break else delay(10)
+            } else if (!process.isAlive) break else delay(10.milliseconds)
         }
         if (process.exitValue() != 0) throw IOException("Platform query failed")
         String(output.toByteArray(), StandardCharsets.US_ASCII)
@@ -100,16 +102,16 @@ internal suspend fun runBoundedPlatformProcess(start: () -> Process, dispatcher:
 }
 
 // Only local configuration is requested. No hostname, port, address or credential is interpolated.
-private const val WINDOWS_QUERY = """
-${'$'}ErrorActionPreference = 'Stop'; ${'$'}ProgressPreference = 'SilentlyContinue'
+private const val WINDOWS_QUERY = $$"""
+$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::ASCII
-${'$'}configurations = @(Get-NetIPConfiguration -All)
+$configurations = @(Get-NetIPConfiguration -All)
 Write-Output 'SecureLanNetworkInfo/1'
-foreach (${'$'}c in ${'$'}configurations) {
-    ${'$'}gateways = @(${'$'}c.IPv4DefaultGateway | ForEach-Object { ${'$'}_.NextHop }) -join ','
-    ${'$'}dns = @(${'$'}c.DNSServer | ForEach-Object { ${'$'}_.ServerAddresses } | Select-Object -Unique) -join ','
-    foreach (${'$'}a in ${'$'}c.IPv4Address) {
-        if (${'$'}a.IPAddress -ne '127.0.0.1') { Write-Output (${'$'}a.IPAddress + '|' + ${'$'}gateways + '|' + ${'$'}dns) }
+foreach ($c in $configurations) {
+    $gateways = @($c.IPv4DefaultGateway | ForEach-Object { $_.NextHop }) -join ','
+    $dns = @($c.DNSServer | ForEach-Object { $_.ServerAddresses } | Select-Object -Unique) -join ','
+    foreach ($a in $c.IPv4Address) {
+        if ($a.IPAddress -ne '127.0.0.1') { Write-Output ($a.IPAddress + '|' + $gateways + '|' + $dns) }
     }
 }
 """

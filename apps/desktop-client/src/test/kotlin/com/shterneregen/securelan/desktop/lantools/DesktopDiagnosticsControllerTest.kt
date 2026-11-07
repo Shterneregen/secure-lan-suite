@@ -7,6 +7,7 @@ import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
+import kotlin.time.Duration.Companion.milliseconds
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
@@ -40,7 +41,7 @@ class DesktopDiagnosticsControllerTest {
         val service = object : NetworkDiagnosticsService by success {
             override suspend fun tcp(request: TcpCheckRequest): LanResult<TcpCheckReceipt> { calls++; return success.tcp(request) }
         }
-        val controller = DesktopDiagnosticsController(service, DiagnosticsNetworkInfoProvider { LanResult.Success(current) }, StandardTestDispatcher(testScheduler))
+        val controller = DesktopDiagnosticsController(service, { LanResult.Success(current) }, StandardTestDispatcher(testScheduler))
         controller.open(); runCurrent(); controller.checkGateway()
         assertEquals(0, calls)
         controller.selectInterface(source.binding.key)
@@ -58,7 +59,7 @@ class DesktopDiagnosticsControllerTest {
     @Test fun cancelAndDismissRetainFormsAndRejectLateLookupResults() = runTest {
         val service = object : NetworkDiagnosticsService by success {
             override suspend fun lookup(request: DnsLookupRequest): LanResult<DnsLookupReceipt> {
-                withContext(NonCancellable) { delay(100) }
+                withContext(NonCancellable) { delay(100.milliseconds) }
                 return success.lookup(request)
             }
         }
@@ -79,7 +80,7 @@ class DesktopDiagnosticsControllerTest {
         val provider = DiagnosticsNetworkInfoProvider {
             if (++calls == 1) {
                 // Model a native adapter that returns after its original session was cancelled.
-                withContext(NonCancellable) { delay(100) }
+                withContext(NonCancellable) { delay(100.milliseconds) }
                 LanResult.Success(snapshot)
             } else LanResult.Success(fresh)
         }
@@ -95,7 +96,7 @@ class DesktopDiagnosticsControllerTest {
     @Test fun deviceHistoryCapturesTheSubmittedEndpointAndDoesNotFollowSubsequentEdits() = runTest {
         val service = object : NetworkDiagnosticsService by success {
             override suspend fun tcp(request: TcpCheckRequest): LanResult<TcpCheckReceipt> {
-                delay(100)
+                delay(100.milliseconds)
                 return success.tcp(request)
             }
         }
@@ -150,7 +151,7 @@ class DesktopDiagnosticsControllerTest {
         var fail = true
         val service = object : NetworkDiagnosticsService by success {
             override suspend fun lookup(request: DnsLookupRequest): LanResult<DnsLookupReceipt> {
-                delay(10)
+                delay(10.milliseconds)
                 return LanResult.Failure(LanError.RESOLUTION_FAILED)
             }
             override suspend fun tcp(request: TcpCheckRequest): LanResult<TcpCheckReceipt> {

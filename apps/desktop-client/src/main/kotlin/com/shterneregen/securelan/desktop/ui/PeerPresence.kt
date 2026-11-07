@@ -11,22 +11,14 @@ import java.util.Objects
  */
 class PeerPresence @JvmOverloads constructor(
     private val nickname: String,
-    online: Boolean,
-    peerId: String?,
-    host: String?,
-    chatPort: Int,
-    filePort: Int,
-    lastSeen: Instant?,
-    capabilities: PeerCapabilities = PeerCapabilities.unknown(),
+    private var online: Boolean,
+    private var peerId: String?,
+    private var host: String?,
+    private var chatPort: Int,
+    private var filePort: Int,
+    private var lastSeen: Instant?,
+    private var capabilities: PeerCapabilities = PeerCapabilities.unknown(),
 ) {
-    private var online: Boolean = online
-    private var peerId: String? = peerId
-    private var host: String? = host
-    private var chatPort: Int = chatPort
-    private var filePort: Int = filePort
-    private var lastSeen: Instant? = lastSeen
-    private var capabilities: PeerCapabilities = capabilities
-
     /**
      * Updates presence and enriches known metadata without erasing it with missing values.
      * Returns whether any stored field changed. A negotiated receive port takes precedence.

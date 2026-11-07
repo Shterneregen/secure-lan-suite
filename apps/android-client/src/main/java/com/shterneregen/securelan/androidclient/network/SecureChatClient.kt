@@ -96,7 +96,7 @@ class SecureChatClient(private val socketFactory: () -> Socket = { Socket() }) :
     override suspend fun sendSignal(signal: RtcSignalEnvelope) {
         val active = checkNotNull(session) { "Chat disconnected" }
         val sender = nickname
-        suspendCancellableCoroutine<Unit> { continuation ->
+        suspendCancellableCoroutine { continuation ->
             // A partial encrypted frame cannot be abandoned while keeping the stream usable.
             continuation.invokeOnCancellation { release(active) }
             Dispatchers.IO.dispatch(continuation.context, Runnable {

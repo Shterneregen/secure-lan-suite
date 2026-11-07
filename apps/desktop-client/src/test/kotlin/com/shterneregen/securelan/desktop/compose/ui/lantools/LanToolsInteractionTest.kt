@@ -31,7 +31,6 @@ import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.discovery.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.*
-import com.shterneregen.securelan.neighbor.NeighborMacResolver
 import com.shterneregen.securelan.neighbor.NeighborMacResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -62,7 +61,7 @@ class LanToolsInteractionTest {
     private val network = LanInterfaceSnapshot(NetworkBinding("eth0:192.168.1.42", "eth0", IpLiteral.parse("192.168.1.42")!!, 24),
         "Ethernet", true, IpLiteral.parse("192.168.1.255"))
     private val controller = DesktopLanToolsController(store,
-        LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(interfaces ?: listOf(network), "eth0")) },
+        { LanResult.Success(LanNetworkSnapshot(interfaces ?: listOf(network), "eth0")) },
         object : WakeOnLanService {
             override suspend fun send(request: WakeRequest): LanResult<WakeReceipt> {
                 sends++
@@ -71,18 +70,18 @@ class LanToolsInteractionTest {
             }
         }, Dispatchers.Unconfined, Dispatchers.Unconfined,
         diagnostics = DesktopDiagnosticsController(
-            DefaultNetworkDiagnosticsService(HostResolver {
+            DefaultNetworkDiagnosticsService({
                 if (blockDns) awaitCancellation() else LanResult.Success(listOf(network.binding.address))
-            }, LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(network))) }, TcpConnector { _, _, _ -> }),
-            DiagnosticsNetworkInfoProvider { LanResult.Success(DiagnosticsNetworkSnapshot(diagnosticInterfaces ?: listOf(DiagnosticInterface(network,
+            }, { LanResult.Success(LanNetworkSnapshot(listOf(network))) }, { _, _, _ -> }),
+            { LanResult.Success(DiagnosticsNetworkSnapshot(diagnosticInterfaces ?: listOf(DiagnosticInterface(network,
                 listOf(IpLiteral.parse("192.168.1.1")!!), listOf("192.168.1.1"), metadata)), "controlled fixture")) }, Dispatchers.Unconfined),
-        explorer = DesktopExplorerController(LanDeviceDiscovery { update ->
+        explorer = DesktopExplorerController({ update ->
             discoveryCalls++
             update(discovered)
             if (blockDiscovery) awaitCancellation()
             LanResult.Success(discovered)
         }, Dispatchers.Unconfined, Dispatchers.Unconfined),
-        neighbor = NeighborMacResolver { NeighborMacResult.Found(MacAddress.parse("02:11:22:33:44:55")!!) })
+        neighbor = { NeighborMacResult.Found(MacAddress.parse("02:11:22:33:44:55")!!) })
 
     @After fun close() { compose.runOnIdle { controller.close() } }
 

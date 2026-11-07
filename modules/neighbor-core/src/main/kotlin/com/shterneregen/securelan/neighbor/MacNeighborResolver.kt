@@ -94,10 +94,11 @@ internal class MacNeighborResolver(
                     val length = bytes[position].toInt() and 0xFF
                     if (length < 2 || position + length > messageEnd) break
                     val family = bytes[position + 1].toInt() and 0xFF
-                    when {
-                        family == AF_INET && bit == RTA_DST_BIT && length >= 8 ->
+                    when (family) {
+                        AF_INET -> if (bit == RTA_DST_BIT && length >= 8) {
                             destination = bytes.copyOfRange(position + 4, position + 8)
-                        family == AF_LINK && bit == RTA_GATEWAY_BIT && length >= 8 -> {
+                        }
+                        AF_LINK -> if (bit == RTA_GATEWAY_BIT && length >= 8) {
                             val nameLength = bytes[position + 5].toInt() and 0xFF
                             val addressLength = bytes[position + 6].toInt() and 0xFF
                             val addressStart = position + 8 + nameLength
@@ -142,12 +143,12 @@ private object NativeSysctl : SysctlCall {
         val size = LongByReference(0)
         if (libc.sysctl(mib, mib.size, null, size, null, 0) != 0) return null
         val length = size.value
-        if (length <= 0 || length > MAX_TABLE_BYTES) return null
+        if (length !in 1L..MAX_TABLE_BYTES.toLong()) return null
         val memory = Memory(length)
         val actual = LongByReference(length)
         if (libc.sysctl(mib, mib.size, memory, actual, null, 0) != 0) return null
         val read = actual.value
-        if (read <= 0 || read > length) return null
+        if (read !in 1L..length) return null
         return memory.getByteArray(0, read.toInt())
     }
 }

@@ -66,7 +66,7 @@ internal class RoomSessionController(
     fun close() {
         invalidate()
         hostedRoom = null
-        listOf<() -> Unit>({ discovery.stop() }, { client.disconnect() }, { files.stop() }, { server.stop() })
+        listOf({ discovery.stop() }, { client.disconnect() }, { files.stop() }, { server.stop() })
             .forEach { runCatching(it) }
     }
 

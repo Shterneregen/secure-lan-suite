@@ -12,6 +12,7 @@ import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.DatagramChannel
 import java.nio.channels.SocketChannel
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Binds only this operation's unconnected socket. Numeric source and Android Network are both checked. */
 class AndroidTcpConnector(private val platform: AndroidLanPlatform, private val io: CoroutineDispatcher = Dispatchers.IO) : TcpConnector {
@@ -26,7 +27,7 @@ class AndroidTcpConnector(private val platform: AndroidLanPlatform, private val 
             }
             channel.configureBlocking(false)
             if (!channel.connect(InetSocketAddress(InetAddress.getByAddress(address.bytes()), port))) {
-                while (!channel.finishConnect()) { currentCoroutineContext().ensureActive(); delay(10) }
+                while (!channel.finishConnect()) { currentCoroutineContext().ensureActive(); delay(10.milliseconds) }
             }
             currentCoroutineContext().ensureActive()
         }
@@ -48,7 +49,7 @@ class AndroidDatagramSender(private val platform: AndroidLanPlatform, private va
                 currentCoroutineContext().ensureActive()
                 when (channel.send(ByteBuffer.wrap(payload), target)) {
                     payload.size -> break
-                    0 -> delay(10)
+                    0 -> delay(10.milliseconds)
                     else -> throw IOException("Incomplete UDP datagram")
                 }
             }

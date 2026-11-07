@@ -17,7 +17,7 @@ class DefaultChatServerService(private val eventPublisher: ChatEventPublisher) :
         val tcp = TcpServer("chat-server")
         val registry = InMemoryNicknameRegistryService()
         val broadcast = InMemoryChatBroadcastService(InMemoryChatHistoryService())
-        val sessions = ConcurrentHashMap.newKeySet<ChatSocketSession>()
+        val sessions: MutableSet<ChatSocketSession> = ConcurrentHashMap.newKeySet()
         val membership = Any()
         @Volatile var active = true
     }

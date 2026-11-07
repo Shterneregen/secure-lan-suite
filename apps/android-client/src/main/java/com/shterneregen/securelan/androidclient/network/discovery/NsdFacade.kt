@@ -37,7 +37,7 @@ class NsdFacade(private val context: Context) : NsdBackend {
             if (overflowed.compareAndSet(false, true)) overflowHandlers.values.toList().forEach { it() }
             return
         }
-        val task = { try { block() } finally { if (!control) queuedCallbacks.decrementAndGet() }; Unit }
+        val task = { try { block() } finally { if (!control) queuedCallbacks.decrementAndGet() } }
         try { owner.execute(task) } catch (_: java.util.concurrent.RejectedExecutionException) { task() }
     }
     // Callbacks classify themselves below: data is bounded, terminal acknowledgements cannot drop.

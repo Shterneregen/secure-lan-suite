@@ -30,10 +30,9 @@ data class ComposeExperimentalVideoState(
     val selectedPeer = peerListState.selectedPeer
     val selectedPeerName: String = selectedPeer?.nickname ?: "No peer selected"
     val selectedCamera: MediaDeviceChoice = cameras.firstOrNull { it.matches(selectedCameraId) }
-        ?: if (selectedCameraId.isNotBlank()) MediaDeviceChoice(selectedCameraId, "Selected camera unavailable", false, false)
+        ?: if (selectedCameraId.isNotBlank()) MediaDeviceChoice(selectedCameraId, "Selected camera unavailable", systemDefault = false, defaultDevice = false)
         else MediaDeviceChoice.systemDefault("System default camera")
     val physicalCameraCount: Int = cameras.count { !it.systemDefault }
-    val runtimeLabel: String = DesktopRealtimeFormatters.formatRuntimeStatus(runtimeStatus)
     val permissionStatusLabel: String = when {
         runtimeStatus?.available == true -> "Camera permission: ready to test"
         runtimeStatus == null -> "Camera permission: not checked yet"
@@ -48,13 +47,6 @@ data class ComposeExperimentalVideoState(
     val sessionState: RtcSessionState = currentSession?.state ?: RtcSessionState.IDLE
     val stageTitle: String = DesktopRealtimeFormatters.videoStageTitle(sessionMode, currentSession?.remotePeer ?: selectedPeer?.nickname)
     val stageBadge: String = DesktopRealtimeFormatters.videoStageBadge(sessionState)
-    val callTransitionLabel: String = when (sessionState) {
-        RtcSessionState.CONNECTED -> "Video connected"
-        RtcSessionState.NEGOTIATING, RtcSessionState.CONNECTING -> "Connecting video…"
-        RtcSessionState.CLOSING, RtcSessionState.CLOSED -> "Video disconnected"
-        RtcSessionState.FAILED -> "Video failed"
-        else -> "Video idle"
-    }
     val mediaLabel: String = DesktopRealtimeFormatters.videoMediaLabel(sessionMode)
     val localFrame: RtcVideoFrameEvent? = latestLocalVideoFrame ?: latestPreviewFrame?.takeIf { it.local() }
     val remoteFrame: RtcVideoFrameEvent? = latestRemoteVideoFrame ?: latestPreviewFrame?.takeIf { !it.local() }
@@ -89,13 +81,4 @@ data class ComposeExperimentalVideoState(
     val startPreviewLabel: String = if (canStartPreview) "Start camera preview" else "Preview unavailable"
     val stopPreviewLabel: String = if (canStopPreview) "Stop camera preview" else "Stop preview unavailable"
     val previewConfigurationLabel: String = "Self preview ${if (localPreviewEnabled) "on" else "off"} • remote preview ${if (remotePreviewEnabled) "on" else "off"}"
-    val blockedReasons: List<String> = buildList {
-        if (!statusState.clientConnected) add("Connect to chat before starting experimental video.")
-        if (selectedPeer == null) add("Select an online peer before starting video.") else if (!selectedPeer.online) add("Selected peer is offline; video must remain blocked.") else if (!selectedPeer.videoCapable) add("Selected peer does not advertise video support; video must remain blocked.")
-    }
-    val readinessSummary: String = if (blockedReasons.isEmpty()) {
-        "Experimental video controls are ready."
-    } else {
-        blockedReasons.joinToString(" · ")
-    }
 }

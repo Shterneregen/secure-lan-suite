@@ -46,13 +46,13 @@ class LinuxNeighborResolverTest {
     fun resolverReadsInjectedTable(@TempDir directory: Path) {
         val file = directory.resolve("arp")
         Files.writeString(file, table)
-        val resolver = LinuxNeighborResolver(file, NeighborProbe { }, { }, attempts = 1)
+        val resolver = LinuxNeighborResolver(file, { }, { }, attempts = 1)
         assertEquals(NeighborMacResult.Found(mac), resolver.resolve(NeighborQuery(target, binding)))
     }
 
     @Test
     fun resolverReportsMissingTableAsIoFailure(@TempDir directory: Path) {
-        val resolver = LinuxNeighborResolver(directory.resolve("missing"), NeighborProbe { }, { }, attempts = 1)
+        val resolver = LinuxNeighborResolver(directory.resolve("missing"), { }, { }, attempts = 1)
         assertEquals(NeighborMacResult.Failed(NeighborFailure.IO), resolver.resolve(NeighborQuery(target, binding)))
     }
 }

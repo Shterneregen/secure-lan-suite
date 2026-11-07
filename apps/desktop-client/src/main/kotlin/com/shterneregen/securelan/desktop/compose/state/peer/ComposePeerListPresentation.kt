@@ -1,16 +1,16 @@
 package com.shterneregen.securelan.desktop.compose.state.peer
 
-public enum class ComposePeerAvailabilityKind {
+enum class ComposePeerAvailabilityKind {
     ONLINE,
     OFFLINE,
 }
 
-public data class ComposePeerCapabilityPresentation(
+data class ComposePeerCapabilityPresentation(
     val label: String,
     val accessibilityLabel: String,
 )
 
-public data class ComposePeerListItemPresentation(
+data class ComposePeerListItemPresentation(
     val peer: ComposePeerListItem,
     val key: String,
     val title: String,
@@ -72,7 +72,7 @@ public data class ComposePeerListItemPresentation(
     }
 }
 
-public data class ComposePeerListSectionPresentation(
+data class ComposePeerListSectionPresentation(
     val key: String,
     val title: String,
     val availability: ComposePeerAvailabilityKind,
@@ -80,5 +80,4 @@ public data class ComposePeerListSectionPresentation(
 ) {
     val count: Int = rows.size
     val countLabel: String = "$count ${if (count == 1) "person" else "people"}"
-    val accessibilityLabel: String = "$title peers, $countLabel"
 }

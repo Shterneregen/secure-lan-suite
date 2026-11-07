@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test
 class DesktopRealtimeFormattersTest {
     @Test
     fun shouldFormatAudioProfile() {
-        val profile = AudioCallProfile(48_000, 2, true, false)
+        val profile = AudioCallProfile(48_000, 2, echoCancellation = true, noiseSuppression = false)
 
         assertEquals(
             "Audio: 48000 Hz, 2 ch, echo cancel=true, noise suppression=false",

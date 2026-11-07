@@ -7,7 +7,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -63,9 +62,9 @@ class AndroidCallSession(
     private val mutableUiState = MutableStateFlow(CallUiState())
     override val uiState = mutableUiState.asStateFlow()
     private val observer: Job = scope.launch {
-        merge(state.map { Unit }, media.localVideo.map { Unit }, media.remoteVideo.map { Unit },
-            media.muted.map { Unit }, media.cameraEnabled.map { Unit }, media.frontCamera.map { Unit },
-            audio.speaker.map { Unit }, coordinator.signalingError.map { Unit }).collect {
+        merge(state, media.localVideo, media.remoteVideo,
+            media.muted, media.cameraEnabled, media.frontCamera,
+            audio.speaker, coordinator.signalingError).collect {
             notifications.update(state.value)
             mutableUiState.value = CallUiState(state.value, media.localVideo.value, media.remoteVideo.value,
                 media.muted.value, media.cameraEnabled.value, media.frontCamera.value, audio.speaker.value,

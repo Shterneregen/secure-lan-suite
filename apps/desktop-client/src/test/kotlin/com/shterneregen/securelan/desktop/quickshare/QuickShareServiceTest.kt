@@ -1,6 +1,5 @@
 package com.shterneregen.securelan.desktop.quickshare
 
-import com.shterneregen.securelan.desktop.quickshare.DefaultQuickShareService
 import com.shterneregen.securelan.filetransfer.quickshare.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

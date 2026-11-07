@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  * write failure closes that recipient, so a blocked peer cannot stall the fanout loop.
  *
  * Signal routing enforces two security constraints:
- * 1. The `fromPeer` field of every signal is **always overwritten** with [senderNickname] so
+ * 1. The `fromPeer` field of every signal is **always overwritten** with `senderNickname` so
  *    that clients cannot spoof each other.
  * 2. Signals with a blank target or an unknown target nickname are silently dropped.
  *
@@ -144,8 +144,9 @@ class InMemoryChatBroadcastService(private val historyService: ChatHistoryServic
     private fun writeQuietly(session: ChatSocketSession, message: WireMessage) {
         val delivery = deliveries.computeIfAbsent(session) {
             java.util.concurrent.ThreadPoolExecutor(1, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
-                java.util.concurrent.ArrayBlockingQueue(32),
-                { task -> Thread(task, "chat-peer-delivery").apply { isDaemon = true } }).apply { allowCoreThreadTimeOut(true) }
+                java.util.concurrent.ArrayBlockingQueue(32)) { task ->
+                Thread(task, "chat-peer-delivery").apply { isDaemon = true }
+            }.apply { allowCoreThreadTimeOut(true) }
         }
         try {
             delivery.execute {

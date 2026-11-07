@@ -11,7 +11,6 @@ data class ComposeWorkspaceState(
     val title: String = "Shared room",
     val subtitle: String = "",
 ) {
-    val videoStageVisible: Boolean = mode == ComposeWorkspaceMode.VIDEO_CALL
     val callBannerVisible: Boolean = mode == ComposeWorkspaceMode.VOICE_CALL
 
     companion object {

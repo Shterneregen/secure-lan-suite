@@ -36,6 +36,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Authenticated remote participant with the file-receive endpoint advertised during its handshake. */
 data class HostedParticipant(
@@ -181,7 +182,7 @@ class AndroidChatHostService : Service() {
                         }
                     }
                 }
-                delay(ANNOUNCE_INTERVAL_MS)
+                delay(ANNOUNCE_INTERVAL_MS.milliseconds)
             }
         }
     }
@@ -207,7 +208,7 @@ class AndroidChatHostService : Service() {
             val seconds = listOf(1, 2, 5, 15, 30)[advertisementRetryAttempt.coerceAtMost(4)]
             advertisementRetryAttempt++
             advertisementRetryJob = serviceScope.launch(Dispatchers.Main.immediate) {
-                delay(seconds * 1000L + kotlin.random.Random.nextLong(200))
+                delay((seconds * 1000L + kotlin.random.Random.nextLong(200)).milliseconds)
                 advertisementRetryJob = null
                 if (generation == hostGeneration && _state.value.running && _state.value.discoverable) updateAdvertisement()
             }

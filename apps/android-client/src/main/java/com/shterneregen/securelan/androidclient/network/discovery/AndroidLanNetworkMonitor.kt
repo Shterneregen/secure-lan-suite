@@ -44,7 +44,7 @@ class AndroidLanNetworkMonitor(context: Context) : LanNetworkSource {
         @Volatile private var shared: LanNetworkSnapshotRegistry<Network>? = null
 
         private fun sharedRegistry(context: Context): LanNetworkSnapshotRegistry<Network> = shared ?: synchronized(this) {
-            shared ?: LanNetworkSnapshotRegistry<Network> { events ->
+            shared ?: LanNetworkSnapshotRegistry { events ->
                 val manager = context.getSystemService(ConnectivityManager::class.java)
                 val listener = object : ConnectivityManager.NetworkCallback() {
                     // API 26+ follows onAvailable with capabilities/properties; consume those values directly.

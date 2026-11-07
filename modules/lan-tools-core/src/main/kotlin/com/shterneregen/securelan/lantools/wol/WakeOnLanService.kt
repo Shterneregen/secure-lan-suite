@@ -10,6 +10,7 @@ import java.net.BindException
 import java.net.NoRouteToHostException
 import java.time.Clock
 import java.time.Instant
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One cancellable send, independent of room connectivity.
@@ -68,7 +69,7 @@ class DefaultWakeOnLanService(
         if (!permits.tryAcquire()) return LanResult.Failure(LanError.RESOURCE_LIMIT)
         try {
             // withTimeoutOrNull handles only this deadline; an enclosing timeout still propagates.
-            return withTimeoutOrNull(request.timeoutMillis) { sendMapped(request) }
+            return withTimeoutOrNull(request.timeoutMillis.milliseconds) { sendMapped(request) }
                 ?: LanResult.Failure(LanError.TIMEOUT)
         } finally {
             permits.release()

@@ -18,7 +18,6 @@ class ComposeUiRefinementStateTest {
     @Test
     fun shouldKeepTransfersAvailableInRoomContext() {
         val state = ComposeContextPanelState.forRoom(
-            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
         )
 
@@ -33,9 +32,9 @@ class ComposeUiRefinementStateTest {
         val peerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
         val transferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE
         val states = listOf(
-            ComposeContextPanelState.forRoom(peerState, transferState),
-            ComposeContextPanelState.forPeer(peerState, transferState),
-            ComposeContextPanelState.forTransfer(transferState, peerState),
+            ComposeContextPanelState.forRoom(transferState),
+            ComposeContextPanelState.forPeer(transferState),
+            ComposeContextPanelState.forTransfer(transferState),
             ComposeContextPanelState.forCall(
                 peerState,
                 ComposeShellMetadata.DEFAULT_MEDIA_VOICE_STATE,
@@ -69,7 +68,6 @@ class ComposeUiRefinementStateTest {
     @Test
     fun shouldKeepCompactTransferControlsVisibleAtEveryWidth() {
         val state = ComposeContextPanelState.forPeer(
-            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
         )
         val responsiveStates = listOf(
@@ -91,10 +89,8 @@ class ComposeUiRefinementStateTest {
         val peerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
         val beforeDecision = ComposeContextPanelState.forTransfer(
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
-            peerState,
         )
         val afterDecision = ComposeContextPanelState.forPeer(
-            peerState,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE,
         )
 
@@ -121,10 +117,7 @@ class ComposeUiRefinementStateTest {
                 TransferEntry("send-1", "archive.zip", true, "Sending", 40, 1024),
             ),
         )
-        val state = ComposeContextPanelState.forTransfer(
-            activeTransferState,
-            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
-        )
+        val state = ComposeContextPanelState.forTransfer(activeTransferState)
         val transferCard = state.visibleCards.first {
             it.kind == ComposeContextPanelCardKind.TRANSFER_DETAILS
         }
@@ -137,7 +130,6 @@ class ComposeUiRefinementStateTest {
     fun shouldOmitRoomStatusAndHideZeroTransferCountersInIdleRoomContext() {
         val peerState = ComposePeerListState(peers = emptyList())
         val state = ComposeContextPanelState.forRoom(
-            peerState,
             ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE.copy(peerListState = peerState),
         )
         val transferCard = state.visibleCards.first {
@@ -158,7 +150,6 @@ class ComposeUiRefinementStateTest {
             ),
         )
         val state = ComposeContextPanelState.forRoom(
-            ComposeShellMetadata.DEFAULT_PEER_LIST_STATE,
             transferState,
         )
         val transferCard = state.visibleCards.first {

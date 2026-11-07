@@ -15,7 +15,6 @@ import com.shterneregen.securelan.androidclient.model.ThemeMode
 import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
 import com.shterneregen.securelan.chat.event.ChatUserJoinedEvent
 import com.shterneregen.securelan.chat.service.ChatClientConnectRequest
-import com.shterneregen.securelan.chat.service.ChatEventPublisher
 import com.shterneregen.securelan.chat.service.ChatSendOutcome
 import com.shterneregen.securelan.chat.service.impl.DefaultChatClientService
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication
@@ -163,7 +162,7 @@ class LanToolsNavigationTest {
         val (chatPort, filePort) = ServerSocket(0).use { chat -> ServerSocket(0).use { chat.localPort to it.localPort } }
         lateinit var room: MainViewModel
         val keys = ConcurrentHashMap<String, String>()
-        val client = DefaultChatClientService(ChatEventPublisher { event ->
+        val client = DefaultChatClientService({ event ->
             if (event is ChatUserJoinedEvent) event.nickname?.let { keys[it] = event.capabilities.identityKey() }
         })
         val source = java.io.File.createTempFile("lan-tools-payload-", ".bin", compose.activity.cacheDir)

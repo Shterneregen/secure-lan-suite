@@ -66,7 +66,8 @@ internal fun LanDiagnosticsPane(state: LanToolsState, model: LanToolsViewModel, 
                     Text(text(R.string.lan_known_port), style = MaterialTheme.typography.bodySmall)
                     val scale = LocalDensity.current.fontScale
                     BoxWithConstraints {
-                        if (maxWidth >= 360.dp && scale < 1.4f) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val useInlineRow = this@BoxWithConstraints.maxWidth >= 360.dp && scale < 1.4f
+                        if (useInlineRow) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Field(input.host, { value -> model.editInput { it.copy(host = value) } }, R.string.lan_tcp_host, "lan-tcp-host", Modifier.weight(1f))
                             Field(input.port, { value -> model.editInput { it.copy(port = value) } }, R.string.lan_tcp_port, "lan-tcp-port", Modifier.width(112.dp))
                         } else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -14,8 +14,9 @@ import java.util.function.Consumer
 open class DefaultRtcSessionService : RtcSessionService {
     private val eventPublisher: RtcEventPublisher
     private val signalingGateway: RtcSignalingGateway
-    private val rtcExecutor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(128),
-        { task -> Thread(task, "securelan-rtc").apply { isDaemon = true } })
+    private val rtcExecutor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(128)) { task ->
+        Thread(task, "securelan-rtc").apply { isDaemon = true }
+    }
     private val timers = ScheduledThreadPoolExecutor(1) { task ->
         Thread(task, "securelan-rtc-timeout").apply { isDaemon = true }
     }.apply { removeOnCancelPolicy = true }
@@ -33,8 +34,9 @@ open class DefaultRtcSessionService : RtcSessionService {
     private var appliedConfiguration: RtcMediaConfiguration? = null
     private var ownsEngine = true
     private var engineFactory: (RtcMediaConfiguration) -> RtcEngine = RtcEngineProvider::createDefault
-    private val signalExecutor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(128),
-        { task -> Thread(task, "securelan-rtc-signaling").apply { isDaemon = true } })
+    private val signalExecutor = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(128)) { task ->
+        Thread(task, "securelan-rtc-signaling").apply { isDaemon = true }
+    }
     private var setupTimeoutMillis = 30_000L
 
     constructor(eventPublisher: RtcEventPublisher, signalingGateway: RtcSignalingGateway) {

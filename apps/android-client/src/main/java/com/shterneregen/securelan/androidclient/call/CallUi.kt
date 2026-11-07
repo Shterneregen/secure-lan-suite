@@ -32,6 +32,7 @@ import com.shterneregen.securelan.androidclient.MainActivity
 import com.shterneregen.securelan.androidclient.MainViewModel
 import com.shterneregen.securelan.androidclient.R
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import kotlin.math.roundToInt
@@ -70,7 +71,7 @@ fun CallHost(viewModel: MainViewModel, activity: MainActivity, content: @Composa
     }
     Box(Modifier.fillMaxSize()) {
         content { peer, video -> request(peer, null, video) }
-        if (call.phase != CallPhase.IDLE) CallScreen(viewModel, call, activity.inCallPip, { video -> request(null, call.id, video) })
+        if (call.phase != CallPhase.IDLE) CallScreen(viewModel, call, activity.inCallPip) { video -> request(null, call.id, video) }
     }
     if (microphoneExplanation) AlertDialog(
         onDismissRequest = { microphoneExplanation = false },
@@ -130,10 +131,10 @@ private fun CallScreen(vm: MainViewModel, call: CallState, pip: Boolean, accept:
         onDispose { ringtone?.stop() }
     }
     LaunchedEffect(call.phase, call.startedAt) {
-        while (call.phase == CallPhase.ACTIVE) { seconds = (SystemClock.elapsedRealtime() - call.startedAt) / 1000; delay(1000) }
+        while (call.phase == CallPhase.ACTIVE) { seconds = (SystemClock.elapsedRealtime() - call.startedAt) / 1000; delay(1.seconds) }
     }
     LaunchedEffect(controls, call.phase, remote) {
-        if (controls && call.phase == CallPhase.ACTIVE && remote != null) { delay(5_000); controls = false }
+        if (controls && call.phase == CallPhase.ACTIVE && remote != null) { delay(5.seconds); controls = false }
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).clickable { controls = !controls }) {
         val availableWidth = this.maxWidth

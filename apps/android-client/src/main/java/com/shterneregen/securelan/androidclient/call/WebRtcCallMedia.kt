@@ -9,6 +9,7 @@ import org.webrtc.*
 import org.webrtc.audio.JavaAudioDeviceModule
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.time.Duration.Companion.seconds
 
 /** Detaches every renderer before the underlying native track is disposed. Main-thread only. */
 class VideoOutput(private val track: VideoTrack, val eglContext: EglBase.Context) {
@@ -74,7 +75,7 @@ class WebRtcCallMedia(private val context: Context, private val scope: Coroutine
                         PeerConnection.IceConnectionState.FAILED -> listener.failed()
                         PeerConnection.IceConnectionState.DISCONNECTED -> {
                             disconnected?.cancel()
-                            disconnected = scope.launch { delay(10_000); if (generation == token) listener.failed() }
+                            disconnected = scope.launch { delay(10.seconds); if (generation == token) listener.failed() }
                         }
                         PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
                             disconnected?.cancel(); disconnected = null

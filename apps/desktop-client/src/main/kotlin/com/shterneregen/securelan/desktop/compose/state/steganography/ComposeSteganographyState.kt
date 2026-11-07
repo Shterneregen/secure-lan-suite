@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets
  * In-memory tool draft and result with derived readiness hints; services perform actual BMP validation.
  * Contains sensitive message and password drafts and must not be persisted or written to diagnostics.
  */
-public data class ComposeSteganographyState(
+data class ComposeSteganographyState(
     val busy: Boolean = false,
     val coverPathText: String = "",
     val inputPathText: String = "",
@@ -47,10 +47,5 @@ public data class ComposeSteganographyState(
         if (!messageFitsCapacity) add("The message is larger than the selected image capacity.")
         if (!hasInput) add("Choose an input BMP before extracting a message.")
         if ((passwordRequiredForHide || passwordRequiredForExtract) && !passwordReady) add("Enter a password for encrypted steganography workflows.")
-    }
-    val readinessSummary: String = if (blockedReasons.isEmpty()) {
-        "Steganography controls are ready for BMP hide/extract workflows."
-    } else {
-        blockedReasons.joinToString(" · ")
     }
 }

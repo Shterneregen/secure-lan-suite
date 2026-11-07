@@ -13,6 +13,6 @@ class RtcSignalVersionTest {
             assertThrows(IllegalArgumentException::class.java) { RtcSignalCodec.deserialize(payload.replaceFirst("v=1", version)) }
         }
         assertThrows(IllegalArgumentException::class.java) { RtcSignalCodec.deserialize(payload.substringAfter(';')) }
-        assertThrows(IllegalArgumentException::class.java) { RtcSignalCodec.deserialize("v=2;" + payload) }
+        assertThrows(IllegalArgumentException::class.java) { RtcSignalCodec.deserialize("v=2;$payload") }
     }
 }

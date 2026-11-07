@@ -17,6 +17,8 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopLanDeviceDiscoveryTest {
@@ -53,24 +55,24 @@ class DesktopLanDeviceDiscoveryTest {
         runCurrent()
         val firstId = current.devices.single().id
         browsers[0].emit(DnsSdEvent.Removed("_ipp._tcp.local.", "Printer"))
-        advanceTimeBy(250); runCurrent()
+        advanceTimeBy(250.milliseconds); runCurrent()
         assertTrue(current.devices.isEmpty())
         browsers[0].emit(resolved())
-        advanceTimeBy(250); runCurrent()
+        advanceTimeBy(250.milliseconds); runCurrent()
         browsers[0].emit(resolved(address = "203.0.113.4"))
-        advanceTimeBy(250); runCurrent()
+        advanceTimeBy(250.milliseconds); runCurrent()
         assertTrue(current.devices.isEmpty(), "An updated service outside this subnet must retire its previous endpoint")
         browsers[0].emit(resolved())
-        advanceTimeBy(250); runCurrent()
+        advanceTimeBy(250.milliseconds); runCurrent()
         bindings = listOf(source.copy(prefixLength = 25))
-        advanceTimeBy(1_000); runCurrent()
+        advanceTimeBy(1.seconds); runCurrent()
         assertEquals(1, browsers[0].closed)
         assertNotEquals(firstId, current.devices.single().id)
         browsers[0].emit(resolved("Late stale callback"))
-        advanceTimeBy(250); runCurrent()
+        advanceTimeBy(250.milliseconds); runCurrent()
         assertEquals("Printer", current.devices.single().displayName)
         bindings = emptyList()
-        advanceTimeBy(1_750); runCurrent()
+        advanceTimeBy(1_750.milliseconds); runCurrent()
         assertTrue(current.devices.isEmpty())
         run.cancelAndJoin()
         assertEquals(listOf(1, 1), browsers.map { it.closed })
@@ -145,7 +147,7 @@ class DesktopLanDeviceDiscoveryTest {
         }, durationMillis = 1_000)
         val first = launch { service.browse {} }
         try {
-            withTimeout(3_000) { started.await() }
+            withTimeout(3.seconds) { started.await() }
             first.cancel()
             assertTrue(withContext(Dispatchers.IO) { closing.await(3, TimeUnit.SECONDS) })
             assertEquals(LanError.RESOURCE_LIMIT, (service.browse {} as LanResult.Failure).code)

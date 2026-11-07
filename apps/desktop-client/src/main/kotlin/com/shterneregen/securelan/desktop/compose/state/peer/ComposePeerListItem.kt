@@ -1,6 +1,5 @@
 package com.shterneregen.securelan.desktop.compose.state.peer
 
-import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
@@ -8,7 +7,7 @@ import com.shterneregen.securelan.desktop.ui.DesktopPeerFormatters
 import com.shterneregen.securelan.desktop.ui.PeerPresence
 import java.time.Instant
 
-public data class ComposePeerListItem(
+data class ComposePeerListItem(
     val nickname: String,
     val online: Boolean,
     val discovered: Boolean,
@@ -28,7 +27,6 @@ public data class ComposePeerListItem(
         if (videoCapable) add("Video")
         if (fileCapabilityAdvertised) add("File")
     }
-    val capabilitySummary: String = if (capabilityLabels.isEmpty()) "Chat only" else capabilityLabels.joinToString(" · ")
     val actionSummary: String = when {
         !online -> "Offline target; wait for chat or discovery refresh before enabling actions."
         !realtimeCapable && fileCapable -> "Chat and encrypted file transfer are available; voice, video, and real-time data are not."
@@ -57,19 +55,6 @@ public data class ComposePeerListItem(
                 fileCapableOverride = DesktopMainViewHelpers.selectedPeerFileCapable(peer),
             )
         }
-
-        fun fromDiscoveredPeer(peer: DiscoveredPeer): ComposePeerListItem = fromPeer(
-            PeerPresence(
-                peer.nickname,
-                true,
-                peer.peerId,
-                peer.host,
-                peer.chatPort,
-                peer.filePort,
-                peer.lastSeen,
-            ),
-            clientConnected = true,
-        )
 
         fun defaultPreviewItems(clientConnected: Boolean): List<ComposePeerListItem> = listOf(
             fromPeer(

@@ -110,12 +110,12 @@ internal fun Notice(value: LanMessage, error: Boolean = false) {
 }
 
 @Composable
-internal fun SourcePicker(state: LanToolsState, model: LanToolsViewModel, modifier: Modifier = Modifier.fillMaxWidth(), compact: Boolean = false) {
+internal fun SourcePicker(state: LanToolsState, model: LanToolsViewModel, modifier: Modifier = Modifier, compact: Boolean = false) {
     var expanded by remember { mutableStateOf(false) }
     val label = state.selectedInterface?.source?.let { "${it.displayName}: ${it.binding.address.value}" }
         ?: text(if (state.binding == null) R.string.lan_os_routing else R.string.lan_stale_binding)
     Box {
-        OutlinedButton(onClick = { expanded = true }, modifier = modifier.testTag("lan-source")) {
+        OutlinedButton(onClick = { expanded = true }, modifier = modifier.then(if (compact) Modifier else Modifier.fillMaxWidth()).testTag("lan-source")) {
             if (!compact) {
                 Icon(Icons.Outlined.Layers, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))

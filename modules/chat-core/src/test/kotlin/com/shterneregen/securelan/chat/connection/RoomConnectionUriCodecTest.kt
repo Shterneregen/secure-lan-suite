@@ -17,16 +17,16 @@ class RoomConnectionUriCodecTest {
         assertNull((RoomConnectionUriCodec.decode(minimal) as ConnectionUriParseResult.Success).descriptor.filePortHint)
     }
     @Test fun `rejects malicious input with payload free typed errors`() {
-        val invalid = listOf(minimal + "&token=secret", minimal + "&port=5051", minimal.replace("v=1", "v=2"),
+        val invalid = listOf("$minimal&token=secret", "$minimal&port=5051", minimal.replace("v=1", "v=2"),
             minimal.replace("proto=2", "proto=1"), minimal.replace("5050", "05050"), minimal.replace("5050", "+5050"),
             minimal.replace("192.168.1.42", "example.com"), minimal.replace("192.168.1.42", "::ffff:127.0.0.1"),
-            minimal.replace("192.168.1.42", "fe80%3A%3A1%257"), minimal + "&name=%C0%AF", minimal + "&name=%00", minimal + "&name=%E2%80%AE",
-            minimal.replace("join?", "join/?"), minimal.replace("join?", "user@join?"), minimal + "#fragment", minimal + "&name=%", "x".repeat(4097))
+            minimal.replace("192.168.1.42", "fe80%3A%3A1%257"), "$minimal&name=%C0%AF", "$minimal&name=%00", "$minimal&name=%E2%80%AE",
+            minimal.replace("join?", "join/?"), minimal.replace("join?", "user@join?"), "$minimal#fragment", "$minimal&name=%", "x".repeat(4097))
         invalid.forEach { assertTrue(RoomConnectionUriCodec.decode(it) is ConnectionUriParseResult.Invalid, it) }
         assertEquals(ConnectionUriParseResult.Invalid(ConnectionUriError.UnsupportedVersion, "v"), RoomConnectionUriCodec.decode(minimal.replace("v=1", "v=3")))
     }
     @Test fun `percent decoding happens once and plus remains plus`() {
-        val value = (RoomConnectionUriCodec.decode(minimal + "&name=A+%2526B&x-extra=%26port%3D1") as ConnectionUriParseResult.Success).descriptor
+        val value = (RoomConnectionUriCodec.decode("$minimal&name=A+%2526B&x-extra=%26port%3D1") as ConnectionUriParseResult.Success).descriptor
         assertEquals("A+%26B", value.displayNameHint)
         assertEquals(5050, value.chatPort)
     }

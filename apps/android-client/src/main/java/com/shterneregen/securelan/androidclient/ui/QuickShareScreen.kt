@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.androidclient.R
 import com.shterneregen.securelan.androidclient.network.AndroidQuickShareItem
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.seconds
 import com.shterneregen.securelan.androidclient.ui.appStringResource as stringResource
 
 /** Publishes trusted-LAN links and displays their access limits; lifecycle and IO belong to callbacks. */
@@ -40,7 +41,7 @@ fun QuickShareScreen(
     if (qrShare != null) {
         QuickShareQrDialog(qrShare, onDismiss = { qrShareId = null })
     }
-    LaunchedEffect(Unit) { while (true) { onRefresh(); delay(5_000) } }
+    LaunchedEffect(Unit) { while (true) { onRefresh(); delay(5.seconds) } }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(stringResource(R.string.nav_quick_share), style = MaterialTheme.typography.headlineSmall)

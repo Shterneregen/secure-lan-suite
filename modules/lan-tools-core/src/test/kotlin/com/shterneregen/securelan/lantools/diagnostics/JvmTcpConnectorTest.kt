@@ -10,13 +10,14 @@ import org.junit.jupiter.api.Test
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class JvmTcpConnectorTest {
     @Test fun connectsAndClosesRealLoopbackSocketWithoutApplicationData() = runBlocking {
         ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { listener ->
             listener.soTimeout = 2000
-            val service = DefaultNetworkDiagnosticsService(HostResolver { error("DNS") }, networks())
+            val service = DefaultNetworkDiagnosticsService({ error("DNS") }, networks())
             val result = service.tcp(TcpCheckRequest("127.0.0.1", listener.localPort))
             assertTrue(result is LanResult.Success)
             listener.accept().use { socket -> socket.soTimeout = 2000; assertEquals(-1, socket.getInputStream().read()) }
@@ -31,7 +32,7 @@ class JvmTcpConnectorTest {
             override fun close() { closes++ }
         }
         val connector = JvmTcpConnector(StandardTestDispatcher(testScheduler)) { fake }
-        assertNull(withTimeoutOrNull(25) { connector.connect(ip("127.0.0.1"), 1234, null); true })
+        assertNull(withTimeoutOrNull(25.milliseconds) { connector.connect(ip("127.0.0.1"), 1234, null); true })
         assertEquals(1, closes)
         val job = launch { connector.connect(ip("127.0.0.1"), 1234, null) }
         runCurrent(); job.cancelAndJoin()

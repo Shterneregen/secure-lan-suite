@@ -13,7 +13,6 @@ import android.os.LocaleList
 import android.provider.OpenableColumns
 import androidx.core.content.edit
 import androidx.lifecycle.viewModelScope
-import com.shterneregen.securelan.androidclient.call.*
 import com.shterneregen.securelan.androidclient.model.AppLanguage
 import com.shterneregen.securelan.androidclient.model.AppLogEntry
 import com.shterneregen.securelan.androidclient.model.ChatLine
@@ -39,6 +38,7 @@ import com.shterneregen.securelan.androidclient.transfer.TransferSource
 import com.shterneregen.securelan.chat.protocol.handshake.PeerCapabilities
 import com.shterneregen.securelan.chat.service.impl.DefaultRandomNicknameService
 import com.shterneregen.securelan.common.model.rtc.RtcSignalCodec
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +51,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Owns the Android workspace, chat connection, in-memory transfer queue, calls and Quick Share.
@@ -77,14 +78,14 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         viewModelScope.launch {
             runCatching { withContext(dependencies.ioDispatcher) { quickShareServer.createText(text, minutes, limit) } }
                 .onSuccess { refreshQuickShares() }
-                .onFailure { if (it !is kotlinx.coroutines.CancellationException) setError("Unable to create Quick Share link") }
+                .onFailure { if (it !is CancellationException) setError("Unable to create Quick Share link") }
         }
     }
     fun createQuickShareFile(uri: Uri, name: String, minutes: Long, limit: Int?) {
         viewModelScope.launch {
             runCatching { withContext(dependencies.ioDispatcher) { quickShareServer.createFile(uri, name, minutes, limit) } }
                 .onSuccess { refreshQuickShares() }
-                .onFailure { if (it !is kotlinx.coroutines.CancellationException) setError("Unable to create Quick Share link") }
+                .onFailure { if (it !is CancellationException) setError("Unable to create Quick Share link") }
         }
     }
     fun stopQuickShare(id: String) { quickShareServer.stopShare(id); refreshQuickShares() }
@@ -224,7 +225,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         refreshLocalRoomAddresses()
         if (!available) {
             stopDiscoveryInternal()
-        } else if (available && !wasAvailable) startAutomaticDiscovery()
+        } else if (!wasAvailable) startAutomaticDiscovery()
     }
 
     fun updateInputMessage(value: String) {
@@ -268,7 +269,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         discoveryTimeoutJob?.cancel()
         discoveryTimeoutJob = viewModelScope.launch {
             do {
-                delay(60_000)
+                delay(60.seconds)
             } while (_uiState.value.autoDiscoveryEnabled)
             stopDiscoveryInternal()
             _uiState.update { it.copy(discoveryTimedOut = true) }
@@ -286,7 +287,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                         peers = state.peers.filter { it.discoveredRowId == null } + rooms.filterNot { room -> state.peers.any { it.peerId.startsWith("manual:") && it.host == room.host && it.chatPort == room.chatPort } },
                         discoveryTimedOut = false, status = "Searching for nearby rooms") }
                 } } catch (error: Exception) {
-                    if (error !is kotlinx.coroutines.CancellationException) _uiState.update { it.copy(discoveryRunning = false, discoveryTimedOut = true) }
+                    if (error !is CancellationException) _uiState.update { it.copy(discoveryRunning = false, discoveryTimedOut = true) }
                 }
             }
             return
@@ -294,7 +295,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         discoveryJob = viewModelScope.launch {
             val expiry = launch {
                 while (isActive) {
-                    delay(1000)
+                    delay(1.seconds)
                     val cutoff = dependencies.monotonicMillis() - 45_000
                     val expired = discoverySeen.filterValues { it <= cutoff }.keys.toSet()
                     expired.forEach(discoverySeen::remove)
@@ -326,7 +327,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                     }
                 }
             }.onFailure { error ->
-                if (error !is kotlinx.coroutines.CancellationException) {
+                if (error !is CancellationException) {
                     discoveryJob = null
                     discoveryTimeoutJob?.cancel()
                     discoveryTimeoutJob = null
@@ -533,7 +534,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
             }.onFailure { error ->
                 if (generation != receiverGeneration.get()) return@onFailure
                 fileReceiverJob = null
-                if (error !is kotlinx.coroutines.CancellationException) {
+                if (error !is CancellationException) {
                     _uiState.update {
                         if (generation != receiverGeneration.get()) return@update it
                         it.copy(fileReceiverRunning = false, error = error.message, status = "File receiver stopped")
@@ -703,18 +704,17 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         disconnectRequested = false
         addLog("Connecting to ${peer.nickname} at ${peer.host}:${peer.chatPort}")
         viewModelScope.launch {
-            runCatching {
+            try {
                 val route = dependencies.resolveRoute(peer.routeKey, peer.host)
                 chatClient.setRoute(route)
                 sessionRoute = route
-                chatClient.connect(
+                val acceptedNickname = chatClient.connect(
                     peer.host,
                     peer.chatPort,
                     state.nickname.trim(),
                     password,
                     androidCapabilities(localFilePort),
                 )
-            }.onSuccess { acceptedNickname ->
                 fileRoomEpoch.incrementAndGet()
                 _uiState.update {
                     it.copy(
@@ -734,7 +734,9 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                 addLog("Connected as $acceptedNickname")
                 startReceiving()
                 if (_uiState.value.autoReceiveFiles) startFileReceiver()
-            }.onFailure { error ->
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 _uiState.update { it.copy(connecting = false, connected = false, error = error.message, status = "Connection failed") }
                 addLog(error.message ?: "Connection failed", level = "ERROR")
             }
@@ -772,19 +774,23 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
         val revision = draftRevision
         textSending = true
         viewModelScope.launch {
-            try { runCatching { chatClient.sendMessage(text) }
-                .onSuccess {
-                    _uiState.update { state ->
-                        state.copy(
-                            inputMessage = if (draftRevision == revision) "" else state.inputMessage,
-                            messages = (state.messages + ChatLine(state.nickname, text, outbound = true)).takeLast(1000),
-                            status = "Message sent",
-                        )
-                    }
-                    addLog("Sent message (${text.length} chars)")
+            try {
+                chatClient.sendMessage(text)
+                _uiState.update { state ->
+                    state.copy(
+                        inputMessage = if (draftRevision == revision) "" else state.inputMessage,
+                        messages = (state.messages + ChatLine(state.nickname, text, outbound = true)).takeLast(1000),
+                        status = "Message sent",
+                    )
                 }
-                .onFailure { setError(it.message ?: "Unable to send message") }
-            } finally { textSending = false }
+                addLog("Sent message (${text.length} chars)")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                setError(error.message ?: "Unable to send message")
+            } finally {
+                textSending = false
+            }
         }
     }
 
@@ -864,7 +870,7 @@ class MainViewModel(private val dependencies: MainDependencies) : androidx.lifec
                         }
                     }
                     .onFailure { error ->
-                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        if (error is CancellationException) throw error
                         if (receiveGeneration != fileRoomEpoch.get()) return@launch
                         fileRoomEpoch.incrementAndGet()
                         connectionGeneration++

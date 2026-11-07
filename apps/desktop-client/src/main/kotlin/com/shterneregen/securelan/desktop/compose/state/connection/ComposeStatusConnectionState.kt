@@ -48,8 +48,6 @@ data class ComposeStatusConnectionState(
     } else {
         null
     }
-    val discoverableLabel: String = if (discoverable) "Discoverable" else "Hidden"
-
     private companion object {
         const val CLIENT_FILE_PORT_OFFSET: Int = 1000
 

@@ -17,8 +17,13 @@ data class LanExplorerUiState(
 ) {
     val selected get() = snapshot.devices.firstOrNull { it.id == selectedId }
     val filteredDevices get() = if (filter == LanDeviceFilter.SAVED) emptyList() else snapshot.devices.filter { device ->
-        matches(listOfNotNull(device.displayName, device.hostname, device.deviceType, device.scope) +
-            device.addresses.map { it.value } + device.services.map { it.type })
+        matches(
+            buildList {
+                addAll(listOfNotNull(device.displayName, device.hostname, device.deviceType, device.scope))
+                addAll(device.addresses.map { it.value })
+                addAll(device.services.map { it.type })
+            },
+        )
     }
     fun includes(device: SavedLanDevice): Boolean = filter != LanDeviceFilter.DISCOVERED &&
         matches(listOfNotNull(device.displayName, device.addressHint?.value, device.hostnameHint))

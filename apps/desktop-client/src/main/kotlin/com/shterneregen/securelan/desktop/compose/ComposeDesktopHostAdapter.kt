@@ -132,8 +132,8 @@ class ComposeDesktopHostAdapter(
     var chatPeers: List<PeerPresence> by mutableStateOf(emptyList())
         private set
 
-    private val authenticatedFilePeers = java.util.concurrent.ConcurrentHashMap<String, String>()
-    private val hostedPeerEndpoints = java.util.concurrent.ConcurrentHashMap<String, ChatUserJoinedEvent>()
+    private val authenticatedFilePeers = ConcurrentHashMap<String, String>()
+    private val hostedPeerEndpoints = ConcurrentHashMap<String, ChatUserJoinedEvent>()
     private val fileRoomEpoch = AtomicLong()
     private var hostedRoomChatPort: Int? = null
 
@@ -430,7 +430,7 @@ class ComposeDesktopHostAdapter(
                 val systemLikeMessage = event.system
                 val text = if (event.system) normalizeChatText(event.text, "system") else event.text.orEmpty()
                 if (systemLikeMessage) {
-                    appendWireTranscript(formatChatMessage("system", text))
+                    appendWireTranscript(formatChatMessage(text))
                 } else {
                     chatMessages = (chatMessages + ComposeChatMessage(sender, text)).takeLast(200)
                     chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
@@ -502,8 +502,8 @@ class ComposeDesktopHostAdapter(
         dispatchUiStateUpdate { handleQuickShareEvent(event) }
     }
 
-    private val localRtcFrames = LatestUiValue<RtcVideoFrameEvent>(::dispatchUiStateUpdate, ::applyRtcFrame)
-    private val remoteRtcFrames = LatestUiValue<RtcVideoFrameEvent>(::dispatchUiStateUpdate, ::applyRtcFrame)
+    private val localRtcFrames = LatestUiValue(::dispatchUiStateUpdate, ::applyRtcFrame)
+    private val remoteRtcFrames = LatestUiValue(::dispatchUiStateUpdate, ::applyRtcFrame)
     private fun applyRtcFrame(event: RtcVideoFrameEvent) {
         if (experimentalVideoState.currentSession?.sessionId == event.sessionId()) handleRtcEvent(event)
     }
@@ -884,7 +884,7 @@ class ComposeDesktopHostAdapter(
                 immediateDecision = false
                 return@runUiStateUpdateAndWait
             }
-            val knownPeer = findPeerForIncomingFile(metadata, remoteAddress) != null
+            val knownPeer = findPeerForIncomingFile(metadata) != null
             if (!knownPeer) {
                 val prompt = ComposeIncomingTransferPrompt.from(metadata, remoteAddress, ComposeIncomingTransferPromptStatus.REJECTED)
                 incomingTransferPrompts = upsertIncomingTransferPrompt(prompt)
@@ -966,7 +966,7 @@ class ComposeDesktopHostAdapter(
         return all.filter { it.waitingForDecision || it.id in historyIds }
     }
 
-    private fun findPeerForIncomingFile(metadata: FileTransferMetadata, remoteAddress: String): PeerPresence? {
+    private fun findPeerForIncomingFile(metadata: FileTransferMetadata): PeerPresence? {
         if (metadata.recipientId != statusState.nickname.trim()) return null
         return chatPeers.firstOrNull { peer ->
             peer.online() && peer.nickname() == metadata.senderId && peer.capabilities().identityKey().isNotBlank()
@@ -1350,9 +1350,9 @@ class ComposeDesktopHostAdapter(
 
     private fun configureCallMedia() {
         rtcSessionService?.configureMediaDevices(com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration(
-            mediaVoiceState.selectedMicrophone.deviceId.orEmpty(),
-            mediaVoiceState.selectedOutputDevice.deviceId.orEmpty(),
-            experimentalVideoState.selectedCamera.deviceId.orEmpty(),
+            mediaVoiceState.selectedMicrophone.deviceId,
+            mediaVoiceState.selectedOutputDevice.deviceId,
+            experimentalVideoState.selectedCamera.deviceId,
         ))
     }
 
@@ -1527,15 +1527,7 @@ class ComposeDesktopHostAdapter(
         chatTranscript = chatMessages.map(ComposeChatMessage::displayText)
     }
 
-    private fun formatChatMessage(sender: String, text: String): String {
-        val normalizedSender = sender.trim().ifEmpty { "unknown" }
-        val normalizedText = normalizeChatText(text, normalizedSender)
-        return if (isSystemSender(normalizedSender)) {
-            "[system] $normalizedText"
-        } else {
-            "$normalizedSender: $normalizedText"
-        }
-    }
+    private fun formatChatMessage(text: String): String = "[system] " + normalizeChatText(text, "system")
 
     private fun normalizeTranscriptLine(line: String): String = line.trim()
         .replace(Regex("^system:\\s*\\[system]\\s*", RegexOption.IGNORE_CASE), "[system] ")

@@ -26,6 +26,7 @@ import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
 import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import java.io.IOException
 import java.nio.file.Path
 import java.time.Instant
 import java.util.*
@@ -298,7 +299,7 @@ class ComposeDesktopHostAdapterConnectTest {
             val first = files.started.poll(2, TimeUnit.SECONDS)!!
             awaitConnected(adapter)
             adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "127.0.0.1:1234", capabilities, serverSide = true))
-            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication.verify("bob", payload, peer.sign(payload)) }
+            assertThrows(IOException::class.java) { first.authentication.verify("bob", payload, peer.sign(payload)) }
             adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "", capabilities))
             first.authentication.verify("bob", payload, peer.sign(payload))
             adapter.disconnect()
@@ -307,7 +308,7 @@ class ComposeDesktopHostAdapterConnectTest {
             awaitConnected(adapter)
             adapter.chatEventPublisher.publish(com.shterneregen.securelan.chat.event.ChatUserJoinedEvent("bob", "", capabilities))
             second.authentication.verify("bob", payload, peer.sign(payload))
-            org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) { first.authentication.verify("bob", payload, peer.sign(payload)) }
+            assertThrows(IOException::class.java) { first.authentication.verify("bob", payload, peer.sign(payload)) }
         } finally { adapter.shutdown() }
     }
 
@@ -469,10 +470,10 @@ class ComposeDesktopHostAdapterConnectTest {
     @Test fun blockedMessageWriteDoesNotBlockUiAndReturnsCorrelatedFailure() {
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
-        val results = LinkedBlockingQueue<Pair<String, com.shterneregen.securelan.chat.service.ChatSendOutcome>>()
+        val results = LinkedBlockingQueue<Pair<String, ChatSendOutcome>>()
         val client = ConnectedChatClient {
             entered.countDown(); release.await()
-            com.shterneregen.securelan.chat.service.ChatSendOutcome.FAILED
+            ChatSendOutcome.FAILED
         }
         val files = TrackingFileTransferServer()
         val adapter = connectedAdapter(client, files)
@@ -486,7 +487,7 @@ class ComposeDesktopHostAdapterConnectTest {
             release.countDown()
             val result = results.poll(2, TimeUnit.SECONDS)!!
             assertTrue(result.first.isNotBlank())
-            assertEquals(com.shterneregen.securelan.chat.service.ChatSendOutcome.FAILED, result.second)
+            assertEquals(ChatSendOutcome.FAILED, result.second)
             assertFalse(adapter.sendingMessage)
         } finally { release.countDown(); adapter.shutdown() }
     }
@@ -541,7 +542,7 @@ class ComposeDesktopHostAdapterConnectTest {
         }
 
         override fun disconnect() = Unit
-        override fun sendMessage(text: String?) = com.shterneregen.securelan.chat.service.ChatSendOutcome.WRITTEN
+        override fun sendMessage(text: String?) = ChatSendOutcome.WRITTEN
         override fun sendSignal(signal: RtcSignalEnvelope?) = Unit
         override fun isConnected(): Boolean = false
     }
@@ -553,7 +554,7 @@ class ComposeDesktopHostAdapterConnectTest {
         override fun connectedUsers(): Int = 0
     }
 
-    private class ConnectedChatClient(private val write: () -> com.shterneregen.securelan.chat.service.ChatSendOutcome = { com.shterneregen.securelan.chat.service.ChatSendOutcome.WRITTEN }) : ChatClientService {
+    private class ConnectedChatClient(private val write: () -> ChatSendOutcome = { ChatSendOutcome.WRITTEN }) : ChatClientService {
         @Volatile private var connected = false
         private val identity = com.shterneregen.securelan.crypto.protocol.PeerIdentity()
         override fun fileIdentity() = identity

@@ -58,13 +58,13 @@ class LanToolsWorkflowTest {
             override fun load() = rows
             override fun save(devices: List<SavedLanDevice>) { rows = devices }
         }
-        val diagnostics = DefaultNetworkDiagnosticsService(HostResolver { LanResult.Failure(LanError.RESOLUTION_FAILED) },
-            LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(LanInterfaceSnapshot(link.binding, link.name, true, link.broadcast)))) },
-            TcpConnector { _, _, _ -> throw NoRouteToHostException("Deterministic fixture; no physical NAS was contacted") })
-        val model = LanToolsViewModel(LanToolsServices(platform, DiagnosticsNetworkInfoProvider {
+        val diagnostics = DefaultNetworkDiagnosticsService({ LanResult.Failure(LanError.RESOLUTION_FAILED) },
+            { LanResult.Success(LanNetworkSnapshot(listOf(LanInterfaceSnapshot(link.binding, link.name, true, link.broadcast)))) },
+            { _, _, _ -> throw NoRouteToHostException("Deterministic fixture; no physical NAS was contacted") })
+        val model = LanToolsViewModel(LanToolsServices(platform, {
             LanResult.Success(DiagnosticsNetworkSnapshot(listOf(DiagnosticInterface(LanInterfaceSnapshot(link.binding, link.name, true, link.broadcast), link.gateways, link.dns, metadata)), "Test LinkProperties fixture"))
         }, object : WakeOnLanService { override suspend fun send(request: WakeRequest): LanResult<WakeReceipt> = LanResult.Failure(LanError.UNSUPPORTED) },
-            diagnostics, AndroidDeviceBrowser { _, update -> browses++; browse(update) }), store)
+            diagnostics, { _, update -> browses++; browse(update) }), store)
         val owner = ViewModelStore().apply { put("test-tools", model) }
         try {
             compose.runOnUiThread {

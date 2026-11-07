@@ -200,7 +200,7 @@ fun main() {
                 val notifications = settings.notifications
                 settings.copy(
                     notifications = notifications.copy(
-                        enabled = if (enabled) true else notifications.enabled,
+                        enabled = enabled || notifications.enabled,
                         messageNotificationsEnabled = enabled,
                     ),
                 )

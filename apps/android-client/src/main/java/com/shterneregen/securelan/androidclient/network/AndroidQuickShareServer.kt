@@ -56,8 +56,7 @@ class AndroidQuickShareServer internal constructor(
     private val running = AtomicBoolean(false)
     private val shares = ConcurrentHashMap<String, Share>()
     private val clients = java.util.concurrent.ThreadPoolExecutor(0, 8, 30, java.util.concurrent.TimeUnit.SECONDS,
-        java.util.concurrent.SynchronousQueue(),
-        { runnable -> Thread(runnable, "securelan-quick-share-client").apply { isDaemon = true } })
+        java.util.concurrent.SynchronousQueue()) { runnable -> Thread(runnable, "securelan-quick-share-client").apply { isDaemon = true } }
     private val activeClients = ConcurrentHashMap.newKeySet<Socket>()
     private val acceptGate = Any()
     private var closed = false
@@ -169,7 +168,7 @@ class AndroidQuickShareServer internal constructor(
         c.soTimeout = 10_000
         val channel = com.shterneregen.securelan.common.net.transport.LineTextChannel(c, 4096)
         val request = com.shterneregen.securelan.common.net.transport.SocketDeadlines.within(c, 10_000) {
-            val line = channel.readLine() ?: return@within emptyList<String>()
+            val line = channel.readLine() ?: return@within emptyList()
             var total = line.length
             var count = 0
             while (true) {

@@ -15,6 +15,8 @@ import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication
 import kotlinx.coroutines.*
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,7 +58,7 @@ class PlatformBoundaryTest {
                 FileTransferPeerAuthentication("device-test", com.shterneregen.securelan.crypto.protocol.PeerIdentity()) { null })
         }
         try {
-            withTimeout(10_000) { while (journal.all.isNotEmpty()) delay(25) }
+            withTimeout(10.seconds) { while (journal.all.isNotEmpty()) delay(25.milliseconds) }
             if (uri != null) {
                 context.contentResolver.query(uri, null, null, null, null)?.use { assertEquals(0, it.count) }
             }
@@ -73,10 +75,10 @@ class PlatformBoundaryTest {
     fun cameraPermissionDenialAndGrantAllowActivityRecreation() {
         // Orchestrator clears package data and permission state between tests.
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            scenario.onActivity { assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED, it.checkSelfPermission(Manifest.permission.CAMERA)) }
+            scenario.onActivity { assertEquals(PackageManager.PERMISSION_DENIED, it.checkSelfPermission(Manifest.permission.CAMERA)) }
             grantPermission(Manifest.permission.CAMERA)
             scenario.recreate()
-            scenario.onActivity { assertEquals(android.content.pm.PackageManager.PERMISSION_GRANTED, it.checkSelfPermission(Manifest.permission.CAMERA)) }
+            scenario.onActivity { assertEquals(PackageManager.PERMISSION_GRANTED, it.checkSelfPermission(Manifest.permission.CAMERA)) }
         }
     }
 
@@ -101,12 +103,12 @@ class PlatformBoundaryTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
                 scenario.onActivity { AndroidChatHostService.start(it, "device-test", "device-test", "device-test-password", port, filePort) }
-                withTimeout(10_000) { while (!AndroidChatHostService.state.value.running) delay(25) }
+                withTimeout(10.seconds) { while (!AndroidChatHostService.state.value.running) delay(25.milliseconds) }
                 scenario.recreate()
                 assertTrue(AndroidChatHostService.state.value.running)
             } finally {
                 AndroidChatHostService.stop(context)
-                withTimeout(10_000) { while (AndroidChatHostService.state.value.running || AndroidChatHostService.state.value.starting) delay(25) }
+                withTimeout(10.seconds) { while (AndroidChatHostService.state.value.running || AndroidChatHostService.state.value.starting) delay(25.milliseconds) }
             }
         }
         ServerSocket(port).use { assertTrue(it.isBound) }

@@ -21,7 +21,7 @@ data class FileTransferProgress(
     init {
         require(transferredBytes >= 0) { "transferredBytes must not be negative" }
         require(totalBytes >= 0) { "totalBytes must not be negative" }
-        require(!(totalBytes > 0 && transferredBytes > totalBytes)) { "transferredBytes must not exceed totalBytes" }
+        require(totalBytes == 0L || transferredBytes <= totalBytes) { "transferredBytes must not exceed totalBytes" }
     }
 
     /** Returns the completed percentage, truncated to an integer; returns zero for a zero total. */

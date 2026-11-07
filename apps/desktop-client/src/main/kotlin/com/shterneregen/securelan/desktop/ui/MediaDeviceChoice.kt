@@ -20,7 +20,7 @@ data class MediaDeviceChoice(
 
     companion object {
         @JvmStatic
-        fun systemDefault(label: String): MediaDeviceChoice = MediaDeviceChoice("", label, true, true)
+        fun systemDefault(label: String): MediaDeviceChoice = MediaDeviceChoice("", label, systemDefault = true, defaultDevice = true)
 
         @JvmStatic
         fun of(device: RtcMediaDevice): MediaDeviceChoice =

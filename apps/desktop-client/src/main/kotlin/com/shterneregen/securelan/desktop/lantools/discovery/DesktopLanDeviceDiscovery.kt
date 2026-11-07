@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One explicit browse owns at most four IPv4 LAN handles. It rechecks topology while listening,
@@ -43,7 +44,7 @@ class DesktopLanDeviceDiscovery(
         var everOpened = false
         try {
             update(registry.snapshot(nanoTime()))
-            withTimeoutOrNull(durationMillis) {
+            withTimeoutOrNull(durationMillis.milliseconds) {
                 var pollAt = Long.MIN_VALUE
                 while (true) {
                     currentCoroutineContext().ensureActive()
@@ -103,7 +104,7 @@ class DesktopLanDeviceDiscovery(
                     }
                     if (dropped.getAndSet(false)) registry.markPartial()
                     update(registry.snapshot(nanoTime()))
-                    delay(250)
+                    delay(250.milliseconds)
                 }
             }
             currentCoroutineContext().ensureActive()

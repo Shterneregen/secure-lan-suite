@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopExplorerControllerTest {
@@ -22,7 +23,7 @@ class DesktopExplorerControllerTest {
         val discovery = LanDeviceDiscovery { update ->
             calls++
             update(LanDiscoverySnapshot(listOf(row)))
-            withContext(NonCancellable) { delay(100) }
+            withContext(NonCancellable) { delay(100.milliseconds) }
             update(LanDiscoverySnapshot())
             LanResult.Success(LanDiscoverySnapshot())
         }
@@ -44,7 +45,7 @@ class DesktopExplorerControllerTest {
     @Test fun explicitRefreshReconcilesMissingRowsAndDoesNotMergeSavedIdentity() = runTest {
         var current = LanDiscoverySnapshot(listOf(row))
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val controller = DesktopExplorerController(LanDeviceDiscovery { update -> update(current); LanResult.Success(current) }, dispatcher, dispatcher)
+        val controller = DesktopExplorerController({ update -> update(current); LanResult.Success(current) }, dispatcher, dispatcher)
         val saved = SavedLanDevice(UUID.randomUUID(), "User label", address)
         controller.open(); controller.refresh(); runCurrent()
         assertEquals(1, controller.state.value.filteredDevices.size)
@@ -65,7 +66,7 @@ class DesktopExplorerControllerTest {
     @Test fun failedBrowseKeepsOldRowsHistoricalAndSupportsRetry() = runTest {
         var fail = false
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val controller = DesktopExplorerController(LanDeviceDiscovery {
+        val controller = DesktopExplorerController({
             if (fail) LanResult.Failure(LanError.RESOURCE_LIMIT) else LanResult.Success(LanDiscoverySnapshot(listOf(row), partial = true))
         }, dispatcher, dispatcher)
         controller.open(); controller.refresh(); runCurrent()

@@ -15,8 +15,9 @@ internal class DesktopMediaOperations(
 ) : AutoCloseable {
     private val closed = AtomicBoolean()
     private val generations = ConcurrentHashMap<String, AtomicLong>()
-    private val worker = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(4),
-        { task -> Thread(task, "desktop-media-operation").apply { isDaemon = true } })
+    private val worker = ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, ArrayBlockingQueue(4)) { task ->
+        Thread(task, "desktop-media-operation").apply { isDaemon = true }
+    }
     private val timer = ScheduledThreadPoolExecutor(1) { task ->
         Thread(task, "desktop-media-result-timeout").apply { isDaemon = true }
     }.apply { removeOnCancelPolicy = true }

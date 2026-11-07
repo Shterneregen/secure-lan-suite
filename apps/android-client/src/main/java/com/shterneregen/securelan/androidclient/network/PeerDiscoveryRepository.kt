@@ -9,10 +9,8 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
-import java.net.InetAddress
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.time.Instant
@@ -48,16 +46,6 @@ class PeerDiscoveryRepository(
         awaitClose {
             receiver.cancel()
             socket.close()
-        }
-    }
-
-    /** Broadcasts one announcement on the IO dispatcher without opening a persistent listener. */
-    suspend fun announce(peerId: String, nickname: String, chatPort: Int = 1, filePort: Int = 1) = withContext(Dispatchers.IO) {
-        val payload = DiscoveryCodec.encode(peerId, nickname, chatPort, filePort)
-        DatagramSocket().use { socket ->
-            socket.broadcast = true
-            val packet = DatagramPacket(payload, payload.size, InetAddress.getByName("255.255.255.255"), discoveryPort)
-            socket.send(packet)
         }
     }
 }

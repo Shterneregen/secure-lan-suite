@@ -83,6 +83,10 @@ data class LanToolsState(
         matches(listOfNotNull(it.displayName, it.addressHint?.value, it.hostnameHint))
     }
     val foundRows get() = if (filter == LanFilter.SAVED) emptyList() else found.devices.filter {
-        matches(listOfNotNull(it.displayName, it.hostname) + it.addresses.map { ip -> ip.value } + it.services.map { service -> service.type })
+        matches(buildList {
+            addAll(listOfNotNull(it.displayName, it.hostname))
+            addAll(it.addresses.map { ip -> ip.value })
+            addAll(it.services.map { service -> service.type })
+        })
     }
 }

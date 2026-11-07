@@ -10,6 +10,8 @@ import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.WakeRoute
 import kotlinx.coroutines.*
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,29 +74,29 @@ class LanToolsPlatformTest {
             val name = "SecureLanToolsTest-${System.nanoTime()}"
             val info = android.net.nsd.NsdServiceInfo().apply { serviceName = name; serviceType = "_http._tcp."; port = 18080; setAttribute("untrusted", "discard-me") }
             manager.registerService(info, android.net.nsd.NsdManager.PROTOCOL_DNS_SD, registration); registrationStarted = true
-            withTimeout(10_000) { registered.await() }
+            withTimeout(10.seconds) { registered.await() }
             browser = facade.browseType("_http._tcp.", link.binding.interfaceKey.takeIf { NsdApiCapabilities.current().networkScoped },
                 resolved = { if (it.name == name) found.complete(it) }, lost = {}, failed = {})
-            val value = withTimeout(20_000) { found.await() }
+            val value = withTimeout(20.seconds) { found.await() }
             assertTrue(value.addresses.isNotEmpty()); assertEquals(18080, value.port); assertTrue(value.txt.isEmpty())
-            val active = requireNotNull(browser)
+            val active = browser
             active.close()
             // A successful discovery stop alone is insufficient while service-info callbacks retire.
-            withTimeout(5_000) { active.awaitClosed() }
+            withTimeout(5.seconds) { active.awaitClosed() }
         } finally {
             browser?.close()
-            withContext(NonCancellable) { withTimeoutOrNull(2000) { browser?.awaitClosed() } }
+            withContext(NonCancellable) { withTimeoutOrNull(2.seconds) { browser?.awaitClosed() } }
             if (registrationStarted) runCatching { manager.unregisterService(registration) }
             facade.close(); platform.close()
         }
     }
 
-    private suspend fun awaitLink(platform: AndroidLanPlatform): AndroidLanLink = withTimeout(10_000) {
+    private suspend fun awaitLink(platform: AndroidLanPlatform): AndroidLanLink = withTimeout(10.seconds) {
         // Network callbacks can replace the snapshot between reads. Select from the same
         // snapshot that established availability instead of querying again before first().
         var link = platform.links().firstOrNull()
         while (link == null) {
-            delay(50)
+            delay(50.milliseconds)
             link = platform.links().firstOrNull()
         }
         link

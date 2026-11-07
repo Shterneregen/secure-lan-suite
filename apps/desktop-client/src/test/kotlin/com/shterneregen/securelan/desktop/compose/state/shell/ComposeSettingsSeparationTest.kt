@@ -6,10 +6,9 @@ import org.junit.jupiter.api.Test
 class ComposeSettingsSeparationTest {
     @Test
     fun shouldKeepAudioAndVideoSetupOutOfRoomAndPeerContext() {
-        val peerState = ComposeShellMetadata.DEFAULT_PEER_LIST_STATE
         val transferState = ComposeShellMetadata.DEFAULT_FILE_TRANSFER_STATE
-        val roomContext = ComposeContextPanelState.forRoom(peerState, transferState)
-        val peerContext = ComposeContextPanelState.forPeer(peerState, transferState)
+        val roomContext = ComposeContextPanelState.forRoom(transferState)
+        val peerContext = ComposeContextPanelState.forPeer(transferState)
 
         assertFalse(roomContext.visibleCardTitles.any { it.contains("Audio", ignoreCase = true) })
         assertFalse(peerContext.visibleCardTitles.any { it.contains("Audio", ignoreCase = true) })

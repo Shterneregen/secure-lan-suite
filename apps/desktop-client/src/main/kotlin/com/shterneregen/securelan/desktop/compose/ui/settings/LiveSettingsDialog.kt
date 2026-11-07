@@ -159,7 +159,7 @@ internal fun SettingsWindowContent(
             Text(persistenceStatus, style = MaterialTheme.typography.caption)
         }
         Divider(color = tokens.colors.borderSubtle)
-        SettingsNavigation(pages, selectedPage, { selectedPage = it })
+        SettingsNavigation(pages, selectedPage) { selectedPage = it }
         BoxWithConstraints(Modifier.weight(1f)) {
             val showAside = maxWidth >= 1100.dp
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md)) {

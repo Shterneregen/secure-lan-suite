@@ -132,7 +132,7 @@ class SecureChatIntegrationTest {
         ServerSocket(0).use { silentServer ->
             val acceptThread = Thread {
                 silentServer.accept().use { socket ->
-                    while (socket.getInputStream().read() != -1) Unit
+                    while (socket.getInputStream().read() != -1) { }
                 }
             }.apply {
                 isDaemon = true

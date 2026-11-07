@@ -10,6 +10,8 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class JvmDatagramSenderTest {
@@ -54,7 +56,7 @@ class JvmDatagramSenderTest {
     fun closesOnDeadlineAndCallerCancellation() = runTest {
         val channel = FakeChannel { _, _ -> 0 }
         val sender = JvmDatagramSender(StandardTestDispatcher(testScheduler)) { channel }
-        assertNull(withTimeoutOrNull(25) { sender.send(route, MagicPacket.create(mac)); true })
+        assertNull(withTimeoutOrNull(25.milliseconds) { sender.send(route, MagicPacket.create(mac)); true })
         assertEquals(1, channel.closes)
         val operation = launch { sender.send(route, MagicPacket.create(mac)) }
         runCurrent()
@@ -78,7 +80,7 @@ class JvmDatagramSenderTest {
             val source = network(address = "127.0.0.1")
             // Test the transport directly; production service policy excludes loopback/unicast targets.
             val actualRoute = WakeRoute(source, ip("127.0.0.1"), receiver.localPort)
-            withTimeout(2_000) { JvmDatagramSender().send(actualRoute, MagicPacket.create(mac)) }
+            withTimeout(2.seconds) { JvmDatagramSender().send(actualRoute, MagicPacket.create(mac)) }
             val packet = DatagramPacket(ByteArray(512), 512)
             receiver.receive(packet)
             assertEquals(local, packet.address)

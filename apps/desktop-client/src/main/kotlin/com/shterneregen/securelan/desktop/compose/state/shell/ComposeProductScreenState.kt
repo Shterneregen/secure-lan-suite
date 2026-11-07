@@ -1,6 +1,5 @@
 package com.shterneregen.securelan.desktop.compose.state.shell
 
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionHubMode
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
 
@@ -14,7 +13,6 @@ data class ComposeProductScreenState(
         fun from(
             statusState: ComposeStatusConnectionState,
             requestedAppMode: AppMode = AppMode.WELCOME,
-            connectionHubMode: ComposeConnectionHubMode = ComposeConnectionHubMode.HOST,
             selectedPeer: ComposePeerListItem? = null,
             activeTransfer: Boolean = false,
             activeCall: Boolean = false,
@@ -26,8 +24,6 @@ data class ComposeProductScreenState(
                 settingsRequested -> AppMode.SETTINGS
                 runtimeConnected -> AppMode.MESSENGER
                 requestedAppMode == AppMode.HOST_SETUP || requestedAppMode == AppMode.JOIN_SETUP -> requestedAppMode
-                connectionHubMode == ComposeConnectionHubMode.HOST && requestedAppMode == AppMode.HOST_SETUP -> AppMode.HOST_SETUP
-                connectionHubMode == ComposeConnectionHubMode.JOIN && requestedAppMode == AppMode.JOIN_SETUP -> AppMode.JOIN_SETUP
                 else -> AppMode.WELCOME
             }
             val roomState = when {

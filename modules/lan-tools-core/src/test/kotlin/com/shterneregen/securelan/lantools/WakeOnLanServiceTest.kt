@@ -13,13 +13,15 @@ import java.net.NoRouteToHostException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class WakeOnLanServiceTest {
     @Test
     fun validatesBeforeReadingNetworksOrSending() = runTest {
         val never = LanNetworkInfoProvider { error("Invalid input reached network provider") }
-        val service = DefaultWakeOnLanService(never, DatagramSender { _, _ -> error("sent") })
+        val service = DefaultWakeOnLanService(never, { _, _ -> error("sent") })
         val req = request()
         val cases = listOf(
             req.copy(configuration = WakeConfiguration(MacAddress.parse("ff:ff:ff:ff:ff:ff")!!)),
@@ -37,7 +39,7 @@ class WakeOnLanServiceTest {
     fun sendsOneExactDatagramAndReportsOnlyOsAcceptance() = runTest {
         val now = Instant.parse("2026-11-02T12:00:00Z")
         var sends = 0
-        val service = DefaultWakeOnLanService(networks(network()), DatagramSender { route, payload ->
+        val service = DefaultWakeOnLanService(networks(network()), { route, payload ->
             sends++
             assertEquals(network(), route.network)
             assertEquals(ip("192.168.10.255"), route.target)
@@ -59,7 +61,7 @@ class WakeOnLanServiceTest {
             UnsupportedOperationException("unsupported socket option") to LanError.UNSUPPORTED,
         )
         cases.forEach { (error, expected) ->
-            val service = DefaultWakeOnLanService(networks(network()), DatagramSender { _, _ -> throw error })
+            val service = DefaultWakeOnLanService(networks(network()), { _, _ -> throw error })
             assertEquals(LanResult.Failure(expected), service.send(request()))
         }
     }
@@ -67,9 +69,9 @@ class WakeOnLanServiceTest {
     @Test
     fun preservesTypedProviderFailuresAndDoesNotSend() = runTest {
         val denied = LanResult.Failure(LanError.PERMISSION_DENIED)
-        val service = DefaultWakeOnLanService(LanNetworkInfoProvider { denied }, DatagramSender { _, _ -> error("sent") })
+        val service = DefaultWakeOnLanService({ denied }, { _, _ -> error("sent") })
         assertEquals(denied, service.send(request()))
-        val invalidTarget = DefaultWakeOnLanService(networks(network()), DatagramSender { _, _ -> error("sent") })
+        val invalidTarget = DefaultWakeOnLanService(networks(network()), { _, _ -> error("sent") })
         assertEquals(LanResult.Failure(LanError.INVALID_INPUT, "broadcast"),
             invalidTarget.send(request().copy(configuration = WakeConfiguration(mac, broadcast = ip("10.0.0.255")))))
     }
@@ -83,7 +85,7 @@ class WakeOnLanServiceTest {
             val provider = LanNetworkInfoProvider {
                 LanResult.Success(LanNetworkSnapshot(if (reads++ == 0) listOf(initial) else fresh))
             }
-            val service = DefaultWakeOnLanService(provider, DatagramSender { _, _ -> error("sent after topology change") })
+            val service = DefaultWakeOnLanService(provider, { _, _ -> error("sent after topology change") })
             assertEquals(LanResult.Failure(LanError.NETWORK_CHANGED), service.send(request()))
         }
     }
@@ -92,10 +94,10 @@ class WakeOnLanServiceTest {
     fun boundsWholeOperationIncludingSnapshotAndReleasesCapacity() = runTest {
         var slow = true
         val provider = LanNetworkInfoProvider {
-            if (slow) delay(10_000)
+            if (slow) delay(10.seconds)
             LanResult.Success(LanNetworkSnapshot(listOf(network())))
         }
-        val service = DefaultWakeOnLanService(provider, DatagramSender { _, _ -> })
+        val service = DefaultWakeOnLanService(provider, { _, _ -> })
         assertEquals(LanResult.Failure(LanError.TIMEOUT), service.send(request().copy(timeoutMillis = 100)))
         assertEquals(100, testScheduler.currentTime)
         slow = false
@@ -105,7 +107,7 @@ class WakeOnLanServiceTest {
     @Test
     fun timesOutSuspendedSenderAndRunsCleanup() = runTest {
         var cleaned = false
-        val service = DefaultWakeOnLanService(networks(network()), DatagramSender { _, _ ->
+        val service = DefaultWakeOnLanService(networks(network()), { _, _ ->
             try { awaitCancellation() } finally { cleaned = true }
         })
         assertEquals(LanResult.Failure(LanError.TIMEOUT), service.send(request().copy(timeoutMillis = 50)))
@@ -116,7 +118,7 @@ class WakeOnLanServiceTest {
     fun propagatesCallerCancellationAndOuterDeadline() = runTest {
         var entered = false
         var cleaned = false
-        val service = DefaultWakeOnLanService(networks(network()), DatagramSender { _, _ ->
+        val service = DefaultWakeOnLanService(networks(network()), { _, _ ->
             entered = true
             try { awaitCancellation() } finally { cleaned = true }
         })
@@ -127,13 +129,13 @@ class WakeOnLanServiceTest {
         assertTrue(operation.isCancelled)
         assertTrue(cleaned)
         var propagated = false
-        try { withTimeout(10) { service.send(request()) } } catch (_: TimeoutCancellationException) { propagated = true }
+        try { withTimeout(10.milliseconds) { service.send(request()) } } catch (_: TimeoutCancellationException) { propagated = true }
         assertTrue(propagated)
     }
 
     @Test
     fun cancelledCallDoesNotReadSnapshotOrOpenTransport() = runTest {
-        val service = DefaultWakeOnLanService(LanNetworkInfoProvider { error("snapshot") }, DatagramSender { _, _ -> error("send") })
+        val service = DefaultWakeOnLanService({ error("snapshot") }, { _, _ -> error("send") })
         val operation = launch { currentCoroutineContext().cancel(); service.send(request()) }
         operation.join()
         assertTrue(operation.isCancelled)
@@ -141,7 +143,7 @@ class WakeOnLanServiceTest {
 
     @Test
     fun cancellationWinsOverConcurrentIoFailure() = runTest {
-        val service = DefaultWakeOnLanService(networks(network()), DatagramSender { _, _ ->
+        val service = DefaultWakeOnLanService(networks(network()), { _, _ ->
             currentCoroutineContext().cancel()
             throw IOException("channel closed by cancellation")
         })
@@ -153,7 +155,7 @@ class WakeOnLanServiceTest {
     @Test
     fun limitsConcurrentCallsAndRecoversAfterCancellation() = runTest {
         var block = true
-        val service = DefaultWakeOnLanService(networks(network()), DatagramSender { _, _ -> if (block) awaitCancellation() })
+        val service = DefaultWakeOnLanService(networks(network()), { _, _ -> if (block) awaitCancellation() })
         val jobs = List(4) { async { service.send(request()) } }
         runCurrent()
         assertEquals(LanResult.Failure(LanError.RESOURCE_LIMIT), service.send(request()))

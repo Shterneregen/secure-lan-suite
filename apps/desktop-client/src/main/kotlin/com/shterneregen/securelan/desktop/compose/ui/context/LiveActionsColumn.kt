@@ -68,13 +68,10 @@ internal fun LiveActionsColumn(
                     transferState,
                 )
 
-                transferState.requiresAttention -> ComposeContextPanelState.forTransfer(
-                    transferState,
-                    peerState,
-                )
+                transferState.requiresAttention -> ComposeContextPanelState.forTransfer(transferState)
 
-                peerState.selectedPeer != null -> ComposeContextPanelState.forPeer(peerState, transferState)
-                else -> ComposeContextPanelState.forRoom(peerState, transferState)
+                peerState.selectedPeer != null -> ComposeContextPanelState.forPeer(transferState)
+                else -> ComposeContextPanelState.forRoom(transferState)
             }
             LaunchedEffect(contextPanelState.mode, contextPanelState.visibleCardKinds.firstOrNull()) {
                 panelScrollState.scrollTo(0)

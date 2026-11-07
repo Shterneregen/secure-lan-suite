@@ -29,10 +29,10 @@ class DesktopSettingsPersistenceTest {
 
     @Test fun writesAreOrderedAndOlderCompletionsCannotClearNewerState() {
         val completions = LinkedBlockingQueue<() -> Unit>()
-        val writes = LinkedBlockingQueue<String?>()
+        val writes = LinkedBlockingQueue<String>()
         val store = object : DesktopAppSettingsStore {
             override fun load() = DesktopAppSettings()
-            override fun save(settings: DesktopAppSettings): Boolean { writes.add(settings.displayName); return settings.displayName == "old" }
+            override fun save(settings: DesktopAppSettings): Boolean { writes.add(requireNotNull(settings.displayName)); return settings.displayName == "old" }
         }
         DesktopAppSettingsController(store = store, dispatch = { completions.add(it) }).use { controller ->
             controller.update { it.copy(displayName = "old") }

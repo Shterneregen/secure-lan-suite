@@ -39,19 +39,20 @@ import com.shterneregen.securelan.desktop.network.discovery.DesktopNetworkMonito
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.seconds
 
 @Composable
 internal fun RoomInvitationDialog(hostAdapter: ComposeDesktopHostAdapter, onClose: () -> Unit) {
     val host = hostAdapter.hostedRoomAdvertisement
     val password = hostAdapter.currentRoomPassword
-    val addresses by produceState(emptyList<com.shterneregen.securelan.common.net.address.IpLiteral>()) {
+    val addresses by produceState(emptyList()) {
         while (true) {
             value = withContext(Dispatchers.IO) { runCatching { NetworkBindingSelector.select(DesktopNetworkMonitor().snapshot())
                 .map { it.address }.filter { LanAddressPolicy.portable(it) } }.getOrDefault(emptyList()) }
-            delay(5000)
+            delay(5.seconds)
         }
     }
-    var selected by remember { mutableStateOf<com.shterneregen.securelan.common.net.address.IpLiteral?>(null) }
+    var selected by remember { mutableStateOf<IpLiteral?>(null) }
     val address = selected?.takeIf { it in addresses } ?: addresses.firstOrNull()
     val uri = remember(host, address, password) { if (host == null || address == null) null else runCatching {
         RoomConnectionUriCodec.encode(RoomConnectionDescriptor(address, host.chatPort, host.activeFilePort, host.peerId, host.roomInstanceId, host.displayName, password = password))

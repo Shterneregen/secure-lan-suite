@@ -18,6 +18,7 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.milliseconds
 
 internal class MemoryLanStore(var devices: List<SavedLanDevice> = emptyList()) : SavedLanDeviceStore {
     var failedWrite = false
@@ -100,7 +101,7 @@ class DesktopLanToolsControllerTest {
         var cleaned = false
         val slow = object : WakeOnLanService {
             override suspend fun send(request: WakeRequest): LanResult<WakeReceipt> {
-                try { withContext(NonCancellable) { delay(100) } } finally { cleaned = true }
+                try { withContext(NonCancellable) { delay(100.milliseconds) } } finally { cleaned = true }
                 return LanResult.Success(receipt)
             }
         }
@@ -283,7 +284,7 @@ class DesktopLanToolsControllerTest {
         val changing = LanNetworkInfoProvider { LanResult.Success(LanNetworkSnapshot(listOf(current))) }
         val sent = mutableListOf<String>()
         val controller = DesktopLanToolsController(MemoryLanStore(listOf(device)), changing,
-            DefaultWakeOnLanService(changing, DatagramSender { route, _ -> sent += route.network.binding.key }), dispatcher, dispatcher)
+            DefaultWakeOnLanService(changing, { route, _ -> sent += route.network.binding.key }), dispatcher, dispatcher)
         try {
             controller.open(); runCurrent(); controller.selectDevice(device.id); controller.selectBinding(network.binding.key)
             current = network.copy(binding = network.binding.copy(key = "other:192.168.1.42", interfaceKey = "other"))

@@ -24,7 +24,7 @@ class LanToolsDependencies(private val context: Context) : ViewModelProvider.Fac
         val facade = NsdFacade(context.applicationContext)
         val multicast = MulticastLease(context.applicationContext)
         val browser = AndroidLanDeviceDiscovery(platform,
-            LanNsdBrowser { type, key, resolved, lost, failed -> facade.browseType(type, key, resolved, lost, failed) },
+            { type, key, resolved, lost, failed -> facade.browseType(type, key, resolved, lost, failed) },
             multicast, NsdApiCapabilities.current())
         val services = LanToolsServices(platform, DiagnosticsNetworkInfoProvider(network::diagnostics),
             DefaultWakeOnLanService(network, AndroidDatagramSender(platform)),

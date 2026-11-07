@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.time.Clock
 import java.util.Locale
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Separate lifecycle owner: temporary closure/background cancels networking, not forms or committed
@@ -237,7 +238,7 @@ class LanToolsViewModel(private val services: LanToolsServices, private val stor
         result(kind, running)
         jobs[kind] = scope.launch {
             val outcome = try {
-                val message = withTimeoutOrNull(timeout) { block() }
+                val message = withTimeoutOrNull(timeout.milliseconds) { block() }
                 if (message == null) LanOutcome(LanPhase.FAILURE, errorMessage(LanError.TIMEOUT)) else LanOutcome(LanPhase.SUCCESS, message)
             } catch (cancel: CancellationException) { throw cancel }
             catch (failure: LanCheckFailure) { LanOutcome(LanPhase.FAILURE, if (failure.code == LanError.INVALID_INPUT && kind in setOf(LanOperation.TCP, LanOperation.DNS)) LanMessage(R.string.lan_enter_host) else errorMessage(failure.code)) }

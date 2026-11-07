@@ -35,7 +35,6 @@ data class ComposeContextPanelState(
         private const val MAX_VISIBLE_CARDS: Int = 6
 
         fun forRoom(
-            peerListState: ComposePeerListState,
             transferState: ComposeFileTransferState,
         ): ComposeContextPanelState = ComposeContextPanelState(
             mode = RightPanelMode.ROOM_INFO,
@@ -45,7 +44,6 @@ data class ComposeContextPanelState(
         )
 
         fun forPeer(
-            peerListState: ComposePeerListState,
             transferState: ComposeFileTransferState,
         ): ComposeContextPanelState = ComposeContextPanelState(
             mode = RightPanelMode.PEER_INFO,
@@ -54,7 +52,6 @@ data class ComposeContextPanelState(
 
         fun forTransfer(
             transferState: ComposeFileTransferState,
-            peerListState: ComposePeerListState,
         ): ComposeContextPanelState = ComposeContextPanelState(
             mode = RightPanelMode.TRANSFERS,
             cards = listOf(persistentTransferCard(transferState, primary = true)),

@@ -8,6 +8,7 @@ import com.shterneregen.securelan.lantools.model.LanResult
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.time.Duration.Companion.seconds
 
 /** Manual browse owner. Opening the utility never starts discovery and closing never touches rooms. */
 class DesktopExplorerController(
@@ -41,7 +42,7 @@ class DesktopExplorerController(
             snapshot = stale(), message = "Browsing advertised services for up to 30 seconds; backend cleanup may take additional time.")
         job = scope.launch {
             try {
-                val result = withTimeoutOrNull(60_000) {
+                val result = withTimeoutOrNull(60.seconds) {
                     withContext(io) {
                         discovery.browse { snapshot -> withContext(dispatcher) {
                             if (visible && token == generation) mutable.value = state.value.copy(snapshot = snapshot)

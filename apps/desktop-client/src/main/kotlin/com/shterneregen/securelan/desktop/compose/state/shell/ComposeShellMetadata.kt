@@ -44,7 +44,6 @@ object ComposeShellMetadata {
     )
     val DEFAULT_WORKSPACE_LAYOUT: ComposeWorkspaceLayout = ComposeWorkspaceLayout()
     val DEFAULT_CONTEXT_PANEL_STATE: ComposeContextPanelState = ComposeContextPanelState.forRoom(
-        peerListState = DEFAULT_PEER_LIST_STATE,
         transferState = DEFAULT_FILE_TRANSFER_STATE,
     )
     val DEFAULT_ONBOARDING_STATE: ComposeOnboardingState = ComposeOnboardingState()

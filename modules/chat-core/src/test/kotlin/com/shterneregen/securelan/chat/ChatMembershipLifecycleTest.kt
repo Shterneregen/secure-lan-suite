@@ -16,7 +16,7 @@ class ChatMembershipLifecycleTest {
         val socketClosed = CountDownLatch(1)
         val blockWrites = AtomicBoolean()
         val port = ServerSocket(0).use { it.localPort }
-        val server = DefaultChatServerService({})
+        val server = DefaultChatServerService {}
         val factory = com.shterneregen.securelan.common.net.transport.ClientSocketFactory { endpoint ->
             object : java.net.Socket(endpoint.host(), endpoint.port()) {
                 override fun close() { super.close(); socketClosed.countDown() }

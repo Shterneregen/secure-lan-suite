@@ -6,6 +6,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 enum class CallPhase { IDLE, INCOMING, OUTGOING, CONNECTING, ACTIVE, ENDED }
 enum class CallEndReason { COMPLETED, DECLINED, BUSY, TIMEOUT, CONNECTION_LOST, ERROR }
@@ -73,13 +75,14 @@ class CallCoordinator(
     val signalingError = mutableSignalingError.asStateFlow()
     internal val pendingSignalCount: Int get() = outbox.size
     private val sender = scope.launch {
-        for (wake in wakeSender) {
+        while (true) {
+            if (wakeSender.receiveCatching().isFailure) break
             while (outbox.isNotEmpty()) {
                 val work = outbox.removeFirst()
                 if (!work.terminal && (work.generation != generation || (!work.reply &&
                     (!state.value.ongoing || state.value.id != work.signal.sessionId())))) continue
                 val task = scope.launch(start = CoroutineStart.LAZY) {
-                    try { withTimeout(if (work.terminal || work.reply) 1_000 else 10_000) { send(work.signal) } }
+                    try { withTimeout(if (work.terminal || work.reply) 1.seconds else 10.seconds) { send(work.signal) } }
                     catch (_: TimeoutCancellationException) { sendFailed(work) }
                     catch (e: CancellationException) { throw e }
                     catch (_: Exception) { sendFailed(work) }
@@ -237,7 +240,7 @@ class CallCoordinator(
     private fun matches(call: CallState) = state.value.ongoing && state.value.id == call.id
     private fun armTimeout(id: String) {
         timeout?.cancel()
-        timeout = scope.launch { delay(timeoutMillis); if (state.value.id == id) finish(CallEndReason.TIMEOUT) }
+        timeout = scope.launch { delay(timeoutMillis.milliseconds); if (state.value.id == id) finish(CallEndReason.TIMEOUT) }
     }
     private fun transportFailed(signal: RtcSignalEnvelope) {
         if (state.value.id == signal.sessionId()) finish(CallEndReason.CONNECTION_LOST, notify = false)

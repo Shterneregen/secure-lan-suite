@@ -35,8 +35,6 @@ data class ComposeQuickShareState(
     val hasText: Boolean = textDraft.trim().isNotEmpty()
     val activeEntries: List<QuickShareEntry> = entries.filter { it.active() }
     val inactiveEntries: List<QuickShareEntry> = entries.filterNot { it.active() }
-    val statusText: String =
-        if (running && port != null) DesktopQuickShareFormatters.formatServerStatus() else "Quick share is stopped"
     val statusDetail: String = if (running) {
         "Sharing is ready. Links expire according to the policy below."
     } else {
@@ -87,14 +85,6 @@ data class ComposeQuickShareState(
         "Ready to create temporary browser links"
     }
     val createLinkHint: String = "Creating a link starts sharing automatically."
-    val readinessSummary: String = buildList {
-        if (port == null) add("Enter a valid port from 1 to 65535.")
-        if (!expirationPolicyValid) add("Set expiration to at least 1 minute.")
-        if (!accessPolicyValid) add("Set the download limit to at least 1.")
-        serverError?.takeIf { it.isNotBlank() }?.let(::add)
-    }.ifEmpty {
-        listOf(policySentence)
-    }.joinToString(" · ")
     val primaryLandingUrl: String = DesktopQuickShareFormatters.pickPrimaryLandingUrl(landingUrls, preferredHost)
     val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map { ComposeQuickShareRow.from(it, preferredHost) }
 }

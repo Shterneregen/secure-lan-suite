@@ -25,7 +25,7 @@ class ChatSocketSession(private val socket: Socket) : Closeable {
     /** Negotiated only with peers advertising health:v1. Any authenticated frame renews liveness. */
     @Synchronized
     fun startHealth(intervalMillis: Long = 10_000, timeoutMillis: Long = 30_000) {
-        check(intervalMillis > 0 && timeoutMillis > intervalMillis)
+        check(intervalMillis in 1..<timeoutMillis)
         if (heartbeat != null || closed.get()) return
         lastReceived = System.nanoTime()
         healthDeadline = healthScheduler.scheduleAtFixedRate({

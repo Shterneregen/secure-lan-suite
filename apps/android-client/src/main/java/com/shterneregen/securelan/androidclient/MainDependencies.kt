@@ -15,6 +15,7 @@ import com.shterneregen.securelan.androidclient.call.CallSession
 import com.shterneregen.securelan.androidclient.model.AppLanguage
 import com.shterneregen.securelan.androidclient.model.DiscoveredPeer
 import com.shterneregen.securelan.androidclient.network.*
+import com.shterneregen.securelan.chat.discovery.DiscoverySnapshot
 import com.shterneregen.securelan.common.model.rtc.RtcSignalEnvelope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -50,8 +51,8 @@ class MainDependencies(
     val hasCamera: () -> Boolean = { false },
     val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
-    val discoverRooms: ((String) -> Flow<com.shterneregen.securelan.chat.discovery.DiscoverySnapshot>)? = null,
-    val resolveRoute: (String?, String) -> com.shterneregen.securelan.androidclient.network.LanSocketRoute? = { _, _ -> null },
+    val discoverRooms: ((String) -> Flow<DiscoverySnapshot>)? = null,
+    val resolveRoute: (String?, String) -> LanSocketRoute? = { _, _ -> null },
 )
 
 /** The single production composition root; never retained across an unrelated workspace lifetime. */

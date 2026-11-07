@@ -30,8 +30,8 @@ class RtcSignalEnvelope(
     type: RtcSignalType,
     mode: RtcSessionMode?,
     dataChannelLabel: String?,
-    audioEnabled: Boolean,
-    videoEnabled: Boolean,
+    private val audioEnabled: Boolean,
+    private val videoEnabled: Boolean,
     sdp: String?,
     iceCandidate: String?,
     sdpMid: String?,
@@ -44,8 +44,6 @@ class RtcSignalEnvelope(
     private val type: RtcSignalType = Objects.requireNonNull(type, "type must not be null")
     private val mode: RtcSessionMode = mode ?: RtcSessionMode.DATA
     private val dataChannelLabel: String = normalize(dataChannelLabel, "securelan-data")
-    private val audioEnabled: Boolean = audioEnabled
-    private val videoEnabled: Boolean = videoEnabled
     private val sdp: String = normalize(sdp, "")
     private val iceCandidate: String = normalize(iceCandidate, "")
     private val sdpMid: String = normalize(sdpMid, "")

@@ -4,13 +4,12 @@ import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatus
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
 import com.shterneregen.securelan.desktop.ui.DesktopTransferFormatters
 import com.shterneregen.securelan.desktop.ui.TransferEntry
-import java.nio.file.Paths
 
 /**
  * Derives transfer readiness, receive prompts, active rows, and recent history for the workspace.
  * [entries] must contain detached event snapshots. [sessionPassword] is transient and must not be logged.
  */
-public data class ComposeFileTransferState(
+data class ComposeFileTransferState(
     val statusState: ComposeStatusConnectionState,
     val peerListState: ComposePeerListState,
     val selectedFilePath: String = "",
@@ -23,13 +22,6 @@ public data class ComposeFileTransferState(
     val title: String = "Encrypted file transfer"
     val selectedPeer = peerListState.selectedPeer
     val selectedPeerName: String = selectedPeer?.nickname ?: "No peer selected"
-    val hasSelectedFile: Boolean = selectedFilePath.trim().isNotEmpty()
-    val senderReady: Boolean = senderId.trim().isNotEmpty()
-    val passwordReady: Boolean = sessionPassword.isNotEmpty()
-    val sendTargetReady: Boolean =
-        statusState.clientConnected && selectedPeer?.online == true && selectedPeer.fileCapable
-    val listenerReady: Boolean = statusState.resolvedLocalFilePort != null
-    val canSendSelectedFile: Boolean = sendTargetReady && hasSelectedFile && senderReady && passwordReady
     val activeCount: Long = entries.count { it.active() }.toLong()
     val failedCount: Int = entries.count { it.status == "Failed" }
     val waitingPromptCount: Int = incomingPrompts.count { it.waitingForDecision }
@@ -70,40 +62,5 @@ public data class ComposeFileTransferState(
         "This peer did not make direct file receiving available. Quick Share creates a temporary LAN link you can send in chat."
     } else {
         "Active transfers open automatically. To send a new file, select an online peer and use Attach."
-    }
-    val selectedFileName: String = selectedFilePath.trim()
-        .takeIf(String::isNotEmpty)
-        ?.let { runCatching { Paths.get(it).fileName?.toString() ?: it }.getOrDefault(it) }
-        ?: "No file selected"
-    val selectedFileSummary: String = if (hasSelectedFile) selectedFileName else "No file selected"
-    val sendLabel: String = if (canSendSelectedFile) "Send file ready" else "Send file blocked"
-    val blockedReasons: List<String> = buildList {
-        if (!statusState.clientConnected) {
-            add("Connect to chat before sending encrypted files.")
-        }
-        if (selectedPeer == null) {
-            add("Select an online peer before sending files.")
-        } else if (!selectedPeer.online) {
-            add("Selected peer is offline; wait for discovery or chat presence refresh.")
-        } else if (!selectedPeer.fileCapable) {
-            add("Selected peer does not have an available file receiver endpoint.")
-        }
-        if (!hasSelectedFile) {
-            add("Choose a local file before sending.")
-        }
-        if (!senderReady) {
-            add("Enter a sender name before sending files.")
-        }
-        if (!passwordReady) {
-            add("Enter the file-transfer session password before sending files.")
-        }
-        if (!listenerReady) {
-            add("Configure a valid local file-transfer listener port.")
-        }
-    }
-    val readinessSummary: String = if (blockedReasons.isEmpty()) {
-        "File-transfer controls are ready."
-    } else {
-        blockedReasons.joinToString(" · ")
     }
 }

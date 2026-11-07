@@ -41,7 +41,7 @@ internal fun TransferActivityRow(row: ComposeTransferRow) {
     }
     val progress by animateFloatAsState(
         targetValue = row.percent.coerceIn(0, 100) / 100f,
-        animationSpec = motionTween<Float>(durationMillis = tokens.motion.durationDefault),
+        animationSpec = motionTween(durationMillis = tokens.motion.durationDefault),
         label = "TransferProgress",
     )
     val (_, interactive) = rememberInteractiveSurfaceState(tone = tone)

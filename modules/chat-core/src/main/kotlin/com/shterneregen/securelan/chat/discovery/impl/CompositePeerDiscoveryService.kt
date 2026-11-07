@@ -4,12 +4,13 @@ import com.shterneregen.securelan.chat.discovery.*
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /** Each run owns one serial reducer. Upserts coalesce; removal/reset have a separate bounded channel. */
 class CompositePeerDiscoveryService(private val providers: List<DiscoveryProvider>) : RoomDiscoveryService {
     private class Run(val request: DiscoveryStartRequest, val listener: PeerDiscoveryListener, val publish: (DiscoverySnapshot) -> Unit) {
-        val owner = Executors.newSingleThreadScheduledExecutor { Thread(it, "room-discovery").apply { isDaemon = true } }
+        val owner: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { Thread(it, "room-discovery").apply { isDaemon = true } }
         val registry = DiscoveryRegistry()
         val pending = linkedMapOf<ObservationKey, DiscoveryEvent.Upsert>()
         val removals = linkedSetOf<ObservationKey>()
@@ -78,7 +79,12 @@ class CompositePeerDiscoveryService(private val providers: List<DiscoveryProvide
     private fun drain(run: Run) {
         if (active !== run) return
         val events = synchronized(run) {
-            (run.resets.values.toList() + run.removals.map(DiscoveryEvent::Remove) + run.statuses.values + run.pending.values).also {
+            buildList {
+                addAll(run.resets.values)
+                addAll(run.removals.map(DiscoveryEvent::Remove))
+                addAll(run.statuses.values)
+                addAll(run.pending.values)
+            }.also {
                 run.resets.clear(); run.removals.clear(); run.statuses.clear(); run.pending.clear()
             }
         }

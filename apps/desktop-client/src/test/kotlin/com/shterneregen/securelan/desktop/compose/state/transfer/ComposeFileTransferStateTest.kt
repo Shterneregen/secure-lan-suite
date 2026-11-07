@@ -57,7 +57,7 @@ class ComposeFileTransferStateTest {
     @Test
     fun shouldKeepTransferContentsAvailableAtEveryPanelWidth() {
         val state = transferState(false)
-        val panel = ComposeContextPanelState.forRoom(state.peerListState, state)
+        val panel = ComposeContextPanelState.forRoom(state)
 
         assertEquals("Actions", panel.title)
         listOf(1279, 1280, 1439, 1440, 1599, 1600).forEach { width ->

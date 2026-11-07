@@ -286,8 +286,6 @@ class SecureFileReceiver(private val context: Context) : IncomingFileReceiver {
 
     companion object {
         private const val MAX_FILE_BYTES = 1024L * 1024 * 1024
-        private const val ACCEPTED = "ACCEPTED"
-        private const val DONE = "DONE"
         private const val DOWNLOAD_SUBDIRECTORY = "SecureLan"
         private const val MAX_FILE_NAME_LENGTH = 160
         private const val MAX_DUPLICATE_FILE_INDEX = 10_000

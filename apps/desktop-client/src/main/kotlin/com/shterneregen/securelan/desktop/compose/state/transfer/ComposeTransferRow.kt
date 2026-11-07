@@ -4,7 +4,7 @@ import com.shterneregen.securelan.desktop.ui.DesktopTransferFormatters
 import com.shterneregen.securelan.desktop.ui.TransferEntry
 
 /** Detached transfer presentation with bounded progress and speed shown only while active. */
-public data class ComposeTransferRow(
+data class ComposeTransferRow(
     val fileName: String,
     val directionLabel: String,
     val status: String,

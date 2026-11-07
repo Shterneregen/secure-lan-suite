@@ -2,7 +2,6 @@ package com.shterneregen.securelan.filetransfer.service.impl
 
 import com.shterneregen.securelan.common.net.transport.TcpServer
 import com.shterneregen.securelan.filetransfer.protocol.SecureFileTransferHandshake
-import com.shterneregen.securelan.filetransfer.protocol.TransferRejectedException
 import com.shterneregen.securelan.filetransfer.event.FileTransferCompletedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferFailedEvent
 import com.shterneregen.securelan.filetransfer.event.FileTransferStartedEvent
