@@ -69,7 +69,6 @@ data class ComposeExperimentalVideoState(
     val localFrameCaption: String = localFrame?.let { frame ->
         DesktopRealtimeFormatters.videoFrameCaption(true, frame.peer(), frame.width(), frame.height())
     } ?: "Local preview will appear when camera frames arrive."
-    val stageFrameCaption: String = if (currentSession != null) remoteFrameCaption else localFrameCaption
     val previewStateLabel: String = when {
         cameraTestStatus.startsWith("Camera preview failed", ignoreCase = true) -> "Preview failed"
         localFrame != null -> "Preview is live"
@@ -83,14 +82,10 @@ data class ComposeExperimentalVideoState(
         physicalCameraCount == 0 -> "No camera confirmed. Refresh devices or use the system default."
         else -> "Choose a camera and start preview to check image and lighting."
     }
-    val videoTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.videoCapable
-    val canRefreshCameras: Boolean = true
     val canTestCamera: Boolean = cameras.isNotEmpty()
     val canStartPreview: Boolean = cameras.isNotEmpty() && !previewRunning
     val canStopPreview: Boolean = previewRunning
-    val canStartVideo: Boolean = videoTargetReady
     val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state)
-    val startVideoLabel: String = if (canStartVideo) "Start video call" else "Video call blocked"
     val startPreviewLabel: String = if (canStartPreview) "Start camera preview" else "Preview unavailable"
     val stopPreviewLabel: String = if (canStopPreview) "Stop camera preview" else "Stop preview unavailable"
     val previewConfigurationLabel: String = "Self preview ${if (localPreviewEnabled) "on" else "off"} • remote preview ${if (remotePreviewEnabled) "on" else "off"}"

@@ -60,15 +60,11 @@ data class ComposeMediaVoiceState(
         else -> "Voice idle"
     }
     val localAudioLabel: String = DesktopRealtimeFormatters.formatAudioLevel(localAudioLevel > 0.01, true, selectedPeer?.nickname, localAudioLevel)
-    val remoteAudioLabel: String = DesktopRealtimeFormatters.formatAudioLevel(remoteAudioLevel > 0.01, false, selectedPeer?.nickname, remoteAudioLevel)
     val localAudioPercent: Int = (localAudioLevel.coerceIn(0.0, 1.0) * 100).toInt()
-    val voiceTargetReady: Boolean = statusState.clientConnected && selectedPeer?.online == true && selectedPeer.voiceCapable
     val canRefreshDevices: Boolean = true
     val canTestMicrophone: Boolean = microphones.isNotEmpty()
     val canTestSpeaker: Boolean = outputDevices.isNotEmpty()
-    val canStartVoice: Boolean = voiceTargetReady
     val canHangUp: Boolean = DesktopMainViewHelpers.hangUpAvailable(currentSession?.state)
-    val startVoiceLabel: String = if (canStartVoice) "Start voice call" else "Voice call blocked"
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) add("Connect to chat before starting a voice call.")
         if (selectedPeer == null) add("Select an online peer before starting voice.") else if (!selectedPeer.online) add("Selected peer is offline; voice must remain blocked.") else if (!selectedPeer.voiceCapable) add("Selected peer does not advertise voice support; voice must remain blocked.")

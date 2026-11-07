@@ -3,7 +3,6 @@ package com.shterneregen.securelan.desktop.compose.ui.steganography
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,36 +53,6 @@ internal fun SteganographyWorkflowStatus(
                 style = MaterialTheme.typography.caption,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.72f),
             )
-        }
-    }
-}
-
-@Composable
-internal fun SteganographyInfoSurface(
-    title: String,
-    body: String,
-    positive: Boolean,
-    actions: @Composable ColumnScope.() -> Unit = {},
-) {
-    val tokens = LocalSecureLanDesignTokens.current
-    val color = if (positive) MaterialTheme.colors.primary else MaterialTheme.colors.error
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(tokens.radius.medium),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.24f)),
-        color = tokens.colors.surfaceLevel2.copy(alpha = 0.70f),
-    ) {
-        Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.subtitle2)
-            Text(
-                body,
-                style = MaterialTheme.typography.caption,
-                color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f),
-            )
-            actions()
         }
     }
 }

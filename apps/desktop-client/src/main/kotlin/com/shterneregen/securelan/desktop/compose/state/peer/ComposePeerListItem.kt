@@ -23,7 +23,6 @@ public data class ComposePeerListItem(
     val fileCapable: Boolean = fileCapableOverride ?: (discovered || filePort > 0)
     val fileCapabilityAdvertised: Boolean = fileCapable
     val realtimeCapable: Boolean = voiceCapable || videoCapable || dataChannelCapable
-    val availabilityLabel: String = if (online) "Online" else "Offline"
     val capabilityLabels: List<String> = buildList {
         if (voiceCapable) add("Voice")
         if (videoCapable) add("Video")

@@ -18,14 +18,9 @@ object ComposeShellMetadata {
 
     // Composer pinning / overflow-safe startup layout constants
     val COMPOSER_MIN_HEIGHT: Dp = 52.dp
-    val COMPOSER_SAFE_VERTICAL_SPACE: Dp = 96.dp
-    val CONNECTION_HUB_EXPANDED_MAX_FRACTION: Float = 0.55f
-    val MIN_CHAT_SURFACE_HEIGHT: Dp = 140.dp
-    val CENTER_COLUMN_SPACING: Dp = 8.dp
     val ADVANCED_PANE_MAX_HEIGHT: Dp = 260.dp
     val SIDE_EMPTY_STATE_GUIDANCE_MAX_WIDTH: Dp = 244.dp
     val CENTER_EMPTY_STATE_GUIDANCE_MAX_WIDTH: Dp = 440.dp
-    val INLINE_EMPTY_STATE_MIN_HEIGHT: Dp = 44.dp
     val DEFAULT_STATUS_ADAPTER_STATE: ComposeStatusConnectionState = ComposeStatusConnectionState()
     val DEFAULT_CONNECTION_HUB_STATE: ComposeConnectionHubState = ComposeConnectionHubState(
         statusState = DEFAULT_STATUS_ADAPTER_STATE,
@@ -55,11 +50,6 @@ object ComposeShellMetadata {
     val DEFAULT_ONBOARDING_STATE: ComposeOnboardingState = ComposeOnboardingState()
     val DEFAULT_PRODUCT_SCREEN_STATE: ComposeProductScreenState = ComposeProductScreenState()
     val DEFAULT_WORKSPACE_STATE: ComposeWorkspaceState = ComposeWorkspaceState()
-    val DEFAULT_APP_SHELL_STATE: ComposeAppShellState = ComposeAppShellState(
-        productState = DEFAULT_PRODUCT_SCREEN_STATE,
-        statusState = DEFAULT_STATUS_ADAPTER_STATE,
-        workspaceState = DEFAULT_WORKSPACE_STATE,
-    )
 
     private fun loadAppVersion(): String = Properties().run {
         ComposeShellMetadata::class.java.getResourceAsStream("/securelan-version.properties")?.use(::load)

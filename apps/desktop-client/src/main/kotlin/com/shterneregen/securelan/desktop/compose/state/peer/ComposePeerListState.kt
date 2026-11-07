@@ -34,13 +34,8 @@ data class ComposePeerListState(
     val resolvedSelectedPeerIndex: Int = resolveSelectedPeerIndex()
     val selectedPeer: ComposePeerListItem? = visiblePeers.getOrNull(resolvedSelectedPeerIndex)
     val selectedPeerTitle: String = selectedPeer?.nickname ?: "No peer selected"
-    val selectedPeerMeta: String =
-        selectedPeer?.selectedMeta ?: "Select an online peer to send files or call."
     val peerStatus: String =
         selectedPeer?.let { if (it.online) "Peer ${it.nickname}" else "Peer offline" } ?: "Peer not selected"
-    val noPeerActionTitle: String = "Choose a peer to start"
-    val noPeerActionDetail: String =
-        "Select an online peer to start messaging, files, or calls."
     private fun resolveSelectedPeerIndex(): Int {
         val indexByNickname = selectedPeerNickname?.let { selectedNickname ->
             visiblePeers.indexOfFirst { it.nickname.equals(selectedNickname, ignoreCase = true) }

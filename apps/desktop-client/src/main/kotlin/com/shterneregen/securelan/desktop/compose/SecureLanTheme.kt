@@ -43,8 +43,6 @@ data class SecureLanSpacingTokens(
     val md: Dp = 16.dp,
     val lg: Dp = 20.dp,
     val xl: Dp = 24.dp,
-    val xxl: Dp = 32.dp,
-    val xxxl: Dp = 40.dp,
 )
 
 @Immutable
@@ -70,7 +68,6 @@ data class SecureLanTypographyTokens(
 @Immutable
 data class SecureLanElevationTokens(
     val flat: Dp = 0.dp,
-    val popover: Dp = 6.dp,
     val modal: Dp = 12.dp,
 )
 
@@ -82,11 +79,7 @@ data class SecureLanBorderTokens(
 
 @Immutable
 data class SecureLanDensityTokens(
-    val buttonMinHeight: Dp = 36.dp,
-    val inputMinHeight: Dp = 38.dp,
     val sidebarRowMinHeight: Dp = 48.dp,
-    val sidebarRowMaxHeight: Dp = 60.dp,
-    val composerMinHeight: Dp = 52.dp,
 )
 
 @Immutable
@@ -94,7 +87,6 @@ data class SecureLanMotionTokens(
     val durationFast: Int = 150,
     val durationDefault: Int = 200,
     val durationSlow: Int = 250,
-    val durationInstant: Int = 0,
 )
 
 @Immutable

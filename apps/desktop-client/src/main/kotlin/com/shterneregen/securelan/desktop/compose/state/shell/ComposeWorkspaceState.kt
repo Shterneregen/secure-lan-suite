@@ -10,13 +10,9 @@ data class ComposeWorkspaceState(
     val mode: ComposeWorkspaceMode = ComposeWorkspaceMode.OFFLINE,
     val title: String = "Shared room",
     val subtitle: String = "",
-    val layoutContract: ComposeWorkspaceLayoutContract = ComposeWorkspaceLayoutContract(),
 ) {
-    val chatVisible: Boolean = true
-    val connectionHubExpandedByDefault: Boolean = mode == ComposeWorkspaceMode.OFFLINE
     val videoStageVisible: Boolean = mode == ComposeWorkspaceMode.VIDEO_CALL
     val callBannerVisible: Boolean = mode == ComposeWorkspaceMode.VOICE_CALL
-    val inlineTransferVisible: Boolean = mode == ComposeWorkspaceMode.FILE_TRANSFER
 
     companion object {
         fun from(

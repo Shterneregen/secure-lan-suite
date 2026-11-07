@@ -12,7 +12,6 @@ data class ComposeContextPanelResponsiveState(
     val drawerCloseContentDescription: String = "Close Actions drawer"
     val collapseSecondaryCards: Boolean = mode == ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY
     val collapseHistory: Boolean = mode == ComposeContextPanelResponsiveMode.COLLAPSED_HISTORY || drawerMode
-    val preservesConversationFirst: Boolean = true
     val summary: String = when (mode) {
         ComposeContextPanelResponsiveMode.FULL_PANEL -> "Actions visible."
         ComposeContextPanelResponsiveMode.COLLAPSED_SECONDARY -> "Secondary cards collapsed to preserve conversation."

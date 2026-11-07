@@ -1,9 +1,7 @@
 package com.shterneregen.securelan.chat.protocol.handshake
 
 import java.nio.charset.StandardCharsets
-import java.util.Base64
-import java.util.Locale
-import java.util.Objects
+import java.util.*
 
 /**
  * Immutable value object that describes the features supported by a chat peer.
@@ -433,14 +431,6 @@ class PeerCapabilities @JvmOverloads constructor(
                 metadata = mapOf("identity-key" to fields.getOrNull(6).orEmpty()).filterValues { it.isNotEmpty() },
             )
         }
-
-        /**
-         * Returns `true` if [value] looks like a capabilities string produced by [encode].
-         *
-         * @param value The string to test.
-         */
-        @JvmStatic
-        fun isEncoded(value: String?): Boolean = value?.trim()?.startsWith(ENCODED_PREFIX) == true
 
         private fun normalizeText(value: String?): String = value?.trim().orEmpty().take(256)
 

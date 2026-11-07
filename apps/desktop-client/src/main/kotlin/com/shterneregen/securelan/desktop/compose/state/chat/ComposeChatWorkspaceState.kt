@@ -2,7 +2,6 @@ package com.shterneregen.securelan.desktop.compose.state.chat
 
 import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListState
-import com.shterneregen.securelan.desktop.compose.state.shell.ComposeEmptyStateVisualWeight
 import java.time.Instant
 
 /** Derives shared-room composer readiness and transcript presentation from connection and peer state. */
@@ -18,7 +17,6 @@ public data class ComposeChatWorkspaceState(
     } ?: "Connect to chat, then select a peer on the left for voice, video, and file actions."
 
     val transcriptLines: List<String> = messages.map(ComposeChatMessage::displayText)
-    val transcriptMessageTimes: List<String> = messages.map(ComposeChatMessage::displayTime)
     val transcriptSummary: String =
         if (messages.isEmpty()) "No chat messages yet." else "Preview transcript lines: ${messages.size}"
     val transcriptEmptyTitle: String = when {
@@ -29,20 +27,10 @@ public data class ComposeChatWorkspaceState(
         "Messages appear here for everyone in the room. Select a participant only when sending files or starting a call."
     val transcriptEmptyDetailDisconnected: String =
         "You are in the shared room chat, but it is not active. Host or join a trusted LAN room to start messaging."
-    val transcriptEmptySituation: String = transcriptEmptyTitle
     val transcriptEmptyExplanation: String = if (statusState.clientConnected || statusState.localServerRunning) transcriptEmptyDetailConnected else transcriptEmptyDetailDisconnected
-    val transcriptEmptyStructuredCopy: List<String> = listOf(transcriptEmptySituation, transcriptEmptyExplanation)
-    val transcriptEmptyVisualWeight: ComposeEmptyStateVisualWeight = ComposeEmptyStateVisualWeight.PRIMARY_GUIDANCE
     val draftValid: Boolean = draftMessage.trim().isNotEmpty()
     val canSendMessage: Boolean = statusState.clientConnected && draftValid
     val sendLabel: String = if (canSendMessage) "Send ready" else "Send blocked"
-    val microinteractionChecklist: List<String> = listOf(
-        "Hover highlights interactive rows without changing layout.",
-        "Focus uses the design-system focus border and keeps keyboard navigation visible.",
-        "Loading, success, and failure states use inline feedback pills instead of blocking dialogs.",
-        "Connection, peer presence, transfer completion, and call changes append contextual transcript feedback.",
-        "Composer focus returns after sending a message.",
-    )
     val blockedReasons: List<String> = buildList {
         if (!statusState.clientConnected) {
             add("Connect to chat before sending shared-room messages.")

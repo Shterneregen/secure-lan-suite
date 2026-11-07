@@ -95,23 +95,6 @@ data class ComposeQuickShareState(
     }.ifEmpty {
         listOf(policySentence)
     }.joinToString(" · ")
-    val emptySharesTitle: String = if (running) "No links created yet" else "Quick share is idle"
-    val emptySharesSituation: String = emptySharesTitle
-    val emptySharesExplanation: String = if (running) {
-        "Browser links will appear here after you create one."
-    } else {
-        "Temporary browser links are off until you start trusted-LAN sharing."
-    }
-    val emptySharesNextAction: String = if (running) {
-        "Choose a file or enter text"
-    } else {
-        "Start quick share"
-    }
-    val emptySharesDetail: String = if (running) {
-        "$emptySharesExplanation $emptySharesNextAction, then create a link."
-    } else {
-        "$emptySharesExplanation $emptySharesNextAction to create links for this LAN."
-    }
     val primaryLandingUrl: String = DesktopQuickShareFormatters.pickPrimaryLandingUrl(landingUrls, preferredHost)
     val shareRowsDetailed: List<ComposeQuickShareRow> = entries.map { ComposeQuickShareRow.from(it, preferredHost) }
 }

@@ -20,7 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.OutputStream
-import java.util.Locale
+import java.util.*
 
 /** Platform-independent receiver boundary for workspace lifecycle ownership and correlated events. */
 interface IncomingFileReceiver {
@@ -288,7 +288,6 @@ class SecureFileReceiver(private val context: Context) : IncomingFileReceiver {
         private const val MAX_FILE_BYTES = 1024L * 1024 * 1024
         private const val ACCEPTED = "ACCEPTED"
         private const val DONE = "DONE"
-        private const val ACCEPT_TIMEOUT_MS = 1000
         private const val DOWNLOAD_SUBDIRECTORY = "SecureLan"
         private const val MAX_FILE_NAME_LENGTH = 160
         private const val MAX_DUPLICATE_FILE_INDEX = 10_000

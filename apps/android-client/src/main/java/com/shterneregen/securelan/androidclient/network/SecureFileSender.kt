@@ -13,17 +13,13 @@ import com.shterneregen.securelan.filetransfer.protocol.TransferRejectedExceptio
 import com.shterneregen.securelan.filetransfer.protocol.TransferSourceException
 import com.shterneregen.securelan.filetransfer.service.FileTransferAttemptException
 import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.io.Closeable
 import java.io.File
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -191,7 +187,6 @@ class SecureFileSender(private val contentResolver: ContentResolver, private val
     }
 
     companion object {
-        private const val CHUNK_SIZE = 16 * 1024
         private const val MAX_FILE_NAME_LENGTH = 160
         private val INVALID_FILE_NAME_CHARS = setOf('<', '>', ':', '"', '/', '\\', '|', '?', '*')
     }

@@ -80,17 +80,6 @@ data class SelectedFile(
     val size: Long,
 )
 
-data class FileSendProgress(
-    val fileName: String = "",
-    val bytesSent: Long = 0,
-    val totalBytes: Long = 0,
-    val active: Boolean = false,
-    val error: String? = null,
-) {
-    val percent: Float
-        get() = if (totalBytes <= 0) 0f else (bytesSent.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-}
-
 data class IncomingFileProgress(
     val fileName: String = "",
     val bytesReceived: Long = 0,
@@ -158,7 +147,6 @@ data class MainUiState(
     val inputMessage: String = "",
     val messages: List<ChatLine> = emptyList(),
     val selectedFile: SelectedFile? = null,
-    val fileProgress: FileSendProgress = FileSendProgress(),
     val incomingFileProgress: IncomingFileProgress = IncomingFileProgress(),
     val recentTransfers: List<TransferRecord> = emptyList(),
     val fileReceiverRunning: Boolean = false,
@@ -172,8 +160,4 @@ data class MainUiState(
     val fileRecipient: DiscoveredPeer?
         get() = selectedPeer?.takeIf { it.role == PeerRole.CHAT_CLIENT }
             ?: connectionPeer.takeUnless { hosting }
-
-    /** Theme adapter for legacy composables; system mode is resolved by the active Compose shell. */
-    val darkThemeEnabled: Boolean
-        get() = themeMode == ThemeMode.DARK
 }

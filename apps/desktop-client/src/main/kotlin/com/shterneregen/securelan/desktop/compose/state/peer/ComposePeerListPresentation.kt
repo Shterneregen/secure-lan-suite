@@ -23,8 +23,6 @@ public data class ComposePeerListItemPresentation(
     val capabilityAssistiveLabel: String,
     val accessibilityLabel: String,
 ) {
-    val hasCapabilityChips: Boolean = capabilityChips.isNotEmpty()
-
     companion object {
         fun from(peer: ComposePeerListItem): ComposePeerListItemPresentation {
             val availability = if (peer.online) ComposePeerAvailabilityKind.ONLINE else ComposePeerAvailabilityKind.OFFLINE

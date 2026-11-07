@@ -1,10 +1,6 @@
 package com.shterneregen.securelan.desktop.compose
 
-import androidx.compose.runtime.SnapshotMutationPolicy
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.referentialEqualityPolicy
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import com.shterneregen.securelan.chat.discovery.DiscoveredPeer
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryConfig
 import com.shterneregen.securelan.chat.discovery.PeerDiscoveryListener
@@ -17,12 +13,11 @@ import com.shterneregen.securelan.common.model.rtc.RtcSessionState
 import com.shterneregen.securelan.common.net.NetworkConstants
 import com.shterneregen.securelan.desktop.compose.logging.SecureLanLogger
 import com.shterneregen.securelan.desktop.compose.settings.*
-import com.shterneregen.securelan.desktop.compose.state.chat.*
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeAdapterEventKind
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEvent
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionEventKind
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeConnectionJoinTarget
-import com.shterneregen.securelan.desktop.compose.state.connection.ComposeStatusConnectionState
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatMessage
+import com.shterneregen.securelan.desktop.compose.state.chat.ComposeChatTranscriptLineKind
+import com.shterneregen.securelan.desktop.compose.state.chat.LocalTranscriptEvent
+import com.shterneregen.securelan.desktop.compose.state.chat.LocalTranscriptSeverity
+import com.shterneregen.securelan.desktop.compose.state.connection.*
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeExperimentalVideoState
 import com.shterneregen.securelan.desktop.compose.state.media.ComposeMediaVoiceState
 import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListItem
@@ -30,8 +25,6 @@ import com.shterneregen.securelan.desktop.compose.state.peer.ComposePeerListStat
 import com.shterneregen.securelan.desktop.compose.state.shell.ComposeShellMetadata
 import com.shterneregen.securelan.desktop.compose.state.steganography.ComposeSteganographyState
 import com.shterneregen.securelan.desktop.compose.state.transfer.*
-import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPrompt
-import com.shterneregen.securelan.desktop.compose.state.transfer.ComposeIncomingTransferPromptStatus
 import com.shterneregen.securelan.desktop.compose.tray.DesktopChatTrayNotification
 import com.shterneregen.securelan.desktop.compose.tray.shouldPublishChatTrayNotification
 import com.shterneregen.securelan.desktop.ui.*
@@ -41,12 +34,7 @@ import com.shterneregen.securelan.filetransfer.quickshare.QuickShareCreateReques
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareEvent
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareServerConfig
 import com.shterneregen.securelan.filetransfer.quickshare.QuickShareService
-import com.shterneregen.securelan.filetransfer.service.FileTransferClientRequest
-import com.shterneregen.securelan.filetransfer.service.FileTransferClientService
-import com.shterneregen.securelan.filetransfer.service.FileTransferFailureKind
-import com.shterneregen.securelan.filetransfer.service.FileTransferOutcome
-import com.shterneregen.securelan.filetransfer.service.FileTransferServerConfig
-import com.shterneregen.securelan.filetransfer.service.FileTransferServerService
+import com.shterneregen.securelan.filetransfer.service.*
 import com.shterneregen.securelan.stego.StegoServices
 import com.shterneregen.securelan.stego.service.SteganographyService
 import com.shterneregen.securelan.webrtc.event.*
@@ -56,7 +44,6 @@ import com.shterneregen.securelan.webrtc.service.RtcSessionRequest
 import com.shterneregen.securelan.webrtc.service.RtcSessionService
 import com.shterneregen.securelan.webrtc.service.RtcSessionSnapshot
 import kotlinx.coroutines.*
-import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -985,18 +972,6 @@ class ComposeDesktopHostAdapter(
             peer.online() && peer.nickname() == metadata.senderId && peer.capabilities().identityKey().isNotBlank()
         }
     }
-
-    private fun remoteHostOnly(remoteAddress: String): String? =
-        runCatching {
-            val socketAddress = InetSocketAddress.createUnresolved(remoteAddress.substringBeforeLast(':'), 0)
-            socketAddress.hostString
-                .removePrefix("/")
-                .takeIf { it.isNotBlank() && it != remoteAddress }
-        }.getOrNull()
-            ?: remoteAddress
-                .removePrefix("/")
-                .substringBeforeLast(':')
-                .takeIf { it.isNotBlank() && it != remoteAddress }
 
     /** Apply the auto-accept setting to the live file-transfer listener callback. */
     fun updateAutoAcceptIncomingFiles(enabled: Boolean) {

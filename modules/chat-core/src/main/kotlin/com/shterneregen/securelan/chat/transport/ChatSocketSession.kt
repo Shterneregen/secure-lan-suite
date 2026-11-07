@@ -84,7 +84,6 @@ class ChatSocketSession(private val socket: Socket) : Closeable {
     }
 
     fun <T> handshake(action: () -> T): T = SocketDeadlines.within(socket, 10_000, action)
-    fun isSecure(): Boolean = cipher != null
     fun remoteAddress(): String = channel.remoteAddress()
     fun setReadTimeout(timeoutMillis: Int) = channel.setReadTimeout(timeoutMillis)
     override fun close() {

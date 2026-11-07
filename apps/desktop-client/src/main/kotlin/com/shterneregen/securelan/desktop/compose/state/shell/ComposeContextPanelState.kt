@@ -12,26 +12,12 @@ data class ComposeContextPanelState(
     val title: String = "Actions"
     private val visibleCardLimit: Int = MAX_VISIBLE_CARDS
     val visibleCards: List<ComposeContextPanelCard> = cards.take(visibleCardLimit)
-    val primaryCards: List<ComposeContextPanelCard> = visibleCards.filter { it.primary }
     val primaryButtons: List<String> = visibleCards.mapNotNull { it.primaryAction }
     val visibleCardTitles: List<String> = visibleCards.map { it.title }
     val visibleCardKinds: List<ComposeContextPanelCardKind> = visibleCards.map { it.kind }
     val persistentToolKinds: Set<ComposeContextPanelCardKind> =
         setOf(ComposeContextPanelCardKind.TRANSFER_DETAILS)
     val keepsPersistentToolsVisible: Boolean = persistentToolKinds.all(visibleCardKinds::contains)
-    val answersCurrentContext: Boolean =
-        visibleCards.isNotEmpty() && visibleCards.all { it.title.isNotBlank() && it.body.isNotBlank() }
-    val hasOnePrimaryContext: Boolean = primaryCards.size <= 1
-    val withinVisualComplexityLimit: Boolean =
-        visibleCards.size <= visibleCardLimit && primaryButtons.size <= MAX_PRIMARY_BUTTONS
-    val keepsRawDetailsCollapsed: Boolean = visibleCards.filter { it.technical }.all { it.collapsed }
-    val hidesTechnicalControlsByDefault: Boolean = visibleCards.none { it.technical }
-    val behavesAsContextAssistant: Boolean = answersCurrentContext &&
-        hasOnePrimaryContext &&
-        withinVisualComplexityLimit &&
-        keepsPersistentToolsVisible &&
-        hidesTechnicalControlsByDefault &&
-        keepsRawDetailsCollapsed
 
     fun visibleCardsFor(
         responsiveState: ComposeContextPanelResponsiveState,
@@ -47,7 +33,6 @@ data class ComposeContextPanelState(
 
     companion object {
         private const val MAX_VISIBLE_CARDS: Int = 6
-        private const val MAX_PRIMARY_BUTTONS: Int = 1
 
         fun forRoom(
             peerListState: ComposePeerListState,

@@ -10,18 +10,6 @@ data class ComposeProductScreenState(
     val selectionState: SelectionState = SelectionState.NONE,
     val rightPanelMode: RightPanelMode = RightPanelMode.HIDDEN,
 ) {
-    val connectionFlowActive: Boolean = appMode == AppMode.HOST_SETUP || appMode == AppMode.JOIN_SETUP
-    val communicationFlowActive: Boolean = appMode == AppMode.MESSENGER
-    val connectionAndCommunicationSeparated: Boolean = false
-    val primarySurfaceLabel: String = when (appMode) {
-        AppMode.WELCOME -> "Welcome"
-        AppMode.HOST_SETUP -> "Host setup"
-        AppMode.JOIN_SETUP -> "Join setup"
-        AppMode.MESSENGER -> "Messenger"
-        AppMode.SETTINGS -> "Settings"
-    }
-    val modeSummary: String = "$primarySurfaceLabel · $roomState · $selectionState · $rightPanelMode"
-
     companion object {
         fun from(
             statusState: ComposeStatusConnectionState,

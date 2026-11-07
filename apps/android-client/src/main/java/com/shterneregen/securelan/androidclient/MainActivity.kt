@@ -52,7 +52,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -304,9 +303,6 @@ private data class AdaptiveLayoutSpec(
         get() = mode != AdaptiveLayoutMode.COMPACT
 
     val supportsTwoPane: Boolean
-        get() = mode == AdaptiveLayoutMode.EXPANDED
-
-    val supportsThreePaneWorkspace: Boolean
         get() = mode == AdaptiveLayoutMode.EXPANDED
 
     val chatBubbleWidthFraction: Float
@@ -966,15 +962,6 @@ private fun DeviceCard(peer: DiscoveredPeer, connected: Boolean, onClick: (Disco
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
-    }
-}
-
-@Composable
-private fun ManualConnectionButton(onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) {
-        Icon(Icons.Outlined.Computer, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text(stringResource(R.string.connect_by_ip))
     }
 }
 
