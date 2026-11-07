@@ -137,7 +137,7 @@ androidComponents.onVariants(androidComponents.selector().all()) { variant ->
 }
 
 dependencies {
-    kotlinLint 'com.pinterest.ktlint:ktlint-cli:1.7.1'
+    kotlinLint 'com.pinterest.ktlint:ktlint-cli:1.8.0'
     def composeBom = platform('androidx.compose:compose-bom:2024.12.01')
     implementation composeBom
     androidTestImplementation composeBom
