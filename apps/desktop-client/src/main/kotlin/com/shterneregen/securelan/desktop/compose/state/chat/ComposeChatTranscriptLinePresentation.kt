@@ -19,9 +19,29 @@ data class ComposeChatTranscriptLinePresentation(
     val displayTime: String = formatComposeChatTimestamp(timestamp)
 
     companion object {
+        private val servicePrefix = Regex(
+            "^(?:system:\\s*|\\[(system|disconnected|join|left|file-send|file-recv|transfer|call|security|error|warning|info|discovery|quick-share|stego|rtc)]\\s*)",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** Strip only known leading service markers; preserve brackets in message content. */
+        private fun displayEventBody(text: String): String {
+            var body = text.trim()
+            var direction = ""
+            while (true) {
+                val prefix = servicePrefix.find(body) ?: break
+                when (prefix.groupValues[1].lowercase()) {
+                    "file-send" -> direction = "sent: "
+                    "file-recv" -> direction = "received: "
+                }
+                body = body.substring(prefix.value.length).trimStart()
+            }
+            return direction + body
+        }
+
         fun from(message: ComposeChatMessage, localNickname: String = ""): ComposeChatTranscriptLinePresentation {
             message.localEvent?.let { event ->
-                return ComposeChatTranscriptLinePresentation(event.kind, event.label, event.body, message.timestamp,
+                return ComposeChatTranscriptLinePresentation(event.kind, event.label, displayEventBody(event.body), message.timestamp,
                     event.actionUrl, event.showsQrCode, event.actionPath)
             }
             if (message.transcriptLine == null && !message.system) {
@@ -126,7 +146,11 @@ data class ComposeChatTranscriptLinePresentation(
                 body.startsWith("File link created", ignoreCase = true) ||
                     body.startsWith("Text link created", ignoreCase = true)
                 )
-            return ComposeChatTranscriptLinePresentation(kind, label, body, timestamp, actionUrl, showsQrCode)
+            val displayBody = when (kind) {
+                ComposeChatTranscriptLineKind.USER_LOCAL, ComposeChatTranscriptLineKind.USER_REMOTE -> body
+                else -> displayEventBody(body)
+            }
+            return ComposeChatTranscriptLinePresentation(kind, label, displayBody, timestamp, actionUrl, showsQrCode)
         }
     }
 }

@@ -105,6 +105,8 @@ column widths.
   messaging through a per-person Message action.
 - Preserve drafts, selection, and scroll position when adjacent UI opens.
 - Give immediate send feedback and restore composer focus where appropriate.
+- Hide leading service markers such as `[system]` in transcript events while
+  preserving literal prefixes in user messages and file transfer direction.
 - Use empty states to explain how to begin.
 
 ### File transfer
