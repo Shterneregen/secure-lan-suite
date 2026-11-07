@@ -6,6 +6,8 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -16,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.shterneregen.securelan.desktop.compose.LocalSecureLanDesignTokens
@@ -49,7 +52,19 @@ internal fun CompactTextField(
         enabled = enabled,
     )
     Row(
-        modifier = modifier,
+        // Handle Enter before the focused BasicTextField consumes the key event.
+        modifier = modifier.then(
+            if (onSubmit == null) Modifier else Modifier.onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown &&
+                    (event.key == Key.Enter || event.key == Key.NumPadEnter)
+                ) {
+                    onSubmit()
+                    true
+                } else {
+                    false
+                }
+            },
+        ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -76,23 +91,12 @@ internal fun CompactTextField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(inputModifier)
-                    .then(
-                        if (onSubmit == null) {
-                            Modifier
-                        } else {
-                            Modifier.onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
-                                    onSubmit()
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
-                        },
-                    )
                     .padding(horizontal = 10.dp, vertical = 7.dp),
                 enabled = enabled,
                 singleLine = true,
+                // IME Send may arrive without a hardware Enter key event.
+                keyboardOptions = KeyboardOptions(imeAction = if (onSubmit != null) ImeAction.Send else ImeAction.Default),
+                keyboardActions = KeyboardActions(onSend = { onSubmit?.invoke() }),
                 textStyle = MaterialTheme.typography.body2.copy(color = MaterialTheme.colors.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colors.primary),
                 visualTransformation = visualTransformation,

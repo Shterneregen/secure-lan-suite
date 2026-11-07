@@ -195,7 +195,9 @@ internal fun LiveChatWorkspaceCard(
                     draftMessage,
                     draft::update,
                     label = "",
-                    modifier = Modifier.weight(1f).then(Modifier.focusRequester(chatInputFocusRequester)),
+                    modifier = Modifier.weight(1f),
+                    // Restore focus to the editable field after sending, not its outer layout.
+                    inputModifier = Modifier.focusRequester(chatInputFocusRequester),
                     onSubmit = ::sendDraftMessage,
                     placeholder = "Type a message for the shared chat...",
                 )
