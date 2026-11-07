@@ -6,7 +6,6 @@ data class ComposeAppShellState(
     val productState: ComposeProductScreenState,
     val statusState: ComposeStatusConnectionState,
     val peerStatus: String = "No one selected",
-    val transferStatus: String = "Files idle",
     val workspaceState: ComposeWorkspaceState = ComposeWorkspaceState(),
 ) {
     val currentContextLabel: String = when (productState.appMode) {

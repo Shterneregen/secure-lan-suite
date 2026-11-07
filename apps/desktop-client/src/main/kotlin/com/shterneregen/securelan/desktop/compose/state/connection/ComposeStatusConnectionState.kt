@@ -1,7 +1,6 @@
 package com.shterneregen.securelan.desktop.compose.state.connection
 
 import com.shterneregen.securelan.common.net.NetworkConstants
-import com.shterneregen.securelan.desktop.ui.DesktopMainViewHelpers
 
 /**
  * Immutable host/join form and live connection status with derived port validation.
@@ -37,20 +36,8 @@ data class ComposeStatusConnectionState(
     val canOpenRoom: Boolean = !operationInProgress && !localServerRunning && nicknameValid && serverChatPort != null && serverFilePort != null
     val canConnect: Boolean =
         !operationInProgress && !clientConnected && nicknameValid && manualHostValid && clientChatPort != null && clientFilePort != null
-    val resolvedLocalFilePort: Int? = if (serverFilePort != null && clientFilePort != null) {
-        DesktopMainViewHelpers.resolveLocalFilePort(
-            serverRunning = localServerRunning,
-            serverFilePortText = serverFilePortText.trim(),
-            clientFilePortText = clientFilePortText.trim(),
-            defaultFileTransferPort = NetworkConstants.DEFAULT_FILE_TRANSFER_PORT,
-            clientFilePortOffset = CLIENT_FILE_PORT_OFFSET,
-        )
-    } else {
-        null
-    }
-    private companion object {
-        const val CLIENT_FILE_PORT_OFFSET: Int = 1000
 
+    private companion object {
         fun parsePort(value: String): Int? = value.trim().toIntOrNull()?.takeIf { it in 1..65_535 }
     }
 }

@@ -8,23 +8,6 @@ package com.shterneregen.securelan.webrtc.runtime
  * root-cause diagnostics logged to [RtcFileLogger].
  */
 object RtcEngineProvider {
-    /**
-     * Creates an [RtcEngine] instance configured with specific preferred device descriptors.
-     *
-     * @param preferredAudioCaptureDeviceId descriptor of the preferred microphone device, or null for default.
-     * @param preferredVideoCaptureDeviceId descriptor of the preferred camera device, or null for default.
-     * @return initialized native engine or fallback [NoOpRtcEngine] if initialization fails.
-     */
-    @JvmStatic
-    @Suppress("unused")
-    fun createDefault(preferredAudioCaptureDeviceId: String?, preferredVideoCaptureDeviceId: String?): RtcEngine = try {
-        WebRtcJavaEngine(preferredAudioCaptureDeviceId, preferredVideoCaptureDeviceId)
-    } catch (error: Throwable) {
-        error.printStackTrace()
-        RtcFileLogger.error("Failed to initialize webrtc-java provider", error)
-        NoOpRtcEngine(buildFailureMessage(error))
-    }
-
     fun createDefault(configuration: com.shterneregen.securelan.webrtc.service.RtcMediaConfiguration): RtcEngine = try {
         WebRtcJavaEngine(configuration.microphoneId, configuration.cameraId, configuration.speakerId)
     } catch (error: Throwable) {

@@ -361,14 +361,6 @@ public final class WebRtcJavaEngine implements RtcEngine {
         eventConsumer.accept(new RtcRuntimeWarningEvent("[diag] " + message));
     }
 
-    private static String safeToString(Object value) {
-        try {
-            return String.valueOf(value);
-        } catch (Throwable error) {
-            return value == null ? "<null>" : value.getClass().getSimpleName();
-        }
-    }
-
     private static AudioInitialization initializeAudioDeviceModule(String preferredCaptureDeviceId, String preferredRenderDeviceId) {
         AudioDeviceModule module = new AudioDeviceModule();
         boolean captureAvailable = false;
