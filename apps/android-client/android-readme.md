@@ -52,8 +52,8 @@ Discovery covers six fixed HTTP(S)/IPP(S)/SSH/SMB DNS-SD types, one chosen LAN,
 at most thirty seconds plus bounded cleanup. API 33+ uses network-scoped NSD
 when the capability/extension is available; API 34+ supports service updates.
 Older backends require one LAN and no VPN and serialize legacy resolves, which
-cannot be forcibly cancelled. Missing SRV hostname/type stays Unknown. Compile
-SDK 35 cannot access the newer NSD hostname getter; different advertisements
+cannot be forcibly cancelled. Missing SRV hostname/type stays Unknown. The
+backend does not extract the NSD hostname; different advertisements
 without a hostname remain separate even when their IPs match. IPv6 discovery,
 SSDP, subnet/port scans and ICMP are unavailable. DNS uses the system network,
 independently of the TCP source picker; API 26–28 native lookups have bounded
@@ -119,14 +119,14 @@ The [realtime architecture](../../docs/webrtc-architecture.md) and this guide de
   command-line Android SDK. Check the official [Android Gradle Plugin
   compatibility table](https://developer.android.com/build/releases/about-agp)
   before changing either tool.
-- Android SDK Platform 35.
+- Android SDK Platform 37.
 - Android SDK Build Tools compatible with the configured Android Gradle Plugin.
 - Android SDK Platform Tools (`adb`).
 - JDK 17 or newer to run Gradle; the Android client and its shared JVM modules
   compile and run unit tests with a JDK 17 toolchain. Gradle can provision a
   missing toolchain through Foojay.
 - Android 8.0 (API 26) or newer on the device. Android 9 and 10 remain supported.
-  The build JDK, `compileSdk 35` and `targetSdk 35` do not raise `minSdk 26`.
+  The build JDK, `compileSdk 37` and `targetSdk 35` do not raise `minSdk 26`.
 - Internet access for the first build so Gradle, Android, Kotlin, and Compose dependencies can be downloaded.
 
 Exact Android Gradle Plugin and Kotlin versions are defined in `settings.gradle`;

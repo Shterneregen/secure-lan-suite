@@ -12,12 +12,13 @@ The owning Gradle files define exact dependency and plugin versions.
   needed.
 - Internet access for the first dependency download.
 - Python 3.11+ for distribution notices and release verification; CI uses Python 3.12.
-- Android SDK Platform 35, compatible Build Tools, and Platform Tools for the
+- Android SDK Platform 37, compatible Build Tools, and Platform Tools for the
   Android client.
 
 For exact Gradle, Kotlin, Compose, Android plugin, and application versions,
 inspect `gradle/wrapper/gradle-wrapper.properties`, `settings.gradle`, and
 `gradle.properties`.
+The Compose plugin and desktop runtime share `composeVersion` in `gradle.properties`.
 
 ## Verify the environment
 
@@ -151,6 +152,23 @@ not qualify a physical printer/router or a live encrypted chat/file/call session
 
 ### Dependency locking during IDE sync
 
+After a dependency update (including Dependabot commits), regenerate and commit
+the lockfiles before running CI. Keep Jupiter and Vintage on the same JUnit
+release. Resolve every supported desktop target; this updates dependency graphs
+without cross-building native packages:
+
+```powershell
+.\gradlew.bat resolveDependencyInventory --write-locks --no-configuration-cache
+foreach ($target in @('linux-x86_64', 'linux-aarch64', 'macos-x86_64', 'macos-aarch64', 'windows-x86_64')) {
+    .\gradlew.bat resolveDependencyInventory "-PsecureLanDependencyTarget=$target" --write-locks --no-configuration-cache
+    if ($LASTEXITCODE -ne 0) { throw "Dependency resolution failed for $target" }
+}
+.\gradlew.bat qualityGate resolveDependencyInventory --no-configuration-cache
+```
+
+Review the generated lockfile diff and run `python scripts/audit_dependencies.py`.
+CI validates committed locks; it must not regenerate them automatically.
+
 JVM projects use strict dependency locking. Android uses `LockMode.DEFAULT`:
 existing lock state is validated, while configurations without their own state
 can resolve. AGP/IDE-created `*ClasspathCopy` configurations inherit locking
@@ -217,7 +235,7 @@ APK names use `secureLanVersion` from `gradle.properties`:
 These are exports from AGP's standard APK artifacts, produced by `assembleDebug`
 and `assembleRelease`. `installDebug` continues to use AGP's original APK and
 installation metadata. Android uses `minSdk 26` (Android 8.0), including Android
-9 and 10; JDK 17 and `compileSdk`/`targetSdk 35` do not raise this minimum.
+9 and 10; JDK 17 and `compileSdk 37`/`targetSdk 35` do not raise this minimum.
 See the Android guide for version-code derivation and release overrides.
 
 See the [Android client guide](../apps/android-client/android-readme.md) for SDK

@@ -469,9 +469,9 @@ uncancellable native resolves share one gate across all types/generations in
 this tool facade. A stuck resolve may keep the tool busy until Android returns;
 repeated refresh cannot create replacement resolver workers.
 
-Compile SDK 35 has no usable SRV hostname getter (`getHostname` is newer;
-see [NsdServiceInfo](https://developer.android.com/reference/android/net/nsd/NsdServiceInfo)).
-Android hostname/type therefore stays Unknown. Records without hostname do
+The Android backend does not extract the SRV hostname from
+[NsdServiceInfo](https://developer.android.com/reference/android/net/nsd/NsdServiceInfo).
+Android hostname/type stays Unknown. Records without hostname do
 not merge solely by IP; several services may appear as separate device rows.
 The core registry still supplies lease expiry, loss handling, bounds and stale
 snapshots. The app bounds the callback queue to 256, candidate lists to 32 per

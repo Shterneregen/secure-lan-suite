@@ -10,12 +10,12 @@ import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.model.*
 import com.shterneregen.securelan.lantools.wol.WakeRoute
 import kotlinx.coroutines.*
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.net.*
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Real per-socket Android binding against in-process endpoints; no public hosts or equipment. */
 @RunWith(AndroidJUnit4::class)
