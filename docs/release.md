@@ -26,7 +26,7 @@ files cannot establish or prove them. No workflow uses `pull_request_target`.
 
 ## Toolchain baseline
 
-The workflow pins Temurin 17.0.20.1+1 and 25.0.4.1+1, Android Platform 35 and
+The workflow pins Temurin 17.0.20.1+1 and 25.0.4.1+1, Android Platform 37 and
 Build Tools 36.0.0, and Windows WiX/UI/Util extensions 5.0.2. For `setup-java`,
 the Temurin versions use Adoptium's SemVer identifiers `17.0.20+101` and
 `25.0.4+101.0.LTS`, respectively. The four-component runtime versions are not
@@ -91,9 +91,9 @@ and each target listed below, then run the quality gate without lock-writing fla
 .\gradlew.bat resolveDependencyInventory --update-locks 'org.jetbrains.kotlin:kotlin-stdlib,org.jetbrains.kotlin:kotlin-stdlib-common,com.google.zxing:core' --no-configuration-cache
 ```
 
-AndroidX Core stays at 1.15.0 while the app compiles against Android SDK 35.
-Core 1.19.1 requires compileSdk 37. Dependabot ignores newer Core versions until
-a coordinated SDK, CI and compatibility update removes this restriction.
+AndroidX Core's direct dependency stays at 1.15.0 pending a separate update;
+Compose can select a newer transitive Core version in the resolved lockfile.
+The Compose BOM requires compileSdk 37; targetSdk remains 35 and minSdk 26.
 
 Update each other desktop graph without cross-building:
 

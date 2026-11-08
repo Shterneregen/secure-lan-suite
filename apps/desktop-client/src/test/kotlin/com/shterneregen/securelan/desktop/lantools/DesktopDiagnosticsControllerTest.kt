@@ -7,9 +7,9 @@ import com.shterneregen.securelan.lantools.diagnostics.*
 import com.shterneregen.securelan.lantools.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
-import kotlin.time.Duration.Companion.milliseconds
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopDiagnosticsControllerTest {

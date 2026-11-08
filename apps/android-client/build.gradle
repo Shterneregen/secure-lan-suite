@@ -63,7 +63,7 @@ if (appVersionCode < 1 || appVersionCode > 2100000000) {
 
 android {
     namespace = 'com.shterneregen.securelan.androidclient'
-    compileSdk = 35
+    compileSdk = 37
     buildToolsVersion = '36.0.0'
 
     bundle {

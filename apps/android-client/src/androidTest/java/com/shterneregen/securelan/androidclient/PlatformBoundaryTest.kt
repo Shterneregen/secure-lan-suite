@@ -15,13 +15,13 @@ import com.shterneregen.securelan.androidclient.network.AndroidChatHostService
 import com.shterneregen.securelan.androidclient.network.SecureFileReceiver
 import com.shterneregen.securelan.filetransfer.protocol.FileTransferPeerAuthentication
 import kotlinx.coroutines.*
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.net.ServerSocket
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Real Android storage, provider, permission and foreground-service boundaries on min/current API. */
 @RunWith(AndroidJUnit4::class)

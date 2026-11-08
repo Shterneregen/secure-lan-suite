@@ -32,10 +32,10 @@ import com.shterneregen.securelan.androidclient.MainActivity
 import com.shterneregen.securelan.androidclient.MainViewModel
 import com.shterneregen.securelan.androidclient.R
 import kotlinx.coroutines.delay
-import kotlin.time.Duration.Companion.seconds
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.seconds
 import com.shterneregen.securelan.androidclient.ui.appStringResource as stringResource
 
 /** Hosts permission requests and call overlays while preserving the underlying workspace. */

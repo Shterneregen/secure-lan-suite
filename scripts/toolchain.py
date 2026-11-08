@@ -40,8 +40,8 @@ def main():
               'gradle': re.search(r'distributionUrl=.*gradle-([^/]+)-(?:bin|all)\.zip', wrapper)[1],
               'kotlin': re.search(r"id 'org.jetbrains.kotlin.jvm' version '([^']+)'", settings)[1],
               'agp': re.search(r"id 'com.android.application' version '([^']+)'", settings)[1],
-              'compose': re.search(r"id 'org.jetbrains.compose' version '([^']+)'", settings)[1],
-              'compileSdk': 35, 'buildTools': '36.0.0'}
+              'compose': re.search(r'^composeVersion=(.+)$', (root / 'gradle.properties').read_text(), re.M)[1],
+              'compileSdk': 37, 'buildTools': '36.0.0'}
     verify_release = os.environ.get('SECURELAN_VERIFY_RELEASE_TOOLCHAIN') == 'true'
     if os.name == 'nt':
         result.update(wix_metadata(required=verify_release))
