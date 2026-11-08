@@ -68,7 +68,7 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     implementation 'com.google.zxing:core:3.5.4'
     implementation 'org.jmdns:jmdns:3.6.4'
-    implementation 'com.formdev:flatlaf:3.7.2'
+    implementation 'com.formdev:flatlaf:3.8'
     def target = rootProject.ext.desktopPlatform
     def composeArch = target.classifier?.endsWith('aarch64') ? 'arm64' : 'x64'
     implementation "org.jetbrains.compose.desktop:desktop-jvm-${target.os}-${composeArch}:${providers.gradleProperty('composeVersion').get()}"
